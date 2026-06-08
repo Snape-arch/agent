@@ -1,0 +1,12 @@
+{
+  "id": "session-bridge",
+  "name": "Session Bridge",
+  "description": "Injects x-openclaw-session-id header into function_router requests",
+  "version": "0.2.0",
+  "providers": ["function_router"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

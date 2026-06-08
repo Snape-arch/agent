@@ -1,0 +1,143 @@
+﻿# ClawOS — 自进化个人智能体操作系统
+
+A self-evolving personal AI agent operating system based on the observe-plan-execute-reflect-memory-improve loop.
+
+## 系统要求
+
+- Python 3.10+
+- 操作系统：Windows 10/11（当前支持），macOS/Linux 需调整路径格式
+
+## 快速开始
+
+### 1. 克隆或复制项目
+
+将本目录完整复制到目标机器。
+
+### 2. 安装依赖
+
+`ash
+cd clawos
+pip install -r requirements.txt
+`
+
+### 3. 配置环境变量
+
+ClawOS 通过 config.json 配置文件读取环境变量。首次使用需要设置 API Key：
+
+`ash
+# Windows (CMD)
+set DEEPSEEK_API_KEY=sk-your-api-key-here
+
+# Windows (PowerShell)
+="sk-your-api-key-here"
+`
+
+可选环境变量：
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| DEEPSEEK_API_KEY | DeepSeek API 密钥 | **必填** |
+| DEEPSEEK_BASE_URL | API 端点地址 | https://api.deepseek.com/v1 |
+| DEEPSEEK_MODEL | 模型名称 | deepseek-chat |
+
+> 如果使用本地模型（如 Qwen-7B + vLLM），可将 DEEPSEEK_BASE_URL 指向本地端点。
+
+### 4. 启动服务器
+
+**方法一：双击启动脚本**
+
+`ash
+start_clawos.bat
+`
+
+首次运行会自动安装 Python 依赖。
+
+**方法二：手动启动**
+
+`ash
+cd clawos
+python clawos_server.py --host 127.0.0.1 --port 18790
+`
+
+### 5. 访问界面
+
+打开浏览器访问：http://127.0.0.1:18790
+
+## 项目结构
+
+`
+clawos/
+├── clawos_server.py      # 主服务器（FastAPI）
+├── config.json            # 配置文件（支持环境变量替换）
+├── functions.jsonl        # 工具定义（LLM Function Calling）
+├── requirements.txt       # Python 依赖
+├── static/
+│   └── index.html         # 前端界面（ChatGPT 风格）
+├── scripts/
+│   └── tool_runner.py     # 38 个本地工具
+├── memoryos/
+│   ├── memory_store.py    # SQLite 持久化存储
+│   ├── context_builder.py # 上下文构建（注入记忆）
+│   └── services/
+│       ├── ingestion.py   # 对话→记忆自动提取
+│       ├── retrieval.py   # 混合检索（关键词+BM25+向量）
+│       ├── vector_store.py# 向量语义搜索（纯Python，无外部依赖）
+│       └── evaluation.py  # 记忆质量评估
+├── skills/
+│   ├── skill_registry.py  # 技能固化引擎
+│   └── skill_registry.jsonl # 预置技能（4大场景）
+├── reflection/
+│   ├── engine.py          # 反思引擎
+│   ├── perception.py      # 执行轨迹感知
+│   ├── analyzer.py        # 根因分析（规则+LLM双模式）
+│   ├── memory_writer.py   # 反思→记忆写入
+│   └── learning_loop.py   # 持续学习循环
+└── notes/                 # 笔记存储目录（自动创建）
+`
+
+## 核心功能
+
+### MemoryOS（五维记忆系统）
+- **Profile Memory** — 用户画像（专业、兴趣、研究方向）
+- **Preference Memory** — 用户偏好（代码风格、PPT风格、沟通方式）
+- **Project Memory** — 项目追踪（目标、进度、团队）
+- **Experience Memory** — 经验案例（成功/失败/部分成功，含向量语义搜索）
+- **Skill Memory** — 固化工作流（JSONL + 自动生成 replay 脚本）
+
+### Reflection Engine（反思学习引擎）
+- 工具执行后自动反思
+- 规则分析 + LLM 深度分析双模式
+- 总结经验存入 MemoryOS，形成持续进化闭环
+
+### Skill Registry（技能固化）
+- 用户演示 → 固化 Skill → 毫秒级本地执行
+- 跨步骤参数引用（$step_N.field）
+- 预置 4 个场景技能：科研、竞赛、开发、办公
+
+### 38 个内置工具
+文件操作、代码分析、搜索、笔记、待办、定时器、项目管理等
+
+## 端口配置
+
+默认端口 18790，可通过命令行参数修改：
+`ash
+python clawos_server.py --host 127.0.0.1 --port 8080
+`
+
+## 本地化推理（可选）
+
+如需完全离线运行，将 config.json 中的 DEEPSEEK_BASE_URL 改为本地端点：
+
+`json
+{
+  "routing": {
+    "base_url": "http://localhost:8000/v1",
+    "model": "Qwen/Qwen2.5-7B-Instruct"
+  }
+}
+`
+
+支持任何兼容 OpenAI API 格式的推理框架（vLLM、Ollama、llama.cpp 等）。
+
+## 许可
+
+MIT License

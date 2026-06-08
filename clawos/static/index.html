@@ -1,0 +1,157 @@
+﻿<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClawOS - AI Agent</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#212121;--bg2:#171717;--bg3:#2f2f2f;--sd:#1a1a1a;--tx:#e4e4e7;--tx2:#a1a1aa;--tx3:#6b6b72;--ac:#19c37d;--ac2:#1a9e6a;--bd:#3f3f46;--inp:#40414f;--r:8px;--ff:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;--fm:JetBrains Mono,monospace}
+html,body{height:100%;background:var(--bg);color:var(--tx);font:14px/1.6 var(--ff);overflow:hidden}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
+.app{display:flex;height:100vh}
+.sd{width:260px;min-width:260px;background:var(--sd);display:flex;flex-direction:column;border-right:1px solid var(--bd)}
+.sd-hd{padding:12px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bd)}
+.sd-logo{width:32px;height:32px;background:var(--ac);border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:14px}
+.sd-brand{font-size:14px;font-weight:700}
+.sd-new{padding:8px 14px;margin:8px;border:1px solid var(--bd);border-radius:var(--r);cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--tx2);background:transparent;transition:.1s}.sd-new:hover{background:var(--bg3);color:var(--tx)}
+.sd-list{flex:1;overflow-y:auto;padding:4px 8px}
+.sd-item{padding:8px 12px;border-radius:var(--r);cursor:pointer;font-size:12.5px;color:var(--tx2);display:flex;align-items:center;gap:8px;transition:.1s;margin:1px 0}.sd-item:hover{background:var(--bg3)}.sd-item.on{background:var(--bg3);color:var(--tx)}
+.sd-item .sdot{width:6px;height:6px;border-radius:50%;background:var(--ac);flex-shrink:0;opacity:.4}.sd-item.on .sdot{opacity:1}
+.sd-ft{padding:10px 14px;border-top:1px solid var(--bd);font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:8px}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--ac)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.top{padding:8px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--bd);min-height:44px;font-size:13px;color:var(--tx2)}
+.top .tsel{padding:4px 10px;border-radius:4px;cursor:pointer;background:var(--bg3);border:1px solid var(--bd);font-size:12px;color:var(--tx);display:flex;align-items:center;gap:6px}
+.view{display:none;flex-direction:column;flex:1;min-height:0}.view.on{display:flex}
+.chat{flex:1;overflow-y:auto;padding:0}.chat-inner{max-width:740px;margin:0 auto;padding:0 20px}
+.msg{padding:16px 0;border-bottom:1px solid var(--bd);display:flex;gap:14px;animation:fade .15s}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+.msg-av{width:30px;height:30px;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.msg.u .msg-av{background:var(--ac);color:#fff}.msg.a .msg-av{background:var(--inp);color:var(--tx)}
+.msg-bd{flex:1;min-width:0}.msg-hd{font-size:12px;color:var(--tx3);margin-bottom:4px;font-weight:600}
+.msg-ct{font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.msg-ct p{margin:6px 0}.msg-ct code{background:var(--bg3);padding:1px 5px;border-radius:3px;font:13px var(--fm);color:var(--ac)}
+.msg-ct pre{background:var(--bg2);padding:10px 14px;border-radius:var(--r);overflow-x:auto;margin:8px 0;border:1px solid var(--bd);font:13px var(--fm)}
+.msg-ct h3{margin:10px 0 4px;font-size:15px}
+.tool-inline{display:flex;gap:6px;padding:6px 0;flex-wrap:wrap}
+.tool-chip{padding:3px 10px;border-radius:4px;background:var(--bg3);font:11px var(--fm);color:var(--ac);display:flex;align-items:center;gap:5px;border:1px solid var(--bd)}
+.tool-chip.ok{color:var(--ac)}.tool-chip.er{color:#ef4444}
+.inp-row{max-width:740px;margin:0 auto;width:100%;padding:10px 20px 16px}
+.inp-box{display:flex;gap:8px;background:var(--inp);border:1px solid var(--bd);border-radius:12px;padding:6px}
+.inp-box textarea{flex:1;background:transparent;border:none;outline:none;color:var(--tx);font:14px var(--ff);resize:none;padding:8px 10px;min-height:24px;max-height:200px}.inp-box textarea::placeholder{color:var(--tx3)}
+.inp-box button{padding:8px 16px;border-radius:8px;border:none;background:var(--ac);color:#fff;font-weight:600;cursor:pointer;font-size:13px;transition:.1s;align-self:flex-end}.inp-box button:hover{background:var(--ac2)}.inp-box button:disabled{opacity:.4;cursor:default}
+.panel{padding:20px 24px;max-width:800px;margin:0 auto;width:100%}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.card{background:var(--bg3);border:1px solid var(--bd);border-radius:var(--r);padding:14px 16px}.card .cv{font-size:22px;font-weight:800;font-family:var(--fm)}.card .cl{font-size:11px;color:var(--tx3);margin-top:2px}
+.section{margin-bottom:20px}.section h3{font-size:15px;margin-bottom:12px}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);margin-bottom:16px}
+.tab{padding:8px 16px;cursor:pointer;font-size:12.5px;color:var(--tx3);border-bottom:2px solid transparent;transition:.1s}
+.tab:hover{color:var(--tx2)}.tab.on{color:var(--tx);border-bottom-color:var(--ac)}
+.tabc{display:none}.tabc.on{display:block}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0}
+.tbl th{padding:6px 10px;text-align:left;font-size:10.5px;text-transform:uppercase;color:var(--tx3);border-bottom:1px solid var(--bd);font-weight:600}
+.tbl td{padding:6px 10px;border-bottom:1px solid var(--bd);color:var(--tx2)}
+.fi{padding:7px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--bg2);color:var(--tx);font:12.5px var(--ff);outline:none;width:100%}.fi:focus{border-color:var(--ac)}
+.btn{padding:6px 14px;border-radius:6px;border:1px solid var(--bd);background:var(--bg3);color:var(--tx2);cursor:pointer;font:12px var(--ff)}.btn:hover{border-color:var(--ac);color:var(--tx)}.btn.pri{background:var(--ac);color:#fff;border-color:var(--ac);font-weight:600}.btn.pri:hover{opacity:.9}
+.btn-sm{padding:4px 10px;font-size:11px}
+.fr{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.fg{display:flex;flex-direction:column;gap:3px}.fl{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase}
+.toasts{position:fixed;top:14px;right:14px;z-index:999;display:flex;flex-direction:column;gap:6px}
+.toast{padding:8px 16px;border-radius:var(--r);font-size:12.5px;background:var(--bg3);border:1px solid var(--bd);animation:slide .15s}
+@keyframes slide{from{opacity:0;transform:translateX(10px)}}
+.toast.ok{border-color:var(--ac)}.toast.er{border-color:#ef4444}.toast.info{border-color:var(--tx3)}
+.empty{text-align:center;padding:40px 20px;color:var(--tx3)}.empty .et{font-size:16px;font-weight:600;color:var(--tx2)}.empty .ed{font-size:13px;margin-top:4px}
+.mem-context{background:var(--bg3);border:1px solid var(--bd);border-radius:var(--r);padding:10px 14px;margin:10px 20px;font-size:11px;color:var(--tx3)}
+.mem-context .mch{font-weight:600;margin-bottom:4px;color:var(--tx2)}
+.mem-item{padding:4px 0;display:flex;gap:6px}.mem-item .mit{color:var(--ac);font-weight:600}
+@media(max-width:768px){.sd{display:none}}
+</style></head><body>
+<div class="app">
+<div class="sd">
+<div class="sd-hd"><div class="sd-logo">C</div><div class="sd-brand">ClawOS</div></div>
+<button class="sd-new" onclick="newChat()"><svg width="14"height="14"viewBox="0 0 16 16"fill="none"stroke="currentColor"stroke-width="2"><path d="M8 3v10M3 8h10"/></svg>New Chat</button>
+<div class="sd-list" id="sessionList"></div>
+<div class="sd-ft"><span class="status-dot" id="sDot"></span><span id="sTxt">Connecting...</span><span style="margin-left:auto;font-size:10px">ClawOS v1</span></div>
+</div>
+
+<div class="main"><div class="top"><span id="topTitle">Chat</span><span style="flex:1"></span>
+<select class="tsel" id="modelSelect"><option>DeepSeek Chat</option></select>
+<span id="topStatus" style="font-size:11px">--</span></div>
+
+<div class="view on" id="v-chat">
+<div class="chat" id="chatArea"><div class="chat-inner"><div class="empty" id="welcome"><div class="et">ClawOS</div><div class="ed">Your personal agent with persistent memory and semantic search</div></div></div></div>
+<div class="inp-row"><div class="inp-box"><textarea id="chatInput" rows="1" placeholder="Message ClawOS..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea><button id="sendBtn" onclick="sendMsg()">Send</button></div></div>
+</div>
+
+<div class="view" id="v-dash"><div class="panel"><div class="section"><h3>ClawOS Dashboard</h3><div class="grid" id="dashGrid"></div></div><div id="dashInfo" style="font:12px var(--fm);color:var(--tx3);padding:10px 0"></div></div></div>
+
+<div class="view" id="v-memory"><div class="panel">
+<div class="tabs" id="memTabs"><div class="tab on" data-t="profiles">Profile</div><div class="tab" data-t="prefs">Preferences</div><div class="tab" data-t="search">Search</div><div class="tab" data-t="stats">Stats</div></div>
+<div class="tabc on" id="tc-profiles"><div class="fr"><div class="fg"><div class="fl">Key</div><input class="fi" id="pk" placeholder="name"></div><div class="fg"><div class="fl">Value</div><input class="fi" id="pv" placeholder="value"></div><button class="btn pri btn-sm" onclick="setProfile()">Save</button></div><div id="profilesList"></div></div>
+<div class="tabc" id="tc-prefs"><div class="fr"><div class="fg"><div class="fl">Key</div><input class="fi" id="fk" placeholder="code_style"></div><div class="fg"><div class="fl">Value</div><input class="fi" id="fv" placeholder="PEP8"></div><button class="btn pri btn-sm" onclick="setPref()">Save</button></div><div id="prefsList"></div></div>
+<div class="tabc" id="tc-search"><div class="fr"><div class="fg" style="flex:1"><input class="fi" id="sq" placeholder="Search memories..." onkeydown="if(event.key==='Enter')memSearch()"></div><button class="btn pri btn-sm" onclick="memSearch()">Search</button></div><div id="searchResults"></div></div>
+<div class="tabc" id="tc-stats"><div id="statsTable"></div></div>
+</div></div>
+
+<div class="view" id="v-skills"><div class="panel"><div class="section"><h3>Solidified Skills</h3><div id="skillsList"></div></div></div></div>
+<div class="view" id="v-tools"><div class="panel"><div class="section"><h3>Available Tools</h3><input class="fi" id="toolSearch" placeholder="Search tools..." oninput="renderTools()" style="margin-bottom:10px"><div class="grid" id="toolsGrid"></div></div></div></div>
+
+</div></div>
+<div class="toasts" id="toastCt"></div>
+
+<script>
+var API=location.origin,curSess="default",msgs=[],isStream=false,sessions=[]
+
+function $(id){return document.getElementById(id)}
+function q(s){return document.querySelectorAll(s)}
+function esc(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML}
+
+function toast(m,t){var c=$("toastCt"),d=document.createElement("div");d.className="toast "+(t||"info");d.textContent=m;c.appendChild(d);setTimeout(function(){d.remove()},2500)}
+
+async function fetchAPI(p,o){try{var r=await fetch(API+p,o||{});if(!r.ok)throw Error(r.status+"");return o&&o.method==="POST"?r:await r.json()}catch(e){toast(e.message,"er");throw e}}
+
+function nav(v){q(".view").forEach(function(e){e.classList.remove("on")});$("v-"+v).classList.add("on")}
+
+// Session management
+async function loadSessions(){try{var d=await fetchAPI("/api/sessions");sessions=d.sessions||[];renderSessions()}catch(e){}}
+function renderSessions(){var h="";if(sessions.length===0){h='<div class="empty" style="padding:20px 10px"><div class="ed">No conversations</div></div>'}else{sessions.forEach(function(s){var on=s.session_id===curSess?" on":"";var t=s.last_message||s.session_id;h+='<div class="sd-item'+on+'" onclick="switchSess(\''+esc(s.session_id)+'\')"><span class="sdot"></span>'+esc(t.substring(0,40))+"</div>"})}$("sessionList").innerHTML=h}
+function newChat(){curSess="s_"+Date.now();msgs=[];$("chatArea").innerHTML='<div class="chat-inner"></div>';$("chatInput").value="";$("chatInput").focus();loadSessions();nav("chat")}
+function switchSess(sid){curSess=sid;loadHistory();renderSessions()}
+
+async function loadHistory(){try{var d=await fetchAPI("/api/history/"+encodeURIComponent(curSess));msgs=d.messages||[];renderMsgs()}catch(e){msgs=[];renderMsgs()}}
+
+function md(t){if(!t)return"";t=esc(t);t=t.replace(/```(\w*)\n?([\s\S]*?)```/g,'<pre><code>$2</code></pre>');t=t.replace(/`([^`]+)`/g,"<code>$1</code>");t=t.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");t=t.replace(/\n/g,"<br>");return"<p>"+t+"</p>"}
+
+function renderMsgs(){var c=$("chatArea").querySelector(".chat-inner");if(!c){c=document.createElement("div");c.className="chat-inner";$("chatArea").appendChild(c)}if(msgs.length===0){c.innerHTML='<div class="empty"><div class="et">ClawOS</div><div class="ed">Start a conversation</div></div>';return}var h="";msgs.forEach(function(m){var r=m.role==="user"?"u":"a";var av=r==="u"?"U":"C";var hd=r==="u"?"You":"ClawOS";h+='<div class="msg '+r+'"><div class="msg-av">'+av+'</div><div class="msg-bd"><div class="msg-hd">'+hd+"</div><div class=\"msg-ct\">"+md(m.content)+"</div></div></div>"});c.innerHTML=h;$("chatArea").scrollTop=$("chatArea").scrollHeight}
+
+function addMsg(r,txt,tcs){var w=$("welcome");if(w)w.remove();var c=$("chatArea").querySelector(".chat-inner");if(!c){c=document.createElement("div");c.className="chat-inner";$("chatArea").appendChild(c)}var av=r==="user"?"U":"C";var hd=r==="user"?"You":"ClawOS";var h='<div class="msg '+(r==="user"?"u":"a")+'"><div class="msg-av">'+av+"</div><div class=\"msg-bd\"><div class=\"msg-hd\">"+hd+"</div>";if(tcs&&tcs.length){h+='<div class="tool-inline">';tcs.forEach(function(t){h+='<span class="tool-chip '+(t.error?"er":"ok")+'">&#9656; '+esc(t.name)+"</span>"});h+="</div>"}h+='<div class="msg-ct">'+(txt?md(txt):"")+"</div></div></div>";c.insertAdjacentHTML("beforeend",h);$("chatArea").scrollTop=$("chatArea").scrollHeight;return c.lastElementChild}
+
+async function sendMsg(){if(isStream)return;var inp=$("chatInput"),txt=inp.value.trim();if(!txt)return;inp.value="";inp.style.height="auto";isStream=true;$("sendBtn").disabled=true;addMsg("user",txt);var th=addMsg("claw","");var td=th.querySelector(".msg-ct");td.innerHTML="<span style='opacity:.5'>Thinking...</span>";try{var r=await fetch(API+"/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:txt}],session_id:curSess,stream:true})});if(!r.ok){td.innerHTML="Error: "+r.status;isStream=false;$("sendBtn").disabled=false;return}var reader=r.body.getReader(),dec=new TextDecoder(),full="",buf="";while(true){var x=await reader.read();if(x.done)break;buf+=dec.decode(x.value,{stream:true});var lines=buf.split("\n");buf=lines.pop()||"";for(var i=0;i<lines.length;i++){var l=lines[i].trim();if(!l||l==="data: [DONE]")continue;if(!l.startsWith("data: "))continue;try{var d2=JSON.parse(l.slice(6));if(d2.choices&&d2.choices[0].delta&&d2.choices[0].delta.content){full+=d2.choices[0].delta.content;td.innerHTML=md(full);$("chatArea").scrollTop=$("chatArea").scrollHeight}}catch(e){}}}if(!full)td.innerHTML="<i>No response</i>";else td.innerHTML=md(full)}catch(e){td.innerHTML="Error: "+e.message}isStream=false;$("sendBtn").disabled=false;$("chatInput").focus();setTimeout(loadSessions,500)}
+
+// Views
+async function loadDash(){try{var h=await fetchAPI("/health");$("dashGrid").innerHTML=[["Tools",h.tools||"-","#19c37d"],["Skills",(await fetchAPI("/api/skills/list")).count||0,"#a78bfa"],["Conversations",(await fetchAPI("/api/memory/stats")).conversations||0,"#6ee7b7"],["Vector Store",(await fetchAPI("/api/memory/refresh")).stats.vector_count||0,"#f59e0b"]].map(function(c){return'<div class="card"><div class="cv">'+c[1]+'</div><div class="cl" style="color:'+c[2]+'">'+c[0]+"</div></div>"}).join("")}catch(e){}}
+
+async function loadSkills(){try{var d=await fetchAPI("/api/skills/list"),sk=d.skills||[];$("skillsList").innerHTML=sk.length?sk.map(function(s){return'<div class="card" style="margin-bottom:8px;display:flex;align-items:center;gap:12px"><div style="flex:1"><div style="font-weight:700;font-size:13.5px">'+esc(s.display_name||s.name)+'</div><div style="font-size:11px;color:var(--tx3)">'+esc(s.description||"")+" | v"+(s.version||1)+" | used "+(s.use_count||0)+"x</div></div><button class='btn btn-sm pri' onclick='execSkill(\""+esc(s.name)+"\")'>Run</button></div>"}).join(""):'<div class="empty"><div class="et">No skills registered</div></div>'}catch(e){}}
+
+async function execSkill(n){toast("Running "+n+"...");try{await fetchAPI("/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"execute skill: "+n}],session_id:curSess,stream:false})});toast(n+" completed","ok")}catch(e){}}
+
+// Memory views
+function switchTab(g,id){g.forEach(function(t){t.classList.remove("on")});var t2=g.querySelector('.tab[data-t="'+id+'"]');if(t2)t2.classList.add("on");document.querySelectorAll("#v-memory .tabc").forEach(function(tc){tc.classList.remove("on")});$("tc-"+id).classList.add("on");if(id==="profiles")loadProfiles();if(id==="prefs")loadPrefs();if(id==="stats")loadMemStats()}
+$("memTabs").addEventListener("click",function(e){var t=e.target.closest(".tab");if(t)switchTab($("memTabs"),t.dataset.t)});
+
+async function setProfile(){var k=$("pk").value.trim(),v=$("pv").value.trim();if(!k||!v)return toast("Key/value required","er");try{await fetchAPI("/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"set profile: "+k+" = "+v}],stream:false})});toast("Profile saved: "+k,"ok");$("pk").value="";$("pv").value="";loadProfiles()}catch(e){}}
+
+async function loadProfiles(){try{var d=await fetchAPI("/api/memory/stats");var h=d.profiles?'<table class="tbl"><tr><th>Category</th><th>Key</th><th>Value</th></tr>':'<div class="empty"><div class="ed">No profiles</div></div>';if(d.profiles!==undefined){h="<div class='empty'><div class='ed'>"+d.profiles+" profiles in memory. Use chat to set them.</div></div>"}$("profilesList").innerHTML=h}catch(e){}}
+
+async function setPref(){var k=$("fk").value.trim(),v=$("fv").value.trim();if(!k||!v)return toast("Key/value required","er");try{await fetchAPI("/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"set preference: "+k+" = "+v}],stream:false})});toast("Preference saved","ok");$("fk").value="";$("fv").value="";loadPrefs()}catch(e){}}
+
+async function loadPrefs(){try{var d=await fetchAPI("/api/memory/stats");$("prefsList").innerHTML='<div class="empty"><div class="ed">'+(d.preferences||0)+" preferences in memory</div></div>"}catch(e){}}
+
+async function memSearch(){var q=$("sq").value.trim();if(!q)return;try{var d=await fetchAPI("/api/memory/search?q="+encodeURIComponent(q)+"&top_k=10");var rs=d.results||[];if(rs.length===0){$("searchResults").innerHTML='<div class="empty"><div class="ed">No results</div></div>';return}$("searchResults").innerHTML='<table class="tbl"><tr><th>Score</th><th>Text</th><th>Type</th></tr>'+rs.map(function(r){return'<tr><td>'+r.score+'</td><td>'+esc(r.text.substring(0,100))+'</td><td>'+(r.metadata&&r.metadata.type||"")+'</td></tr>'}).join("")+"</table>"}catch(e){}}
+
+async function loadMemStats(){try{var d=await fetchAPI("/api/memory/stats");var v=await fetchAPI("/api/memory/refresh");var vs=v.stats||{};$("statsTable").innerHTML='<table class="tbl"><tr><th>Memory Type</th><th>Count</th></tr>'+Object.entries(d).map(function(e){return'<tr><td>'+esc(e[0])+'</td><td style="font-family:var(--fm)">'+e[1]+"</td></tr>"}).join("")+'<tr><td>vector_entries</td><td>'+vs.vector_count+"</td></tr></table>"}catch(e){}}
+
+// Tools
+var TOOLS=[["weather","Query weather"],["time_now","Get time"],["calc","Math"],["web_search","Search web"],["todo_list","Todos"],["note_save","Save note"],["note_read","Read note"],["note_list","List notes"],["skill_register","Register skill"],["skill_list","List skills"],["skill_execute","Exec skill"],["skill_delete","Del skill"],["file_organize","Organize files"],["text_stats","Text stats"],["batch_rename","Rename files"],["project_init","Scaffold"],["timer","Timer"],["meeting_template","Meeting notes"],["ls","List dir"],["cat","Read file"],["find_files","Find files"],["grep_text","Search text"],["file_info","File info"],["code_stats","Code stats"],["find_todos","Find TODOs"],["dir_tree","Tree view"],["memory_profile_set","Set profile"],["memory_profile_get","Get profile"],["memory_preference_set","Set preference"],["memory_preference_get","Get pref"],["memory_stats","Mem stats"],["memory_history","History"],["file_write","Write file"],["shell_exec","Shell cmd"]];
+function renderTools(){var q=($("toolSearch").value||"").toLowerCase();var t=q?TOOLS.filter(function(t){return t[0].indexOf(q)>=0||t[1].toLowerCase().indexOf(q)>=0}):TOOLS;$("toolsGrid").innerHTML=t.map(function(t){return'<div class="card" style="cursor:pointer" onclick="nav(\'chat\');$(\'chatInput\').value=\'use '+t[0]+'\';setTimeout(sendMsg,100)"><div style="font:12px var(--fm);color:var(--ac);font-weight:600">'+t[0]+'</div><div style="font-size:11px;color:var(--tx3)">'+t[1]+"</div></div>"}).join("")}
+
+// Init
+async function init(){try{var h=await fetchAPI("/health");$("sTxt").textContent="Connected";$("topStatus").textContent=h.tools+" tools loaded"}catch(e){$("sTxt").textContent="Offline";$("sDot").style.background="#ef4444"}loadSessions();if(sessions.length>0){curSess=sessions[0].session_id;loadHistory()}loadDash();loadSkills();renderTools();loadProfiles();loadPrefs();loadMemStats();setInterval(function(){fetchAPI("/health").then(function(){$("sDot").style.background="#19c37d"}).catch(function(){})},30000)}
+init();
+</script></body></html>

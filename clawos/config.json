@@ -1,0 +1,21 @@
+{
+  "listen_host": "0.0.0.0",
+  "listen_port": 18790,
+  "routing": {
+    "base_url": "${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}",
+    "model": "${DEEPSEEK_MODEL:-deepseek-chat}",
+    "api_key": "${DEEPSEEK_API_KEY:-sk-708533f0c45b46fe934641ba93bfa1a0}"
+  },
+  "upstream": {
+    "base_url": "${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}",
+    "api_key": "${DEEPSEEK_API_KEY:-sk-708533f0c45b46fe934641ba93bfa1a0}",
+    "model": "${DEEPSEEK_MODEL:-deepseek-chat}"
+  },
+  "max_tool_rounds": 12,
+  "tool_exec_timeout_s": 30,
+  "routing_timeout_s": 10.0,
+  "fr_completion_check": { "enabled": true, "mode": "permissive", "always_true": false },
+  "fr_context_history": { "enabled": true },
+  "fr_context_preserve": { "enabled": false },
+  "debug_logging": { "enabled": false }
+}

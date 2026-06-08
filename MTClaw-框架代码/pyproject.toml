@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openclaw-function-router"
+version = "1.0.0"
+description = "OpenAI-compatible Function Router provider proxy for AI agents and applications."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+  "fastapi>=0.100",
+  "uvicorn>=0.20",
+  "httpx>=0.24",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+  "pytest-asyncio",
+  "httpx",
+]
+
+[project.scripts]
+function-router = "function_router.server:main"
+
+[tool.setuptools.packages.find]
+include = ["function_router*"]
+
+[tool.setuptools.package-data]
+function_router = ["function-builtin.jsonl"]

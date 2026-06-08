@@ -1,0 +1,1297 @@
+uttid,执行顺序,任务简称,任务难度,原始Prompt,实际Prompt,Prompt是否修改,需要使用的skill/tools,预期的输出,实际调用的tools,agent最终回复,工具召回率,工具准确率,执行轮数,耗时(秒),是否超时,异常信息,trajectory,输入token,输出token,总token,任务完成时间
+51737beb-8065-44c9-b74a-b56ecf1fcfc7-round-1,1,查询音量,简单,帮我看看现在系统音量是多少,帮我看看现在系统音量是多少,否,system_control,调用system_control查询音量百分比和静音状态,system_control(tool),当前系统音量为 0%，处于未静音状态。,100%,100%,1,2.65,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → Agent结束",13,17,30,2026-04-16 **脱敏**
+51737beb-8065-44c9-b74a-b56ecf1fcfc7-round-2,2,查询音量,简单,帮我看看现在系统音量是多少,帮我看看现在系统音量是多少,否,system_control,调用system_control查询音量百分比和静音状态,system_control(tool),当前系统音量为 0%，处于未静音状态。,100%,100%,2,2.82,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → Agent结束",13,17,30,2026-04-16 **脱敏**
+51737beb-8065-44c9-b74a-b56ecf1fcfc7-round-3,3,查询音量,简单,帮我看看现在系统音量是多少,帮我看看现在系统音量是多少,否,system_control,调用system_control查询音量百分比和静音状态,system_control(tool),当前系统音量为 0%，处于未静音状态。,100%,100%,1,2.57,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → Agent结束",13,17,30,2026-04-16 **脱敏**
+51737beb-8065-44c9-b74a-b56ecf1fcfc7-round-4,4,查询音量,简单,帮我看看现在系统音量是多少,帮我看看现在系统音量是多少,否,system_control,调用system_control查询音量百分比和静音状态,system_control(tool),当前系统音量为 0%，处于未静音状态。,100%,100%,1,3.09,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → Agent结束",13,17,30,2026-04-16 **脱敏**
+a1ac22eb-fde3-4456-9980-bc5462cd5d6b-round-1,5,设置音量50,简单,把系统音量调到50%,把系统音量调到50%,否,system_control,调用system_control设置音量为50%,system_control(tool),系统音量已成功调节至50%。,100%,100%,1,2.59,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 50}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",8,12,20,2026-04-16 **脱敏**
+a1ac22eb-fde3-4456-9980-bc5462cd5d6b-round-2,6,设置音量50,简单,把系统音量调到50%,把系统音量调到50%,否,system_control,调用system_control设置音量为50%,system_control(tool),系统音量已成功调节至50%。,100%,100%,1,2.47,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 50}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",8,12,20,2026-04-16 **脱敏**
+a1ac22eb-fde3-4456-9980-bc5462cd5d6b-round-3,7,设置音量50,简单,把系统音量调到50%,把系统音量调到50%,否,system_control,调用system_control设置音量为50%,system_control(tool),系统音量已成功调节至50%。,100%,100%,2,2.47,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 50}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 50}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",8,12,20,2026-04-16 **脱敏**
+a1ac22eb-fde3-4456-9980-bc5462cd5d6b-round-4,8,设置音量50,简单,把系统音量调到50%,把系统音量调到50%,否,system_control,调用system_control设置音量为50%,system_control(tool),系统音量已成功调节至50%。,100%,100%,2,2.45,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 50}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 50}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",8,12,20,2026-04-16 **脱敏**
+6eb4a083-996d-43d3-921f-7182df35a3ea-round-1,9,音量调大,简单,声音太小了帮我调大一点,声音太小了帮我调大一点,否,system_control,调用system_control执行音量增加,system_control(tool),音量已经增大了。如果还需要进一步调节，请告诉我。,100%,100%,1,2.44,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""up"", ""tool_output"": ""\n━━━ 音量增 → Agent结束",11,24,35,2026-04-16 **脱敏**
+6eb4a083-996d-43d3-921f-7182df35a3ea-round-2,10,音量调大,简单,声音太小了帮我调大一点,声音太小了帮我调大一点,否,system_control,调用system_control执行音量增加,system_control(tool),音量已经增大了。如果还需要进一步调节，请告诉我。,100%,100%,2,2.49,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""up"", ""tool_output"": ""\n━━━ 音量增 → 调用system_control({""category"": ""volume"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""up"", ""tool_output"": ""\n━━━ 音量增 → Agent结束",11,24,35,2026-04-16 **脱敏**
+6eb4a083-996d-43d3-921f-7182df35a3ea-round-3,11,音量调大,简单,声音太小了帮我调大一点,声音太小了帮我调大一点,否,system_control,调用system_control执行音量增加,system_control(tool),音量已经增大了。如果还需要进一步调节，请告诉我。,100%,100%,1,2.54,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""up"", ""tool_output"": ""\n━━━ 音量增 → Agent结束",11,24,35,2026-04-16 **脱敏**
+6eb4a083-996d-43d3-921f-7182df35a3ea-round-4,12,音量调大,简单,声音太小了帮我调大一点,声音太小了帮我调大一点,否,system_control,调用system_control执行音量增加,system_control(tool),音量已经增大了。如果还需要进一步调节，请告诉我。,100%,100%,2,2.42,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""up"", ""tool_output"": ""\n━━━ 音量增 → 调用system_control({""category"": ""volume"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""up"", ""tool_output"": ""\n━━━ 音量增 → Agent结束",11,24,35,2026-04-16 **脱敏**
+37f9424e-960a-4f60-a0d6-075fe023b251-round-1,13,最大音量,简单,把音量开到最大,把音量开到最大,否,system_control,调用system_control执行max操作将音量设到最大,system_control(tool),音量已经设置为最大。,100%,100%,1,2.39,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""max""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""max"", ""tool_output"": ""\n━━━ 最大 → Agent结束",7,10,17,2026-04-16 **脱敏**
+37f9424e-960a-4f60-a0d6-075fe023b251-round-2,14,最大音量,简单,把音量开到最大,把音量开到最大,否,system_control,调用system_control执行max操作将音量设到最大,system_control(tool),音量已经设置为最大。,100%,100%,1,2.52,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""max""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""max"", ""tool_output"": ""\n━━━ 最大 → Agent结束",7,10,17,2026-04-16 **脱敏**
+37f9424e-960a-4f60-a0d6-075fe023b251-round-3,15,最大音量,简单,把音量开到最大,把音量开到最大,否,system_control,调用system_control执行max操作将音量设到最大,system_control(tool),音量已经设置为最大。,100%,100%,2,2.39,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""max""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""max"", ""tool_output"": ""\n━━━ 最大 → 调用system_control({""category"": ""volume"", ""action"": ""max""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""max"", ""tool_output"": ""\n━━━ 最大 → Agent结束",7,10,17,2026-04-16 **脱敏**
+37f9424e-960a-4f60-a0d6-075fe023b251-round-4,16,最大音量,简单,把音量开到最大,把音量开到最大,否,system_control,调用system_control执行max操作将音量设到最大,system_control(tool),音量已经设置为最大。,100%,100%,1,2.37,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""max""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""max"", ""tool_output"": ""\n━━━ 最大 → Agent结束",7,10,17,2026-04-16 **脱敏**
+4217785e-05ae-46ea-ad44-92de1bc6009c-round-1,17,查询亮度,简单,看看我屏幕亮度现在是多少,看看我屏幕亮度现在是多少,否,system_control,调用system_control查询亮度百分比,system_control(tool),当前屏幕亮度为 0%，即完全关闭。,100%,100%,1,2.48,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""status"", ""current_value"":  → Agent结束",12,15,27,2026-04-16 **脱敏**
+4217785e-05ae-46ea-ad44-92de1bc6009c-round-2,18,查询亮度,简单,看看我屏幕亮度现在是多少,看看我屏幕亮度现在是多少,否,system_control,调用system_control查询亮度百分比,system_control(tool),当前屏幕亮度为 0%，即完全关闭。,100%,100%,1,2.38,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""status"", ""current_value"":  → Agent结束",12,15,27,2026-04-16 **脱敏**
+4217785e-05ae-46ea-ad44-92de1bc6009c-round-3,19,查询亮度,简单,看看我屏幕亮度现在是多少,看看我屏幕亮度现在是多少,否,system_control,调用system_control查询亮度百分比,system_control(tool),当前屏幕亮度为 0%，即完全关闭。,100%,100%,1,2.34,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""status"", ""current_value"":  → Agent结束",12,15,27,2026-04-16 **脱敏**
+4217785e-05ae-46ea-ad44-92de1bc6009c-round-4,20,查询亮度,简单,看看我屏幕亮度现在是多少,看看我屏幕亮度现在是多少,否,system_control,调用system_control查询亮度百分比,system_control(tool),当前屏幕亮度为 0%，即完全关闭。,100%,100%,1,2.54,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""status"", ""current_value"":  → Agent结束",12,15,27,2026-04-16 **脱敏**
+97f881dc-4dd8-43c7-b677-0b07110a9231-round-1,21,增加亮度,简单,屏幕有点暗帮我调亮一些,屏幕有点暗帮我调亮一些,否,system_control,调用system_control执行亮度增加,system_control(tool),已经为您将屏幕亮度调亮了一些。如果还需要进一步调节，请告诉我。,100%,100%,1,2.46,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""up"", ""tool_output"": ""\n━━━ → Agent结束",11,31,42,2026-04-16 **脱敏**
+97f881dc-4dd8-43c7-b677-0b07110a9231-round-2,22,增加亮度,简单,屏幕有点暗帮我调亮一些,屏幕有点暗帮我调亮一些,否,system_control,调用system_control执行亮度增加,system_control(tool),已经为您将屏幕亮度调亮了一些。如果还需要进一步调节，请告诉我。,100%,100%,2,2.49,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""up"", ""tool_output"": ""\n━━━ → 调用system_control({""category"": ""brightness"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""up"", ""tool_output"": ""\n━━━ → Agent结束",11,31,42,2026-04-16 **脱敏**
+97f881dc-4dd8-43c7-b677-0b07110a9231-round-3,23,增加亮度,简单,屏幕有点暗帮我调亮一些,屏幕有点暗帮我调亮一些,否,system_control,调用system_control执行亮度增加,system_control(tool),已经为您将屏幕亮度调亮了一些。如果还需要进一步调节，请告诉我。,100%,100%,1,2.53,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""up"", ""tool_output"": ""\n━━━ → Agent结束",11,31,42,2026-04-16 **脱敏**
+97f881dc-4dd8-43c7-b677-0b07110a9231-round-4,24,增加亮度,简单,屏幕有点暗帮我调亮一些,屏幕有点暗帮我调亮一些,否,system_control,调用system_control执行亮度增加,system_control(tool),已经为您将屏幕亮度调亮了一些。如果还需要进一步调节，请告诉我。,100%,100%,1,2.41,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""up"", ""tool_output"": ""\n━━━ → Agent结束",11,31,42,2026-04-16 **脱敏**
+6995a63f-f680-4a7f-bf78-f9545d989c60-round-1,25,切换暗色模式,简单,帮我把系统切到暗色模式,帮我把系统切到暗色模式,否,display_control,调用display_control切换到暗色主题,display_control(tool),"系统已经成功切换到暗色模式。大部分界面现在显示为深色调，有助于减少眼睛疲劳，特别是在光线较弱的环境中。
+
+如果发现个别应用程序未更新样式，建议重启这些程序以使更改生效。",100%,100%,1,2.89,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → Agent结束",11,82,93,2026-04-16 **脱敏**
+6995a63f-f680-4a7f-bf78-f9545d989c60-round-2,26,切换暗色模式,简单,帮我把系统切到暗色模式,帮我把系统切到暗色模式,否,display_control,调用display_control切换到暗色主题,display_control(tool),"系统已经成功切换到暗色模式。大部分界面现在显示为深色调，有助于减少眼睛疲劳，特别是在光线较弱的环境中。
+
+如果发现个别应用程序未更新样式，建议重启这些程序以使更改生效。",100%,100%,1,2.94,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → Agent结束",11,82,93,2026-04-16 **脱敏**
+6995a63f-f680-4a7f-bf78-f9545d989c60-round-3,27,切换暗色模式,简单,帮我把系统切到暗色模式,帮我把系统切到暗色模式,否,display_control,调用display_control切换到暗色主题,display_control(tool),"系统已经成功切换到暗色模式。大部分界面现在显示为深色调，有助于减少眼睛疲劳，特别是在光线较弱的环境中。
+
+如果发现个别应用程序未更新样式，建议重启这些程序以使更改生效。",100%,100%,1,2.86,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → Agent结束",11,82,93,2026-04-16 **脱敏**
+6995a63f-f680-4a7f-bf78-f9545d989c60-round-4,28,切换暗色模式,简单,帮我把系统切到暗色模式,帮我把系统切到暗色模式,否,display_control,调用display_control切换到暗色主题,display_control(tool),"系统已经成功切换到暗色模式。大部分界面现在显示为深色调，有助于减少眼睛疲劳，特别是在光线较弱的环境中。
+
+如果发现个别应用程序未更新样式，建议重启这些程序以使更改生效。",100%,100%,1,2.98,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → Agent结束",11,82,93,2026-04-16 **脱敏**
+b663a9d6-94bb-43e4-93bf-1542bfecafb9-round-1,29,切换亮色模式,简单,把主题换成亮色的,把主题换成亮色的,否,display_control,调用display_control切换到亮色主题,display_control(tool),已将主题成功更换为亮色模式。系统正在使用 WhiteSur-Light 主题，包括 shell 和 GTK 外观。部分应用程序可能需要重启才能完全适配新主题。,100%,100%,1,3.53,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → Agent结束",8,55,63,2026-04-16 **脱敏**
+b663a9d6-94bb-43e4-93bf-1542bfecafb9-round-2,30,切换亮色模式,简单,把主题换成亮色的,把主题换成亮色的,否,display_control,调用display_control切换到亮色主题,display_control(tool),已将主题成功更换为亮色模式。系统正在使用 WhiteSur-Light 主题，包括 shell 和 GTK 外观。部分应用程序可能需要重启才能完全适配新主题。,100%,100%,1,2.88,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → Agent结束",8,55,63,2026-04-16 **脱敏**
+b663a9d6-94bb-43e4-93bf-1542bfecafb9-round-3,31,切换亮色模式,简单,把主题换成亮色的,把主题换成亮色的,否,display_control,调用display_control切换到亮色主题,display_control(tool),已将主题成功更换为亮色模式。系统正在使用 WhiteSur-Light 主题，包括 shell 和 GTK 外观。部分应用程序可能需要重启才能完全适配新主题。,100%,100%,1,3.0,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → Agent结束",8,55,63,2026-04-16 **脱敏**
+b663a9d6-94bb-43e4-93bf-1542bfecafb9-round-4,32,切换亮色模式,简单,把主题换成亮色的,把主题换成亮色的,否,display_control,调用display_control切换到亮色主题,display_control(tool),已将主题成功更换为亮色模式。系统正在使用 WhiteSur-Light 主题，包括 shell 和 GTK 外观。部分应用程序可能需要重启才能完全适配新主题。,100%,100%,1,2.97,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → Agent结束",8,55,63,2026-04-16 **脱敏**
+6f8ea7a4-c32f-4651-8536-ec32046e809c-round-1,33,查看主题状态,简单,看看当前系统是深色还是浅色主题,看看当前系统是深色还是浅色主题,否,display_control,调用display_control查询当前主题模式,display_control(tool),当前系统处于亮色主题模式。,100%,100%,1,2.58,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → Agent结束",15,13,28,2026-04-16 **脱敏**
+6f8ea7a4-c32f-4651-8536-ec32046e809c-round-2,34,查看主题状态,简单,看看当前系统是深色还是浅色主题,看看当前系统是深色还是浅色主题,否,display_control,调用display_control查询当前主题模式,display_control(tool),当前系统处于亮色主题模式。,100%,100%,1,2.79,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → Agent结束",15,13,28,2026-04-16 **脱敏**
+6f8ea7a4-c32f-4651-8536-ec32046e809c-round-3,35,查看主题状态,简单,看看当前系统是深色还是浅色主题,看看当前系统是深色还是浅色主题,否,display_control,调用display_control查询当前主题模式,display_control(tool),当前系统处于亮色主题模式。,100%,100%,1,2.98,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → Agent结束",15,13,28,2026-04-16 **脱敏**
+6f8ea7a4-c32f-4651-8536-ec32046e809c-round-4,36,查看主题状态,简单,看看当前系统是深色还是浅色主题,看看当前系统是深色还是浅色主题,否,display_control,调用display_control查询当前主题模式,display_control(tool),当前系统处于亮色主题模式。,100%,100%,1,2.73,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → Agent结束",15,13,28,2026-04-16 **脱敏**
+3cfa5400-5f5e-41c2-a334-d900e56bd687-round-1,37,列出显示器,简单,帮我看看电脑连了几个显示器,帮我看看电脑连了几个显示器,否,display_control,调用display_control列出所有可用显示器,display_control(tool),"目前您的电脑连接了一个显示器：
+
+- XWAYLAND0 (主显示器)
+
+如果您需要进一步操作，比如设置显示模式、调整分辨率或更换主显示器，请告诉我！",100%,100%,1,2.86,0,,"Agent开始 → 调用display_control({""category"": ""display"", ""action"": ""list""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",13,58,71,2026-04-16 **脱敏**
+3cfa5400-5f5e-41c2-a334-d900e56bd687-round-2,38,列出显示器,简单,帮我看看电脑连了几个显示器,帮我看看电脑连了几个显示器,否,display_control,调用display_control列出所有可用显示器,display_control(tool),"目前您的电脑连接了一个显示器：
+
+- XWAYLAND0 (主显示器)
+
+如果您需要进一步操作，比如设置显示模式、调整分辨率或更换主显示器，请告诉我！",100%,100%,1,2.84,0,,"Agent开始 → 调用display_control({""category"": ""display"", ""action"": ""list""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",13,58,71,2026-04-16 **脱敏**
+3cfa5400-5f5e-41c2-a334-d900e56bd687-round-3,39,列出显示器,简单,帮我看看电脑连了几个显示器,帮我看看电脑连了几个显示器,否,display_control,调用display_control列出所有可用显示器,display_control(tool),"目前您的电脑连接了一个显示器：
+
+- XWAYLAND0 (主显示器)
+
+如果您需要进一步操作，比如设置显示模式、调整分辨率或更换主显示器，请告诉我！",100%,100%,1,2.93,0,,"Agent开始 → 调用display_control({""category"": ""display"", ""action"": ""list""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",13,58,71,2026-04-16 **脱敏**
+3cfa5400-5f5e-41c2-a334-d900e56bd687-round-4,40,列出显示器,简单,帮我看看电脑连了几个显示器,帮我看看电脑连了几个显示器,否,display_control,调用display_control列出所有可用显示器,display_control(tool),"目前您的电脑连接了一个显示器：
+
+- XWAYLAND0 (主显示器)
+
+如果您需要进一步操作，比如设置显示模式、调整分辨率或更换主显示器，请告诉我！",100%,100%,1,2.81,0,,"Agent开始 → 调用display_control({""category"": ""display"", ""action"": ""list""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",13,58,71,2026-04-16 **脱敏**
+c29ac995-b4d0-44c6-b965-cb70d1a31565-round-1,41,查询WiFi状态,简单,看看WiFi有没有连上,看看WiFi有没有连上,否,wifi_bluetooth_control,调用wifi_bluetooth_control查询WiFi连接状态,wifi_bluetooth_control(tool),您的WiFi已经连接上了，当前连接的网络名为 <SSID>。,100%,100%,1,2.63,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → Agent结束",8,22,30,2026-04-16 **脱敏**
+c29ac995-b4d0-44c6-b965-cb70d1a31565-round-2,42,查询WiFi状态,简单,看看WiFi有没有连上,看看WiFi有没有连上,否,wifi_bluetooth_control,调用wifi_bluetooth_control查询WiFi连接状态,wifi_bluetooth_control(tool),您的WiFi已经连接上了，当前连接的网络名为 <SSID>。,100%,100%,1,2.72,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → Agent结束",8,22,30,2026-04-16 **脱敏**
+c29ac995-b4d0-44c6-b965-cb70d1a31565-round-3,43,查询WiFi状态,简单,看看WiFi有没有连上,看看WiFi有没有连上,否,wifi_bluetooth_control,调用wifi_bluetooth_control查询WiFi连接状态,wifi_bluetooth_control(tool),您的WiFi已经连接上了，当前连接的网络名为 <SSID>。,100%,100%,1,2.64,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → Agent结束",8,22,30,2026-04-16 **脱敏**
+c29ac995-b4d0-44c6-b965-cb70d1a31565-round-4,44,查询WiFi状态,简单,看看WiFi有没有连上,看看WiFi有没有连上,否,wifi_bluetooth_control,调用wifi_bluetooth_control查询WiFi连接状态,wifi_bluetooth_control(tool),您的WiFi已经连接上了，当前连接的网络名为 <SSID>。,100%,100%,1,2.81,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → Agent结束",8,22,30,2026-04-16 **脱敏**
+29e5aa78-6d46-4403-8dd5-7bd0c6c64883-round-1,45,扫描WiFi,简单,帮我搜索一下附近有哪些WiFi网络可以连,帮我搜索一下附近有哪些WiFi网络可以连,否,wifi_bluetooth_control,调用wifi_bluetooth_control扫描可用WiFi列表,wifi_bluetooth_control(tool),"以下是您附近的可用Wi-Fi网络：
+
+**脱敏**，信号强度 82%）
+2. 🟠 <SSID> （已连接，加密，信号强度 80%）
+3. ✅ <SSID> （开放，信号强度 70%）
+4. 🟠 <SSID> （加密，信号强度 54%）
+5. 🟠 pe （加密，信号强度 50%）
+6. ✅ <SSID> （开放，信号强度 45%）
+7. 🟠 <SSID> （加密，信号强度 44%）
+8. 🟠 <SSID>客厅电视 （加密，信号强度 40%）
+9. 🟠 <SSID>客厅电视 （加密，信号强度 34%）
+10. 🟠 <SSID>客厅电视 （加密，信号强度 30%）
+11. 🟠 <SSID>客厅电视 （加密，信号强度 27%）
+12. 🟠 <SSID>客厅电视 （加密，信号强度 24%）
+13. 🟠 <SSID>客厅电视 （加密，信号强度 24%）
+
+您可以直接连接未加锁的公开网络（<SSID> 和 <SSID>），但请注意安全风险。若需连接受密码保护的网络，请提供相应SSID及密码。",100%,100%,1,7.08,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → Agent结束",17,263,280,2026-04-16 **脱敏**
+29e5aa78-6d46-4403-8dd5-7bd0c6c64883-round-2,46,扫描WiFi,简单,帮我搜索一下附近有哪些WiFi网络可以连,帮我搜索一下附近有哪些WiFi网络可以连,否,wifi_bluetooth_control,调用wifi_bluetooth_control扫描可用WiFi列表,wifi_bluetooth_control(tool),"以下是您附近的可用Wi-Fi网络：
+
+**脱敏**，信号强度：82%）
+2. ✅ <SSID> （已连接，加密：是，信号强度：80%）
+3. 🟢 <SSID> （加密：否，信号强度：70%）
+4. 🟡 <SSID> （加密：是，信号强度：54%）
+5. 🟡 pe （加密：是，信号强度：50%）
+6. 🟢 <SSID> （加密：否，信号强度：45%）
+7. 🟡 <SSID> （加密：是，信号强度：44%）
+8. 🟡 <SSID>客厅电视 （加密：是，信号强度：40%）
+9. 🟡 <SSID>客厅电视 （加密：是，信号强度：34%）
+10. 🟡 <SSID>客厅电视 （加密：是，信号强度：30%）
+11. 🟡 <SSID>客厅电视 （加密：是，信号强度：27%）
+12. 🟡 <SSID>客厅电视 （加密：是，信号强度：24%）
+13. 🟡 <SSID>客厅电视 （加密：是，信号强度：24%）
+
+您可以直接点击未锁定的网络（如<SSID>、<SSID>）进行快速连接。若需连接受密码保护的网络，请提供相应密码。",100%,100%,1,7.2,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → Agent结束",17,296,313,2026-04-16 **脱敏**
+29e5aa78-6d46-4403-8dd5-7bd0c6c64883-round-3,47,扫描WiFi,简单,帮我搜索一下附近有哪些WiFi网络可以连,帮我搜索一下附近有哪些WiFi网络可以连,否,wifi_bluetooth_control,调用wifi_bluetooth_control扫描可用WiFi列表,wifi_bluetooth_control(tool),"以下是您附近的可用Wi-Fi网络：
+
+**脱敏**，信号强度：82%）
+2. ✅ <SSID> （已连接，加密：是，信号强度：80%）
+3. 🟢 <SSID> （加密：否，信号强度：70%）
+4. 🟡 <SSID> （加密：是，信号强度：54%）
+5. 🟡 pe （加密：是，信号强度：50%）
+6. 🟢 <SSID> （加密：否，信号强度：45%）
+7. 🟡 <SSID> （加密：是，信号强度：44%）
+8. 🟡 <SSID>客厅电视 （加密：是，信号强度：40%）
+9. 🟡 <SSID>客厅电视 （加密：是，信号强度：34%）
+10. 🟡 <SSID>客厅电视 （加密：是，信号强度：30%）
+11. 🟡 <SSID>客厅电视 （加密：是，信号强度：27%）
+12. 🟡 <SSID>客厅电视 （加密：是，信号强度：24%）
+13. 🟡 <SSID>客厅电视 （加密：是，信号强度：24%）
+
+您可以直接点击未锁定的网络（如<SSID>、<SSID>）进行快速连接。若需连接受密码保护的网络，请提供相应密码。",100%,100%,1,7.19,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → Agent结束",17,296,313,2026-04-16 **脱敏**
+29e5aa78-6d46-4403-8dd5-7bd0c6c64883-round-4,48,扫描WiFi,简单,帮我搜索一下附近有哪些WiFi网络可以连,帮我搜索一下附近有哪些WiFi网络可以连,否,wifi_bluetooth_control,调用wifi_bluetooth_control扫描可用WiFi列表,wifi_bluetooth_control(tool),"以下是您附近的可用Wi-Fi网络：
+
+**脱敏**，信号强度：82%）
+2. ✅ <SSID> （已连接，加密：是，信号强度：80%）
+3. 🟢 <SSID> （加密：否，信号强度：70%）
+4. 🟡 <SSID> （加密：是，信号强度：54%）
+5. 🟡 pe （加密：是，信号强度：50%）
+6. 🟢 <SSID> （加密：否，信号强度：45%）
+7. 🟡 <SSID> （加密：是，信号强度：44%）
+8. 🟡 <SSID>客厅电视 （加密：是，信号强度：40%）
+9. 🟡 <SSID>客厅电视 （加密：是，信号强度：34%）
+10. 🟡 <SSID>客厅电视 （加密：是，信号强度：30%）
+11. 🟡 <SSID>客厅电视 （加密：是，信号强度：27%）
+12. 🟡 <SSID>客厅电视 （加密：是，信号强度：24%）
+13. 🟡 <SSID>客厅电视 （加密：是，信号强度：24%）
+
+您可以直接点击未锁定的网络（如<SSID>、<SSID>）进行快速连接。若需连接受密码保护的网络，请提供相应密码。",100%,100%,1,7.31,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → Agent结束",17,296,313,2026-04-16 **脱敏**
+1af7d89a-14f5-4c1a-86d5-727512499d5d-round-1,49,查询蓝牙状态,简单,蓝牙是开着的吗,蓝牙是开着的吗,否,wifi_bluetooth_control,调用wifi_bluetooth_control查询蓝牙开关和连接状态,wifi_bluetooth_control(tool),蓝牙目前处于开启状态，但未进行任何设备的配对或连接。,100%,100%,1,2.87,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → Agent结束",7,26,33,2026-04-16 **脱敏**
+1af7d89a-14f5-4c1a-86d5-727512499d5d-round-2,50,查询蓝牙状态,简单,蓝牙是开着的吗,蓝牙是开着的吗,否,wifi_bluetooth_control,调用wifi_bluetooth_control查询蓝牙开关和连接状态,wifi_bluetooth_control(tool),蓝牙目前处于开启状态，但未进行任何设备的配对或连接。,100%,100%,1,2.72,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → Agent结束",7,26,33,2026-04-16 **脱敏**
+1af7d89a-14f5-4c1a-86d5-727512499d5d-round-3,51,查询蓝牙状态,简单,蓝牙是开着的吗,蓝牙是开着的吗,否,wifi_bluetooth_control,调用wifi_bluetooth_control查询蓝牙开关和连接状态,wifi_bluetooth_control(tool),蓝牙目前处于开启状态，但未进行任何设备的配对或连接。,100%,100%,1,2.69,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → Agent结束",7,26,33,2026-04-16 **脱敏**
+1af7d89a-14f5-4c1a-86d5-727512499d5d-round-4,52,查询蓝牙状态,简单,蓝牙是开着的吗,蓝牙是开着的吗,否,wifi_bluetooth_control,调用wifi_bluetooth_control查询蓝牙开关和连接状态,wifi_bluetooth_control(tool),蓝牙目前处于开启状态，但未进行任何设备的配对或连接。,100%,100%,1,2.77,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → Agent结束",7,26,33,2026-04-16 **脱敏**
+9289fce3-e144-4996-b723-e95def3d75d7-round-1,53,扫描蓝牙设备,简单,帮我搜索一下附近有什么蓝牙设备,帮我搜索一下附近有什么蓝牙设备,否,wifi_bluetooth_control,调用wifi_bluetooth_control扫描附近蓝牙设备列表,wifi_bluetooth_control(tool),"以下是您附近的可用蓝牙设备：
+
+1. **Sanag A30S Pro**
+2. **老板间—凌霄宝殿**
+3. **客厅的小米电视**
+4. **Amazfit T-Rex Pro**
+5. **大会议室左**
+6. **SHENQIAN01**
+7. **真我GT Neo5 SE**
+8. **xiaomi.dev.ble**
+9. **NZ4XHEsNgOHL987eJV6jqNUEY**
+10. **MITV-BA24F**
+11. **大会议室右**
+12. **主卧的小米电视**
+
+您可以根据需要进行配对或连接。如果某些设备未显示，请确保它们处于配对模式，并靠近您的设备。",100%,100%,1,12.45,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""scan""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""scan"", ""tool_output"": ""\n━━ → Agent结束",15,121,136,2026-04-16 **脱敏**
+9289fce3-e144-4996-b723-e95def3d75d7-round-2,54,扫描蓝牙设备,简单,帮我搜索一下附近有什么蓝牙设备,帮我搜索一下附近有什么蓝牙设备,否,wifi_bluetooth_control,调用wifi_bluetooth_control扫描附近蓝牙设备列表,wifi_bluetooth_control(tool),"以下是您附近的可用蓝牙设备：
+
+1. mt-AIBOOK-ABA14104  
+2. 客厅电视  
+3. 老板间-大雄宝殿  
+4. 党建室  
+5. Sanag A30S Pro  
+6. 老板间—凌霄宝殿  
+7. 客厅的小米电视  
+8. Amazfit T-Rex Pro  
+9. 大会议室左  
+10. SHENQIAN01  
+11. 真我GT Neo5 SE  
+12. NPABxR/cyskuaEUEptCbRqbqc  
+13. xiaomi.dev.ble  
+14. NZ4XHEsNgOHL987eJV6jqNUEY  
+15. MITV-BA24F  
+16. 大会议室右  
+17. 主卧的小米电视  
+
+您可以选择其中任意一个进行配对。如果需要进一步帮助，请告诉我目标设备名称。",100%,100%,1,12.87,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""scan""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""scan"", ""tool_output"": ""\n━━ → Agent结束",15,137,152,2026-04-16 **脱敏**
+9289fce3-e144-4996-b723-e95def3d75d7-round-3,55,扫描蓝牙设备,简单,帮我搜索一下附近有什么蓝牙设备,帮我搜索一下附近有什么蓝牙设备,否,wifi_bluetooth_control,调用wifi_bluetooth_control扫描附近蓝牙设备列表,wifi_bluetooth_control(tool),"以下是您附近的蓝牙设备列表：
+
+1. xBeacon  
+2. xBeacon  
+3. mt-AIBOOK-ABA14104  
+4. 客厅电视  
+5. 老板间-大雄宝殿  
+6. 党建室  
+7. Sanag A30S Pro  
+8. 老板间—凌霄宝殿  
+9. 客厅的小米电视  
+10. Amazfit T-Rex Pro  
+11. 大会议室左  
+12. SHENQIAN01  
+13. 真我GT Neo5 SE  
+14. NPABxR/cyskuaEUEptCbRqbqc  
+15. xiaomi.dev.ble  
+16. NZ4XHEsNgOHL987eJV6jqNUEY  
+17. MITV-BA24F  
+18. 大会议室右  
+19. 主卧的小米电视  
+
+您可以根据设备名称进行配对或连接。如有疑问，请告知。",100%,100%,1,13.03,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""scan""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""scan"", ""tool_output"": ""\n━━ → Agent结束",15,130,145,2026-04-16 **脱敏**
+9289fce3-e144-4996-b723-e95def3d75d7-round-4,56,扫描蓝牙设备,简单,帮我搜索一下附近有什么蓝牙设备,帮我搜索一下附近有什么蓝牙设备,否,wifi_bluetooth_control,调用wifi_bluetooth_control扫描附近蓝牙设备列表,wifi_bluetooth_control(tool),"以下是您附近发现的蓝牙设备：
+
+1. **WANDA**
+2. **Amazfit T-Rex Pro**
+3. **EDIFIER BLE**
+4. **xBEacon**
+5. **xBEacon** （重复）
+6. **mt-AIBOOK-ABA14104**
+7. **客厅电视**
+8. **老板间-大雄宝殿**
+9. **党建室**
+10. **Sanag A30S Pro**
+11. **老板间—凌霄宝殿**
+12. **大会议室左**
+13. **SHENQIAN01**
+14. **真我GT Neo5 SE**
+15. **NPABxR/cyskuaEUEptCbRqbqc**
+16. **xiaomi.dev.ble**
+17. **NZF7Lm5YBe5DvMwOCTGHKcH4A**
+18. **NZ4XHEsNgOHL987eJV6jqNUEY**
+19. **MITV-BA24F**
+20. **大会议室右**
+21. **主卧的小米电视**
+
+目前未检测到任何已配对的设备。
+
+您可以根据需要选择其中某台设备进行配对或连接。如果需要进一步帮助，请告诉我目标设备名称。",100%,100%,1,13.46,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""scan""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""scan"", ""tool_output"": ""\n━━ → Agent结束",15,166,181,2026-04-16 **脱敏**
+07c0eb6c-de00-491c-ab68-d929bf4fc9d2-round-1,57,查看当前壁纸,简单,看看我桌面现在用的什么壁纸,看看我桌面现在用的什么壁纸,否,wallpaper_control,调用wallpaper_control查询当前壁纸状态和路径,wallpaper_control(tool),"您当前桌面上使用的壁纸是：
+
+- **名称**：`image_175.png`
+- **路径**：`/usr/share/backgrounds/image_175.png`
+
+该壁纸文件存在于系统背景目录中，尺寸为 9.80 MB。",100%,100%,1,3.12,0,,"Agent开始 → 调用wallpaper_control({""category"": ""status"", ""action"": ""status""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""tool_output"": ""\n━━━ → Agent结束",13,51,64,2026-04-16 **脱敏**
+07c0eb6c-de00-491c-ab68-d929bf4fc9d2-round-2,58,查看当前壁纸,简单,看看我桌面现在用的什么壁纸,看看我桌面现在用的什么壁纸,否,wallpaper_control,调用wallpaper_control查询当前壁纸状态和路径,wallpaper_control(tool),"您当前桌面上使用的壁纸是：
+
+- **名称**：`image_175.png`
+- **路径**：`/usr/share/backgrounds/image_175.png`
+
+该壁纸文件存在于系统背景目录中，尺寸为 9.80 MB。",100%,100%,1,3.02,0,,"Agent开始 → 调用wallpaper_control({""category"": ""status"", ""action"": ""status""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""tool_output"": ""\n━━━ → Agent结束",13,51,64,2026-04-16 **脱敏**
+07c0eb6c-de00-491c-ab68-d929bf4fc9d2-round-3,59,查看当前壁纸,简单,看看我桌面现在用的什么壁纸,看看我桌面现在用的什么壁纸,否,wallpaper_control,调用wallpaper_control查询当前壁纸状态和路径,wallpaper_control(tool),"您当前桌面上使用的壁纸是：
+
+- **名称**：`image_175.png`
+- **路径**：`/usr/share/backgrounds/image_175.png`
+
+该壁纸文件存在于系统背景目录中，尺寸为 9.80 MB。",100%,100%,1,3.04,0,,"Agent开始 → 调用wallpaper_control({""category"": ""status"", ""action"": ""status""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""tool_output"": ""\n━━━ → Agent结束",13,51,64,2026-04-16 **脱敏**
+07c0eb6c-de00-491c-ab68-d929bf4fc9d2-round-4,60,查看当前壁纸,简单,看看我桌面现在用的什么壁纸,看看我桌面现在用的什么壁纸,否,wallpaper_control,调用wallpaper_control查询当前壁纸状态和路径,wallpaper_control(tool),"您当前桌面上使用的壁纸是：
+
+- **名称**：`image_175.png`
+- **路径**：`/usr/share/backgrounds/image_175.png`
+
+该壁纸文件存在于系统背景目录中，尺寸为 9.80 MB。",100%,100%,1,2.94,0,,"Agent开始 → 调用wallpaper_control({""category"": ""status"", ""action"": ""status""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""tool_output"": ""\n━━━ → Agent结束",13,51,64,2026-04-16 **脱敏**
+75868a1c-73fe-48f6-8f69-633334837e6b-round-1,61,随机换壁纸,简单,帮我随机换一张壁纸,帮我随机换一张壁纸,否,wallpaper_control,调用wallpaper_control随机切换壁纸,wallpaper_control(tool),已经为您随机更换了一张壁纸。,100%,100%,1,2.72,0,,"Agent开始 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",9,14,23,2026-04-16 **脱敏**
+75868a1c-73fe-48f6-8f69-633334837e6b-round-2,62,随机换壁纸,简单,帮我随机换一张壁纸,帮我随机换一张壁纸,否,wallpaper_control,调用wallpaper_control随机切换壁纸,wallpaper_control(tool),已经为您随机更换了一张壁纸。,100%,100%,1,2.78,0,,"Agent开始 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",9,14,23,2026-04-16 **脱敏**
+75868a1c-73fe-48f6-8f69-633334837e6b-round-3,63,随机换壁纸,简单,帮我随机换一张壁纸,帮我随机换一张壁纸,否,wallpaper_control,调用wallpaper_control随机切换壁纸,wallpaper_control(tool),已经为您随机更换了一张壁纸。,100%,100%,1,2.63,0,,"Agent开始 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",9,14,23,2026-04-16 **脱敏**
+75868a1c-73fe-48f6-8f69-633334837e6b-round-4,64,随机换壁纸,简单,帮我随机换一张壁纸,帮我随机换一张壁纸,否,wallpaper_control,调用wallpaper_control随机切换壁纸,wallpaper_control(tool),已经为您随机更换了一张壁纸。,100%,100%,1,3.22,0,,"Agent开始 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",9,14,23,2026-04-16 **脱敏**
+57d38d8b-9b03-4a3c-898d-a3cc90cf2670-round-1,65,查询运行时间,简单,这台电脑开机多久了,这台电脑开机多久了,否,power_control,调用power_control查询系统运行时间,power_control(tool),这台电脑已经持续运行了 4 小时 19 分钟。,100%,100%,1,2.76,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时19 分钟"" → Agent结束",9,18,27,2026-04-16 **脱敏**
+57d38d8b-9b03-4a3c-898d-a3cc90cf2670-round-2,66,查询运行时间,简单,这台电脑开机多久了,这台电脑开机多久了,否,power_control,调用power_control查询系统运行时间,power_control(tool),这台电脑已经开机运行了 4 小时 19 分钟。,100%,100%,1,2.68,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时19 分钟"" → Agent结束",9,18,27,2026-04-16 **脱敏**
+57d38d8b-9b03-4a3c-898d-a3cc90cf2670-round-3,67,查询运行时间,简单,这台电脑开机多久了,这台电脑开机多久了,否,power_control,调用power_control查询系统运行时间,power_control(tool),这台电脑已经开机运行了 4 小时 19 分钟。,100%,100%,1,2.8,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时19 分钟"" → Agent结束",9,18,27,2026-04-16 **脱敏**
+57d38d8b-9b03-4a3c-898d-a3cc90cf2670-round-4,68,查询运行时间,简单,这台电脑开机多久了,这台电脑开机多久了,否,power_control,调用power_control查询系统运行时间,power_control(tool),这台电脑已经开机运行了4小时20分钟。,100%,100%,2,2.74,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时20 分钟"" → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时19 分钟"" → Agent结束",9,18,27,2026-04-16 **脱敏**
+a46ffbbe-7c27-4cd6-af72-3c960a24da05-round-1,69,查询电池,简单,看看电池还剩多少电,看看电池还剩多少电,否,power_control,调用power_control查询电池电量和充电状态,power_control(tool),电池目前电量为100%，已经充满。,100%,100%,1,2.79,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",9,14,23,2026-04-16 **脱敏**
+a46ffbbe-7c27-4cd6-af72-3c960a24da05-round-2,70,查询电池,简单,看看电池还剩多少电,看看电池还剩多少电,否,power_control,调用power_control查询电池电量和充电状态,power_control(tool),电池目前电量为100%，已经充满。,100%,100%,1,2.71,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",9,14,23,2026-04-16 **脱敏**
+a46ffbbe-7c27-4cd6-af72-3c960a24da05-round-3,71,查询电池,简单,看看电池还剩多少电,看看电池还剩多少电,否,power_control,调用power_control查询电池电量和充电状态,power_control(tool),电池目前电量为100%，已经充满。,100%,100%,1,2.55,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",9,14,23,2026-04-16 **脱敏**
+a46ffbbe-7c27-4cd6-af72-3c960a24da05-round-4,72,查询电池,简单,看看电池还剩多少电,看看电池还剩多少电,否,power_control,调用power_control查询电池电量和充电状态,power_control(tool),电池目前电量为100%，已经充满。,100%,100%,1,2.77,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",9,14,23,2026-04-16 **脱敏**
+8b36389c-4005-4895-985b-756bbc2f11ac-round-1,73,查询定位服务,简单,系统的定位服务开了没有,系统的定位服务开了没有,否,system_settings,调用system_settings查询定位服务状态,system_settings(tool),系统的定位服务目前处于未启用状态。如果需要使用定位相关的功能，您可以将其开启。,100%,100%,1,2.61,0,,"Agent开始 → 调用system_settings({""category"": ""location"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""status"", ""tool_output"": ""\n━ → Agent结束",11,39,50,2026-04-16 **脱敏**
+8b36389c-4005-4895-985b-756bbc2f11ac-round-2,74,查询定位服务,简单,系统的定位服务开了没有,系统的定位服务开了没有,否,system_settings,调用system_settings查询定位服务状态,system_settings(tool),系统的定位服务目前处于未启用状态。如果需要使用定位相关的功能，您可以将其开启。,100%,100%,1,2.74,0,,"Agent开始 → 调用system_settings({""category"": ""location"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""status"", ""tool_output"": ""\n━ → Agent结束",11,39,50,2026-04-16 **脱敏**
+8b36389c-4005-4895-985b-756bbc2f11ac-round-3,75,查询定位服务,简单,系统的定位服务开了没有,系统的定位服务开了没有,否,system_settings,调用system_settings查询定位服务状态,system_settings(tool),系统的定位服务目前处于未启用状态。如果需要使用定位相关的功能，您可以将其开启。,100%,100%,2,2.67,0,,"Agent开始 → 调用system_settings({""category"": ""location"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""status"", ""tool_output"": ""\n━ → 调用system_settings({""category"": ""location"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""status"", ""tool_output"": ""\n━ → Agent结束",11,39,50,2026-04-16 **脱敏**
+8b36389c-4005-4895-985b-756bbc2f11ac-round-4,76,查询定位服务,简单,系统的定位服务开了没有,系统的定位服务开了没有,否,system_settings,调用system_settings查询定位服务状态,system_settings(tool),系统的定位服务目前处于未启用状态。如果需要使用定位相关的功能，您可以将其开启。,100%,100%,1,2.77,0,,"Agent开始 → 调用system_settings({""category"": ""location"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""status"", ""tool_output"": ""\n━ → Agent结束",11,39,50,2026-04-16 **脱敏**
+8a47052f-b9ad-4c05-be1e-13b0e5cfd050-round-1,77,查看壁纸分类,简单,壁纸库里都有哪些分类,壁纸库里都有哪些分类,否,wallpaper_control,调用wallpaper_control获取壁纸库所有分类列表,"wallpaper-control(skill),read(tool),exec(tool),wallpaper_control(tool)","当前壁纸库共有两类可用分类：
+1. **埃米纳姆（Eminem）主题**：共5张，分别存放在个人壁纸库（~/Pictures/Wallpapers）和系统壁纸库（/usr/share/backgrounds）中
+2. **通用风景/杂图类**：共32张，存放在系统壁纸库中，编号从image_148到image_179
+
+配置中提及的NAS壁纸库当前未挂载，暂无内容。",100%,25%,7,49.88,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wallpaper-control
+description: 管理壁纸库，支持查询当前壁纸、分页显示、编号选择、NAS 访问和自动切换，为数 → 调用exec(python3 scripts/digital-human-api.py natural ""壁纸库里都有哪些分类"") → exec返回(成功): Warning: workdir ""<LOCAL_PATH>"" is unavailable; using ""/home → 调用exec(python3 scripts/digital-human-api.py natural ""壁纸库里都有哪些分类"") → exec返回(成功): [0;34m[INFO][0m 解析：壁纸库里都有哪些分类
+[0;31m[ERROR][0m 无法理解的命令
+
+(Command exited with cod → 调用exec(ls -la <LOCAL_PATH>) → exec返回(成功): 总计 1928
+drwxrwxr-x 2 mt mt   4096  4月  9 16:18 .
+drwxrwxr-x 4 mt mt   4096  3月 3 → 调用exec(ls -la /usr/share/backgrounds) → exec返回(成功): 总计 242584
+drwxr-xr-x   2 root root     4096  4月  9 16:28 .
+drwxr-xr-x 318 root r → 调用wallpaper_control({""category"": ""library"", ""action"": ""categories""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: categories (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",3995,107,4102,2026-04-16 **脱敏**
+8a47052f-b9ad-4c05-be1e-13b0e5cfd050-round-2,78,查看壁纸分类,简单,壁纸库里都有哪些分类,壁纸库里都有哪些分类,否,wallpaper_control,调用wallpaper_control获取壁纸库所有分类列表,"wallpaper-control(skill),read(tool),exec(tool),wallpaper_control(tool)","当前你的壁纸库目前没有创建分类子目录，所有壁纸分为两类：
+1. 埃米纳姆（Eminem）主题壁纸：共5张
+2. 通用风景/默认壁纸：共32张
+
+如果需要添加更多分类，可以在`~/Pictures/Wallpapers`目录下创建对应名称的子文件夹，将壁纸放入对应文件夹即可形成分类。",100%,25%,5,32.61,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wallpaper-control
+description: 管理壁纸库，支持查询当前壁纸、分页显示、编号选择、NAS 访问和自动切换，为数 → 调用exec(ls -la ~/Pictures/Wallpapers) → exec返回(成功): 总计 1928
+drwxrwxr-x 2 mt mt   4096  4月  9 16:18 .
+drwxrwxr-x 4 mt mt   4096  3月 3 → 调用exec(ls -la /usr/share/backgrounds) → exec返回(成功): 总计 242584
+drwxr-xr-x   2 root root     4096  4月  9 16:28 .
+drwxr-xr-x 318 root r → 调用wallpaper_control({""category"": ""library"", ""action"": ""categories""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: categories (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",3773,105,3878,2026-04-16 **脱敏**
+8a47052f-b9ad-4c05-be1e-13b0e5cfd050-round-3,79,查看壁纸分类,简单,壁纸库里都有哪些分类,壁纸库里都有哪些分类,否,wallpaper_control,调用wallpaper_control获取壁纸库所有分类列表,"wallpaper-control(skill),read(tool),exec(tool),wallpaper_control(tool)","当前壁纸库共有两类壁纸：
+1. 🎤 Eminem主题系列：共5张Eminem相关壁纸
+2. 🌄 通用图片系列：共32张风景/通用类型壁纸
+
+另有可选NAS壁纸分类，需先挂载NAS存储后可访问。",100%,25%,5,35.31,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wallpaper-control
+description: 管理壁纸库，支持查询当前壁纸、分页显示、编号选择、NAS 访问和自动切换，为数 → 调用exec(ls -la ~/Pictures/Wallpapers) → exec返回(成功): 总计 1928
+drwxrwxr-x 2 mt mt   4096  4月  9 16:18 .
+drwxrwxr-x 4 mt mt   4096  3月 3 → 调用exec(ls -la /usr/share/backgrounds) → exec返回(成功): 总计 242584
+drwxr-xr-x   2 root root     4096  4月  9 16:28 .
+drwxr-xr-x 318 root r → 调用wallpaper_control({""category"": ""library"", ""action"": ""categories""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: categories (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",3773,68,3841,2026-04-16 **脱敏**
+8a47052f-b9ad-4c05-be1e-13b0e5cfd050-round-4,80,查看壁纸分类,简单,壁纸库里都有哪些分类,壁纸库里都有哪些分类,否,wallpaper_control,调用wallpaper_control获取壁纸库所有分类列表,"wallpaper-control(skill),read(tool),exec(tool),wallpaper_control(tool)","目前壁纸库有以下分类：
+1. 🎤 人物系列 - Eminem（阿姆）主题壁纸，共5张
+2. 🏞️ 通用风景/场景系列，共32张
+3. ☁️ NAS云壁纸库（当前未挂载，暂无内容）",100%,25%,5,43.27,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wallpaper-control
+description: 管理壁纸库，支持查询当前壁纸、分页显示、编号选择、NAS 访问和自动切换，为数 → 调用exec(ls -la ~/Pictures/Wallpapers) → exec返回(成功): 总计 1928
+drwxrwxr-x 2 mt mt   4096  4月  9 16:18 .
+drwxrwxr-x 4 mt mt   4096  3月 3 → 调用exec(ls -la /usr/share/backgrounds) → exec返回(成功): 总计 242584
+drwxr-xr-x   2 root root     4096  4月  9 16:28 .
+drwxr-xr-x 318 root r → 调用wallpaper_control({""category"": ""library"", ""action"": ""categories""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: categories (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",3773,60,3833,2026-04-16 **脱敏**
+433e436e-a3e9-49b4-86a5-c4dc8bd5945a-round-1,81,音量设置并验证,中等,把音量设到30%然后告诉我现在实际是多少,把音量设到30%然后告诉我现在实际是多少,否,system_control,先调用system_control设置音量30%再查询验证,system_control(tool),音量已经成功设置为30%，目前的实际音量也是30%。,100%,100%,2,3.6,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 30}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 30,  → Agent结束",18,22,40,2026-04-16 **脱敏**
+433e436e-a3e9-49b4-86a5-c4dc8bd5945a-round-2,82,音量设置并验证,中等,把音量设到30%然后告诉我现在实际是多少,把音量设到30%然后告诉我现在实际是多少,否,system_control,先调用system_control设置音量30%再查询验证,system_control(tool),音量已经成功设置为30%，目前的实际音量也是30%。,100%,100%,2,3.4,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 30}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 30,  → Agent结束",18,22,40,2026-04-16 **脱敏**
+433e436e-a3e9-49b4-86a5-c4dc8bd5945a-round-3,83,音量设置并验证,中等,把音量设到30%然后告诉我现在实际是多少,把音量设到30%然后告诉我现在实际是多少,否,system_control,先调用system_control设置音量30%再查询验证,system_control(tool),音量已经成功设置为30%，目前的实际音量也是30%。,100%,100%,2,3.56,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 30}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 30,  → Agent结束",18,22,40,2026-04-16 **脱敏**
+433e436e-a3e9-49b4-86a5-c4dc8bd5945a-round-4,84,音量设置并验证,中等,把音量设到30%然后告诉我现在实际是多少,把音量设到30%然后告诉我现在实际是多少,否,system_control,先调用system_control设置音量30%再查询验证,system_control(tool),音量已经成功设置为30%，目前的实际音量也是30%。,100%,100%,2,3.49,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 30}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 30,  → Agent结束",18,22,40,2026-04-16 **脱敏**
+49a4d787-483c-4f17-a530-26271ad78422-round-1,85,音量调低并确认,中等,帮我把声音降低20%然后确认一下当前音量,帮我把声音降低20%然后确认一下当前音量,否,system_control,先调用system_control降低音量再查询确认当前值,system_control(tool),已将音量降低20%，当前音量为25%，未静音。,100%,100%,2,3.47,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""down"", ""value"": 20}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""down"", ""tool_output"": ""\n━━━ 音 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 25,  → Agent结束",18,19,37,2026-04-16 **脱敏**
+49a4d787-483c-4f17-a530-26271ad78422-round-2,86,音量调低并确认,中等,帮我把声音降低20%然后确认一下当前音量,帮我把声音降低20%然后确认一下当前音量,否,system_control,先调用system_control降低音量再查询确认当前值,system_control(tool),已将音量降低20%，当前音量为20%，未静音。,100%,100%,2,3.61,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""down"", ""value"": 20}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""down"", ""tool_output"": ""\n━━━ 音 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 20,  → Agent结束",18,19,37,2026-04-16 **脱敏**
+49a4d787-483c-4f17-a530-26271ad78422-round-3,87,音量调低并确认,中等,帮我把声音降低20%然后确认一下当前音量,帮我把声音降低20%然后确认一下当前音量,否,system_control,先调用system_control降低音量再查询确认当前值,system_control(tool),已将音量降低20%，当前音量为15%，未静音。,100%,100%,2,3.4,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""down"", ""value"": 20}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""down"", ""tool_output"": ""\n━━━ 音 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 15,  → Agent结束",18,19,37,2026-04-16 **脱敏**
+49a4d787-483c-4f17-a530-26271ad78422-round-4,88,音量调低并确认,中等,帮我把声音降低20%然后确认一下当前音量,帮我把声音降低20%然后确认一下当前音量,否,system_control,先调用system_control降低音量再查询确认当前值,system_control(tool),已将音量降低20%，当前音量为10%，未静音。,100%,100%,2,3.54,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""down"", ""value"": 20}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""down"", ""tool_output"": ""\n━━━ 音 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 10,  → Agent结束",18,19,37,2026-04-16 **脱敏**
+a76de08e-5324-4045-bc75-ad900b653476-round-1,89,静音再取消,中等,帮我测试一下静音功能先静音再取消看有没有问题,帮我测试一下静音功能先静音再取消看有没有问题,否,system_control,先调用system_control执行mute再执行unmute验证,system_control(tool),静音和取消静音功能均已测试完成，正常工作。,100%,100%,2,3.6,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用system_control({""category"": ""volume"", ""action"": ""unmute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""unmute"", ""tool_output"": ""\n━━━ → Agent结束",22,21,43,2026-04-16 **脱敏**
+a76de08e-5324-4045-bc75-ad900b653476-round-2,90,静音再取消,中等,帮我测试一下静音功能先静音再取消看有没有问题,帮我测试一下静音功能先静音再取消看有没有问题,否,system_control,先调用system_control执行mute再执行unmute验证,system_control(tool),静音和取消静音功能均已测试完成，正常工作。,100%,100%,2,3.59,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用system_control({""category"": ""volume"", ""action"": ""unmute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""unmute"", ""tool_output"": ""\n━━━ → Agent结束",22,21,43,2026-04-16 **脱敏**
+a76de08e-5324-4045-bc75-ad900b653476-round-3,91,静音再取消,中等,帮我测试一下静音功能先静音再取消看有没有问题,帮我测试一下静音功能先静音再取消看有没有问题,否,system_control,先调用system_control执行mute再执行unmute验证,system_control(tool),静音和取消静音功能均已测试完成，正常工作。,100%,100%,2,4.56,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用system_control({""category"": ""volume"", ""action"": ""unmute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""unmute"", ""tool_output"": ""\n━━━ → Agent结束",22,21,43,2026-04-16 **脱敏**
+a76de08e-5324-4045-bc75-ad900b653476-round-4,92,静音再取消,中等,帮我测试一下静音功能先静音再取消看有没有问题,帮我测试一下静音功能先静音再取消看有没有问题,否,system_control,先调用system_control执行mute再执行unmute验证,system_control(tool),静音和取消静音功能均已测试完成，正常工作。,100%,100%,2,3.55,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用system_control({""category"": ""volume"", ""action"": ""unmute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""unmute"", ""tool_output"": ""\n━━━ → Agent结束",22,21,43,2026-04-16 **脱敏**
+5d20537d-ddf5-45f6-af19-2d6842f69bca-round-1,93,静音后查询,中等,帮我把系统静音然后查一下音量状态确认静音生效了,帮我把系统静音然后查一下音量状态确认静音生效了,否,system_control,先调用system_control执行mute再查询status确认静音状态,system_control(tool),"已经将系统静音，并检查了音量状态：
+
+- 当前音量：10%
+- 静音状态：✅ 已静音
+
+静音已生效。",100%,100%,2,4.01,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 10,  → Agent结束",23,37,60,2026-04-16 **脱敏**
+5d20537d-ddf5-45f6-af19-2d6842f69bca-round-2,94,静音后查询,中等,帮我把系统静音然后查一下音量状态确认静音生效了,帮我把系统静音然后查一下音量状态确认静音生效了,否,system_control,先调用system_control执行mute再查询status确认静音状态,"exec(tool),system_control(tool)","已经将系统静音，当前状态确认：
+- 静音状态：已开启 ✅
+- 音量大小：10%（静音状态下音量大小不影响输出）",100%,50%,3,28.52,0,,"Agent开始 → 调用exec(pactl set-sink-mute @DEFAULT_SINK@ 1 && echo ""=== 音量状态 ==="" && echo ""静音状态: $(pactl get-sink-mute @DE) → exec返回(成功): === 音量状态 ===
+静音状态: Mute: 是
+当前音量: 10% → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 10,  → Agent结束",112,45,157,2026-04-16 **脱敏**
+5d20537d-ddf5-45f6-af19-2d6842f69bca-round-3,95,静音后查询,中等,帮我把系统静音然后查一下音量状态确认静音生效了,帮我把系统静音然后查一下音量状态确认静音生效了,否,system_control,先调用system_control执行mute再查询status确认静音状态,"volume-control(skill),read(tool),exec(tool),system_control(tool)","✅ 已将系统静音，当前音量状态：
+- 音量：10%
+- 静音状态：已生效（Muted: true）",100%,25%,4,26.72,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: volume-control
+description: Control system volume on Linux systems usi → 调用exec(./scripts/volume-control.sh mute && ./scripts/volume-control.sh status) → exec返回(成功): Audio muted
+Volume: 10% | Muted: true → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 10,  → Agent结束",552,30,582,2026-04-16 **脱敏**
+5d20537d-ddf5-45f6-af19-2d6842f69bca-round-4,96,静音后查询,中等,帮我把系统静音然后查一下音量状态确认静音生效了,帮我把系统静音然后查一下音量状态确认静音生效了,否,system_control,先调用system_control执行mute再查询status确认静音状态,"volume-control(skill),read(tool),exec(tool),system_control(tool)","已经完成系统静音操作，当前音量状态确认：
+- 音量：10%
+- 静音状态：已生效（Muted: true）",100%,25%,4,23.36,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: volume-control
+description: Control system volume on Linux systems usi → 调用exec(./scripts/volume-control.sh mute && ./scripts/volume-control.sh status) → exec返回(成功): Audio muted
+Volume: 10% | Muted: true → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 10,  → Agent结束",552,36,588,2026-04-16 **脱敏**
+1fe094d3-acf7-4e04-a31a-526a6a070a55-round-1,97,亮度设置并确认,中等,屏幕亮度设到70%然后帮我确认一下,屏幕亮度设到70%然后帮我确认一下,否,system_control,先调用system_control设置亮度70%再查询验证,system_control(tool),屏幕亮度已成功设置为70%，当前亮度值显示为70%（350/500）。,100%,100%,2,3.6,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 70}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""brightness"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""status"", ""current_value"":  → Agent结束",15,26,41,2026-04-16 **脱敏**
+1fe094d3-acf7-4e04-a31a-526a6a070a55-round-2,98,亮度设置并确认,中等,屏幕亮度设到70%然后帮我确认一下,屏幕亮度设到70%然后帮我确认一下,否,system_control,先调用system_control设置亮度70%再查询验证,system_control(tool),屏幕亮度已成功设置为70%，当前亮度值显示为70%（350/500）。,100%,100%,2,3.48,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 70}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""brightness"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""status"", ""current_value"":  → Agent结束",15,26,41,2026-04-16 **脱敏**
+1fe094d3-acf7-4e04-a31a-526a6a070a55-round-3,99,亮度设置并确认,中等,屏幕亮度设到70%然后帮我确认一下,屏幕亮度设到70%然后帮我确认一下,否,system_control,先调用system_control设置亮度70%再查询验证,system_control(tool),屏幕亮度已成功设置为70%，当前亮度值显示为70%（350/500）。,100%,100%,2,3.68,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 70}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""brightness"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""status"", ""current_value"":  → Agent结束",15,26,41,2026-04-16 **脱敏**
+1fe094d3-acf7-4e04-a31a-526a6a070a55-round-4,100,亮度设置并确认,中等,屏幕亮度设到70%然后帮我确认一下,屏幕亮度设到70%然后帮我确认一下,否,system_control,先调用system_control设置亮度70%再查询验证,system_control(tool),屏幕亮度已成功设置为70%，当前亮度值显示为70%（350/500）。,100%,100%,2,3.76,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 70}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""brightness"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""status"", ""current_value"":  → Agent结束",15,26,41,2026-04-16 **脱敏**
+857964d9-3c07-4cd5-bdf3-a37544aa99a8-round-1,101,查主题再切换,中等,先看看当前主题是什么然后帮我切到暗色模式,先看看当前主题是什么然后帮我切到暗色模式,否,display_control,先调用display_control查询主题状态再切换到dark模式,display_control(tool),"已检查当前主题，并成功为您切换至暗色模式。
+
+当前主题：
+- Shell 主题：WhiteSur-Dark
+- GTK 主题：WhiteSur-Dark
+- 颜色方案：prefer-dark
+
+您现在处于暗色模式，部分应用程序可能需要重启以完全适配新主题。",100%,100%,2,4.4,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → Agent结束",20,76,96,2026-04-16 **脱敏**
+857964d9-3c07-4cd5-bdf3-a37544aa99a8-round-2,102,查主题再切换,中等,先看看当前主题是什么然后帮我切到暗色模式,先看看当前主题是什么然后帮我切到暗色模式,否,display_control,先调用display_control查询主题状态再切换到dark模式,display_control(tool),"当前已经是暗色主题模式。
+
+如果你希望切换回亮色模式，我可以帮你执行相应操作。",100%,100%,1,3.16,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → Agent结束",20,37,57,2026-04-16 **脱敏**
+857964d9-3c07-4cd5-bdf3-a37544aa99a8-round-3,103,查主题再切换,中等,先看看当前主题是什么然后帮我切到暗色模式,先看看当前主题是什么然后帮我切到暗色模式,否,display_control,先调用display_control查询主题状态再切换到dark模式,display_control(tool),"当前已经是暗色主题模式。
+
+如果你希望切换回亮色模式，我可以帮你执行相应操作。",100%,100%,1,3.3,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → Agent结束",20,37,57,2026-04-16 **脱敏**
+857964d9-3c07-4cd5-bdf3-a37544aa99a8-round-4,104,查主题再切换,中等,先看看当前主题是什么然后帮我切到暗色模式,先看看当前主题是什么然后帮我切到暗色模式,否,display_control,先调用display_control查询主题状态再切换到dark模式,display_control(tool),"当前已经是暗色主题模式。
+
+如果你希望切换回亮色模式，我可以帮你执行相应操作。",100%,100%,1,3.58,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → Agent结束",20,37,57,2026-04-16 **脱敏**
+5f0b733c-49b9-4e48-b902-de001da5a56d-round-1,105,显示器状态详情,中等,列出所有显示器然后告诉我当前显示配置的详细信息,列出所有显示器然后告诉我当前显示配置的详细信息,否,display_control,先调用display_control list再调用status获取详细配置,display_control(tool),"### ✅ 当前显示器配置详情：
+
+#### 🔍 **可用显示器**
+- `XWAYLAND0` （主显示屏）
+
+---
+
+#### ⚙️ **当前显示状态**
+
+- **物理尺寸**:  
+  分辨率为 **2880×1800**，位于坐标 `(0, 0)`。
+- **面板规格**:  
+  尺寸约 **300 mm × 190 mm**（宽×高）
+- **刷新率支持**:  
+  多种常见分辨率均支持高达 **119.93 Hz** 的刷新率。
+
+##### 💡 推荐常用分辨率及帧率：
+| 分辨率       | 推荐刷新率 |
+|--------------|------------|
+| 2880×1800    | 119.93 Hz ★（原生推荐） |
+| 2560×1600    | 119.93 Hz                |
+| 2560×1440    | 119.95 Hz                |
+| 2048×1536    | 119.95 Hz                |
+
+> 注：目前未检测到第二块外部显示器接入，因此处于单一显示器工作模式。
+
+如有拓展需求，可通过 `display extend` 命令进行多屏扩展配置。",100%,100%,2,6.2,0,,"Agent开始 → 调用display_control({""category"": ""display"", ""action"": ""list""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用display_control({""category"": ""display"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""status"", ""tool_output"": ""\n━━ → Agent结束",23,187,210,2026-04-16 **脱敏**
+5f0b733c-49b9-4e48-b902-de001da5a56d-round-2,106,显示器状态详情,中等,列出所有显示器然后告诉我当前显示配置的详细信息,列出所有显示器然后告诉我当前显示配置的详细信息,否,display_control,先调用display_control list再调用status获取详细配置,display_control(tool),"### ✅ 当前显示器配置详情：
+
+#### 🔍 **可用显示器**
+- `XWAYLAND0` （主显示屏）
+
+---
+
+#### ⚙️ **当前显示状态**
+
+- **物理尺寸**:  
+  分辨率为 **2880×1800**，位于坐标 `(0, 0)`。
+- **面板规格**:  
+  尺寸约 **300 mm × 190 mm**（宽×高）
+- **刷新率支持**:  
+  多种常见分辨率均支持高达 **119.93 Hz** 的刷新率。
+
+##### 💡 推荐常用分辨率及帧率：
+| 分辨率       | 推荐刷新率 |
+|--------------|------------|
+| 2880×1800    | 119.93 Hz ★（原生推荐） |
+| 2560×1600    | 119.93 Hz                |
+| 2560×1440    | 119.95 Hz                |
+| 2048×1536    | 119.95 Hz                |
+
+> 注：目前未检测到第二块外部显示器接入，因此处于单一显示器工作模式。
+
+如有拓展需求，可通过 `display extend` 命令进行多屏扩展配置。",100%,100%,2,6.1,0,,"Agent开始 → 调用display_control({""category"": ""display"", ""action"": ""list""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用display_control({""category"": ""display"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""status"", ""tool_output"": ""\n━━ → Agent结束",23,187,210,2026-04-16 **脱敏**
+5f0b733c-49b9-4e48-b902-de001da5a56d-round-3,107,显示器状态详情,中等,列出所有显示器然后告诉我当前显示配置的详细信息,列出所有显示器然后告诉我当前显示配置的详细信息,否,display_control,先调用display_control list再调用status获取详细配置,display_control(tool),"### ✅ 当前显示器配置详情：
+
+#### 🔍 **可用显示器**
+- `XWAYLAND0` （主显示屏）
+
+---
+
+#### ⚙️ **当前显示状态**
+
+- **物理尺寸**:  
+  分辨率为 **2880×1800**，位于坐标 `(0, 0)`。
+- **面板规格**:  
+  尺寸约 **300 mm × 190 mm**（宽×高）
+- **刷新率支持**:  
+  多种常见分辨率均支持高达 **119.93 Hz** 的刷新率。
+
+##### 💡 推荐常用分辨率及帧率：
+| 分辨率       | 推荐刷新率 |
+|--------------|------------|
+| 2880×1800    | 119.93 Hz ★（原生推荐） |
+| 2560×1600    | 119.93 Hz                |
+| 2560×1440    | 119.95 Hz                |
+| 2048×1536    | 119.95 Hz                |
+
+> 注：目前未检测到第二块外部显示器接入，因此处于单一显示器工作模式。
+
+如有拓展需求，可通过 `display extend` 命令进行多屏扩展配置。",100%,100%,2,6.33,0,,"Agent开始 → 调用display_control({""category"": ""display"", ""action"": ""list""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用display_control({""category"": ""display"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""status"", ""tool_output"": ""\n━━ → Agent结束",23,187,210,2026-04-16 **脱敏**
+5f0b733c-49b9-4e48-b902-de001da5a56d-round-4,108,显示器状态详情,中等,列出所有显示器然后告诉我当前显示配置的详细信息,列出所有显示器然后告诉我当前显示配置的详细信息,否,display_control,先调用display_control list再调用status获取详细配置,display_control(tool),"### ✅ 当前显示器配置详情：
+
+#### 🔍 **可用显示器**
+- `XWAYLAND0` （主显示屏）
+
+---
+
+#### ⚙️ **当前显示状态**
+
+- **物理尺寸**:  
+  分辨率为 **2880×1800**，位于坐标 `(0, 0)`。
+- **面板规格**:  
+  尺寸约 **300 mm × 190 mm**（宽×高）
+- **刷新率支持**:  
+  多种常见分辨率均支持高达 **119.93 Hz** 的刷新率。
+
+##### 💡 推荐常用分辨率及帧率：
+| 分辨率       | 推荐刷新率 |
+|--------------|------------|
+| 2880×1800    | 119.93 Hz ★（原生推荐） |
+| 2560×1600    | 119.93 Hz                |
+| 2560×1440    | 119.95 Hz                |
+| 2048×1536    | 119.95 Hz                |
+
+> 注：目前未检测到第二块外部显示器接入，因此处于单一显示器工作模式。
+
+如有拓展需求，可通过 `display extend` 命令进行多屏扩展配置。",100%,100%,2,5.99,0,,"Agent开始 → 调用display_control({""category"": ""display"", ""action"": ""list""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用display_control({""category"": ""display"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""display"", ""action"": ""status"", ""tool_output"": ""\n━━ → Agent结束",23,187,210,2026-04-16 **脱敏**
+006a660f-5a6a-469d-b3ff-f12d81a083bd-round-1,109,壁纸状态再换下一张,中等,先看看当前壁纸是什么然后帮我切到下一张,先看看当前壁纸是什么然后帮我切到下一张,否,wallpaper_control,先调用wallpaper_control查询状态再切换到下一张,wallpaper_control(tool),当前壁纸已更新至下一张：`/usr/share/backgrounds/image_179.png`。,100%,100%,2,3.79,0,,"Agent开始 → 调用wallpaper_control({""category"": ""status"", ""action"": ""status""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""tool_output"": ""\n━━━ → 调用wallpaper_control({""category"": ""set"", ""action"": ""next""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""next"", ""tool_output"": ""[INFO] 设置壁 → Agent结束",19,19,38,2026-04-16 **脱敏**
+006a660f-5a6a-469d-b3ff-f12d81a083bd-round-2,110,壁纸状态再换下一张,中等,先看看当前壁纸是什么然后帮我切到下一张,先看看当前壁纸是什么然后帮我切到下一张,否,wallpaper_control,先调用wallpaper_control查询状态再切换到下一张,wallpaper_control(tool),当前壁纸已更新为：`/usr/share/backgrounds/eminem_1.jpg`。,100%,100%,2,3.84,0,,"Agent开始 → 调用wallpaper_control({""category"": ""status"", ""action"": ""status""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""tool_output"": ""\n━━━ → 调用wallpaper_control({""category"": ""set"", ""action"": ""next""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""next"", ""tool_output"": ""[INFO] 设置壁 → Agent结束",19,16,35,2026-04-16 **脱敏**
+006a660f-5a6a-469d-b3ff-f12d81a083bd-round-3,111,壁纸状态再换下一张,中等,先看看当前壁纸是什么然后帮我切到下一张,先看看当前壁纸是什么然后帮我切到下一张,否,wallpaper_control,先调用wallpaper_control查询状态再切换到下一张,wallpaper_control(tool),当前壁纸已更新为下一张：`eminem_2.jpg`。,100%,100%,4,4.16,0,,"Agent开始 → 调用wallpaper_control({""category"": ""status"", ""action"": ""status""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""tool_output"": ""\n━━━ → 调用wallpaper_control({""category"": ""set"", ""action"": ""next""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""next"", ""tool_output"": ""[INFO] 设置壁 → 调用wallpaper_control({""category"": ""status"", ""action"": ""status""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""tool_output"": ""\n━━━ → 调用wallpaper_control({""category"": ""set"", ""action"": ""next""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""next"", ""tool_output"": ""[INFO] 设置壁 → Agent结束",19,16,35,2026-04-16 **脱敏**
+006a660f-5a6a-469d-b3ff-f12d81a083bd-round-4,112,壁纸状态再换下一张,中等,先看看当前壁纸是什么然后帮我切到下一张,先看看当前壁纸是什么然后帮我切到下一张,否,wallpaper_control,先调用wallpaper_control查询状态再切换到下一张,wallpaper_control(tool),当前壁纸已更新为下一张：`eminem_3.jpg`。,100%,100%,2,3.79,0,,"Agent开始 → 调用wallpaper_control({""category"": ""status"", ""action"": ""status""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""tool_output"": ""\n━━━ → 调用wallpaper_control({""category"": ""set"", ""action"": ""next""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""next"", ""tool_output"": ""[INFO] 设置壁 → Agent结束",19,16,35,2026-04-16 **脱敏**
+1865f084-1c3d-4608-a4db-ca6173c66d91-round-1,113,壁纸浏览分类,中等,看看壁纸库有哪些分类然后帮我看看自然分类里有什么壁纸,看看壁纸库有哪些分类然后帮我看看自然分类里有什么壁纸,否,wallpaper_control,先调用wallpaper_control获取分类列表再按分类浏览,"wallpaper-control(skill),read(tool),exec(tool),wallpaper_control(tool)","当前壁纸库还没有进行分类划分，所有壁纸都直接存放在根目录下，暂时没有独立的自然分类文件夹哦。
+
+目前壁纸库总共有37张壁纸：
+- 5张Eminem相关的壁纸（eminem_1.jpg ~ eminem_5.jpg）
+- 32张其他风景/素材类壁纸（image_148.png ~ image_179.png）",100%,25%,12,59.04,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wallpaper-control
+description: 管理壁纸库，支持查询当前壁纸、分页显示、编号选择、NAS 访问和自动切换，为数 → 调用exec(ls -la ~/Pictures/Wallpapers/) → exec返回(成功): 总计 1928
+drwxrwxr-x 2 mt mt   4096  4月  9 16:18 .
+drwxrwxr-x 4 mt mt   4096  3月 3 → 调用exec(ls -la <LOCAL_PATH>/) → exec返回(成功): ls: 无法访问 '<LOCAL_PATH>/': 没有那个文件或目录
+
+(Comm → 调用exec(cd <LOCAL_PATH> && python3 scripts/digital-human-api.py natural ""查看壁纸库有哪些分类"") → exec返回(成功): [0;35m━━━ 壁纸库 第 1/4 页 (共 37 张) [0;35m━━━[0m
+
+  [  1]  📷 eminem_1.jpg
+  [  2]  📷  → 调用exec(cd <LOCAL_PATH> && python3 scripts/digital-human-api.py natural ""查看自然分类的壁纸"") → exec返回(成功): [0;35m━━━ 壁纸库 第 1/4 页 (共 37 张) [0;35m━━━[0m
+
+  [  1]  📷 eminem_1.jpg
+  [  2]  📷  → 调用exec(ls -la /usr/share/backgrounds/) → exec返回(成功): 总计 242584
+drwxr-xr-x   2 root root     4096  4月  9 16:28 .
+drwxr-xr-x 318 root r → 调用wallpaper_control({""category"": ""library"", ""action"": ""categories""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: categories (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""by-category"", ""category_name"": ""自然""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: by-category (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 2}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 3}) → ...",4536,94,4630,2026-04-16 **脱敏**
+1865f084-1c3d-4608-a4db-ca6173c66d91-round-2,114,壁纸浏览分类,中等,看看壁纸库有哪些分类然后帮我看看自然分类里有什么壁纸,看看壁纸库有哪些分类然后帮我看看自然分类里有什么壁纸,否,wallpaper_control,先调用wallpaper_control获取分类列表再按分类浏览,"wallpaper-control(skill),read(tool),exec(tool),wallpaper_control(tool)",当前壁纸库未设置分类目录，所有壁纸均统一存放，暂不存在单独的「自然」分类。目前壁纸库共有37张壁纸，包含5张Eminem相关壁纸，其余为通用风景/图片类壁纸。,100%,25%,10,49.37,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wallpaper-control
+description: 管理壁纸库，支持查询当前壁纸、分页显示、编号选择、NAS 访问和自动切换，为数 → 调用exec(ls ~/Pictures/Wallpapers) → exec返回(成功): eminem_1.jpg
+eminem_2.jpg
+eminem_3.jpg
+eminem_4.jpg
+eminem_5.jpg → 调用exec(python3 <LOCAL_PATH> library list 1) → exec返回(成功): [0;35m━━━ 壁纸库 第 1/4 页 (共 37 张) [0;35m━━━[0m
+
+  [  1]  📷 eminem_1.jpg
+  [  2]  📷  → 调用exec(ls /usr/share/backgrounds) → exec返回(成功): eminem_1.jpg
+eminem_2.jpg
+eminem_3.jpg
+eminem_4.jpg
+eminem_5.jpg
+image_148.png
+i → 调用wallpaper_control({""category"": ""library"", ""action"": ""categories""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: categories (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""by-category"", ""category_name"": ""自然""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: by-category (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 2}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 3}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",2858,72,2930,2026-04-16 **脱敏**
+1865f084-1c3d-4608-a4db-ca6173c66d91-round-3,115,壁纸浏览分类,中等,看看壁纸库有哪些分类然后帮我看看自然分类里有什么壁纸,看看壁纸库有哪些分类然后帮我看看自然分类里有什么壁纸,否,wallpaper_control,先调用wallpaper_control获取分类列表再按分类浏览,"wallpaper-control(skill),read(tool),exec(tool),wallpaper_control(tool)","当前壁纸库暂未创建分类目录，所有壁纸均为平铺存放，未找到「自然」分类的相关壁纸。如果需要使用分类功能，你可以先在壁纸库路径 `~/Pictures/Wallpapers` 下创建对应分类的文件夹，将壁纸放入对应文件夹后即可按分类浏览。
+
+当前已有的壁纸总共有37张，包含5张Eminem相关壁纸和32张其他图片类壁纸。",100%,25%,11,47.35,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wallpaper-control
+description: 管理壁纸库，支持查询当前壁纸、分页显示、编号选择、NAS 访问和自动切换，为数 → 调用exec(ls ~/Pictures/Wallpapers) → exec返回(成功): eminem_1.jpg
+eminem_2.jpg
+eminem_3.jpg
+eminem_4.jpg
+eminem_5.jpg → 调用exec(python3 <LOCAL_PATH> library list 1) → exec返回(成功): [0;35m━━━ 壁纸库 第 1/4 页 (共 37 张) [0;35m━━━[0m
+
+  [  1]  📷 eminem_1.jpg
+  [  2]  📷  → 调用exec(find ~/Pictures -type d -iname ""*自然*"" -o -iname ""*natural*"") → exec返回(成功): (no output) → 调用exec(ls -la /usr/share/backgrounds) → exec返回(成功): 总计 242584
+drwxr-xr-x   2 root root     4096  4月  9 16:28 .
+drwxr-xr-x 318 root r → 调用wallpaper_control({""category"": ""library"", ""action"": ""categories""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: categories (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""by-category"", ""category_name"": ""自然""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: by-category (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 2}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 3}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",3904,127,4031,2026-04-16 **脱敏**
+1865f084-1c3d-4608-a4db-ca6173c66d91-round-4,116,壁纸浏览分类,中等,看看壁纸库有哪些分类然后帮我看看自然分类里有什么壁纸,看看壁纸库有哪些分类然后帮我看看自然分类里有什么壁纸,否,wallpaper_control,先调用wallpaper_control获取分类列表再按分类浏览,"wallpaper-control(skill),read(tool),exec(tool),wallpaper_control(tool)","当前壁纸库没有设置分类文件夹，所有壁纸都存放在同一目录下，总计37张。
+第一页的壁纸列表如下：
+1. eminem_1.jpg
+2. eminem_2.jpg
+3. eminem_3.jpg
+4. eminem_4.jpg
+5. eminem_5.jpg
+6. image_148.png
+7. image_149.png
+8. image_150.png
+9. image_151.png
+10. image_152.png
+11. image_153.png
+12. image_154.png
+
+如果需要查看更多页的壁纸可以告诉我哦~",100%,25%,11,60.59,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wallpaper-control
+description: 管理壁纸库，支持查询当前壁纸、分页显示、编号选择、NAS 访问和自动切换，为数 → 调用exec(python3 scripts/digital-human-api.py natural ""查看壁纸库有哪些分类"") → exec返回(成功): Warning: workdir ""<LOCAL_PATH>"" is unavailable; using ""/home → 调用exec(python3 scripts/digital-human-api.py natural ""查看壁纸库有哪些分类"") → exec返回(成功): [0;35m━━━ 壁纸库 第 1/4 页 (共 37 张) [0;35m━━━[0m
+
+  [  1]  📷 eminem_1.jpg
+  [  2]  📷  → 调用exec(ls -la <LOCAL_PATH>) → exec返回(成功): 总计 1928
+drwxrwxr-x 2 mt mt   4096  4月  9 16:18 .
+drwxrwxr-x 4 mt mt   4096  3月 3 → 调用exec(python3 scripts/digital-human-api.py natural ""查看自然分类里的壁纸"") → exec返回(成功): [0;35m━━━ 壁纸库 第 1/4 页 (共 37 张) [0;35m━━━[0m
+
+  [  1]  📷 eminem_1.jpg
+  [  2]  📷  → 调用wallpaper_control({""category"": ""library"", ""action"": ""categories""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: categories (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""by-category"", ""category_name"": ""自然""}) → wallpaper_control返回(失败): {""error"": ""invalid action for library: by-category (expected list/add/remove)""} → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 1}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 2}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → 调用wallpaper_control({""category"": ""library"", ""action"": ""list"", ""page"": 3}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""library"", ""action"": ""list"", ""tool_output"": ""\n━━━  → Agent结束",3315,111,3426,2026-04-16 **脱敏**
+66af0e10-e44a-4675-986a-0ee8a4d43bfb-round-1,117,WiFi和蓝牙状态,中等,帮我同时看看WiFi和蓝牙的状态,帮我同时看看WiFi和蓝牙的状态,否,wifi_bluetooth_control,分别调用wifi_bluetooth_control查询WiFi状态和蓝牙状态,wifi_bluetooth_control(tool),"以下是您的无线设备状态：
+
+### 🟩 Wi-Fi 状态  
+- **Wi-Fi**: **脱敏**
+- **已连接**: <SSID>  
+
+### 🔵 蓝牙状态  
+- **蓝牙**: 已启用  
+- **可发现模式**: 关闭  
+- **适配器**: `**脱敏**` (默认)  
+- **已配对设备**: 无  
+- **已连接设备**: 无  
+
+您目前通过 Wi-Fi 正常联网，但未激活蓝牙可见性和任何设备连接。如有需要，我可以帮您开启蓝牙可发现或进行配对操作。",100%,100%,2,5.19,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → Agent结束",13,119,132,2026-04-16 **脱敏**
+66af0e10-e44a-4675-986a-0ee8a4d43bfb-round-2,118,WiFi和蓝牙状态,中等,帮我同时看看WiFi和蓝牙的状态,帮我同时看看WiFi和蓝牙的状态,否,wifi_bluetooth_control,分别调用wifi_bluetooth_control查询WiFi状态和蓝牙状态,wifi_bluetooth_control(tool),"以下是您的无线设备状态：
+
+### 🟩 Wi-Fi 状态  
+- **Wi-Fi**: **脱敏**
+- **已连接**: <SSID>  
+
+### 🔵 蓝牙状态  
+- **蓝牙**: 已启用  
+- **可发现模式**: 关闭  
+- **适配器**: `**脱敏**` (默认)  
+- **已配对设备**: 无  
+- **已连接设备**: 无  
+
+您目前通过 Wi-Fi 正常联网，但未激活蓝牙可见性和任何设备连接。如有需要，我可以帮您开启蓝牙可发现或进行配对操作。",100%,100%,2,4.76,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → Agent结束",13,119,132,2026-04-16 **脱敏**
+66af0e10-e44a-4675-986a-0ee8a4d43bfb-round-3,119,WiFi和蓝牙状态,中等,帮我同时看看WiFi和蓝牙的状态,帮我同时看看WiFi和蓝牙的状态,否,wifi_bluetooth_control,分别调用wifi_bluetooth_control查询WiFi状态和蓝牙状态,wifi_bluetooth_control(tool),"以下是您的无线设备状态：
+
+### 🟩 Wi-Fi 状态  
+- **Wi-Fi**: **脱敏**
+- **已连接**: <SSID>  
+
+### 🔵 蓝牙状态  
+- **蓝牙**: 已启用  
+- **可发现模式**: 关闭  
+- **适配器**: `**脱敏**` (默认)  
+- **已配对设备**: 无  
+- **已连接设备**: 无  
+
+您目前通过 Wi-Fi 正常联网，但未激活蓝牙可见性和任何设备连接。如有需要，我可以帮您开启蓝牙可发现或进行配对操作。",100%,100%,2,4.93,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → Agent结束",13,119,132,2026-04-16 **脱敏**
+66af0e10-e44a-4675-986a-0ee8a4d43bfb-round-4,120,WiFi和蓝牙状态,中等,帮我同时看看WiFi和蓝牙的状态,帮我同时看看WiFi和蓝牙的状态,否,wifi_bluetooth_control,分别调用wifi_bluetooth_control查询WiFi状态和蓝牙状态,wifi_bluetooth_control(tool),"以下是您的无线设备状态：
+
+### 🟩 Wi-Fi 状态  
+- **Wi-Fi**: **脱敏**
+- **已连接**: <SSID>  
+
+### 🔵 蓝牙状态  
+- **蓝牙**: 已启用  
+- **可发现模式**: 关闭  
+- **适配器**: `**脱敏**` (默认)  
+- **已配对设备**: 无  
+- **已连接设备**: 无  
+
+您目前通过 Wi-Fi 正常联网，但未激活蓝牙可见性和任何设备连接。如有需要，我可以帮您开启蓝牙可发现或进行配对操作。",100%,100%,2,4.79,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → Agent结束",13,119,132,2026-04-16 **脱敏**
+cfd46a83-1fcd-465c-9e6c-bdfee68a13fd-round-1,121,WiFi扫描并汇报,中等,扫描一下附近的WiFi然后告诉我当前连的是哪个,扫描一下附近的WiFi然后告诉我当前连的是哪个,否,wifi_bluetooth_control,先调用wifi_bluetooth_control扫描WiFi再查询当前连接状态,wifi_bluetooth_control(tool),当前正在连接的 Wi-Fi 是 **<SSID>**。,100%,100%,1,5.17,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → Agent结束",20,13,33,2026-04-16 **脱敏**
+cfd46a83-1fcd-465c-9e6c-bdfee68a13fd-round-2,122,WiFi扫描并汇报,中等,扫描一下附近的WiFi然后告诉我当前连的是哪个,扫描一下附近的WiFi然后告诉我当前连的是哪个,否,wifi_bluetooth_control,先调用wifi_bluetooth_control扫描WiFi再查询当前连接状态,wifi_bluetooth_control(tool),当前已经连接的 Wi-Fi 是 **<SSID>**。,100%,100%,1,5.32,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → Agent结束",20,13,33,2026-04-16 **脱敏**
+cfd46a83-1fcd-465c-9e6c-bdfee68a13fd-round-3,123,WiFi扫描并汇报,中等,扫描一下附近的WiFi然后告诉我当前连的是哪个,扫描一下附近的WiFi然后告诉我当前连的是哪个,否,wifi_bluetooth_control,先调用wifi_bluetooth_control扫描WiFi再查询当前连接状态,wifi_bluetooth_control(tool),当前已经连接的 Wi-Fi 是 **<SSID>**。,100%,100%,1,5.3,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → Agent结束",20,13,33,2026-04-16 **脱敏**
+cfd46a83-1fcd-465c-9e6c-bdfee68a13fd-round-4,124,WiFi扫描并汇报,中等,扫描一下附近的WiFi然后告诉我当前连的是哪个,扫描一下附近的WiFi然后告诉我当前连的是哪个,否,wifi_bluetooth_control,先调用wifi_bluetooth_control扫描WiFi再查询当前连接状态,wifi_bluetooth_control(tool),当前已经连接的 Wi-Fi 是 **<SSID>**。,100%,100%,1,5.55,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → Agent结束",20,13,33,2026-04-16 **脱敏**
+c6640df8-050e-4fe3-ac7c-7ee728fe75c1-round-1,125,音量加主题切换,中等,帮我把音量调到40%同时切换到暗色模式,帮我把音量调到40%同时切换到暗色模式,否,system_control + display_control,调用system_control设置音量40%并调用display_control切换暗色主题,"system_control(tool),display_control(tool)",已将音量调节至40%，并将系统切换至暗色模式。,100%,100%,2,4.09,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 40}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → Agent结束",17,21,38,2026-04-16 **脱敏**
+c6640df8-050e-4fe3-ac7c-7ee728fe75c1-round-2,126,音量加主题切换,中等,帮我把音量调到40%同时切换到暗色模式,帮我把音量调到40%同时切换到暗色模式,否,system_control + display_control,调用system_control设置音量40%并调用display_control切换暗色主题,"system_control(tool),display_control(tool)",已将音量调节至40%，并将系统切换至暗色模式。,100%,100%,2,4.08,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 40}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → Agent结束",17,21,38,2026-04-16 **脱敏**
+c6640df8-050e-4fe3-ac7c-7ee728fe75c1-round-3,127,音量加主题切换,中等,帮我把音量调到40%同时切换到暗色模式,帮我把音量调到40%同时切换到暗色模式,否,system_control + display_control,调用system_control设置音量40%并调用display_control切换暗色主题,"system_control(tool),display_control(tool)",已将音量调节至40%，并将系统切换至暗色模式。,100%,100%,2,4.02,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 40}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → Agent结束",17,21,38,2026-04-16 **脱敏**
+c6640df8-050e-4fe3-ac7c-7ee728fe75c1-round-4,128,音量加主题切换,中等,帮我把音量调到40%同时切换到暗色模式,帮我把音量调到40%同时切换到暗色模式,否,system_control + display_control,调用system_control设置音量40%并调用display_control切换暗色主题,"system_control(tool),display_control(tool)",已将音量调节至40%，并将系统切换至暗色模式。,100%,100%,2,4.34,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 40}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → Agent结束",17,21,38,2026-04-16 **脱敏**
+b8d7d497-b0f9-4084-a428-03cc7908def9-round-1,129,系统运行状态汇总,中等,帮我看看电脑运行了多久和电池状态,帮我看看电脑运行了多久和电池状态,否,power_control,调用power_control分别查询系统运行时间和电池状态,power_control(tool),您的电脑已经运行了 4 小时 31 分钟，目前电池电量为 100%，处于已充满状态。,100%,100%,2,3.82,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时31 分钟"" → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",16,33,49,2026-04-16 **脱敏**
+b8d7d497-b0f9-4084-a428-03cc7908def9-round-2,130,系统运行状态汇总,中等,帮我看看电脑运行了多久和电池状态,帮我看看电脑运行了多久和电池状态,否,power_control,调用power_control分别查询系统运行时间和电池状态,power_control(tool),您的电脑已经运行了 4 小时 31 分钟，目前电池电量为 100%，处于已充满状态。,100%,100%,2,3.74,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时31 分钟"" → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",16,33,49,2026-04-16 **脱敏**
+b8d7d497-b0f9-4084-a428-03cc7908def9-round-3,131,系统运行状态汇总,中等,帮我看看电脑运行了多久和电池状态,帮我看看电脑运行了多久和电池状态,否,power_control,调用power_control分别查询系统运行时间和电池状态,power_control(tool),您的电脑已经运行了 4 小时 31 分钟，目前电池电量为 100%，处于已充满状态。,100%,100%,2,3.75,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时31 分钟"" → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",16,33,49,2026-04-16 **脱敏**
+b8d7d497-b0f9-4084-a428-03cc7908def9-round-4,132,系统运行状态汇总,中等,帮我看看电脑运行了多久和电池状态,帮我看看电脑运行了多久和电池状态,否,power_control,调用power_control分别查询系统运行时间和电池状态,power_control(tool),您的电脑已经运行了 4 小时 31 分钟，目前电池电量为 100%，处于已充满状态。,100%,100%,2,3.89,0,,"Agent开始 → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时31 分钟"" → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",16,33,49,2026-04-16 **脱敏**
+79b63b4e-95a0-4937-ad2e-de965a70f7f2-round-1,133,定时任务测试,中等,帮我测试一下定时任务功能：先设置一个30分钟后的定时关机计划然后立刻取消它看看取消功能正不正常,帮我测试一下定时任务功能：先设置一个30分钟后的定时关机计划然后立刻取消它看看取消功能正不正常,否,power_control,调用power_control设置schedule-shutdown再立即调用schedule-cancel取消验证功能,power_control(tool),已成功设置30分钟后定时关机，并立即取消该任务。取消功能正常工作。,100%,100%,2,4.01,0,,"Agent开始 → 调用power_control({""category"": ""schedule"", ""action"": ""schedule-shutdown"", ""time"": ""+30 minutes""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""schedule"", ""action"": ""schedule-shutdown"", ""tool_ou → 调用power_control({""category"": ""schedule"", ""action"": ""schedule-cancel""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""schedule"", ""action"": ""schedule-cancel"", ""tool_outp → Agent结束",46,32,78,2026-04-16 **脱敏**
+79b63b4e-95a0-4937-ad2e-de965a70f7f2-round-2,134,定时任务测试,中等,帮我测试一下定时任务功能：先设置一个30分钟后的定时关机计划然后立刻取消它看看取消功能正不正常,帮我测试一下定时任务功能：先设置一个30分钟后的定时关机计划然后立刻取消它看看取消功能正不正常,否,power_control,调用power_control设置schedule-shutdown再立即调用schedule-cancel取消验证功能,power_control(tool),已成功设置30分钟后定时关机，并立即取消该任务。取消功能正常工作。,100%,100%,2,4.06,0,,"Agent开始 → 调用power_control({""category"": ""schedule"", ""action"": ""schedule-shutdown"", ""time"": ""+30 minutes""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""schedule"", ""action"": ""schedule-shutdown"", ""tool_ou → 调用power_control({""category"": ""schedule"", ""action"": ""schedule-cancel""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""schedule"", ""action"": ""schedule-cancel"", ""tool_outp → Agent结束",46,32,78,2026-04-16 **脱敏**
+79b63b4e-95a0-4937-ad2e-de965a70f7f2-round-3,135,定时任务测试,中等,帮我测试一下定时任务功能：先设置一个30分钟后的定时关机计划然后立刻取消它看看取消功能正不正常,帮我测试一下定时任务功能：先设置一个30分钟后的定时关机计划然后立刻取消它看看取消功能正不正常,否,power_control,调用power_control设置schedule-shutdown再立即调用schedule-cancel取消验证功能,power_control(tool),已成功设置30分钟后定时关机，并立即取消该任务。取消功能正常工作。,100%,100%,2,3.85,0,,"Agent开始 → 调用power_control({""category"": ""schedule"", ""action"": ""schedule-shutdown"", ""time"": ""+30 minutes""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""schedule"", ""action"": ""schedule-shutdown"", ""tool_ou → 调用power_control({""category"": ""schedule"", ""action"": ""schedule-cancel""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""schedule"", ""action"": ""schedule-cancel"", ""tool_outp → Agent结束",46,32,78,2026-04-16 **脱敏**
+79b63b4e-95a0-4937-ad2e-de965a70f7f2-round-4,136,定时任务测试,中等,帮我测试一下定时任务功能：先设置一个30分钟后的定时关机计划然后立刻取消它看看取消功能正不正常,帮我测试一下定时任务功能：先设置一个30分钟后的定时关机计划然后立刻取消它看看取消功能正不正常,否,power_control,调用power_control设置schedule-shutdown再立即调用schedule-cancel取消验证功能,power_control(tool),已成功设置30分钟后定时关机，并立即取消该任务。取消功能正常工作。,100%,100%,2,3.96,0,,"Agent开始 → 调用power_control({""category"": ""schedule"", ""action"": ""schedule-shutdown"", ""time"": ""+30 minutes""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""schedule"", ""action"": ""schedule-shutdown"", ""tool_ou → 调用power_control({""category"": ""schedule"", ""action"": ""schedule-cancel""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""schedule"", ""action"": ""schedule-cancel"", ""tool_outp → Agent结束",46,32,78,2026-04-16 **脱敏**
+d632541a-70e4-47d9-8d06-ac7a74ea70db-round-1,137,壁纸随机并查看结果,中等,随机换张壁纸然后告诉我换成了什么,随机换张壁纸然后告诉我换成了什么,否,wallpaper_control,调用wallpaper_control随机切换壁纸再查询状态确认,wallpaper_control(tool),已经为您随机更换了一张壁纸，现在显示的是 `/usr/share/backgrounds/image_174.png`。,100%,100%,1,3.54,0,,"Agent开始 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",16,27,43,2026-04-16 **脱敏**
+d632541a-70e4-47d9-8d06-ac7a74ea70db-round-2,138,壁纸随机并查看结果,中等,随机换张壁纸然后告诉我换成了什么,随机换张壁纸然后告诉我换成了什么,否,wallpaper_control,调用wallpaper_control随机切换壁纸再查询状态确认,wallpaper_control(tool),已经为您随机更换了一张壁纸，现在显示的是 `/usr/share/backgrounds/image_154.png`。,100%,100%,1,3.82,0,,"Agent开始 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",16,27,43,2026-04-16 **脱敏**
+d632541a-70e4-47d9-8d06-ac7a74ea70db-round-3,139,壁纸随机并查看结果,中等,随机换张壁纸然后告诉我换成了什么,随机换张壁纸然后告诉我换成了什么,否,wallpaper_control,调用wallpaper_control随机切换壁纸再查询状态确认,wallpaper_control(tool),已经为您随机更换了一张壁纸，现在显示的是 `/usr/share/backgrounds/image_179.png`。,100%,100%,1,3.49,0,,"Agent开始 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",16,27,43,2026-04-16 **脱敏**
+d632541a-70e4-47d9-8d06-ac7a74ea70db-round-4,140,壁纸随机并查看结果,中等,随机换张壁纸然后告诉我换成了什么,随机换张壁纸然后告诉我换成了什么,否,wallpaper_control,调用wallpaper_control随机切换壁纸再查询状态确认,wallpaper_control(tool),已经为您随机更换了一张壁纸，现在显示的是 `/usr/share/backgrounds/image_157.png`。,100%,100%,1,3.3,0,,"Agent开始 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",16,27,43,2026-04-16 **脱敏**
+f62aedee-81ef-4877-888e-64e3c7cddc35-round-1,141,定位服务开关测试,中等,先看看定位服务状态再帮我打开然后关掉测试一下功能是否正常,先看看定位服务状态再帮我打开然后关掉测试一下功能是否正常,否,system_settings,调用system_settings查询状态后开启再关闭定位服务,system_settings(tool),"已为您完成定位服务的状态检查及开关测试：
+
+1. 初始状态：定位服务处于**禁用**状态。
+2. 已成功将其**开启**。
+3. 再次执行关闭操作，定位服务现已恢复正常。
+
+功能验证通过，定位服务启停功能工作正常。",100%,100%,3,5.18,0,,"Agent开始 → 调用system_settings({""category"": ""location"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""status"", ""tool_output"": ""\n━ → 调用system_settings({""category"": ""location"", ""action"": ""on""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""on"", ""tool_output"": ""\n━━━ 定 → 调用system_settings({""category"": ""location"", ""action"": ""off""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""off"", ""tool_output"": ""\n━━━  → Agent结束",28,87,115,2026-04-16 **脱敏**
+f62aedee-81ef-4877-888e-64e3c7cddc35-round-2,142,定位服务开关测试,中等,先看看定位服务状态再帮我打开然后关掉测试一下功能是否正常,先看看定位服务状态再帮我打开然后关掉测试一下功能是否正常,否,system_settings,调用system_settings查询状态后开启再关闭定位服务,system_settings(tool),"已为您完成定位服务的状态检查及开关测试：
+
+1. 初始状态：定位服务处于**禁用**状态。
+2. 已成功将其**开启**。
+3. 再次执行关闭操作，定位服务现已恢复正常。
+
+功能验证通过，定位服务启停功能工作正常。",100%,100%,3,5.33,0,,"Agent开始 → 调用system_settings({""category"": ""location"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""status"", ""tool_output"": ""\n━ → 调用system_settings({""category"": ""location"", ""action"": ""on""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""on"", ""tool_output"": ""\n━━━ 定 → 调用system_settings({""category"": ""location"", ""action"": ""off""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""off"", ""tool_output"": ""\n━━━  → Agent结束",28,87,115,2026-04-16 **脱敏**
+f62aedee-81ef-4877-888e-64e3c7cddc35-round-3,143,定位服务开关测试,中等,先看看定位服务状态再帮我打开然后关掉测试一下功能是否正常,先看看定位服务状态再帮我打开然后关掉测试一下功能是否正常,否,system_settings,调用system_settings查询状态后开启再关闭定位服务,system_settings(tool),"已为您完成定位服务的状态检查及开关测试：
+
+1. 初始状态：定位服务处于**禁用**状态。
+2. 已成功将其**开启**。
+3. 再次执行关闭操作，定位服务现已恢复正常。
+
+功能验证通过，定位服务启停功能工作正常。",100%,100%,3,4.58,0,,"Agent开始 → 调用system_settings({""category"": ""location"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""status"", ""tool_output"": ""\n━ → 调用system_settings({""category"": ""location"", ""action"": ""on""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""on"", ""tool_output"": ""\n━━━ 定 → 调用system_settings({""category"": ""location"", ""action"": ""off""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""off"", ""tool_output"": ""\n━━━  → Agent结束",28,87,115,2026-04-16 **脱敏**
+f62aedee-81ef-4877-888e-64e3c7cddc35-round-4,144,定位服务开关测试,中等,先看看定位服务状态再帮我打开然后关掉测试一下功能是否正常,先看看定位服务状态再帮我打开然后关掉测试一下功能是否正常,否,system_settings,调用system_settings查询状态后开启再关闭定位服务,system_settings(tool),"已为您完成定位服务的状态检查及开关测试：
+
+1. 初始状态：定位服务处于**禁用**状态。
+2. 已成功将其**开启**。
+3. 再次执行关闭操作，定位服务现已恢复正常。
+
+功能验证通过，定位服务启停功能工作正常。",100%,100%,3,5.43,0,,"Agent开始 → 调用system_settings({""category"": ""location"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""status"", ""tool_output"": ""\n━ → 调用system_settings({""category"": ""location"", ""action"": ""on""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""on"", ""tool_output"": ""\n━━━ 定 → 调用system_settings({""category"": ""location"", ""action"": ""off""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""location"", ""action"": ""off"", ""tool_output"": ""\n━━━  → Agent结束",28,87,115,2026-04-16 **脱敏**
+43bf12e5-188c-486b-b8b3-558ce2f2fbbf-round-1,145,音量减小再恢复,中等,帮我把音量减小然后再调回来,帮我把音量减小然后再调回来,否,system_control,先调用system_control查询音量再减小再恢复为原值,system_control(tool),音量已经先减小，然后又恢复正常。,100%,100%,2,3.89,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""down""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""down"", ""tool_output"": ""\n━━━ 音 → 调用system_control({""category"": ""volume"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""up"", ""tool_output"": ""\n━━━ 音量增 → Agent结束",13,16,29,2026-04-16 **脱敏**
+43bf12e5-188c-486b-b8b3-558ce2f2fbbf-round-2,146,音量减小再恢复,中等,帮我把音量减小然后再调回来,帮我把音量减小然后再调回来,否,system_control,先调用system_control查询音量再减小再恢复为原值,system_control(tool),音量已经先减小，然后又恢复正常。,100%,100%,2,3.86,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""down""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""down"", ""tool_output"": ""\n━━━ 音 → 调用system_control({""category"": ""volume"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""up"", ""tool_output"": ""\n━━━ 音量增 → Agent结束",13,16,29,2026-04-16 **脱敏**
+43bf12e5-188c-486b-b8b3-558ce2f2fbbf-round-3,147,音量减小再恢复,中等,帮我把音量减小然后再调回来,帮我把音量减小然后再调回来,否,system_control,先调用system_control查询音量再减小再恢复为原值,system_control(tool),音量已经先减小，然后又恢复正常。,100%,100%,2,3.76,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""down""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""down"", ""tool_output"": ""\n━━━ 音 → 调用system_control({""category"": ""volume"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""up"", ""tool_output"": ""\n━━━ 音量增 → Agent结束",13,16,29,2026-04-16 **脱敏**
+43bf12e5-188c-486b-b8b3-558ce2f2fbbf-round-4,148,音量减小再恢复,中等,帮我把音量减小然后再调回来,帮我把音量减小然后再调回来,否,system_control,先调用system_control查询音量再减小再恢复为原值,system_control(tool),音量已经先减小，然后又恢复正常。,100%,100%,2,3.73,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""down""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""down"", ""tool_output"": ""\n━━━ 音 → 调用system_control({""category"": ""volume"", ""action"": ""up""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""up"", ""tool_output"": ""\n━━━ 音量增 → Agent结束",13,16,29,2026-04-16 **脱敏**
+ee9ea3e2-d822-47db-aeed-5b8699c572a9-round-1,149,共享设置查看,中等,看看系统共享设置的状态然后帮我打开共享设置界面,看看系统共享设置的状态然后帮我打开共享设置界面,否,system_settings,调用system_settings查询共享状态再打开设置界面,system_settings(tool),"已检查系统共享设置状态，并为您打开了共享设置界面。
+
+目前屏幕共享（VNC）处于禁用状态。您可以在打开的GNOME设置界面中进行进一步配置。",100%,100%,2,4.12,0,,"Agent开始 → 调用system_settings({""category"": ""sharing"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""sharing"", ""action"": ""status"", ""tool_output"": ""\n━━ → 调用system_settings({""category"": ""sharing"", ""action"": ""ui""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""sharing"", ""action"": ""ui"", ""tool_output"": ""\n━━━ 共享 → Agent结束",23,62,85,2026-04-16 **脱敏**
+ee9ea3e2-d822-47db-aeed-5b8699c572a9-round-2,150,共享设置查看,中等,看看系统共享设置的状态然后帮我打开共享设置界面,看看系统共享设置的状态然后帮我打开共享设置界面,否,system_settings,调用system_settings查询共享状态再打开设置界面,system_settings(tool),"已检查系统共享设置状态，并为您打开了共享设置界面。
+
+目前屏幕共享（VNC）处于禁用状态。您可以在打开的GNOME设置界面中进行进一步配置。",100%,100%,2,4.21,0,,"Agent开始 → 调用system_settings({""category"": ""sharing"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""sharing"", ""action"": ""status"", ""tool_output"": ""\n━━ → 调用system_settings({""category"": ""sharing"", ""action"": ""ui""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""sharing"", ""action"": ""ui"", ""tool_output"": ""\n━━━ 共享 → Agent结束",23,62,85,2026-04-16 **脱敏**
+ee9ea3e2-d822-47db-aeed-5b8699c572a9-round-3,151,共享设置查看,中等,看看系统共享设置的状态然后帮我打开共享设置界面,看看系统共享设置的状态然后帮我打开共享设置界面,否,system_settings,调用system_settings查询共享状态再打开设置界面,system_settings(tool),"已检查系统共享设置状态，并为您打开了共享设置界面。
+
+目前屏幕共享（VNC）处于禁用状态。您可以在打开的GNOME设置界面中进行进一步配置。",100%,100%,2,4.09,0,,"Agent开始 → 调用system_settings({""category"": ""sharing"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""sharing"", ""action"": ""status"", ""tool_output"": ""\n━━ → 调用system_settings({""category"": ""sharing"", ""action"": ""ui""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""sharing"", ""action"": ""ui"", ""tool_output"": ""\n━━━ 共享 → Agent结束",23,62,85,2026-04-16 **脱敏**
+ee9ea3e2-d822-47db-aeed-5b8699c572a9-round-4,152,共享设置查看,中等,看看系统共享设置的状态然后帮我打开共享设置界面,看看系统共享设置的状态然后帮我打开共享设置界面,否,system_settings,调用system_settings查询共享状态再打开设置界面,system_settings(tool),"已检查系统共享设置状态，并为您打开了共享设置界面。
+
+目前屏幕共享（VNC）处于禁用状态。您可以在打开的GNOME设置界面中进行进一步配置。",100%,100%,2,4.32,0,,"Agent开始 → 调用system_settings({""category"": ""sharing"", ""action"": ""status""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""sharing"", ""action"": ""status"", ""tool_output"": ""\n━━ → 调用system_settings({""category"": ""sharing"", ""action"": ""ui""}) → system_settings返回(成功): {""result"": ""ok"", ""category"": ""sharing"", ""action"": ""ui"", ""tool_output"": ""\n━━━ 共享 → Agent结束",23,62,85,2026-04-16 **脱敏**
+b426ec8e-d908-44a0-b5a9-c485a353e6a3-round-1,153,夜间模式,困难,我要睡觉了帮我进入夜间模式：把主题切到暗色、音量调到最小、亮度调低一点,我要睡觉了帮我进入夜间模式：把主题切到暗色、音量调到最小、亮度调低一点,否,system_control + display_control,调用display_control切暗色模式+system_control音量min+system_control亮度down,"display_control(tool),system_control(tool)","好的，已经为你完成睡前准备：
+
+1. ✅ 已将主题切换至暗色模式。
+2. 🔇 音量已调至最低。
+3. 🌙 亮度也已降低。
+
+祝你有个好梦！🌙✨",100%,100%,3,6.53,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""volume"", ""action"": ""min""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""min"", ""tool_output"": ""\n━━━ 最小 → 调用system_control({""category"": ""brightness"", ""action"": ""down""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""down"", ""tool_output"": ""\n━ → Agent结束",35,51,86,2026-04-16 **脱敏**
+b426ec8e-d908-44a0-b5a9-c485a353e6a3-round-2,154,夜间模式,困难,我要睡觉了帮我进入夜间模式：把主题切到暗色、音量调到最小、亮度调低一点,我要睡觉了帮我进入夜间模式：把主题切到暗色、音量调到最小、亮度调低一点,否,system_control + display_control,调用display_control切暗色模式+system_control音量min+system_control亮度down,"display_control(tool),system_control(tool)","好的，已经为你完成睡前准备：
+
+1. ✅ 已将主题切换至暗色模式。
+2. 🔇 音量已调至最低。
+3. 🌙 亮度也已降低。
+
+祝你有个好梦！🌙✨",100%,100%,3,5.23,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""volume"", ""action"": ""min""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""min"", ""tool_output"": ""\n━━━ 最小 → 调用system_control({""category"": ""brightness"", ""action"": ""down""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""down"", ""tool_output"": ""\n━ → Agent结束",35,51,86,2026-04-16 **脱敏**
+b426ec8e-d908-44a0-b5a9-c485a353e6a3-round-3,155,夜间模式,困难,我要睡觉了帮我进入夜间模式：把主题切到暗色、音量调到最小、亮度调低一点,我要睡觉了帮我进入夜间模式：把主题切到暗色、音量调到最小、亮度调低一点,否,system_control + display_control,调用display_control切暗色模式+system_control音量min+system_control亮度down,"display_control(tool),system_control(tool)","好的，已经为你完成睡前准备：
+
+1. ✅ 已将主题切换至暗色模式。
+2. 🔇 音量已调至最低。
+3. 🌙 亮度也已降低。
+
+祝你有个好梦！🌙✨",100%,100%,3,5.15,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""volume"", ""action"": ""min""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""min"", ""tool_output"": ""\n━━━ 最小 → 调用system_control({""category"": ""brightness"", ""action"": ""down""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""down"", ""tool_output"": ""\n━ → Agent结束",35,51,86,2026-04-16 **脱敏**
+b426ec8e-d908-44a0-b5a9-c485a353e6a3-round-4,156,夜间模式,困难,我要睡觉了帮我进入夜间模式：把主题切到暗色、音量调到最小、亮度调低一点,我要睡觉了帮我进入夜间模式：把主题切到暗色、音量调到最小、亮度调低一点,否,system_control + display_control,调用display_control切暗色模式+system_control音量min+system_control亮度down,"display_control(tool),system_control(tool)","好的，已经为你完成睡前准备：
+
+1. ✅ 已将主题切换至暗色模式。
+2. 🔇 音量已调至最低。
+3. 🌙 亮度也已降低。
+
+祝你有个好梦！🌙✨",100%,100%,3,5.22,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""volume"", ""action"": ""min""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""min"", ""tool_output"": ""\n━━━ 最小 → 调用system_control({""category"": ""brightness"", ""action"": ""down""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""down"", ""tool_output"": ""\n━ → Agent结束",35,51,86,2026-04-16 **脱敏**
+4822002c-95c9-45a2-be3c-e093c9b77e3a-round-1,157,工作模式,困难,帮我切换到工作模式：亮色主题、音量40%、确认WiFi连上了,帮我切换到工作模式：亮色主题、音量40%、确认WiFi连上了,否,system_control + display_control + wifi_bluetooth_control,调用display_control切亮色+system_control设音量40%+wifi_bluetooth_control查WiFi状态,"display_control(tool),system_control(tool),wifi_bluetooth_control(tool)","已为您完成工作模式切换：
+
+1. 成功切换至亮色主题。
+2. 音量已调节至 40%。
+3. 当前已连接 Wi-Fi：**脱敏**。
+
+您的系统现已处于设定的工作模式。",100%,100%,3,5.34,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 40}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → Agent结束",25,60,85,2026-04-16 **脱敏**
+4822002c-95c9-45a2-be3c-e093c9b77e3a-round-2,158,工作模式,困难,帮我切换到工作模式：亮色主题、音量40%、确认WiFi连上了,帮我切换到工作模式：亮色主题、音量40%、确认WiFi连上了,否,system_control + display_control + wifi_bluetooth_control,调用display_control切亮色+system_control设音量40%+wifi_bluetooth_control查WiFi状态,"display_control(tool),system_control(tool),wifi_bluetooth_control(tool)","已为您完成工作模式切换：
+
+1. 成功切换至亮色主题。
+2. 音量已调节至 40%。
+3. 当前已连接 Wi-Fi：**脱敏**。
+
+您的系统现已处于设定的工作模式。",100%,100%,3,5.48,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 40}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → Agent结束",25,60,85,2026-04-16 **脱敏**
+4822002c-95c9-45a2-be3c-e093c9b77e3a-round-3,159,工作模式,困难,帮我切换到工作模式：亮色主题、音量40%、确认WiFi连上了,帮我切换到工作模式：亮色主题、音量40%、确认WiFi连上了,否,system_control + display_control + wifi_bluetooth_control,调用display_control切亮色+system_control设音量40%+wifi_bluetooth_control查WiFi状态,"display_control(tool),system_control(tool),wifi_bluetooth_control(tool)","已为您完成工作模式切换：
+
+1. 成功切换至亮色主题。
+2. 音量已调节至 40%。
+3. 当前已连接 Wi-Fi：**脱敏**。
+
+您的系统现已处于设定的工作模式。",100%,100%,6,5.91,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 40}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 40}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → Agent结束",25,60,85,2026-04-16 **脱敏**
+4822002c-95c9-45a2-be3c-e093c9b77e3a-round-4,160,工作模式,困难,帮我切换到工作模式：亮色主题、音量40%、确认WiFi连上了,帮我切换到工作模式：亮色主题、音量40%、确认WiFi连上了,否,system_control + display_control + wifi_bluetooth_control,调用display_control切亮色+system_control设音量40%+wifi_bluetooth_control查WiFi状态,"display_control(tool),system_control(tool),wifi_bluetooth_control(tool)","已为您完成工作模式切换：
+
+1. 成功切换至亮色主题。
+2. 音量已调节至 40%。
+3. 当前已连接 Wi-Fi：**脱敏**。
+
+您的系统现已处于设定的工作模式。",100%,100%,3,5.52,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 40}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → Agent结束",25,60,85,2026-04-16 **脱敏**
+f516f40d-ce86-40dc-a5ec-4b389691b481-round-1,161,网络诊断,困难,帮我做个网络诊断：查看WiFi连接状态、蓝牙状态和系统运行时间,帮我做个网络诊断：查看WiFi连接状态、蓝牙状态和系统运行时间,否,wifi_bluetooth_control + power_control,调用wifi_bluetooth_control查WiFi+蓝牙状态+power_control查运行时间,"wifi_bluetooth_control(tool),power_control(tool)","已为您完成网络诊断：
+
+### 🔌 Wi-Fi 状态  
+- ✅ Wi-Fi 已启用  
+- 🟩 当前连接：`<SSID>`
+
+### 💿 蓝牙状态  
+- ✅ 蓝牙已启用  
+- ⚠️ 目前不可见（未处于可被发现状态）  
+- ❌ 无已配对设备  
+- ❌ 无线连接设备  
+
+### ⏱ 系统运行时间  
+- 🕒 正常运行：**4小时34分钟**
+
+您的网络及系统整体状态良好，Wi-Fi 和蓝牙均正常使用。如有进一步问题欢迎随时告知！",100%,100%,3,6.29,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时34 分钟"" → Agent结束",28,119,147,2026-04-16 **脱敏**
+f516f40d-ce86-40dc-a5ec-4b389691b481-round-2,162,网络诊断,困难,帮我做个网络诊断：查看WiFi连接状态、蓝牙状态和系统运行时间,帮我做个网络诊断：查看WiFi连接状态、蓝牙状态和系统运行时间,否,wifi_bluetooth_control + power_control,调用wifi_bluetooth_control查WiFi+蓝牙状态+power_control查运行时间,"wifi_bluetooth_control(tool),power_control(tool)","已为您完成网络诊断：
+
+### 🔌 Wi-Fi 状态  
+- ✅ Wi-Fi 已启用  
+- 🟩 当前连接：`<SSID>`
+
+### 💿 蓝牙状态  
+- ✅ 蓝牙已启用  
+- ⚠️ 目前不可被发现  
+- ❌ 未配对任何设备  
+- ❌ 无设备处于连接状态  
+
+### ⏱ 系统运行时间  
+- 🕒 已持续运行：**4小时34分钟**
+
+一切正常，您的设备联网及硬件状态良好。如有进一步问题欢迎随时告知！",100%,100%,3,6.18,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时34 分钟"" → Agent结束",28,109,137,2026-04-16 **脱敏**
+f516f40d-ce86-40dc-a5ec-4b389691b481-round-3,163,网络诊断,困难,帮我做个网络诊断：查看WiFi连接状态、蓝牙状态和系统运行时间,帮我做个网络诊断：查看WiFi连接状态、蓝牙状态和系统运行时间,否,wifi_bluetooth_control + power_control,调用wifi_bluetooth_control查WiFi+蓝牙状态+power_control查运行时间,"wifi_bluetooth_control(tool),power_control(tool)","已为您完成网络诊断：
+
+### 🔌 Wi-Fi 状态  
+- ✅ Wi-Fi 已启用  
+- 🟩 当前连接：`<SSID>`
+
+### 💿 蓝牙状态  
+- ✅ 蓝牙已启用  
+- ⚠️ 目前不可被发现  
+- ❌ 未配对任何设备  
+- ❌ 无设备处于连接状态  
+
+### ⏱ 系统运行时间  
+- 🕒 已持续运行：**4小时34分钟**
+
+一切正常，您的设备联网及硬件状态良好。如有进一步问题欢迎随时告知！",100%,100%,3,5.79,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时34 分钟"" → Agent结束",28,109,137,2026-04-16 **脱敏**
+f516f40d-ce86-40dc-a5ec-4b389691b481-round-4,164,网络诊断,困难,帮我做个网络诊断：查看WiFi连接状态、蓝牙状态和系统运行时间,帮我做个网络诊断：查看WiFi连接状态、蓝牙状态和系统运行时间,否,wifi_bluetooth_control + power_control,调用wifi_bluetooth_control查WiFi+蓝牙状态+power_control查运行时间,"wifi_bluetooth_control(tool),power_control(tool)","已为您完成网络诊断：
+
+### 🔌 Wi-Fi 状态  
+- ✅ Wi-Fi 已启用  
+- 🟩 当前连接：`<SSID>`
+
+### 💿 蓝牙状态  
+- ✅ 蓝牙已启用  
+- ⚠️ 目前不可被发现  
+- ❌ 未配对任何设备  
+- ❌ 无设备处于连接状态  
+
+### ⏱ 系统运行时间  
+- 🕒 已持续运行：**4小时34分钟**
+
+一切正常，您的设备联网及硬件状态良好。如有进一步问题欢迎随时告知！",100%,100%,3,6.23,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时34 分钟"" → Agent结束",28,109,137,2026-04-16 **脱敏**
+c03a16b5-966b-4df3-8a49-0ced933f8210-round-1,165,护眼模式,困难,帮我开启护眼模式：暗色主题、亮度调到30%、音量调低到20%,帮我开启护眼模式：暗色主题、亮度调到30%、音量调低到20%,否,system_control + display_control,调用display_control切暗色+system_control设亮度30%+system_control设音量20%,"display_control(tool),system_control(tool)","已为您完成护眼模式设置：
+
+1. 成功启用暗色主题。
+2. 显示亮度已调节至 30%。
+3. 音量已降低至 20%。
+
+您的设备现已进入舒适的护眼模式。",100%,100%,3,5.57,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 30}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 20}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",26,58,84,2026-04-16 **脱敏**
+c03a16b5-966b-4df3-8a49-0ced933f8210-round-2,166,护眼模式,困难,帮我开启护眼模式：暗色主题、亮度调到30%、音量调低到20%,帮我开启护眼模式：暗色主题、亮度调到30%、音量调低到20%,否,system_control + display_control,调用display_control切暗色+system_control设亮度30%+system_control设音量20%,"display_control(tool),system_control(tool)","已为您完成护眼模式设置：
+
+1. 成功启用暗色主题。
+2. 显示亮度已调节至 30%。
+3. 音量已降低至 20%。
+
+您的设备现已进入舒适的护眼模式。",100%,100%,3,5.4,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 30}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 20}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",26,58,84,2026-04-16 **脱敏**
+c03a16b5-966b-4df3-8a49-0ced933f8210-round-3,167,护眼模式,困难,帮我开启护眼模式：暗色主题、亮度调到30%、音量调低到20%,帮我开启护眼模式：暗色主题、亮度调到30%、音量调低到20%,否,system_control + display_control,调用display_control切暗色+system_control设亮度30%+system_control设音量20%,"display_control(tool),system_control(tool)","已为您完成护眼模式设置：
+
+1. 成功启用暗色主题。
+2. 显示亮度已调节至 30%。
+3. 音量已降低至 20%。
+
+您的设备现已进入舒适的护眼模式。",100%,100%,3,5.26,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 30}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 20}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",26,58,84,2026-04-16 **脱敏**
+c03a16b5-966b-4df3-8a49-0ced933f8210-round-4,168,护眼模式,困难,帮我开启护眼模式：暗色主题、亮度调到30%、音量调低到20%,帮我开启护眼模式：暗色主题、亮度调到30%、音量调低到20%,否,system_control + display_control,调用display_control切暗色+system_control设亮度30%+system_control设音量20%,"display_control(tool),system_control(tool)","已为您完成护眼模式设置：
+
+1. 成功启用暗色主题。
+2. 显示亮度已调节至 30%。
+3. 音量已降低至 20%。
+
+您的设备现已进入舒适的护眼模式。",100%,100%,3,5.49,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 30}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 20}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",26,58,84,2026-04-16 **脱敏**
+beb44224-ba33-4a91-94e6-0d7455805ac2-round-1,169,系统全面体检,困难,帮我做一个系统状态体检：音量多少、亮度多少、WiFi连了没、蓝牙开了没、电脑运行多久了,帮我做一个系统状态体检：音量多少、亮度多少、WiFi连了没、蓝牙开了没、电脑运行多久了,否,system_control + wifi_bluetooth_control + power_control,调用system_control查音量+亮度+wifi_bluetooth_control查WiFi+蓝牙+power_control查运行时间,"exec(tool),system_control(tool),display_control(tool),wifi_bluetooth_control(tool),power_control(tool)","【系统状态体检报告】
+🔊 音量：20%
+💡 亮度：30%
+📶 WiFi：**脱敏**
+🔵 蓝牙：已开启
+⌛ 运行时长：4小时35分钟",100%,60%,7,41.59,0,,"Agent开始 → 调用exec(echo ""=== 音量 ===""; pactl get-sink-volume @DEFAULT_SINK@ | awk '/Volume:/ {print $5}'; echo -e ""\n===) → exec返回(成功): === 音量 ===
+20%
+
+=== 亮度 ===
+30
+
+=== WiFi状态 =**脱敏**
+<SSID>
+
+=== 蓝牙状态 ===
+yes
+
+=== 系 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 20,  → 调用display_control({""category"": ""brightness"", ""action"": ""status""}) → display_control返回(失败): {""error"": ""brightness only supports action=set""} → 调用display_control({""category"": ""brightness"", ""action"": ""status""}) → display_control返回(失败): {""error"": ""brightness only supports action=set""} → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时35 分钟"" → Agent结束",192,45,237,2026-04-16 **脱敏**
+beb44224-ba33-4a91-94e6-0d7455805ac2-round-2,170,系统全面体检,困难,帮我做一个系统状态体检：音量多少、亮度多少、WiFi连了没、蓝牙开了没、电脑运行多久了,帮我做一个系统状态体检：音量多少、亮度多少、WiFi连了没、蓝牙开了没、电脑运行多久了,否,system_control + wifi_bluetooth_control + power_control,调用system_control查音量+亮度+wifi_bluetooth_control查WiFi+蓝牙+power_control查运行时间,"volume-control(skill),read(tool),system-control(skill),wifi-bluetooth-control(skill),exec(tool),system_control(tool),display_control(tool),wifi_bluetooth_control(tool),power_control(tool)","# 系统状态体检结果
+| 项目 | 状态 |
+|------|------|
+| 🎵 音量 | 20% |
+| 💡 亮度 | 30% (150/500) |
+| 📶 WiFi | 已启用，已连接至 **<SSID>** |
+| 🟦 蓝牙 | 已启用，无配对/连接设备 |
+| ⏱️ 运行时间 | 4小时36分钟 |",100%,33%,15,63.39,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: volume-control
+description: Control system volume on Linux systems usi → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: system-control
+description: 控制系统设置（亮度、音量），为数字人提供 OS 多媒体设置接口
+license: M → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wifi-bluetooth-control
+description: WiFi 状态查询、开关、连接，蓝牙开关和连接管理，为数字人提供 O → 调用exec(cd <LOCAL_PATH> && ./scripts/volume-control.sh status) → exec返回(成功): Status: Volume: 20% → 调用exec(cd <LOCAL_PATH> && python3 scripts/system-control.py brightness get) → exec返回(成功): System Control - 系统控制
+
+用法：python3 system-control.py <操作> [选项]
+
+音量控制:
+  volume up → 调用exec(cd <LOCAL_PATH> && python3 scripts/system-control.py brightness status) → exec返回(成功): [0;36m━━━ 亮度状态 [0;36m━━━[0m
+  Current brightness: 150 (30%)
+  Max brightness: 50 → 调用exec(cd <LOCAL_PATH> && python3 scripts/wifi-bluetooth.py wifi status) → exec返回(成功): [0;36m━━━ WiFi 状态 [0;36m━━━[0m
+[0;32m[✓][0m WiFi: **脱敏**
+[0;32m[✓][0m 已连接：<SSID> → 调用exec(cd <LOCAL_PATH> && python3 scripts/wifi-bluetooth.py bluetooth status) → exec返回(成功): [0;36m━━━ 蓝牙状态 [0;36m━━━[0m
+[0;32m[✓][0m 蓝牙：已启用
+[0;34m[INFO][0m 可发现：否
+
+[0;34m[IN → 调用exec(uptime -p) → exec返回(成功): up 4 hours, 36 minutes → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 20,  → 调用display_control({""category"": ""brightness"", ""action"": ""status""}) → display_control返回(失败): {""error"": ""brightness only supports action=set""} → 调用display_control({""category"": ""brightness"", ""action"": ""status""}) → display_control返回(失败): {""error"": ""brightness only supports action=set""} → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""**脱敏**""}) → ...",6159,54,6213,2026-04-16 **脱敏**
+beb44224-ba33-4a91-94e6-0d7455805ac2-round-3,171,系统全面体检,困难,帮我做一个系统状态体检：音量多少、亮度多少、WiFi连了没、蓝牙开了没、电脑运行多久了,帮我做一个系统状态体检：音量多少、亮度多少、WiFi连了没、蓝牙开了没、电脑运行多久了,否,system_control + wifi_bluetooth_control + power_control,调用system_control查音量+亮度+wifi_bluetooth_control查WiFi+蓝牙+power_control查运行时间,"volume-control(skill),read(tool),system-control(skill),wifi-bluetooth-control(skill),exec(tool),system_control(tool),display_control(tool),wifi_bluetooth_control(tool),power_control(tool)","🩺 系统状态体检报告
+---
+1. **音量状态**：当前音量 20%，未静音
+2. **屏幕亮度**：当前亮度 30% (150/500)
+3. **WiFi状态**：**脱敏**，当前连接网络：`<SSID>`
+4. **蓝牙状态**：已启用，可发现性关闭，无已配对/已连接设备
+5. **系统运行时间**：已连续运行 4小时37分钟，当前系统负载：7.66 (1分钟) / 8.08 (5分钟) / 8.08 (15分钟)",100%,33%,11,58.9,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: volume-control
+description: Control system volume on Linux systems usi → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: system-control
+description: 控制系统设置（亮度、音量），为数字人提供 OS 多媒体设置接口
+license: M → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wifi-bluetooth-control
+description: WiFi 状态查询、开关、连接，蓝牙开关和连接管理，为数字人提供 O → 调用exec(echo ""=== 系统状态体检报告 ==="" && echo ""1. 音量状态："" && <LOCAL_PATH>) → exec返回(成功): === 系统状态体检报告 ===
+1. 音量状态：
+Status: Volume: 20%
+
+2. 屏幕亮度：
+System Control - 系统控制
+
+用 → 调用exec(python3 <LOCAL_PATH> brightness status) → exec返回(成功): [0;36m━━━ 亮度状态 [0;36m━━━[0m
+  Current brightness: 150 (30%)
+  Max brightness: 50 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 20,  → 调用display_control({""category"": ""brightness"", ""action"": ""status""}) → display_control返回(失败): {""error"": ""brightness only supports action=set""} → 调用display_control({""category"": ""brightness"", ""action"": ""status""}) → display_control返回(失败): {""error"": ""brightness only supports action=set""} → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时36 分钟"" → Agent结束",6254,122,6376,2026-04-16 **脱敏**
+beb44224-ba33-4a91-94e6-0d7455805ac2-round-4,172,系统全面体检,困难,帮我做一个系统状态体检：音量多少、亮度多少、WiFi连了没、蓝牙开了没、电脑运行多久了,帮我做一个系统状态体检：音量多少、亮度多少、WiFi连了没、蓝牙开了没、电脑运行多久了,否,system_control + wifi_bluetooth_control + power_control,调用system_control查音量+亮度+wifi_bluetooth_control查WiFi+蓝牙+power_control查运行时间,"volume-control(skill),read(tool),system-control(skill),wifi-bluetooth-control(skill),exec(tool),system_control(tool),display_control(tool),wifi_bluetooth_control(tool),power_control(tool)","### 系统状态体检结果
+| 项目 | 状态 |
+|------|------|
+| 系统音量 | 20% |
+| 屏幕亮度 | 30% |
+| WiFi状态 | 已启用，当前连接「<SSID>」 |
+| 蓝牙状态 | 已启用，无配对/已连接设备 |
+| 运行时长 | 已开机 4小时38分钟 |",100%,33%,11,53.42,0,,"Agent开始 → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: volume-control
+description: Control system volume on Linux systems usi → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: system-control
+description: 控制系统设置（亮度、音量），为数字人提供 OS 多媒体设置接口
+license: M → 调用read(<LOCAL_PATH>) → read返回(成功): ---
+name: wifi-bluetooth-control
+description: WiFi 状态查询、开关、连接，蓝牙开关和连接管理，为数字人提供 O → 调用exec(cd <LOCAL_PATH> && ./scripts/volume-control.sh status && echo ""---"" && cd ../system) → exec返回(成功): Status: Volume: 20%
+---
+System Control - 系统控制
+
+用法：python3 system-control.py <操作> → 调用exec(cd <LOCAL_PATH> && python3 scripts/system-control.py brightness status) → exec返回(成功): [0;36m━━━ 亮度状态 [0;36m━━━[0m
+  Current brightness: 150 (30%)
+  Max brightness: 50 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 20,  → 调用display_control({""category"": ""brightness"", ""action"": ""status""}) → display_control返回(失败): {""error"": ""brightness only supports action=set""} → 调用display_control({""category"": ""brightness"", ""action"": ""status""}) → display_control返回(失败): {""error"": ""brightness only supports action=set""} → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时37 分钟"" → Agent结束",6126,66,6192,2026-04-16 **脱敏**
+a9063abf-d99a-4251-87d4-ccf875bc54b8-round-1,173,演示模式,困难,要给别人演示东西帮我设置：音量最大、亮色主题、换张随机壁纸让桌面好看一点,要给别人演示东西帮我设置：音量最大、亮色主题、换张随机壁纸让桌面好看一点,否,system_control + display_control + wallpaper_control,调用system_control音量max+display_control切亮色+wallpaper_control随机壁纸,"system_control(tool),display_control(tool),wallpaper_control(tool)","已为您完成演示准备：
+- 音量已调至最大
+- 主题已切换为亮色模式
+- 桌面壁纸已更换为随机精美图片
+
+现在您的桌面看起来既明亮又美观，非常适合对外展示！",100%,100%,3,5.56,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""max""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""max"", ""tool_output"": ""\n━━━ 最大 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",36,66,102,2026-04-16 **脱敏**
+a9063abf-d99a-4251-87d4-ccf875bc54b8-round-2,174,演示模式,困难,要给别人演示东西帮我设置：音量最大、亮色主题、换张随机壁纸让桌面好看一点,要给别人演示东西帮我设置：音量最大、亮色主题、换张随机壁纸让桌面好看一点,否,system_control + display_control + wallpaper_control,调用system_control音量max+display_control切亮色+wallpaper_control随机壁纸,"system_control(tool),display_control(tool),wallpaper_control(tool)","已为您完成演示准备：
+- 音量已调至最大
+- 主题已切换为亮色模式
+- 已更换为随机精美壁纸
+
+您的桌面现在看起来非常美观大方，非常适合对外演示！",100%,100%,3,5.39,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""max""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""max"", ""tool_output"": ""\n━━━ 最大 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",36,62,98,2026-04-16 **脱敏**
+a9063abf-d99a-4251-87d4-ccf875bc54b8-round-3,175,演示模式,困难,要给别人演示东西帮我设置：音量最大、亮色主题、换张随机壁纸让桌面好看一点,要给别人演示东西帮我设置：音量最大、亮色主题、换张随机壁纸让桌面好看一点,否,system_control + display_control + wallpaper_control,调用system_control音量max+display_control切亮色+wallpaper_control随机壁纸,"system_control(tool),display_control(tool),wallpaper_control(tool)","已为您完成演示准备：
+- 音量已调至最大
+- 主题已切换为亮色模式
+- 桌面壁纸已更换为随机精美图片
+
+现在您的桌面看起来既明亮又美观，非常适合对外演示！",100%,100%,3,5.28,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""max""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""max"", ""tool_output"": ""\n━━━ 最大 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",36,66,102,2026-04-16 **脱敏**
+a9063abf-d99a-4251-87d4-ccf875bc54b8-round-4,176,演示模式,困难,要给别人演示东西帮我设置：音量最大、亮色主题、换张随机壁纸让桌面好看一点,要给别人演示东西帮我设置：音量最大、亮色主题、换张随机壁纸让桌面好看一点,否,system_control + display_control + wallpaper_control,调用system_control音量max+display_control切亮色+wallpaper_control随机壁纸,"system_control(tool),display_control(tool),wallpaper_control(tool)","已为您完成演示准备：
+- 音量已调至最大
+- 主题已切换为亮色模式
+- 已更换为随机精美壁纸
+
+您的桌面现在看起来非常美观大方，非常适合对外演示！",100%,100%,3,5.82,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""max""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""max"", ""tool_output"": ""\n━━━ 最大 → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",36,62,98,2026-04-16 **脱敏**
+9e7dca17-84f1-4f8f-a2d8-a98d42c70316-round-1,177,会议模式,困难,马上要开会了帮我准备：系统静音、查看WiFi连接确保网络正常、把主题切到亮色方便投屏,马上要开会了帮我准备：系统静音、查看WiFi连接确保网络正常、把主题切到亮色方便投屏,否,system_control + wifi_bluetooth_control + display_control,调用system_control静音+wifi_bluetooth_control查WiFi状态+display_control切亮色,"system_control(tool),wifi_bluetooth_control(tool),display_control(tool)","会议准备工作已完成：
+
+1. ✅ 系统已静音  
+2. ✅ Wi-Fi 已连接至 <SSID>，网络正常  
+3. ✅ 主题已切换为亮色模式，便于投屏显示  
+
+您可以随时开始会议。如有其他需求，请随时告知。",100%,100%,3,5.58,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → Agent结束",39,71,110,2026-04-16 **脱敏**
+9e7dca17-84f1-4f8f-a2d8-a98d42c70316-round-2,178,会议模式,困难,马上要开会了帮我准备：系统静音、查看WiFi连接确保网络正常、把主题切到亮色方便投屏,马上要开会了帮我准备：系统静音、查看WiFi连接确保网络正常、把主题切到亮色方便投屏,否,system_control + wifi_bluetooth_control + display_control,调用system_control静音+wifi_bluetooth_control查WiFi状态+display_control切亮色,"system_control(tool),wifi_bluetooth_control(tool),display_control(tool)","会议准备工作已完成：
+
+1. ✅ 系统已静音  
+2. ✅ Wi-Fi 已连接至 <SSID>，网络正常  
+3. ✅ 主题已切换为亮色模式，便于投屏显示  
+
+您可以随时开始会议。如有其他需求，请随时告知。",100%,100%,3,5.64,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → Agent结束",39,71,110,2026-04-16 **脱敏**
+9e7dca17-84f1-4f8f-a2d8-a98d42c70316-round-3,179,会议模式,困难,马上要开会了帮我准备：系统静音、查看WiFi连接确保网络正常、把主题切到亮色方便投屏,马上要开会了帮我准备：系统静音、查看WiFi连接确保网络正常、把主题切到亮色方便投屏,否,system_control + wifi_bluetooth_control + display_control,调用system_control静音+wifi_bluetooth_control查WiFi状态+display_control切亮色,"system_control(tool),wifi_bluetooth_control(tool),display_control(tool)","会议准备工作已完成：
+
+1. ✅ 系统已静音  
+2. ✅ Wi-Fi 已连接至 <SSID>，网络正常  
+3. ✅ 主题已切换为亮色模式，便于投屏显示  
+
+您可以随时开始会议。如有其他需求，请随时告知。",100%,100%,3,5.59,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → Agent结束",39,71,110,2026-04-16 **脱敏**
+9e7dca17-84f1-4f8f-a2d8-a98d42c70316-round-4,180,会议模式,困难,马上要开会了帮我准备：系统静音、查看WiFi连接确保网络正常、把主题切到亮色方便投屏,马上要开会了帮我准备：系统静音、查看WiFi连接确保网络正常、把主题切到亮色方便投屏,否,system_control + wifi_bluetooth_control + display_control,调用system_control静音+wifi_bluetooth_control查WiFi状态+display_control切亮色,"system_control(tool),wifi_bluetooth_control(tool),display_control(tool)","会议准备工作已完成：
+
+1. ✅ 系统已静音  
+2. ✅ Wi-Fi 已连接至 <SSID>，网络正常  
+3. ✅ 主题已切换为亮色模式，便于投屏显示  
+
+您可以随时开始会议。如有其他需求，请随时告知。",100%,100%,3,5.89,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""mute""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""mute"", ""tool_output"": ""\n━━━ 静 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用display_control({""category"": ""theme"", ""action"": ""light""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""light"", ""tool_output"": ""\n━━━ 亮 → Agent结束",39,71,110,2026-04-16 **脱敏**
+a7a4f1e1-4f84-4402-ae58-9ac5c1ede0db-round-1,181,影院模式,困难,我要看电影帮我设置：暗色主题、音量调到80%、换一张随机壁纸,我要看电影帮我设置：暗色主题、音量调到80%、换一张随机壁纸,否,system_control + display_control + wallpaper_control,调用display_control切暗色+system_control设音量80%+wallpaper_control随机壁纸,"display_control(tool),system_control(tool),wallpaper_control(tool)","已为您完成电影观看准备：
+- 成功切换至暗色主题
+- 音量已调节至80%
+- 已更换为随机壁纸
+
+您可以立即开始观影体验！",100%,100%,3,5.69,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 80}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",28,48,76,2026-04-16 **脱敏**
+a7a4f1e1-4f84-4402-ae58-9ac5c1ede0db-round-2,182,影院模式,困难,我要看电影帮我设置：暗色主题、音量调到80%、换一张随机壁纸,我要看电影帮我设置：暗色主题、音量调到80%、换一张随机壁纸,否,system_control + display_control + wallpaper_control,调用display_control切暗色+system_control设音量80%+wallpaper_control随机壁纸,"display_control(tool),system_control(tool),wallpaper_control(tool)","已为您完成电影观看准备：
+- 成功切换至暗色主题
+- 音量已调节至80%
+- 已更换为随机壁纸
+
+现在您可以安心观影啦！🎬",100%,100%,3,5.68,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 80}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",28,47,75,2026-04-16 **脱敏**
+a7a4f1e1-4f84-4402-ae58-9ac5c1ede0db-round-3,183,影院模式,困难,我要看电影帮我设置：暗色主题、音量调到80%、换一张随机壁纸,我要看电影帮我设置：暗色主题、音量调到80%、换一张随机壁纸,否,system_control + display_control + wallpaper_control,调用display_control切暗色+system_control设音量80%+wallpaper_control随机壁纸,"display_control(tool),system_control(tool),wallpaper_control(tool)","已为您完成电影观看准备：
+- 成功切换至暗色主题
+- 音量已调节至80%
+- 已更换为随机壁纸
+
+现在您可以舒适地观影啦！🎬",100%,100%,3,5.52,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 80}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",28,48,76,2026-04-16 **脱敏**
+a7a4f1e1-4f84-4402-ae58-9ac5c1ede0db-round-4,184,影院模式,困难,我要看电影帮我设置：暗色主题、音量调到80%、换一张随机壁纸,我要看电影帮我设置：暗色主题、音量调到80%、换一张随机壁纸,否,system_control + display_control + wallpaper_control,调用display_control切暗色+system_control设音量80%+wallpaper_control随机壁纸,"display_control(tool),system_control(tool),wallpaper_control(tool)","已为您完成电影观看准备：
+- 成功切换至暗色主题
+- 音量已调节至80%
+- 已更换为随机壁纸
+
+您可以随时开始观影！🎬",100%,100%,3,5.6,0,,"Agent开始 → 调用display_control({""category"": ""theme"", ""action"": ""dark""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""dark"", ""tool_output"": ""\n━━━ 暗色 → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 80}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用wallpaper_control({""category"": ""set"", ""action"": ""random""}) → wallpaper_control返回(成功): {""result"": ""ok"", ""category"": ""set"", ""action"": ""random"", ""tool_output"": ""[INFO] 设 → Agent结束",28,46,74,2026-04-16 **脱敏**
+c861e578-aed2-4d01-bc60-ccbe579ba7ce-round-1,185,节能模式,困难,帮我进入节能模式：查看电池剩余电量、亮度调到最低、音量调到最低,帮我进入节能模式：查看电池剩余电量、亮度调到最低、音量调到最低,否,power_control + system_control,调用power_control查电池+system_control亮度down+system_control音量min,"system_control(tool),power_control(tool)","已为您完成节能模式设置：
+
+- 亮度已调至最低（0%）
+- 音量已调至最低（0%）
+- 当前电池电量：100%，处于“已充满”状态
+
+您的设备现已进入节能模式。",100%,100%,4,5.7,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""battery"", ""action"": ""status""}) → system_control返回(失败): {""error"": ""unknown category: battery""} → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",31,61,92,2026-04-16 **脱敏**
+c861e578-aed2-4d01-bc60-ccbe579ba7ce-round-2,186,节能模式,困难,帮我进入节能模式：查看电池剩余电量、亮度调到最低、音量调到最低,帮我进入节能模式：查看电池剩余电量、亮度调到最低、音量调到最低,否,power_control + system_control,调用power_control查电池+system_control亮度down+system_control音量min,"system_control(tool),power_control(tool)","已为您完成节能模式设置：
+
+- 亮度已调至最低（0%）
+- 音量已调至最低（0%）
+- 当前电池电量：100%，处于“已充满”状态
+
+您的设备现已进入节能模式。",100%,100%,4,5.84,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""battery"", ""action"": ""status""}) → system_control返回(失败): {""error"": ""unknown category: battery""} → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",31,61,92,2026-04-16 **脱敏**
+c861e578-aed2-4d01-bc60-ccbe579ba7ce-round-3,187,节能模式,困难,帮我进入节能模式：查看电池剩余电量、亮度调到最低、音量调到最低,帮我进入节能模式：查看电池剩余电量、亮度调到最低、音量调到最低,否,power_control + system_control,调用power_control查电池+system_control亮度down+system_control音量min,"system_control(tool),power_control(tool)","已为您完成节能模式设置：
+
+- 亮度已调至最低（0%）
+- 音量已调至最低（0%）
+- 当前电池电量：100%，处于“已充满”状态
+
+您的设备现已进入节能模式。",100%,100%,4,5.58,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""battery"", ""action"": ""status""}) → system_control返回(失败): {""error"": ""unknown category: battery""} → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",31,61,92,2026-04-16 **脱敏**
+c861e578-aed2-4d01-bc60-ccbe579ba7ce-round-4,188,节能模式,困难,帮我进入节能模式：查看电池剩余电量、亮度调到最低、音量调到最低,帮我进入节能模式：查看电池剩余电量、亮度调到最低、音量调到最低,否,power_control + system_control,调用power_control查电池+system_control亮度down+system_control音量min,"system_control(tool),power_control(tool)","已为您完成节能模式设置：
+
+- 亮度已调至最低（0%）
+- 音量已调至最低（0%）
+- 当前电池电量：100%，处于“已充满”状态
+
+您的设备现已进入节能模式。",100%,100%,4,5.74,0,,"Agent开始 → 调用system_control({""category"": ""brightness"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""brightness"", ""action"": ""set"", ""tool_output"": ""\n━━ → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""battery"", ""action"": ""status""}) → system_control返回(失败): {""error"": ""unknown category: battery""} → 调用power_control({""category"": ""status"", ""action"": ""battery""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""battery"", ""capacity"": ""100%"",  → Agent结束",31,61,92,2026-04-16 **脱敏**
+153358ad-7348-449c-8592-335b255d31a7-round-1,189,环境感知报告,困难,帮我生成一份当前环境报告：WiFi和蓝牙的网络连接情况、当前主题模式、音量设置、系统运行时间,帮我生成一份当前环境报告：WiFi和蓝牙的网络连接情况、当前主题模式、音量设置、系统运行时间,否,wifi_bluetooth_control + display_control + system_control + power_control,调用wifi_bluetooth_control查WiFi+蓝牙+display_control查主题+system_control查音量+power_control查运行时间,"wifi_bluetooth_control(tool),display_control(tool),system_control(tool),power_control(tool)","### 🌐 当前环境报告  
+
+#### 🔍 **网络连接状况**
+- **Wi-Fi**:  
+  **脱敏**，并连接至 `<SSID>`。
+- **蓝牙**:  
+  ✅ 已启用，但目前不可被发现。  
+  ⚠️ 无任何已配对或已连接的设备。
+
+---
+
+#### 🎨 **显示与主题**
+- **当前主题模式**: 暗色 (Dark Mode)
+- **Shell/GTK 主题**: WhiteSur-Dark
+- **颜色偏好**: prefer-dark
+
+---
+
+#### 🔊 **音频设置**
+- **音量级别**: 0% （完全静音）
+- **静音状态**: ❌ 未静音（尽管实际输出为零）
+
+---
+
+#### 💼 **系统运行状态**
+- **系统运行时间**: 4小时40分钟
+- **整体状态**: 正常运行中
+
+--- 
+
+✅ 报告完成 —— 当前系统稳定，网络连通良好，视觉风格符合暗黑设定，音量处于最低值。如有进一步优化需求，请随时告知！",100%,100%,5,9.33,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时40 分钟"" → Agent结束",43,193,236,2026-04-16 **脱敏**
+153358ad-7348-449c-8592-335b255d31a7-round-2,190,环境感知报告,困难,帮我生成一份当前环境报告：WiFi和蓝牙的网络连接情况、当前主题模式、音量设置、系统运行时间,帮我生成一份当前环境报告：WiFi和蓝牙的网络连接情况、当前主题模式、音量设置、系统运行时间,否,wifi_bluetooth_control + display_control + system_control + power_control,调用wifi_bluetooth_control查WiFi+蓝牙+display_control查主题+system_control查音量+power_control查运行时间,"wifi_bluetooth_control(tool),display_control(tool),system_control(tool),power_control(tool)","### 🌐 当前环境报告  
+
+#### 🔍 **网络连接状况**
+- **Wi-Fi**:  
+  **脱敏**，并连接至 `<SSID>`。
+- **蓝牙**:  
+  ✅ 已启用，但目前不可被发现。  
+  ⚠️ 无任何已配对或已连接的设备。
+
+---
+
+#### 🎨 **显示与主题**
+- **当前主题模式**: 暗色 (Dark Mode)
+- **Shell/GTK 主题**: WhiteSur-Dark
+- **颜色偏好**: prefer-dark
+
+---
+
+#### 🔊 **音频设置**
+- **音量级别**: 0% （完全静音）
+- **静音状态**: ❌ 未静音（尽管实际输出为零）
+
+---
+
+#### 💼 **系统运行状态**
+- **系统运行时间**: 4小时40分钟
+- **整体状态**: 正常运行中
+
+--- 
+
+✅ 报告完成 —— 当前系统稳定，网络连通良好，视觉风格符合暗黑设定，音量处于最低值。",100%,100%,5,8.49,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时40 分钟"" → Agent结束",43,177,220,2026-04-16 **脱敏**
+153358ad-7348-449c-8592-335b255d31a7-round-3,191,环境感知报告,困难,帮我生成一份当前环境报告：WiFi和蓝牙的网络连接情况、当前主题模式、音量设置、系统运行时间,帮我生成一份当前环境报告：WiFi和蓝牙的网络连接情况、当前主题模式、音量设置、系统运行时间,否,wifi_bluetooth_control + display_control + system_control + power_control,调用wifi_bluetooth_control查WiFi+蓝牙+display_control查主题+system_control查音量+power_control查运行时间,"wifi_bluetooth_control(tool),display_control(tool),system_control(tool),power_control(tool)","### 🌐 当前环境报告  
+
+#### 🔍 **网络连接状况**
+- **Wi-Fi**:  
+  **脱敏**，并连接至 `<SSID>`。
+- **蓝牙**:  
+  ✅ 已启用，但目前不可被发现。  
+  ⚠️ 无任何已配对或已连接的设备。
+
+---
+
+#### 🎨 **显示与主题**
+- **当前主题模式**: 暗色 (Dark Mode)
+- **Shell/GTK 主题**: WhiteSur-Dark
+- **颜色偏好**: prefer-dark
+
+---
+
+#### 🔊 **音频设置**
+- **音量级别**: 0% （完全静音）
+- **静音状态**: ❌ 未静音（尽管实际输出为零）
+
+---
+
+#### 💼 **系统运行状态**
+- **系统运行时间**: 4小时40分钟
+- **整体状态**: 正常运行中
+
+--- 
+
+✅ 报告完成 —— 当前系统稳定，网络连通良好，视觉风格符合暗黑设定，音量处于最低值。",100%,100%,5,8.5,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时40 分钟"" → Agent结束",43,177,220,2026-04-16 **脱敏**
+153358ad-7348-449c-8592-335b255d31a7-round-4,192,环境感知报告,困难,帮我生成一份当前环境报告：WiFi和蓝牙的网络连接情况、当前主题模式、音量设置、系统运行时间,帮我生成一份当前环境报告：WiFi和蓝牙的网络连接情况、当前主题模式、音量设置、系统运行时间,否,wifi_bluetooth_control + display_control + system_control + power_control,调用wifi_bluetooth_control查WiFi+蓝牙+display_control查主题+system_control查音量+power_control查运行时间,"wifi_bluetooth_control(tool),display_control(tool),system_control(tool),power_control(tool)","### 🌐 当前环境报告  
+
+#### 🔍 **网络连接状况**
+- **Wi-Fi**:  
+  **脱敏**，并连接至 `<SSID>`。
+- **蓝牙**:  
+  ✅ 已启用，但目前不可被发现。  
+  ⚠️ 无任何已配对或已连接的设备。
+
+---
+
+#### 🎨 **显示与主题**
+- **当前主题模式**: 暗色 (Dark Mode)
+- **Shell/GTK 主题**: WhiteSur-Dark
+- **颜色偏好**: prefer-dark
+
+---
+
+#### 🔊 **音频设置**
+- **音量级别**: 0% （完全静音）
+- **静音状态**: ❌ 未静音（尽管实际输出为零）
+
+---
+
+#### 💼 **系统运行状态**
+- **系统运行时间**: 4小时40分钟
+- **整体状态**: 正常运行中
+
+--- 
+
+✅ 报告完成 —— 当前系统稳定，网络连通良好，视觉风格符合暗黑设定，音量处于最低值。",100%,100%,5,8.51,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""status""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""status"", ""**脱敏**"": ""\n━━━ W → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用display_control({""category"": ""theme"", ""action"": ""status""}) → display_control返回(成功): {""result"": ""ok"", ""category"": ""theme"", ""action"": ""status"", ""tool_output"": ""\n━━━  → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → 调用power_control({""category"": ""status"", ""action"": ""status""}) → power_control返回(成功): {""result"": ""ok"", ""category"": ""status"", ""action"": ""status"", ""uptime"": ""4 小时40 分钟"" → Agent结束",43,177,220,2026-04-16 **脱敏**
+cba932f1-d786-4dff-84e9-79f8371efc3b-round-1,193,音量设置并恢复测试,困难,帮我测试音量控制：先查当前音量记住然后设到80%确认一下最后恢复原来的值,帮我测试音量控制：先查当前音量记住然后设到80%确认一下最后恢复原来的值,否,system_control,调用system_control查询原音量→设80%→查询确认→恢复原值→查询确认,system_control(tool),"音量控制测试完成：
+
+1. 当前音量为 0%，已记录。
+2. 已将音量设置为 80%，验证成功。
+3. 已恢复原始音量至 0%。
+
+测试完毕，音量已还原。",100%,100%,4,5.44,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 80}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 80,  → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",34,58,92,2026-04-16 **脱敏**
+cba932f1-d786-4dff-84e9-79f8371efc3b-round-2,194,音量设置并恢复测试,困难,帮我测试音量控制：先查当前音量记住然后设到80%确认一下最后恢复原来的值,帮我测试音量控制：先查当前音量记住然后设到80%确认一下最后恢复原来的值,否,system_control,调用system_control查询原音量→设80%→查询确认→恢复原值→查询确认,system_control(tool),"音量控制测试完成：
+
+1. 当前音量为 0%，已记录。
+2. 已将音量设置为 80%，验证成功。
+3. 已恢复原始音量至 0%。
+
+测试完毕，音量已还原。",100%,100%,4,5.53,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 80}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 80,  → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",34,58,92,2026-04-16 **脱敏**
+cba932f1-d786-4dff-84e9-79f8371efc3b-round-3,195,音量设置并恢复测试,困难,帮我测试音量控制：先查当前音量记住然后设到80%确认一下最后恢复原来的值,帮我测试音量控制：先查当前音量记住然后设到80%确认一下最后恢复原来的值,否,system_control,调用system_control查询原音量→设80%→查询确认→恢复原值→查询确认,system_control(tool),"音量控制测试完成：
+
+1. 当前音量为 0%，已记录。
+2. 已将音量设置为 80%，验证成功。
+3. 已恢复原始音量至 0%。
+
+测试完毕，音量已还原。",100%,100%,4,5.81,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 80}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 80,  → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",34,58,92,2026-04-16 **脱敏**
+cba932f1-d786-4dff-84e9-79f8371efc3b-round-4,196,音量设置并恢复测试,困难,帮我测试音量控制：先查当前音量记住然后设到80%确认一下最后恢复原来的值,帮我测试音量控制：先查当前音量记住然后设到80%确认一下最后恢复原来的值,否,system_control,调用system_control查询原音量→设80%→查询确认→恢复原值→查询确认,system_control(tool),"音量控制测试完成：
+
+1. 当前音量为 0%，已记录。
+2. 已将音量设置为 80%，验证成功。
+3. 已恢复原始音量至 0%。
+
+测试完毕，音量已还原。",100%,100%,4,5.52,0,,"Agent开始 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 0, "" → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 80}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → 调用system_control({""category"": ""volume"", ""action"": ""status""}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""status"", ""current_value"": 80,  → 调用system_control({""category"": ""volume"", ""action"": ""set"", ""value"": 0}) → system_control返回(成功): {""result"": ""ok"", ""category"": ""volume"", ""action"": ""set"", ""tool_output"": ""\n━━━ 设置 → Agent结束",34,58,92,2026-04-16 **脱敏**
+6e013c60-d5a3-4fed-a89c-c15f6905153b-round-1,197,全面无线诊断,困难,帮我做一次完整的无线设备诊断：扫描所有可用WiFi网络、查看蓝牙设备列表、告诉我当前各自的连接状态,帮我做一次完整的无线设备诊断：扫描所有可用WiFi网络、查看蓝牙设备列表、告诉我当前各自的连接状态,否,wifi_bluetooth_control,调用wifi_bluetooth_control WiFi scan+WiFi status+bluetooth scan+bluetooth status 完整诊断,wifi_bluetooth_control(tool),"已完成您的无线设备诊断：
+
+### 🟩 Wi-Fi 状态：
+**脱敏**，共检测到 16 个可用网络。
+- 当前已连接至：`<SSID>`
+- 强度良好，信号约为 79%
+- 其他热点包括 `<SSID>`（开放）、`<SSID>` 类型打印机及智能设备。
+
+---
+
+### 🟨 蓝牙状态：
+- **蓝牙已启用**
+- 目前未处于可被发现状态
+- **暂无任何已配对或已连接的设备**
+
+#### ✅ 新近扫描发现的蓝牙设备（共 9 个）：
+1. ZHOUYUE  
+2. SHENQIAN01  
+3. 客厅的小米电视  
+4. 大会议室左  
+5. MITV-BA24F  
+6. 主卧的小米电视  
+7. xiaomi.dev.ble  
+8. 老板间—凌霄宝殿  
+9. 大会议室右  
+
+> ⚠️ 若您希望连接某台设备，请确保其进入配对模式，并通过 `bluetooth pair <device>` 命令进行绑定。
+
+如有进一步操作需求（如连接Wi-Fi、配对蓝牙），欢迎随时告知！",100%,100%,3,17.77,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""scan""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""scan"", ""tool_output"": ""\n━━ → Agent结束",46,240,286,2026-04-16 **脱敏**
+6e013c60-d5a3-4fed-a89c-c15f6905153b-round-2,198,全面无线诊断,困难,帮我做一次完整的无线设备诊断：扫描所有可用WiFi网络、查看蓝牙设备列表、告诉我当前各自的连接状态,帮我做一次完整的无线设备诊断：扫描所有可用WiFi网络、查看蓝牙设备列表、告诉我当前各自的连接状态,否,wifi_bluetooth_control,调用wifi_bluetooth_control WiFi scan+WiFi status+bluetooth scan+bluetooth status 完整诊断,wifi_bluetooth_control(tool),"已完成您的无线设备诊断：
+
+### 🟩 Wi-Fi 状态：
+**脱敏**
+- **其他可用网络**:
+  1. `<SSID>`
+  2. `pe`
+  3. `<SSID>`
+  4. `<SSID>`
+  5. `<SSID>`
+
+---
+
+### 🟨 蓝牙状态：
+- **蓝牙已启用**
+- **不可见模式**（未开放发现）
+- **当前无任何设备处于连接状态**
+- **尚未建立配对记录**
+
+---
+
+### 🔍 蓝牙扫描结果（共找到13台可见设备）：
+1. 党建室  
+2. 客厅电视  
+3. mt-AIBOOK-ABA14104  
+4. ZHOUYUE  
+5. SHENQIAN01  
+6. NZF7Lm5YBe5DvMwOCTGHKcH4A  
+7. 客厅的小米电视  
+8. 大会议室左  
+9. MITV-BA24F  
+10. 主卧的小米电视  
+11. xiaomi.dev.ble  
+12. 老板间—凌霄宝殿  
+13. 大会议室右  
+
+> ✅ 提示：若需连接某设备，请确保其进入配对模式，并通过 `bluetooth control connect` 命令进行绑定。
+
+如有进一步操作需求，请随时告知！",100%,100%,3,18.9,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""scan""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""scan"", ""tool_output"": ""\n━━ → Agent结束",46,223,269,2026-04-16 **脱敏**
+6e013c60-d5a3-4fed-a89c-c15f6905153b-round-3,199,全面无线诊断,困难,帮我做一次完整的无线设备诊断：扫描所有可用WiFi网络、查看蓝牙设备列表、告诉我当前各自的连接状态,帮我做一次完整的无线设备诊断：扫描所有可用WiFi网络、查看蓝牙设备列表、告诉我当前各自的连接状态,否,wifi_bluetooth_control,调用wifi_bluetooth_control WiFi scan+WiFi status+bluetooth scan+bluetooth status 完整诊断,wifi_bluetooth_control(tool),"已完成您的无线设备诊断：
+
+### 🌐 Wi-Fi 状态：
+**脱敏**，安全加密）
+- **其他可见网络**:
+  - `<SSID>` (79%)  
+  - `pe` (74%)  
+  - `<SSID>` (74%)  
+  - `<SSID>` (65%)  
+  - ...共找到16个可用Wi-Fi。
+
+---
+
+### 💿 蓝牙状态：
+- **蓝牙已启用**
+- **不可见模式**（未开放发现）
+- **当前无任何设备配对或连接**
+
+#### ✅ 可检测到的蓝牙设备（共16台）：
+1. 老板间-大雄宝殿  
+2. xBeacon  
+3. Amazfit T-Rex Pro  
+4. 真我GT Neo5 SE  
+5. WANDA  
+6. 党建室  
+7. 客厅电视  
+8. mt-AIBOOK-ABA14104  
+9. NZF7Lm5YBe5DvMwOCTGHKcH4A  
+10. 客厅的小米电视  
+11. 大会议室左  
+12. MITV-BA24F  
+13. 主卧的小米电视  
+14. xiaomi.dev.ble  
+15. 老板间—凌霄宝殿  
+16. 大会议室右  
+
+> ⚠️ 若您希望连接某设备，请确保其处于配对模式，并通过 `bluetooth pair <device>` 命令进行绑定。",100%,100%,3,18.45,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""scan""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""scan"", ""tool_output"": ""\n━━ → Agent结束",46,224,270,2026-04-16 **脱敏**
+6e013c60-d5a3-4fed-a89c-c15f6905153b-round-4,200,全面无线诊断,困难,帮我做一次完整的无线设备诊断：扫描所有可用WiFi网络、查看蓝牙设备列表、告诉我当前各自的连接状态,帮我做一次完整的无线设备诊断：扫描所有可用WiFi网络、查看蓝牙设备列表、告诉我当前各自的连接状态,否,wifi_bluetooth_control,调用wifi_bluetooth_control WiFi scan+WiFi status+bluetooth scan+bluetooth status 完整诊断,wifi_bluetooth_control(tool),"已完成您的无线设备诊断：
+
+### 🌐 Wi-Fi 状态：
+**脱敏**，加密）
+- **可用网络**: 
+  1. `<SSID>` (79%)  
+  2. `pe` (74%)  
+  3. `<SSID>` (74%)  
+  4. `<SSID>` (65%)  
+  5. `<SSID>` (64%)
+
+---
+
+### 💬 Bluetooth 状态：
+- **蓝牙状态**: 已启用
+- **可发现模式**: 关闭
+- **已配对设备**: 无
+- **已连接设备**: 无
+- **扫描结果显示可用设备共 18 个**，包括手机、耳机、智能手表及各类物联网设备。
+
+✅ 当前未连接任何蓝牙设备，但周边存在多台可配对终端。若需连接某设备，请提供其名称以便进一步操作。",100%,100%,3,17.83,0,,"Agent开始 → 调用wifi_bluetooth_control({""category""**脱敏**""wifi"", ""action"": ""scan""**脱敏**""result"": ""ok"", ""category"": ""wifi"", ""action"": ""scan"", ""**脱敏**"": ""\n━━━ 可用  → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""status""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""status"", ""tool_output"": ""\n → 调用wifi_bluetooth_control({""category""**脱敏**""bluetooth"", ""action"": ""scan""}) → wifi_bluetooth_control返回(成功): {""**脱敏**"": ""ok"", ""category"": ""bluetooth"", ""action"": ""scan"", ""tool_output"": ""\n━━ → Agent结束",46,167,213,2026-04-16 **脱敏**

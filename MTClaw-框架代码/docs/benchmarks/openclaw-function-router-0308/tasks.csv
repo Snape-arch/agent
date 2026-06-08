@@ -1,0 +1,51 @@
+uttid,任务简称,任务难度,用户Prompt,需要使用的skill/tools,预期的输出
+51737beb-8065-44c9-b74a-b56ecf1fcfc7,查询音量,简单,帮我看看现在系统音量是多少,system_control,调用system_control查询音量百分比和静音状态
+a1ac22eb-fde3-4456-9980-bc5462cd5d6b,设置音量50,简单,把系统音量调到50%,system_control,调用system_control设置音量为50%
+6eb4a083-996d-43d3-921f-7182df35a3ea,音量调大,简单,声音太小了帮我调大一点,system_control,调用system_control执行音量增加
+37f9424e-960a-4f60-a0d6-075fe023b251,最大音量,简单,把音量开到最大,system_control,调用system_control执行max操作将音量设到最大
+4217785e-05ae-46ea-ad44-92de1bc6009c,查询亮度,简单,看看我屏幕亮度现在是多少,system_control,调用system_control查询亮度百分比
+97f881dc-4dd8-43c7-b677-0b07110a9231,增加亮度,简单,屏幕有点暗帮我调亮一些,system_control,调用system_control执行亮度增加
+6995a63f-f680-4a7f-bf78-f9545d989c60,切换暗色模式,简单,帮我把系统切到暗色模式,display_control,调用display_control切换到暗色主题
+b663a9d6-94bb-43e4-93bf-1542bfecafb9,切换亮色模式,简单,把主题换成亮色的,display_control,调用display_control切换到亮色主题
+6f8ea7a4-c32f-4651-8536-ec32046e809c,查看主题状态,简单,看看当前系统是深色还是浅色主题,display_control,调用display_control查询当前主题模式
+3cfa5400-5f5e-41c2-a334-d900e56bd687,列出显示器,简单,帮我看看电脑连了几个显示器,display_control,调用display_control列出所有可用显示器
+c29ac995-b4d0-44c6-b965-cb70d1a31565,查询WiFi状态,简单,看看WiFi有没有连上,wifi_bluetooth_control,调用wifi_bluetooth_control查询WiFi连接状态
+29e5aa78-6d46-4403-8dd5-7bd0c6c64883,扫描WiFi,简单,帮我搜索一下附近有哪些WiFi网络可以连,wifi_bluetooth_control,调用wifi_bluetooth_control扫描可用WiFi列表
+1af7d89a-14f5-4c1a-86d5-727512499d5d,查询蓝牙状态,简单,蓝牙是开着的吗,wifi_bluetooth_control,调用wifi_bluetooth_control查询蓝牙开关和连接状态
+9289fce3-e144-4996-b723-e95def3d75d7,扫描蓝牙设备,简单,帮我搜索一下附近有什么蓝牙设备,wifi_bluetooth_control,调用wifi_bluetooth_control扫描附近蓝牙设备列表
+07c0eb6c-de00-491c-ab68-d929bf4fc9d2,查看当前壁纸,简单,看看我桌面现在用的什么壁纸,wallpaper_control,调用wallpaper_control查询当前壁纸状态和路径
+75868a1c-73fe-48f6-8f69-633334837e6b,随机换壁纸,简单,帮我随机换一张壁纸,wallpaper_control,调用wallpaper_control随机切换壁纸
+57d38d8b-9b03-4a3c-898d-a3cc90cf2670,查询运行时间,简单,这台电脑开机多久了,power_control,调用power_control查询系统运行时间
+a46ffbbe-7c27-4cd6-af72-3c960a24da05,查询电池,简单,看看电池还剩多少电,power_control,调用power_control查询电池电量和充电状态
+8b36389c-4005-4895-985b-756bbc2f11ac,查询定位服务,简单,系统的定位服务开了没有,system_settings,调用system_settings查询定位服务状态
+8a47052f-b9ad-4c05-be1e-13b0e5cfd050,查看壁纸分类,简单,壁纸库里都有哪些分类,wallpaper_control,调用wallpaper_control获取壁纸库所有分类列表
+433e436e-a3e9-49b4-86a5-c4dc8bd5945a,音量设置并验证,中等,把音量设到30%然后告诉我现在实际是多少,system_control,先调用system_control设置音量30%再查询验证
+49a4d787-483c-4f17-a530-26271ad78422,音量调低并确认,中等,帮我把声音降低20%然后确认一下当前音量,system_control,先调用system_control降低音量再查询确认当前值
+a76de08e-5324-4045-bc75-ad900b653476,静音再取消,中等,帮我测试一下静音功能先静音再取消看有没有问题,system_control,先调用system_control执行mute再执行unmute验证
+5d20537d-ddf5-45f6-af19-2d6842f69bca,静音后查询,中等,帮我把系统静音然后查一下音量状态确认静音生效了,system_control,先调用system_control执行mute再查询status确认静音状态
+1fe094d3-acf7-4e04-a31a-526a6a070a55,亮度设置并确认,中等,屏幕亮度设到70%然后帮我确认一下,system_control,先调用system_control设置亮度70%再查询验证
+857964d9-3c07-4cd5-bdf3-a37544aa99a8,查主题再切换,中等,先看看当前主题是什么然后帮我切到暗色模式,display_control,先调用display_control查询主题状态再切换到dark模式
+5f0b733c-49b9-4e48-b902-de001da5a56d,显示器状态详情,中等,列出所有显示器然后告诉我当前显示配置的详细信息,display_control,先调用display_control list再调用status获取详细配置
+006a660f-5a6a-469d-b3ff-f12d81a083bd,壁纸状态再换下一张,中等,先看看当前壁纸是什么然后帮我切到下一张,wallpaper_control,先调用wallpaper_control查询状态再切换到下一张
+1865f084-1c3d-4608-a4db-ca6173c66d91,壁纸浏览分类,中等,看看壁纸库有哪些分类然后帮我看看自然分类里有什么壁纸,wallpaper_control,先调用wallpaper_control获取分类列表再按分类浏览
+66af0e10-e44a-4675-986a-0ee8a4d43bfb,WiFi和蓝牙状态,中等,帮我同时看看WiFi和蓝牙的状态,wifi_bluetooth_control,分别调用wifi_bluetooth_control查询WiFi状态和蓝牙状态
+cfd46a83-1fcd-465c-9e6c-bdfee68a13fd,WiFi扫描并汇报,中等,扫描一下附近的WiFi然后告诉我当前连的是哪个,wifi_bluetooth_control,先调用wifi_bluetooth_control扫描WiFi再查询当前连接状态
+c6640df8-050e-4fe3-ac7c-7ee728fe75c1,音量加主题切换,中等,帮我把音量调到40%同时切换到暗色模式,system_control + display_control,调用system_control设置音量40%并调用display_control切换暗色主题
+b8d7d497-b0f9-4084-a428-03cc7908def9,系统运行状态汇总,中等,帮我看看电脑运行了多久和电池状态,power_control,调用power_control分别查询系统运行时间和电池状态
+79b63b4e-95a0-4937-ad2e-de965a70f7f2,定时任务测试,中等,帮我测试一下定时任务功能：先设置一个30分钟后的定时关机计划然后立刻取消它看看取消功能正不正常,power_control,调用power_control设置schedule-shutdown再立即调用schedule-cancel取消验证功能
+d632541a-70e4-47d9-8d06-ac7a74ea70db,壁纸随机并查看结果,中等,随机换张壁纸然后告诉我换成了什么,wallpaper_control,调用wallpaper_control随机切换壁纸再查询状态确认
+f62aedee-81ef-4877-888e-64e3c7cddc35,定位服务开关测试,中等,先看看定位服务状态再帮我打开然后关掉测试一下功能是否正常,system_settings,调用system_settings查询状态后开启再关闭定位服务
+43bf12e5-188c-486b-b8b3-558ce2f2fbbf,音量减小再恢复,中等,帮我把音量减小然后再调回来,system_control,先调用system_control查询音量再减小再恢复为原值
+ee9ea3e2-d822-47db-aeed-5b8699c572a9,共享设置查看,中等,看看系统共享设置的状态然后帮我打开共享设置界面,system_settings,调用system_settings查询共享状态再打开设置界面
+b426ec8e-d908-44a0-b5a9-c485a353e6a3,夜间模式,困难,我要睡觉了帮我进入夜间模式：把主题切到暗色、音量调到最小、亮度调低一点,system_control + display_control,调用display_control切暗色模式+system_control音量min+system_control亮度down
+4822002c-95c9-45a2-be3c-e093c9b77e3a,工作模式,困难,帮我切换到工作模式：亮色主题、音量40%、确认WiFi连上了,system_control + display_control + wifi_bluetooth_control,调用display_control切亮色+system_control设音量40%+wifi_bluetooth_control查WiFi状态
+f516f40d-ce86-40dc-a5ec-4b389691b481,网络诊断,困难,帮我做个网络诊断：查看WiFi连接状态、蓝牙状态和系统运行时间,wifi_bluetooth_control + power_control,调用wifi_bluetooth_control查WiFi+蓝牙状态+power_control查运行时间
+c03a16b5-966b-4df3-8a49-0ced933f8210,护眼模式,困难,帮我开启护眼模式：暗色主题、亮度调到30%、音量调低到20%,system_control + display_control,调用display_control切暗色+system_control设亮度30%+system_control设音量20%
+beb44224-ba33-4a91-94e6-0d7455805ac2,系统全面体检,困难,帮我做一个系统状态体检：音量多少、亮度多少、WiFi连了没、蓝牙开了没、电脑运行多久了,system_control + wifi_bluetooth_control + power_control,调用system_control查音量+亮度+wifi_bluetooth_control查WiFi+蓝牙+power_control查运行时间
+a9063abf-d99a-4251-87d4-ccf875bc54b8,演示模式,困难,要给别人演示东西帮我设置：音量最大、亮色主题、换张随机壁纸让桌面好看一点,system_control + display_control + wallpaper_control,调用system_control音量max+display_control切亮色+wallpaper_control随机壁纸
+9e7dca17-84f1-4f8f-a2d8-a98d42c70316,会议模式,困难,马上要开会了帮我准备：系统静音、查看WiFi连接确保网络正常、把主题切到亮色方便投屏,system_control + wifi_bluetooth_control + display_control,调用system_control静音+wifi_bluetooth_control查WiFi状态+display_control切亮色
+a7a4f1e1-4f84-4402-ae58-9ac5c1ede0db,影院模式,困难,我要看电影帮我设置：暗色主题、音量调到80%、换一张随机壁纸,system_control + display_control + wallpaper_control,调用display_control切暗色+system_control设音量80%+wallpaper_control随机壁纸
+c861e578-aed2-4d01-bc60-ccbe579ba7ce,节能模式,困难,帮我进入节能模式：查看电池剩余电量、亮度调到最低、音量调到最低,power_control + system_control,调用power_control查电池+system_control亮度down+system_control音量min
+153358ad-7348-449c-8592-335b255d31a7,环境感知报告,困难,帮我生成一份当前环境报告：WiFi和蓝牙的网络连接情况、当前主题模式、音量设置、系统运行时间,wifi_bluetooth_control + display_control + system_control + power_control,调用wifi_bluetooth_control查WiFi+蓝牙+display_control查主题+system_control查音量+power_control查运行时间
+cba932f1-d786-4dff-84e9-79f8371efc3b,音量设置并恢复测试,困难,帮我测试音量控制：先查当前音量记住然后设到80%确认一下最后恢复原来的值,system_control,调用system_control查询原音量→设80%→查询确认→恢复原值→查询确认
+6e013c60-d5a3-4fed-a89c-c15f6905153b,全面无线诊断,困难,帮我做一次完整的无线设备诊断：扫描所有可用WiFi网络、查看蓝牙设备列表、告诉我当前各自的连接状态,wifi_bluetooth_control,调用wifi_bluetooth_control WiFi scan+WiFi status+bluetooth scan+bluetooth status 完整诊断
