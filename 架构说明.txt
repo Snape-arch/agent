@@ -1,0 +1,449 @@
+ClawOS
+│
+├── User Layer
+│   ├── Natural Language Chat
+│   ├── Voice Interaction
+│   ├── File Upload
+│   ├── Web Input
+│   ├── API Call
+│   └── Other Inputs
+│
+├── Application Layer
+│   ├── Research Assistant
+│   │   ├── Paper Reading
+│   │   ├── Knowledge QA
+│   │   └── Literature Analysis
+│   │
+│   ├── Competition Assistant
+│   │   ├── Problem Analysis
+│   │   ├── Proposal Generation
+│   │   └── PPT Generation
+│   │
+│   ├── Coding Assistant
+│   │   ├── Code Generation
+│   │   ├── Debugging
+│   │   └── Testing
+│   │
+│   ├── Office Assistant
+│   │   ├── Documents
+│   │   ├── PPT
+│   │   └── Meeting Notes
+│   │
+│   └── Personal Growth
+│       ├── Planning
+│       ├── Learning
+│       └── Habit Building
+│
+├── MTClaw Core
+│   │
+│   ├── PlannerAgent
+│   │
+│   ├── ResearchAgent
+│   │
+│   ├── WriterAgent
+│   │
+│   ├── CoderAgent
+│   │
+│   ├── DataAgent
+│   │
+│   ├── ToolAgent
+│   │
+│   ├── ReviewerAgent
+│   │
+│   ├── TaskOrchestrator
+│   │
+│   └── WorkflowEngine
+│
+├── MCP Layer
+│   ├── MCP Tool Registry
+│   ├── MCP Communication
+│   └── MCP Standard Protocol
+│
+├── Tool Layer
+│   │
+│   ├── File System
+│   ├── Web Search
+│   ├── Code Execution
+│   ├── Terminal
+│   ├── Database
+│   ├── Browser Automation
+│   ├── Python Runtime
+│   └── Third Party APIs
+│
+├── MemoryOS
+│   │
+│   ├── ProfileMemory
+│   │   ├── User Profile
+│   │   ├── Interests
+│   │   └── Skills
+│   │
+│   ├── PreferenceMemory
+│   │   ├── Writing Style
+│   │   ├── Tool Preference
+│   │   └── Interaction Style
+│   │
+│   ├── ProjectMemory
+│   │   ├── Project History
+│   │   ├── Goals
+│   │   └── Progress
+│   │
+│   ├── KnowledgeMemory
+│   │   ├── Documents
+│   │   ├── Concepts
+│   │   └── Domain Knowledge
+│   │
+│   ├── ExperienceMemory
+│   │   ├── Success Cases
+│   │   ├── Failure Cases
+│   │   └── Lessons Learned
+│   │
+│   └── SkillMemory
+│       ├── Workflow Skills
+│       ├── Tool Skills
+│       └── Strategy Skills
+│
+├── Memory Infrastructure
+│   ├── VectorDB
+│   ├── SQLDatabase
+│   ├── GraphDatabase
+│   └── Hybrid RAG
+│
+├── Reflection Engine
+│   │
+│   ├── Evaluate
+│   ├── Analyze
+│   ├── Reflect
+│   ├── Improve
+│   └── ReflectionCard
+│
+├── Self-Evolution Engine
+│   │
+│   ├── PolicyOptimization
+│   │   ├── Bandit
+│   │   └── RL Inspired
+│   │
+│   ├── KnowledgeAccumulation
+│   │
+│   └── CapabilityGrowth
+│
+├── Model Layer
+│   │
+│   ├── Qwen3
+│   ├── DeepSeek-R1
+│   ├── InternVL
+│   ├── BGE-M3
+│   ├── Whisper
+│   └── CosyVoice
+│
+└── Infrastructure
+    │
+    ├── MTT AIBOOK
+    ├── MTT S2000 GPU
+    ├── Linux
+    ├── Docker
+    ├── Kubernetes
+    ├── Chroma
+    ├── Milvus
+    ├── PostgreSQL
+    ├── SQLite
+    ├── Redis
+    ├── MinIO
+    └── Nginx
+
+
+
+ReflectionEngine
+│
+├── Triggers
+│   ├── TaskCompleted
+│   ├── MilestoneReached
+│   ├── FailureDetected
+│   ├── UserTriggered
+│   └── ScheduledReflection
+│
+├── Inputs
+│   ├── ExecutionResult
+│   ├── ActionTrajectory
+│   ├── ToolLogs
+│   ├── EnvironmentFeedback
+│   ├── UserFeedback
+│   └── ExternalMetrics
+│
+├── PerceptionLayer
+│   │
+│   ├── TrajectoryCollector
+│   │   ├── CollectActions
+│   │   ├── CollectStateChanges
+│   │   └── CollectKeyEvents
+│   │
+│   ├── ResultParser
+│   │   ├── ParseResult
+│   │   ├── SuccessOrFailure
+│   │   └── MetricExtraction
+│   │
+│   ├── FeedbackAggregator
+│   │   ├── UserFeedback
+│   │   ├── EnvironmentFeedback
+│   │   └── ExternalSignals
+│   │
+│   ├── ContextBuilder
+│   │   ├── TaskHistory
+│   │   ├── RelatedMemories
+│   │   └── KnowledgeLookup
+│   │
+│   └── PerceptionOutput
+│       ├── TaskProfile
+│       ├── KeyEvents
+│       ├── ProblemClues
+│       └── StructuredObservation
+│
+├── ReflectionGenerationLayer
+│   │
+│   ├── RootCauseAnalysis
+│   │   ├── WhySuccess
+│   │   ├── WhyFailure
+│   │   └── DeepCauseDetection
+│   │
+│   ├── InsightExtraction
+│   │   ├── PatternMining
+│   │   ├── RuleDiscovery
+│   │   └── LessonMining
+│   │
+│   ├── ImprovementGeneration
+│   │   ├── StrategySuggestion
+│   │   ├── WorkflowOptimization
+│   │   └── RiskMitigation
+│   │
+│   ├── ReflectionSynthesizer
+│   │   ├── Summary
+│   │   ├── KeyIssues
+│   │   ├── Actions
+│   │   └── ValueScore
+│   │
+│   └── ReflectionOutput
+│
+├── ReflectionMemoryLayer
+│   │
+│   ├── ReflectionCardGenerator
+│   │
+│   ├── StorageAdapter
+│   │
+│   ├── MultiStorageWriter
+│   │   ├── VectorDB
+│   │   ├── SQLDB
+│   │   └── GraphDB
+│   │
+│   ├── ConsistencyManager
+│   │   ├── Deduplication
+│   │   ├── ConflictResolution
+│   │   └── VersionControl
+│   │
+│   └── StorageOutput
+│       ├── ReflectionCards
+│       ├── Indexes
+│       ├── KnowledgeNodes
+│       └── MemoryUpdate
+│
+├── ReflectionApplicationLayer
+│   │
+│   ├── StrategyRecommendation
+│   │   ├── WorkflowSuggestion
+│   │   ├── ToolSuggestion
+│   │   └── OptimizationAdvice
+│   │
+│   ├── PromptOptimization
+│   │   ├── PromptRewrite
+│   │   ├── FewShotGeneration
+│   │   └── ExampleSelection
+│   │
+│   ├── BehaviorGuidance
+│   │   ├── NextAction
+│   │   ├── RiskReminder
+│   │   └── FocusReminder
+│   │
+│   ├── CapabilityEnhancement
+│   │   ├── SkillGapDetection
+│   │   ├── KnowledgeGapDetection
+│   │   └── LearningSuggestion
+│   │
+│   └── ApplicationOutput
+│       ├── Strategy
+│       ├── Prompt
+│       ├── Guidance
+│       └── CapabilityBoost
+│
+├── LearningLoop
+│   │
+│   ├── ExecuteTask
+│   ├── CollectResult
+│   ├── GenerateReflection
+│   ├── StoreExperience
+│   ├── ApplyImprovement
+│   ├── EvaluateEffect
+│   └── Iterate
+│
+├── Outputs
+│   ├── ReflectionCard
+│   ├── ExperienceMemory
+│   ├── ImprovementLibrary
+│   ├── StrategyKnowledgeBase
+│   ├── FailureCaseLibrary
+│   └── CapabilityProfile
+│
+├── Consumers
+│   ├── PlannerAgent
+│   ├── ResearchAgent
+│   ├── WriterAgent
+│   ├── ToolSelector
+│   ├── MemoryOS
+│   └── SelfEvolutionModule
+│
+└── StorageBackends
+    ├── Chroma
+    ├── Milvus
+    ├── Neo4j
+    ├── PostgreSQL
+    ├── SQLite
+    ├── Redis
+    └── RabbitMQ
+
+
+
+
+MemoryOS
+│
+├── Consumers
+│   ├── PlannerAgent
+│   ├── ResearchAgent
+│   ├── WriterAgent
+│   ├── CoderAgent
+│   ├── DataAgent
+│   ├── ToolAgent
+│   ├── ReviewerAgent
+│   └── OtherAgents
+│
+├── CoreServices
+│   ├── IngestionService
+│   ├── ProcessingService
+│   ├── RetrievalService
+│   ├── UpdateService
+│   ├── ManagementService
+│   └── EvaluationService
+│
+├── MemoryTypes
+│   ├── ProfileMemory
+│   │   ├── BasicInfo
+│   │   ├── Interests
+│   │   ├── Skills
+│   │   └── SocialRelations
+│   │
+│   ├── ProjectMemory
+│   │   ├── ProjectInfo
+│   │   ├── Goals
+│   │   ├── Progress
+│   │   └── TeamMembers
+│   │
+│   ├── KnowledgeMemory
+│   │   ├── DomainKnowledge
+│   │   ├── Concepts
+│   │   ├── Methods
+│   │   └── Documents
+│   │
+│   ├── ExperienceMemory
+│   │   ├── SuccessCases
+│   │   ├── FailureCases
+│   │   ├── Solutions
+│   │   └── LessonsLearned
+│   │
+│   ├── ContextMemory
+│   │   ├── ConversationContext
+│   │   ├── TaskContext
+│   │   ├── EnvironmentContext
+│   │   └── TimeContext
+│   │
+│   ├── SkillMemory
+│   │   ├── Workflows
+│   │   ├── ToolUsage
+│   │   ├── CodingSkills
+│   │   ├── AnalysisSkills
+│   │   └── CreativeSkills
+│   │
+│   └── PreferenceMemory
+│       ├── ContentPreference
+│       ├── StylePreference
+│       ├── RiskPreference
+│       ├── ToolPreference
+│       └── CommunicationPreference
+│
+├── MultiModalMemory
+│   ├── TextMemory
+│   ├── ImageMemory
+│   ├── CodeMemory
+│   ├── AudioMemory
+│   ├── TableMemory
+│   └── VideoMemory
+│
+├── StorageLayer
+│   │
+│   ├── StructuredStorage
+│   │   ├── SQLite
+│   │   └── PostgreSQL
+│   │
+│   ├── VectorStorage
+│   │   ├── Chroma
+│   │   ├── Milvus
+│   │   └── Qdrant
+│   │
+│   └── GraphStorage
+│       ├── Neo4j
+│       └── NebulaGraph
+│
+├── IndexLayer
+│   ├── BM25Index
+│   ├── ANNIndex
+│   ├── HybridIndex
+│   ├── GraphIndex
+│   ├── TimeIndex
+│   └── ImportanceIndex
+│
+├── RetrievalFlow
+│   │
+│   ├── QueryExpansion
+│   │
+│   ├── MultiRetrieval
+│   │   ├── KeywordSearch
+│   │   ├── VectorSearch
+│   │   └── GraphSearch
+│   │
+│   ├── Rerank
+│   ├── ContextConstruction
+│   └── ReturnContext
+│
+├── Evaluation
+│   ├── Relevance
+│   ├── Accuracy
+│   ├── Timeliness
+│   ├── Completeness
+│   ├── Importance
+│   └── Diversity
+│
+├── Security
+│   ├── ACL_RBAC
+│   ├── Encryption
+│   ├── PrivacyProtection
+│   ├── AuditLog
+│   ├── Anonymization
+│   └── LocalDeployment
+│
+└── Infrastructure
+    ├── MTT_AIBOOK
+    ├── GPU_CPU
+    ├── Redis
+    ├── RabbitMQ
+    ├── LocalNAS
+    ├── Backup
+    └── Monitoring
+
+
+
+

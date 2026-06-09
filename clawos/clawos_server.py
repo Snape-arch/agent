@@ -150,8 +150,70 @@ async def call_routing_llm(messages: list[dict[str, Any]]) -> dict[str, Any]:
     resp.raise_for_status()
     return resp.json()
 
+
+def has_api_key(section: str = "routing") -> bool:
+    key = str(config.get(section, {}).get("api_key", "") or "")
+    return bool(key and "${" not in key and key != "YOUR_DEEPSEEK_API_KEY")
+
+
+def rule_based_tool(user_text: str) -> tuple[str, dict[str, Any]] | None:
+    """Small offline router for high-confidence local operations."""
+    text = user_text.strip()
+    low = text.lower()
+    if any(k in low for k in ["current time", "what time", "time now"]) or any(k in text for k in ["现在几点", "当前时间", "今天几号"]):
+        return "time_now", {}
+    if low in {"list skills", "show skills", "skill list"} or any(k in text for k in ["列出技能", "查看技能", "技能列表"]):
+        return "skill_list", {}
+    if low in {"memory stats", "memory status"} or any(k in text for k in ["记忆统计", "memoryos统计"]):
+        return "memory_stats", {}
+    m = re.search(r"^set profile:\s*([^=：:]+)\s*[=：:]\s*(.+)$", text, re.I)
+    if m:
+        return "memory_profile_set", {"key": m.group(1).strip(), "value": m.group(2).strip()}
+    m = re.search(r"^set preference:\s*([^=：:]+)\s*[=：:]\s*(.+)$", text, re.I)
+    if m:
+        return "memory_preference_set", {"key": m.group(1).strip(), "value": m.group(2).strip()}
+    m = re.search(r"记住(?:我的)?(.{1,24}?)(?:是|为|:|：)(.+)", text)
+    if m:
+        return "memory_preference_set", {"key": m.group(1).strip(), "value": m.group(2).strip()}
+    return None
+
 async def run_tool_loop(user_text: str, session_id: str = "default") -> dict[str, Any]:
     """Tool detection + execution loop."""
+    # Fast path: known solidified skills should bypass the LLM router.
+    try:
+        from skills.skill_registry import match_skill_by_text
+        matched_skill = match_skill_by_text(user_text)
+        if matched_skill:
+            args = json.dumps({"name": matched_skill["name"], "params": {}}, ensure_ascii=False)
+            result = execute_python_tool("skill_execute", args)
+            return {
+                "used_tools": True,
+                "tool_calls": [{"name": "skill_execute", "arguments": args, "result": result}],
+                "final_text": "",
+                "routing_rounds": 0,
+                "matched_skill": matched_skill["name"],
+            }
+    except Exception as e:
+        logger.debug(f"Skill fast path skipped: {e}")
+
+    rb = rule_based_tool(user_text)
+    if rb:
+        fn_name, fn_args_obj = rb
+        fn_args = json.dumps(fn_args_obj, ensure_ascii=False)
+        result = execute_python_tool(fn_name, fn_args)
+        return {
+            "used_tools": True,
+            "tool_calls": [{"name": fn_name, "arguments": fn_args, "result": result}],
+            "final_text": "",
+            "routing_rounds": 0,
+            "matched_skill": "",
+        }
+
+    if not has_api_key("routing"):
+        lang_zh = bool(re.search(r"[\u4e00-\u9fff]", user_text))
+        text = "当前未配置 DEEPSEEK_API_KEY，复杂自然语言路由暂不可用；你仍可在 MemoryOS 页面维护记忆，或配置本地 OpenAI 兼容模型端点。" if lang_zh else "DEEPSEEK_API_KEY is not configured, so complex natural-language routing is unavailable. You can still manage MemoryOS in the UI or configure a local OpenAI-compatible model endpoint."
+        return {"used_tools": False, "tool_calls": [], "final_text": text, "routing_rounds": 0}
+
     # Use MemoryOS to build messages with context
     if g_context_builder:
         messages = g_context_builder.build_messages(session_id, user_text)
@@ -177,8 +239,8 @@ async def run_tool_loop(user_text: str, session_id: str = "default") -> dict[str
             return {"used_tools": used, "tool_calls": tc_log, "final_text": content, "routing_rounds": ri}
 
         used = True
-        assistant_msg = {"role": "assistant", "content": content}
         tc_msgs = []
+        tool_messages = []
         for tc in tcs:
             fn = tc.get("function", {})
             fn_name = fn.get("name", "")
@@ -188,11 +250,59 @@ async def run_tool_loop(user_text: str, session_id: str = "default") -> dict[str
             logger.info(f"Tool: {fn_name}({fn_args[:150]})")
             result = execute_python_tool(fn_name, fn_args)
             tc_log.append({"name": fn_name, "arguments": fn_args, "result": result})
-            messages.append({"role": "tool", "tool_call_id": tc_id, "name": fn_name, "content": json.dumps(result, ensure_ascii=False)})
+            tool_messages.append({"role": "tool", "tool_call_id": tc_id, "name": fn_name, "content": json.dumps(result, ensure_ascii=False)})
+        assistant_msg = {"role": "assistant", "content": content or "", "tool_calls": tc_msgs}
         assistant_msg["tool_calls"] = tc_msgs
         messages.append(assistant_msg)
+        messages.extend(tool_messages)
 
-    return {"used_tools": True, "tool_calls": tc_log, "final_text": "", "routing_rounds": max_rounds}
+    return {"used_tools": used, "tool_calls": tc_log, "final_text": "", "routing_rounds": max_rounds}
+
+
+def build_openai_response(content: str, model: str | None = None, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build a small OpenAI-compatible chat completion response."""
+    payload = {
+        "id": f"chatcmpl-clawos-{int(time.time() * 1000)}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model or config.get("upstream", {}).get("model", "clawos-agent"),
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": content or ""},
+            "finish_reason": "stop",
+        }],
+    }
+    if extra:
+        payload["clawos"] = extra
+    return payload
+
+
+def extract_assistant_text(resp: JSONResponse) -> str:
+    try:
+        body = json.loads(resp.body)
+        for ch in body.get("choices", []):
+            msg = ch.get("message", {})
+            if msg.get("content"):
+                return str(msg["content"])
+    except Exception:
+        pass
+    return ""
+
+
+def sse_from_text(text: str) -> StreamingResponse:
+    async def gen():
+        chunk = {"choices": [{"delta": {"content": text or ""}}]}
+        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode("utf-8")
+        yield b"data: [DONE]\n\n"
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+async def store_assistant_response(session_id: str, resp: JSONResponse):
+    if not g_memory_store:
+        return
+    text = extract_assistant_text(resp)
+    if text:
+        g_memory_store.add_message(session_id, "assistant", text[:4000])
 
 # ---- UPSTREAM PROXY ----
 async def proxy_upstream(req_data: dict, stream: bool, tool_context: str = "") -> StreamingResponse:
@@ -281,7 +391,15 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "1.0.0", "tools": len(tools_def)}
+    return {
+        "status": "ok",
+        "version": "1.0.0",
+        "tools": len(tools_def),
+        "memory": bool(g_memory_store),
+        "reflection": bool(g_reflection_engine),
+        "routing_model": config.get("routing", {}).get("model", ""),
+        "upstream_model": config.get("upstream", {}).get("model", ""),
+    }
 
 @app.get("/v1/models")
 async def list_models():
@@ -310,35 +428,31 @@ async def chat_completions(request: Request):
 
     if not user_text:
         resp = await proxy_upstream(req_data, stream)
-    if g_memory_store and not stream:
-        try:
-            body = json.loads(resp.body)
-            for ch in body.get("choices", []):
-                m = ch.get("message", {})
-                if m.get("content"):
-                    g_memory_store.add_message(session_id, "assistant", m["content"][:4000])
-        except Exception:
-            pass
-    return resp
+        if isinstance(resp, JSONResponse):
+            await store_assistant_response(session_id, resp)
+        return resp
 
     # --- TOOL ROUTING ---
-    tool_result = await run_tool_loop(user_text, session_id)
-
-    if g_memory_store:
+    if g_context_builder:
+        g_context_builder.ingest_and_store(session_id, "user", user_text)
+    elif g_memory_store:
         g_memory_store.add_message(session_id, "user", user_text)
 
+    tool_result = await run_tool_loop(user_text, session_id)
+
     # Auto-trigger reflection after tool execution
+    reflection_result = None
     if tool_result["used_tools"] and g_reflection_engine:
         try:
             trigger = g_reflection_engine.should_reflect(
                 tool_result["tool_calls"], user_text)
             if trigger:
-                g_reflection_engine.reflect(
+                reflection_result = g_reflection_engine.reflect(
                     trigger, session_id,
                     tool_result["tool_calls"],
                     "", user_text[:100])
-        except Exception:
-            pass  # Don't block main flow
+        except Exception as e:
+            logger.warning(f"Reflection failed: {e}")
 
     if tool_result["used_tools"]:
         tc_lines = ""
@@ -355,24 +469,45 @@ async def chat_completions(request: Request):
             for tc in tool_result["tool_calls"]:
                 g_memory_store.add_message(session_id, "tool", json.dumps(tc.get("result", {}), ensure_ascii=False)[:4000])
 
-        return await proxy_upstream({**req_data, "messages": upstream_msgs}, stream)
-
-    # Also store assistant responses when not using tools (plain chat)
-    if not tool_result["used_tools"] and g_memory_store:
-        # Store user query in memory for context
-        pass
-
-    resp = await proxy_upstream(req_data, stream)
-    if g_memory_store and not stream:
-        try:
+        extra = {
+            "used_tools": True,
+            "tool_calls": tool_result["tool_calls"],
+            "reflection": reflection_result,
+            "routing_rounds": tool_result.get("routing_rounds", 0),
+            "matched_skill": tool_result.get("matched_skill", ""),
+        }
+        if not has_api_key("upstream"):
+            text = "已完成本地工具执行，结果如下：\n" + tc_lines.strip()
+            body = build_openai_response(text, extra=extra)
+            if g_memory_store:
+                g_memory_store.add_message(session_id, "assistant", text[:4000])
+            if stream:
+                return sse_from_text(text)
+            return JSONResponse(body)
+        resp = await proxy_upstream({**req_data, "messages": upstream_msgs}, stream)
+        if isinstance(resp, JSONResponse):
+            text = extract_assistant_text(resp)
             body = json.loads(resp.body)
-            for ch in body.get("choices", []):
-                m = ch.get("message", {})
-                if m.get("content"):
-                    g_memory_store.add_message(session_id, "assistant", m["content"][:4000])
-        except Exception:
-            pass
-    return resp
+            body["clawos"] = extra
+            if g_memory_store and text:
+                g_memory_store.add_message(session_id, "assistant", text[:4000])
+            return JSONResponse(body)
+        return resp
+
+    final_text = tool_result.get("final_text", "")
+    if stream:
+        if g_memory_store and final_text:
+            g_memory_store.add_message(session_id, "assistant", final_text[:4000])
+        return sse_from_text(final_text)
+
+    resp_payload = build_openai_response(final_text, extra={
+        "used_tools": False,
+        "tool_calls": [],
+        "routing_rounds": tool_result.get("routing_rounds", 0),
+    })
+    if g_memory_store and final_text:
+        g_memory_store.add_message(session_id, "assistant", final_text[:4000])
+    return JSONResponse(resp_payload)
 
 # ---- MAIN ----
 
@@ -414,10 +549,68 @@ async def reflection_stats():
 async def memory_stats():
     if g_memory_store:
         try:
-            return JSONResponse(g_memory_store.get_stats())
+            stats = g_memory_store.get_stats()
+            if g_vector_store:
+                stats["vectors"] = g_vector_store.stats().get("vector_count", 0)
+            return JSONResponse(stats)
         except Exception as e:
             raise HTTPException(500, str(e))
     return JSONResponse({"error": "MemoryOS not initialized"}, status_code=503)
+
+@app.get("/api/memory/profiles")
+async def api_memory_profiles():
+    if not g_memory_store:
+        return JSONResponse({"profiles": [], "count": 0}, status_code=503)
+    profiles = g_memory_store.get_all_profiles()
+    return JSONResponse({"profiles": profiles, "count": len(profiles)})
+
+@app.post("/api/memory/profiles")
+async def api_memory_profile_set(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    key = str(data.get("key", "")).strip()
+    value = str(data.get("value", "")).strip()
+    if not key or not value:
+        raise HTTPException(400, "key and value are required")
+    g_memory_store.set_profile(
+        key,
+        value,
+        str(data.get("category", "general") or "general"),
+        float(data.get("importance", 0.7)),
+    )
+    return JSONResponse({"set": True, "key": key, "value": value})
+
+@app.get("/api/memory/preferences")
+async def api_memory_preferences():
+    if not g_memory_store:
+        return JSONResponse({"preferences": [], "count": 0}, status_code=503)
+    prefs = g_memory_store.get_all_preferences()
+    return JSONResponse({"preferences": prefs, "count": len(prefs)})
+
+@app.post("/api/memory/preferences")
+async def api_memory_preference_set(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    key = str(data.get("key", "")).strip()
+    value = str(data.get("value", "")).strip()
+    if not key or not value:
+        raise HTTPException(400, "key and value are required")
+    g_memory_store.set_preference(
+        key,
+        value,
+        str(data.get("category", "general") or "general"),
+        float(data.get("confidence", 0.8)),
+    )
+    return JSONResponse({"set": True, "key": key, "value": value})
+
+@app.get("/api/memory/experiences")
+async def api_memory_experiences(limit: int = 20):
+    if not g_memory_store:
+        return JSONResponse({"experiences": [], "count": 0}, status_code=503)
+    experiences = g_memory_store.get_recent_experiences(min(limit, 100))
+    return JSONResponse({"experiences": experiences, "count": len(experiences)})
 
 @app.get("/api/skills/list")
 async def skills_list():
@@ -426,6 +619,25 @@ async def skills_list():
         return JSONResponse({"skills": list_skills(), "count": len(list_skills())})
     except Exception as e:
         return JSONResponse({"skills": [], "count": 0, "error": str(e)})
+
+@app.get("/api/skills/stats")
+async def skills_stats():
+    if not g_memory_store:
+        return JSONResponse({"records": [], "count": 0})
+    records = g_memory_store.get_skill_stats()
+    return JSONResponse({"records": records, "count": len(records)})
+
+@app.get("/api/tools/list")
+async def api_tools_list():
+    items = []
+    for t in tools_def:
+        fn = t.get("function", {})
+        items.append({
+            "name": fn.get("name", ""),
+            "description": fn.get("description", ""),
+            "parameters": fn.get("parameters", {}),
+        })
+    return JSONResponse({"tools": items, "count": len(items)})
 
 @app.get("/api/memory/context/{session_id}")
 async def memory_context(session_id: str):

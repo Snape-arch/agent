@@ -38,7 +38,7 @@ def _save_registry(skills):
     tmp = REGISTRY_FILE.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         for s in skills.values():
-            f.write(json.dumps(s, ensure_ascii=False) + "\\n")
+            f.write(json.dumps(s, ensure_ascii=False) + "\n")
     os.replace(tmp, REGISTRY_FILE)
     _cache_mtime = time.time()
 
@@ -156,7 +156,7 @@ def _generate_replay_script(skill):
             "    _sys.stdout = _old"]
     lines += ["", "if __name__ == '__main__':", "    main()", ""]
     with open(script_path, "w", encoding="utf-8") as f:
-        f.write("\\n".join(lines))
+        f.write("\n".join(lines))
     return script_path
 
 def _dispatch_tool(tool_name, args):

@@ -125,6 +125,28 @@ class MemoryStore:
                     feedback TEXT DEFAULT '', quality_score REAL DEFAULT 0.5
                 );
             """)
+            self._ensure_columns(c, "experiences", {
+                "solution": "TEXT DEFAULT ''",
+                "tags": "TEXT DEFAULT '[]'",
+                "importance": "REAL DEFAULT 0.5",
+            })
+            self._ensure_columns(c, "knowledge", {
+                "source": "TEXT DEFAULT ''",
+                "tags": "TEXT DEFAULT '[]'",
+                "confidence": "REAL DEFAULT 0.5",
+                "access_count": "INTEGER DEFAULT 0",
+                "updated_at": "TEXT DEFAULT ''",
+            })
+            self._ensure_columns(c, "skill_records", {
+                "feedback": "TEXT DEFAULT ''",
+                "quality_score": "REAL DEFAULT 0.5",
+            })
+
+    def _ensure_columns(self, conn: sqlite3.Connection, table: str, columns: dict[str, str]):
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for name, spec in columns.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {spec}")
 
     # ── PROFILE ──
 
@@ -271,13 +293,19 @@ class MemoryStore:
     def list_sessions(self) -> list[dict]:
         """List all conversation sessions with last message preview."""
         with self._conn() as c:
-            rows = c.execute("""SELECT DISTINCT session_id FROM conversations ORDER BY session_id""").fetchall()
+            rows = c.execute("""
+                SELECT session_id, MAX(id) AS last_id
+                FROM conversations
+                GROUP BY session_id
+                ORDER BY last_id DESC
+            """).fetchall()
             result = []
             for row in rows:
                 sid = row["session_id"]
-                msgs = c.execute("""SELECT content, created_at FROM conversations WHERE session_id=? ORDER BY id DESC LIMIT 1""", (sid,)).fetchone()
+                msgs = c.execute("""SELECT role, content, created_at FROM conversations WHERE session_id=? ORDER BY id DESC LIMIT 1""", (sid,)).fetchone()
                 result.append({
                     "session_id": sid,
+                    "role": (str(dict(msgs).get("role", "")) if msgs else ""),
                     "last_message": (str(dict(msgs).get("content", ""))[:100] if msgs else ""),
                     "updated_at": (str(dict(msgs).get("created_at", "")) if msgs else ""),
                 })
@@ -364,8 +392,20 @@ class MemoryStore:
     def search_all_text(self, query, limit=20):
         results = []
         with self._conn() as c:
-            for tbl in ["knowledge", "experiences"]:
-                rows = c.execute(f"SELECT *, '{tbl}' as _source FROM {tbl} WHERE content LIKE ? OR title LIKE ? OR task LIKE ? LIMIT ?",
-                                 (f"%{query}%", f"%{query}%", f"%{query}%", limit)).fetchall()
-                results.extend(dict(r) for r in rows)
+            rows = c.execute("""
+                SELECT id, title AS title, content AS body, category AS type, 'knowledge' AS _source, created_at
+                FROM knowledge
+                WHERE title LIKE ? OR content LIKE ?
+                LIMIT ?
+            """, (f"%{query}%", f"%{query}%", limit)).fetchall()
+            results.extend(dict(r) for r in rows)
+
+            rows = c.execute("""
+                SELECT id, task AS title, lesson || ' ' || context || ' ' || solution AS body,
+                       outcome AS type, 'experiences' AS _source, created_at
+                FROM experiences
+                WHERE task LIKE ? OR lesson LIKE ? OR context LIKE ? OR solution LIKE ?
+                LIMIT ?
+            """, (f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%", limit)).fetchall()
+            results.extend(dict(r) for r in rows)
         return results
