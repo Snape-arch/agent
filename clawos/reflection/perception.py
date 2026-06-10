@@ -35,7 +35,9 @@ class PerceptionLayer:
                 try: result = json.loads(result)
                 except: pass
             if isinstance(result, dict):
-                if "error" in result:
+                if "ok" in result and not result.get("ok"):
+                    events.append({"type": "tool_error", "tool": tc.get("name", ""), "detail": str(result.get("error", ""))[:200]})
+                elif "ok" not in result and "error" in result:
                     events.append({"type": "tool_error", "tool": tc.get("name", ""), "detail": str(result["error"])[:200]})
                 elif result.get("count", 0) > 0:
                     events.append({"type": "tool_result", "tool": tc.get("name", ""), "count": result.get("count", 1)})
@@ -53,7 +55,12 @@ class PerceptionLayer:
                 try: result = json.loads(result)
                 except: pass
             if isinstance(result, dict):
-                if "error" in result:
+                if "ok" in result:
+                    if result.get("ok"):
+                        successes.append(tc.get("name", "unknown"))
+                    else:
+                        errors.append(tc.get("name", "unknown"))
+                elif "error" in result:
                     errors.append(tc.get("name", "unknown"))
                 else:
                     successes.append(tc.get("name", "unknown"))

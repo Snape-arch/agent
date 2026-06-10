@@ -1,21 +1,25 @@
 """IngestionService - auto-extract memories from conversations."""
-import json, re
+
+import re
+
 
 class IngestionService:
     """Extracts structured memories from raw conversation text."""
 
     PROFILE_PATTERNS = [
-        (r"(?:I am|name is)[ 	]+(?:a|an)?[ 	]*(.+?)(?:[,.]|$)", "role"),
-        (r"(?:research|研究方向|研究)[ 	]+(?:is|是|方向|field)[ 	]*(.+?)(?:[,.]|$)", "research_direction"),
-        (r"(?:skills?|技能|擅长)[ 	]+(?:are|include|有|包括)[ 	]*(.+?)(?:[,.]|$)", "skills"),
-        (r"(?:interests?|兴趣|喜欢)[ 	]+(?:in|是|在)[ 	]*(.+?)(?:[,.]|$)", "interests"),
+        (r"(?:I am|name is|my name is)\s+(?:a|an)?\s*(.+?)(?:[,.。；;]|$)", "role"),
+        (r"(?:我叫|我的名字是|名字是)\s*(.+?)(?:[，,。；;]|$)", "name"),
+        (r"(?:research|研究方向|研究领域|研究)\s*(?:is|是|为|field)?\s*(.+?)(?:[,.，。；;]|$)", "research_direction"),
+        (r"(?:skills?|技能|擅长)\s*(?:are|include|是|包括|有)?\s*(.+?)(?:[,.，。；;]|$)", "skills"),
+        (r"(?:interests?|兴趣|爱好)\s*(?:in|是|为|包括)?\s*(.+?)(?:[,.，。；;]|$)", "interests"),
     ]
 
     PREFERENCE_PATTERNS = [
-        (r"(?:code|代码)[ 	]+(?:style|风格)[ 	]+(?:prefer|偏好|喜欢|like)[ 	]+(.+?)(?:[,.]|$)", "code_style"),
-        (r"(?:ppt|slides?)[ 	]+(?:style|风格)[ 	]+(?:prefer|偏好|喜欢|like)[ 	]+(.+?)(?:[,.]|$)", "ppt_style"),
-        (r"(?:reply|response|回复|回答)[ 	]+(?:style|风格|方式)[ 	]+(?:prefer|偏好|喜欢|like)[ 	]+(.+?)(?:[,.]|$)", "reply_style"),
-        (r"(?:tool|工具)[ 	]+(?:prefer|偏好|喜欢|like)[ 	]+(.+?)(?:[,.]|$)", "tool_preference"),
+        (r"(?:code|代码)\s*(?:style|风格)\s*(?:prefer|偏好|喜欢|like|是|为)?\s*(.+?)(?:[,.，。；;]|$)", "code_style"),
+        (r"(?:ppt|slides?|幻灯片|演示)\s*(?:style|风格)\s*(?:prefer|偏好|喜欢|like|是|为)?\s*(.+?)(?:[,.，。；;]|$)", "ppt_style"),
+        (r"(?:reply|response|回复|回答)\s*(?:style|风格|方式)\s*(?:prefer|偏好|喜欢|like|是|为)?\s*(.+?)(?:[,.，。；;]|$)", "reply_style"),
+        (r"(?:我喜欢|我偏好)\s*(.+?(?:回复|回答|风格|语气|方式).+?)(?:[,.，。；;]|$)", "reply_style"),
+        (r"(?:tool|工具)\s*(?:prefer|偏好|喜欢|like|是|为)?\s*(.+?)(?:[,.，。；;]|$)", "tool_preference"),
     ]
 
     def __init__(self, store):
@@ -28,18 +32,18 @@ class IngestionService:
         for pattern, key in self.PROFILE_PATTERNS:
             m = re.search(pattern, content, re.IGNORECASE)
             if m:
-                v = m.group(1).strip()[:100]
-                cat = "basic_info" if key == "role" else "interests" if key in ("interests","research_direction") else "skills"
-                self._store.set_profile(key, v, cat, importance=0.7)
-                pf.append({"key": key, "value": v})
+                value = m.group(1).strip()[:100]
+                category = "basic_info" if key in ("role", "name") else "interests" if key in ("interests", "research_direction") else "skills"
+                self._store.set_profile(key, value, category, importance=0.7)
+                pf.append({"key": key, "value": value})
         pr = []
         for pattern, key in self.PREFERENCE_PATTERNS:
             m = re.search(pattern, content, re.IGNORECASE)
             if m:
-                v = m.group(1).strip()[:100]
-                cat = "content" if key in ("code_style","ppt_style","reply_style") else "tool"
-                self._store.set_preference(key, v, cat, confidence=0.6)
-                pr.append({"key": key, "value": v})
+                value = m.group(1).strip()[:100]
+                category = "content" if key in ("code_style", "ppt_style", "reply_style") else "tool"
+                self._store.set_preference(key, value, category, confidence=0.6)
+                pr.append({"key": key, "value": value})
         return {"profiles": pf, "preferences": pr}
 
     def extract_knowledge(self, title, content, category="domain"):

@@ -124,6 +124,18 @@ class MemoryStore:
                     avg_duration_ms REAL DEFAULT 0, last_used TEXT DEFAULT '',
                     feedback TEXT DEFAULT '', quality_score REAL DEFAULT 0.5
                 );
+                CREATE TABLE IF NOT EXISTS tool_executions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    tool_name TEXT NOT NULL,
+                    arguments TEXT DEFAULT '{}',
+                    result TEXT DEFAULT '{}',
+                    status TEXT NOT NULL DEFAULT 'success',
+                    duration_ms REAL DEFAULT 0,
+                    requires_confirmation INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_tool_exec_session ON tool_executions(session_id, id);
             """)
             self._ensure_columns(c, "experiences", {
                 "solution": "TEXT DEFAULT ''",
@@ -140,6 +152,13 @@ class MemoryStore:
             self._ensure_columns(c, "skill_records", {
                 "feedback": "TEXT DEFAULT ''",
                 "quality_score": "REAL DEFAULT 0.5",
+            })
+            self._ensure_columns(c, "tool_executions", {
+                "arguments": "TEXT DEFAULT '{}'",
+                "result": "TEXT DEFAULT '{}'",
+                "status": "TEXT NOT NULL DEFAULT 'success'",
+                "duration_ms": "REAL DEFAULT 0",
+                "requires_confirmation": "INTEGER DEFAULT 0",
             })
 
     def _ensure_columns(self, conn: sqlite3.Connection, table: str, columns: dict[str, str]):
@@ -386,6 +405,51 @@ class MemoryStore:
                 row = c.execute("SELECT * FROM skill_records WHERE skill_name=?", (skill_name,)).fetchone()
                 return dict(row) if row else {}
             return [dict(r) for r in c.execute("SELECT * FROM skill_records ORDER BY usage_count DESC").fetchall()]
+
+    def record_tool_execution(self, session_id, tool_name, arguments=None, result=None,
+                              status="success", duration_ms=0, requires_confirmation=False):
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO tool_executions
+                    (session_id, tool_name, arguments, result, status, duration_ms, requires_confirmation)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    tool_name,
+                    json.dumps(arguments or {}, ensure_ascii=False),
+                    json.dumps(result or {}, ensure_ascii=False),
+                    status,
+                    float(duration_ms or 0),
+                    1 if requires_confirmation else 0,
+                ),
+            )
+
+    def list_tool_executions(self, session_id="", limit=50):
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 50), 200))
+            if session_id:
+                rows = c.execute(
+                    "SELECT * FROM tool_executions WHERE session_id=? ORDER BY id DESC LIMIT ?",
+                    (session_id, limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT * FROM tool_executions ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            items = []
+            for row in rows:
+                item = dict(row)
+                for key in ("arguments", "result"):
+                    try:
+                        item[key] = json.loads(item.get(key) or "{}")
+                    except Exception:
+                        item[key] = {}
+                item["requires_confirmation"] = bool(item.get("requires_confirmation"))
+                items.append(item)
+            return items
 
     # ── BULK SEARCH ──
 

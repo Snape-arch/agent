@@ -50,7 +50,10 @@ class ReflectionMemoryWriter:
             if isinstance(result, str):
                 try: result = json.loads(result)
                 except: pass
-            success = isinstance(result, dict) and "error" not in result
+            if isinstance(result, dict) and "ok" in result:
+                success = bool(result.get("ok"))
+            else:
+                success = isinstance(result, dict) and "error" not in result
             self._store.record_skill_usage(tool_name, success)
 
         return card
