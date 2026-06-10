@@ -117,7 +117,10 @@ def match_skill_by_text(user_text):
     for skill in _load_registry().values():
         score = 0
         for kw in skill.get("trigger_keywords", []):
-            if kw.lower() in text_lower: score += len(kw)
+            kw_norm = str(kw).strip().lower()
+            if not kw_norm or set(kw_norm) <= {"?", "？", "�"}:
+                continue
+            if kw_norm in text_lower: score += len(kw_norm)
         if skill.get("display_name", "").lower() in text_lower: score += 20
         if score > best_score: best_score = score; best = skill
     return best

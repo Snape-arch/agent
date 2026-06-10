@@ -111,6 +111,24 @@ def tool_note_list():
     files = [f[:-4] for f in os.listdir(NOTES_DIR) if f.endswith(".txt")]
     print(json.dumps({"notes": files, "count": len(files)}, ensure_ascii=False))
 
+def tool_tools_list():
+    functions_path = os.path.join(BASE_DIR, "functions.jsonl")
+    tools = []
+    try:
+        with open(functions_path, "r", encoding="utf-8-sig") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                obj = json.loads(line)
+                tools.append({
+                    "name": obj.get("name", ""),
+                    "description": obj.get("description", ""),
+                })
+        print(json.dumps({"tools": tools, "count": len(tools)}, ensure_ascii=False))
+    except Exception as e:
+        print(json.dumps({"error": str(e)})); sys.exit(1)
+
 def tool_web_search():
     query = input_data.get("query", "")
     if not query: print(json.dumps({"error": "missing query"})); sys.exit(1)
@@ -696,10 +714,6 @@ def tool_memory_history():
         print(json.dumps({"session_id": session_id, "messages": msgs, "count": len(msgs)}, ensure_ascii=False))
     except Exception as e:
         print(json.dumps({"error": str(e)})); sys.exit(1)
-
-    else:
-        print(json.dumps({"error": f"unknown tool: {tool_name}"}))
-        sys.exit(1)
 REFLECTION_DIR = os.path.join(BASE_DIR, "reflection")
 if REFLECTION_DIR not in sys.path:
     sys.path.insert(0, REFLECTION_DIR)
@@ -796,7 +810,7 @@ handlers = {
     "weather": tool_weather, "time_now": tool_time_now, "calc": tool_calc,
     "todo_list": tool_todo_list, "note_save": tool_note_save,
     "note_read": tool_note_read, "note_list": tool_note_list,
-    "web_search": tool_web_search,
+    "web_search": tool_web_search, "tools_list": tool_tools_list,
     "skill_register": tool_skill_register, "skill_list": tool_skill_list,
     "skill_execute": tool_skill_execute, "skill_delete": tool_skill_delete,
     "file_organize": tool_file_organize, "text_stats": tool_text_stats,

@@ -75,7 +75,14 @@ class ReflectionEngine:
         """Auto-detect if reflection should be triggered."""
         if not tool_calls:
             return None
-        errors = [tc for tc in tool_calls if "error" in str(tc.get("result", {})).lower()]
+        errors = []
+        for tc in tool_calls:
+            result = tc.get("result", {})
+            if isinstance(result, dict) and "ok" in result:
+                if not result.get("ok") and result.get("status") != "needs_confirmation":
+                    errors.append(tc)
+            elif "error" in str(result).lower():
+                errors.append(tc)
         if errors:
             return "failure_detected"
         if len(tool_calls) >= 3:

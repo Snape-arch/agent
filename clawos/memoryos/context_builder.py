@@ -1,6 +1,7 @@
 """ContextBuilder — assembles rich system prompt from MemoryOS data."""
 
 import json
+import os
 from typing import Any
 
 from .memory_store import MemoryStore
@@ -20,7 +21,13 @@ class ContextBuilder:
 
     def build_system_prompt(self, session_id: str) -> str:
         """Construct system prompt enriched with 7 memory types and retrieved knowledge."""
-        parts = ["You are ClawOS, a personal AI agent. Environment: Windows 11, user: 34712, desktop: C:/Users/34712/Desktop. ALWAYS use correct Windows paths. For file_write use desktop path unless user specifies otherwise."]
+        user_profile = os.environ.get("USERPROFILE", "")
+        desktop = os.path.join(user_profile, "Desktop") if user_profile else ""
+        parts = [
+            "You are ClawOS, a personal AI agent. "
+            f"Environment: Windows, user_profile: {user_profile or 'unknown'}, desktop: {desktop or 'unknown'}. "
+            "Always use correct Windows paths. For file_write use the desktop path unless user specifies otherwise."
+        ]
 
         # ── PROFILE ──
         profiles = self._store.get_all_profiles()

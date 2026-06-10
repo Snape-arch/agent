@@ -70,6 +70,13 @@ def load_tools(func_path: Path) -> list[dict[str, Any]]:
 # ---- TOOL EXECUTION ----
 _TOOL_CACHE: dict[str, Any] = {}
 _runner_module = None
+TOOLS_REQUIRING_CONFIRMATION = {
+    "batch_rename",
+    "file_organize",
+    "file_write",
+    "shell_exec",
+    "skill_delete",
+}
 
 def execute_python_tool(name: str, args_str: str) -> dict[str, Any]:
     """Execute a Python tool via the tool_runner module."""
@@ -131,6 +138,75 @@ def execute_python_tool(name: str, args_str: str) -> dict[str, Any]:
             return {"result": output[:2000]}
     return {"result": "ok", "exit_code": exit_code}
 
+
+def _parse_tool_arguments(args_str: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(args_str or "{}")
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _record_tool_execution(session_id: str, envelope: dict[str, Any]):
+    if not g_memory_store:
+        return
+    try:
+        g_memory_store.record_tool_execution(
+            session_id=session_id,
+            tool_name=envelope.get("tool", ""),
+            arguments=envelope.get("arguments", {}),
+            result=envelope,
+            status=envelope.get("status", "unknown"),
+            duration_ms=float(envelope.get("duration_ms", 0) or 0),
+            requires_confirmation=bool(envelope.get("requires_confirmation")),
+        )
+    except Exception as e:
+        if logger:
+            logger.warning(f"Tool execution log failed: {e}")
+
+
+def execute_tool_call(
+    name: str,
+    args_str: str,
+    session_id: str = "default",
+    confirmed_tools: set[str] | None = None,
+) -> dict[str, Any]:
+    """Execute a tool and return a stable envelope for tracing and reflection."""
+    confirmed_tools = confirmed_tools or set()
+    args_obj = _parse_tool_arguments(args_str)
+    requires_confirmation = name in TOOLS_REQUIRING_CONFIRMATION
+    started = time.perf_counter()
+
+    if requires_confirmation and name not in confirmed_tools:
+        envelope = {
+            "ok": False,
+            "status": "needs_confirmation",
+            "tool": name,
+            "arguments": args_obj,
+            "data": None,
+            "error": f"Tool '{name}' requires explicit confirmation before execution.",
+            "duration_ms": 0,
+            "requires_confirmation": True,
+        }
+        _record_tool_execution(session_id, envelope)
+        return envelope
+
+    raw = execute_python_tool(name, args_str)
+    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    ok = not (isinstance(raw, dict) and raw.get("error"))
+    envelope = {
+        "ok": ok,
+        "status": "success" if ok else "error",
+        "tool": name,
+        "arguments": args_obj,
+        "data": raw if ok else None,
+        "error": "" if ok else str(raw.get("error", raw)),
+        "duration_ms": duration_ms,
+        "requires_confirmation": requires_confirmation,
+    }
+    _record_tool_execution(session_id, envelope)
+    return envelope
+
 # ---- LLM ROUTING ----
 async def call_routing_llm(messages: list[dict[str, Any]]) -> dict[str, Any]:
     """Call DeepSeek for tool detection."""
@@ -166,6 +242,14 @@ def rule_based_tool(user_text: str) -> tuple[str, dict[str, Any]] | None:
         return "skill_list", {}
     if low in {"memory stats", "memory status"} or any(k in text for k in ["记忆统计", "memoryos统计"]):
         return "memory_stats", {}
+    if low in {"memory history", "conversation history", "show history"} or any(k in text for k in ["记忆历史", "对话历史", "聊天历史", "查看历史"]):
+        return "memory_history", {}
+    if low in {"profiles", "profile memory", "show profile"} or any(k in text for k in ["查看画像", "用户画像", "我的画像", "个人资料"]):
+        return "memory_profile_get", {}
+    if low in {"preferences", "preference memory", "show preferences"} or any(k in text for k in ["查看偏好", "我的偏好", "偏好设置"]):
+        return "memory_preference_get", {}
+    if low in {"list tools", "show tools", "tool list"} or any(k in text for k in ["列出工具", "查看工具", "工具列表"]):
+        return "tools_list", {}
     m = re.search(r"^set profile:\s*([^=：:]+)\s*[=：:]\s*(.+)$", text, re.I)
     if m:
         return "memory_profile_set", {"key": m.group(1).strip(), "value": m.group(2).strip()}
@@ -177,15 +261,20 @@ def rule_based_tool(user_text: str) -> tuple[str, dict[str, Any]] | None:
         return "memory_preference_set", {"key": m.group(1).strip(), "value": m.group(2).strip()}
     return None
 
-async def run_tool_loop(user_text: str, session_id: str = "default") -> dict[str, Any]:
+async def run_tool_loop(
+    user_text: str,
+    session_id: str = "default",
+    confirmed_tools: set[str] | None = None,
+) -> dict[str, Any]:
     """Tool detection + execution loop."""
+    confirmed_tools = confirmed_tools or set()
     # Fast path: known solidified skills should bypass the LLM router.
     try:
         from skills.skill_registry import match_skill_by_text
         matched_skill = match_skill_by_text(user_text)
         if matched_skill:
             args = json.dumps({"name": matched_skill["name"], "params": {}}, ensure_ascii=False)
-            result = execute_python_tool("skill_execute", args)
+            result = execute_tool_call("skill_execute", args, session_id, confirmed_tools)
             return {
                 "used_tools": True,
                 "tool_calls": [{"name": "skill_execute", "arguments": args, "result": result}],
@@ -200,7 +289,7 @@ async def run_tool_loop(user_text: str, session_id: str = "default") -> dict[str
     if rb:
         fn_name, fn_args_obj = rb
         fn_args = json.dumps(fn_args_obj, ensure_ascii=False)
-        result = execute_python_tool(fn_name, fn_args)
+        result = execute_tool_call(fn_name, fn_args, session_id, confirmed_tools)
         return {
             "used_tools": True,
             "tool_calls": [{"name": fn_name, "arguments": fn_args, "result": result}],
@@ -248,7 +337,7 @@ async def run_tool_loop(user_text: str, session_id: str = "default") -> dict[str
             tc_id = tc.get("id", f"call_{fn_name}_{ri}")
             tc_msgs.append({"id": tc_id, "type": "function", "function": {"name": fn_name, "arguments": fn_args}})
             logger.info(f"Tool: {fn_name}({fn_args[:150]})")
-            result = execute_python_tool(fn_name, fn_args)
+            result = execute_tool_call(fn_name, fn_args, session_id, confirmed_tools)
             tc_log.append({"name": fn_name, "arguments": fn_args, "result": result})
             tool_messages.append({"role": "tool", "tool_call_id": tc_id, "name": fn_name, "content": json.dumps(result, ensure_ascii=False)})
         assistant_msg = {"role": "assistant", "content": content or "", "tool_calls": tc_msgs}
@@ -295,6 +384,15 @@ def sse_from_text(text: str) -> StreamingResponse:
         yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode("utf-8")
         yield b"data: [DONE]\n\n"
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+def _confirmed_tools_from_request(req_data: dict[str, Any]) -> set[str]:
+    value = req_data.get("clawos_confirmed_tools", req_data.get("confirmed_tools", []))
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, list):
+        return {str(item) for item in value}
+    return set()
 
 
 async def store_assistant_response(session_id: str, resp: JSONResponse):
@@ -419,6 +517,7 @@ async def chat_completions(request: Request):
 
     user_text = ""
     session_id = req_data.get("session_id", "default")
+    confirmed_tools = _confirmed_tools_from_request(req_data)
     for m in reversed(messages):
         if m.get("role") == "user" and m.get("content"):
             user_text = str(m["content"])
@@ -438,7 +537,26 @@ async def chat_completions(request: Request):
     elif g_memory_store:
         g_memory_store.add_message(session_id, "user", user_text)
 
-    tool_result = await run_tool_loop(user_text, session_id)
+    tool_result = await run_tool_loop(user_text, session_id, confirmed_tools)
+    confirmation_calls = [
+        tc for tc in tool_result.get("tool_calls", [])
+        if isinstance(tc.get("result"), dict) and tc["result"].get("status") == "needs_confirmation"
+    ]
+    if confirmation_calls:
+        names = ", ".join(tc.get("name", "") for tc in confirmation_calls)
+        text = f"需要你确认后才能执行高风险工具：{names}。确认后请重新发送请求，并在 clawos_confirmed_tools 中包含这些工具名。"
+        extra = {
+            "used_tools": True,
+            "tool_calls": tool_result.get("tool_calls", []),
+            "needs_confirmation": True,
+            "routing_rounds": tool_result.get("routing_rounds", 0),
+            "matched_skill": tool_result.get("matched_skill", ""),
+        }
+        if g_memory_store:
+            g_memory_store.add_message(session_id, "assistant", text[:4000])
+        if stream:
+            return sse_from_text(text)
+        return JSONResponse(build_openai_response(text, extra=extra))
 
     # Auto-trigger reflection after tool execution
     reflection_result = None
@@ -638,6 +756,13 @@ async def api_tools_list():
             "parameters": fn.get("parameters", {}),
         })
     return JSONResponse({"tools": items, "count": len(items)})
+
+@app.get("/api/tools/executions")
+async def api_tool_executions(session_id: str = "", limit: int = 50):
+    if not g_memory_store:
+        return JSONResponse({"executions": [], "count": 0}, status_code=503)
+    rows = g_memory_store.list_tool_executions(session_id, limit)
+    return JSONResponse({"executions": rows, "count": len(rows)})
 
 @app.get("/api/memory/context/{session_id}")
 async def memory_context(session_id: str):
