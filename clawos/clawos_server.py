@@ -10,6 +10,7 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from providers import create_model_provider
 
 # ---- PATHS ----
 BASE_DIR = Path(__file__).parent.resolve()
@@ -40,6 +41,8 @@ config: dict[str, Any] = {}
 tools_def: list[dict[str, Any]] = []
 http_client: httpx.AsyncClient | None = None
 logger: logging.Logger | None = None
+g_routing_provider: Any = None
+g_upstream_provider: Any = None
 
 # ---- CONFIG ----
 def load_config(cfg_path: Path) -> dict[str, Any]:
@@ -52,7 +55,49 @@ def load_config(cfg_path: Path) -> dict[str, Any]:
         if isinstance(v, dict):
             return {k: _sub(vv) for k, vv in v.items()}
         return v
-    return _sub(cfg)
+    return normalize_config(_sub(cfg))
+
+
+def normalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
+    provider_cfg = dict(cfg.get("model_provider") or {})
+    legacy_routing = dict(cfg.get("routing") or {})
+    legacy_upstream = dict(cfg.get("upstream") or {})
+    if not provider_cfg:
+        provider_cfg = {
+            "provider": legacy_routing.get("provider") or legacy_upstream.get("provider") or "deepseek",
+            "base_url": legacy_routing.get("base_url") or legacy_upstream.get("base_url") or "",
+            "model": legacy_routing.get("model") or legacy_upstream.get("model") or "deepseek-chat",
+            "api_key": legacy_routing.get("api_key") or legacy_upstream.get("api_key") or "",
+        }
+    provider_cfg.setdefault("provider", "deepseek")
+    provider_cfg.setdefault("model", "deepseek-chat")
+    provider_cfg.setdefault("base_url", "https://api.deepseek.com/v1")
+    provider_cfg.setdefault("api_key", "")
+    if provider_cfg.get("provider") == "deepseek":
+        if not provider_cfg.get("api_key"):
+            provider_cfg["api_key"] = os.environ.get("DEEPSEEK_API_KEY", "")
+        if provider_cfg.get("model") == "deepseek-chat" and os.environ.get("DEEPSEEK_MODEL"):
+            provider_cfg["model"] = os.environ["DEEPSEEK_MODEL"]
+        if provider_cfg.get("base_url") == "https://api.deepseek.com/v1" and os.environ.get("DEEPSEEK_BASE_URL"):
+            provider_cfg["base_url"] = os.environ["DEEPSEEK_BASE_URL"]
+    cfg["model_provider"] = provider_cfg
+
+    routing_cfg = {**provider_cfg, **legacy_routing}
+    upstream_cfg = {**provider_cfg, **legacy_upstream}
+    cfg["routing"] = routing_cfg
+    cfg["upstream"] = upstream_cfg
+    return cfg
+
+
+def model_provider_status(cfg: dict[str, Any]) -> dict[str, Any]:
+    provider_cfg = cfg.get("model_provider") or cfg.get("upstream") or {}
+    provider = create_model_provider(provider_cfg)
+    is_configured = provider.is_configured() if hasattr(provider, "is_configured") else True
+    return {
+        "provider": getattr(provider, "name", provider_cfg.get("provider", "")),
+        "model": getattr(provider, "model", provider_cfg.get("model", "")),
+        "configured": bool(is_configured),
+    }
 
 def load_tools(func_path: Path) -> list[dict[str, Any]]:
     if not func_path.exists():
@@ -209,25 +254,24 @@ def execute_tool_call(
 
 # ---- LLM ROUTING ----
 async def call_routing_llm(messages: list[dict[str, Any]]) -> dict[str, Any]:
-    """Call DeepSeek for tool detection."""
-    payload = {
-        "model": config["routing"]["model"],
-        "messages": messages,
+    """Call configured model provider for tool detection."""
+    result = await g_routing_provider.complete(
+        messages,
+        {
         "tools": tools_def,
-        "stream": False,
         "temperature": 0.0,
-    }
-    headers = {
-        "Authorization": f"Bearer {config['routing']['api_key']}",
-        "Content-Type": "application/json",
-    }
-    url = f"{config['routing']['base_url'].rstrip('/')}/chat/completions"
-    resp = await http_client.post(url, json=payload, headers=headers, timeout=15.0)
-    resp.raise_for_status()
-    return resp.json()
+        },
+        http_client=http_client,
+    )
+    if not result["ok"]:
+        raise RuntimeError(result["error"])
+    return result["raw"]
 
 
 def has_api_key(section: str = "routing") -> bool:
+    provider = g_routing_provider if section == "routing" else g_upstream_provider
+    if provider and hasattr(provider, "is_configured"):
+        return bool(provider.is_configured())
     key = str(config.get(section, {}).get("api_key", "") or "")
     return bool(key and "${" not in key and key != "YOUR_DEEPSEEK_API_KEY")
 
@@ -402,36 +446,33 @@ async def store_assistant_response(session_id: str, resp: JSONResponse):
     if text:
         g_memory_store.add_message(session_id, "assistant", text[:4000])
 
-# ---- UPSTREAM PROXY ----
-async def proxy_upstream(req_data: dict, stream: bool, tool_context: str = "") -> StreamingResponse:
-    upstream = config["upstream"] if config else {}
-    url = f"{upstream.get('base_url','').rstrip('/')}/chat/completions"
-    headers = {"Authorization": f"Bearer {upstream.get('api_key','')}", "Content-Type": "application/json"}
-    req_data["model"] = upstream.get("model", "deepseek-chat")
-
-    if not stream:
-        try:
-            resp = await http_client.post(url, json=req_data, headers=headers, timeout=120.0)
-            resp.raise_for_status()
-            return JSONResponse(resp.json())
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(e.response.status_code, str(e))
-    else:
-        async def sse_stream():
-            async with http_client.stream("POST", url, json=req_data, headers=headers, timeout=120.0) as resp:
-                if resp.status_code >= 400:
-                    body = await resp.aread()
-                    err = json.dumps({"error": body.decode("utf-8", errors="replace")[:200]})
-                    yield f"data: {err}\n\ndata: [DONE]\n\n".encode()
-                    return
-                async for chunk in resp.aiter_bytes():
-                    yield chunk
-        return StreamingResponse(sse_stream(), media_type="text/event-stream")
+# ---- UPSTREAM MODEL ----
+async def proxy_upstream(req_data: dict, stream: bool, tool_context: str = "") -> JSONResponse:
+    if stream:
+        raise HTTPException(400, "Streaming is not implemented for ModelProvider yet")
+    messages = req_data.get("messages", [])
+    result = await g_upstream_provider.complete(
+        messages,
+        {
+            "temperature": req_data.get("temperature", 0.7),
+            "model": req_data.get("model") or config.get("upstream", {}).get("model"),
+        },
+        http_client=http_client,
+    )
+    if not result["ok"]:
+        return JSONResponse(build_openai_response(
+            f"模型调用失败：{result['error']}",
+            model=result.get("model"),
+            extra={"model_result": result},
+        ))
+    body = build_openai_response(result["content"], model=result["model"], extra={"model_result": result})
+    body["usage"] = result.get("usage", {})
+    return JSONResponse(body)
 
 # ---- LIFESPAN ----
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global config, tools_def, http_client, logger
+    global config, tools_def, http_client, logger, g_routing_provider, g_upstream_provider
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     logger = logging.getLogger("clawos")
     config = load_config(CONFIG_PATH)
@@ -439,6 +480,8 @@ async def lifespan(app: FastAPI):
     func_path = Path(config.get("functions_file", BASE_DIR / "functions.jsonl"))
     tools_def = load_tools(func_path)
     http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
+    g_routing_provider = create_model_provider(config.get("routing", {}))
+    g_upstream_provider = create_model_provider(config.get("upstream", {}))
     NOTES_DIR.mkdir(exist_ok=True)
     # Init MemoryOS
     global g_memory_store, g_context_builder
@@ -463,18 +506,20 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Reflection Engine init skipped: {e}")
         g_reflection_engine = None
 
-    # Validate API key
-    routing_key = config.get("routing", {}).get("api_key", "")
-    if not routing_key or "${" in str(routing_key):
-        logger.error("!!! DEEPSEEK_API_KEY not configured!")
-        logger.error("!!! Set environment variable: set DEEPSEEK_API_KEY=sk-your-key")
-        logger.error("!!! Or edit config.json to include your API key directly")
-    else:
-        logger.info(f"API key configured: {routing_key[:8]}...")
-    
-    logger.info(f"ClawOS ready | routing={config['routing']['model']} upstream={config['upstream']['model']} tools={len(tools_def)}")
-    if config["routing"]["api_key"] == "YOUR_DEEPSEEK_API_KEY":
-        logger.warning("!!! DEEPSEEK_API_KEY not configured! Set env DEEPSEEK_API_KEY or edit config.json")
+    provider_state = model_provider_status(config)
+    if not provider_state["configured"]:
+        logger.warning(
+            "Model provider not fully configured | provider=%s model=%s",
+            provider_state["provider"],
+            provider_state["model"],
+        )
+    logger.info(
+        "ClawOS ready | provider=%s model=%s configured=%s tools=%s",
+        provider_state["provider"],
+        provider_state["model"],
+        provider_state["configured"],
+        len(tools_def),
+    )
     yield
     if http_client:
         await http_client.aclose()
@@ -489,19 +534,22 @@ async def root():
 
 @app.get("/health")
 async def health():
+    provider_state = model_provider_status(config) if config else {"provider": "", "model": "", "configured": False}
     return {
         "status": "ok",
         "version": "1.0.0",
         "tools": len(tools_def),
         "memory": bool(g_memory_store),
         "reflection": bool(g_reflection_engine),
+        "model_provider": provider_state,
         "routing_model": config.get("routing", {}).get("model", ""),
         "upstream_model": config.get("upstream", {}).get("model", ""),
     }
 
 @app.get("/v1/models")
 async def list_models():
-    return JSONResponse({"object":"list","data":[{"id":config.get("upstream",{}).get("model","deepseek-chat"),"object":"model","owned_by":"clawos"}]})
+    provider_state = model_provider_status(config) if config else {"model": "clawos-agent", "provider": "clawos"}
+    return JSONResponse({"object":"list","data":[{"id":provider_state["model"],"object":"model","owned_by":provider_state["provider"]}]})
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
