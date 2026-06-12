@@ -136,6 +136,20 @@ class MemoryStore:
                     created_at TEXT DEFAULT (datetime('now'))
                 );
                 CREATE INDEX IF NOT EXISTS idx_tool_exec_session ON tool_executions(session_id, id);
+                CREATE TABLE IF NOT EXISTS memories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    memory_type TEXT NOT NULL CHECK(memory_type IN ('profile','preference','project','experience','skill')),
+                    category TEXT NOT NULL DEFAULT 'general',
+                    key TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    source TEXT DEFAULT '',
+                    confidence REAL DEFAULT 0.5,
+                    enabled INTEGER DEFAULT 1,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    UNIQUE(memory_type, category, key)
+                );
+                CREATE INDEX IF NOT EXISTS idx_memories_lookup ON memories(memory_type, enabled, updated_at);
             """)
             self._ensure_columns(c, "experiences", {
                 "solution": "TEXT DEFAULT ''",
@@ -160,12 +174,101 @@ class MemoryStore:
                 "duration_ms": "REAL DEFAULT 0",
                 "requires_confirmation": "INTEGER DEFAULT 0",
             })
+            self._ensure_columns(c, "memories", {
+                "source": "TEXT DEFAULT ''",
+                "confidence": "REAL DEFAULT 0.5",
+                "enabled": "INTEGER DEFAULT 1",
+                "updated_at": "TEXT DEFAULT ''",
+            })
 
     def _ensure_columns(self, conn: sqlite3.Connection, table: str, columns: dict[str, str]):
         existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
         for name, spec in columns.items():
             if name not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {spec}")
+
+    def _memory_row_to_dict(self, row) -> dict:
+        item = dict(row)
+        item["enabled"] = bool(item.get("enabled"))
+        item["confidence"] = float(item.get("confidence") or 0)
+        return item
+
+    # ── UNIFIED MEMORIES ──
+
+    def upsert_memory(self, memory_type, key, value, category="general", source="", confidence=0.5, enabled=True):
+        memory_type = str(memory_type or "").strip().lower()
+        if memory_type not in {"profile", "preference", "project", "experience", "skill"}:
+            raise ValueError(f"Invalid memory_type: {memory_type}")
+        key = str(key or "").strip()
+        value = str(value or "").strip()
+        if not key or not value:
+            raise ValueError("key and value are required")
+        with self._conn() as c:
+            c.execute("""
+                INSERT INTO memories (memory_type, category, key, value, source, confidence, enabled, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(memory_type, category, key) DO UPDATE SET
+                    value = excluded.value,
+                    source = excluded.source,
+                    confidence = excluded.confidence,
+                    enabled = excluded.enabled,
+                    updated_at = datetime('now')
+            """, (memory_type, category, key, value, source, float(confidence), 1 if enabled else 0))
+            row = c.execute(
+                "SELECT * FROM memories WHERE memory_type=? AND category=? AND key=?",
+                (memory_type, category, key),
+            ).fetchone()
+            return self._memory_row_to_dict(row)
+
+    def list_memories(self, memory_type="", include_disabled=False, limit=200):
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 200), 500))
+            clauses = []
+            params = []
+            if memory_type:
+                clauses.append("memory_type=?")
+                params.append(str(memory_type))
+            if not include_disabled:
+                clauses.append("enabled=1")
+            where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+            rows = c.execute(
+                f"SELECT * FROM memories{where} ORDER BY updated_at DESC, id DESC LIMIT ?",
+                (*params, limit),
+            ).fetchall()
+            return [self._memory_row_to_dict(r) for r in rows]
+
+    def get_memory(self, memory_id):
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM memories WHERE id=?", (int(memory_id),)).fetchone()
+            return self._memory_row_to_dict(row) if row else None
+
+    def set_memory_enabled(self, memory_id, enabled):
+        with self._conn() as c:
+            c.execute(
+                "UPDATE memories SET enabled=?, updated_at=datetime('now') WHERE id=?",
+                (1 if enabled else 0, int(memory_id)),
+            )
+            row = c.execute("SELECT * FROM memories WHERE id=?", (int(memory_id),)).fetchone()
+            return self._memory_row_to_dict(row) if row else None
+
+    def search_memories(self, query, memory_type="", limit=20, include_disabled=False):
+        query = str(query or "").strip()
+        if not query:
+            return []
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 20), 100))
+            clauses = ["(key LIKE ? OR value LIKE ? OR category LIKE ? OR source LIKE ?)"]
+            params = [f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%"]
+            if memory_type:
+                clauses.append("memory_type=?")
+                params.append(str(memory_type))
+            if not include_disabled:
+                clauses.append("enabled=1")
+            rows = c.execute(
+                f"SELECT * FROM memories WHERE {' AND '.join(clauses)} ORDER BY confidence DESC, updated_at DESC LIMIT ?",
+                (*params, limit),
+            ).fetchall()
+            return [self._memory_row_to_dict(r) for r in rows]
 
     # ── PROFILE ──
 
@@ -179,6 +282,7 @@ class MemoryStore:
                     importance = excluded.importance,
                     updated_at = datetime('now')
             """, (category, key, value, importance))
+        self.upsert_memory("profile", key, value, category, "profile_ingestion", importance)
 
     def get_profile(self, key: str, category: str = "general") -> dict | None:
         with self._conn() as c:
@@ -204,6 +308,7 @@ class MemoryStore:
                     confidence = excluded.confidence,
                     updated_at = datetime('now')
             """, (category, key, value, confidence))
+        self.upsert_memory("preference", key, value, category, "preference_ingestion", confidence)
 
     def get_preference(self, key: str, category: str = "general") -> dict | None:
         with self._conn() as c:
@@ -338,6 +443,7 @@ class MemoryStore:
                 "conversations": c.execute("SELECT COUNT(*) FROM conversations").fetchone()[0],
                 "projects": c.execute("SELECT COUNT(*) FROM projects").fetchone()[0],
                 "experiences": c.execute("SELECT COUNT(*) FROM experiences").fetchone()[0],
+                "memories": c.execute("SELECT COUNT(*) FROM memories").fetchone()[0],
             }
     # ── KNOWLEDGE ──
 
