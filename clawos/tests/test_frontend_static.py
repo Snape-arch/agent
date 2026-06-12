@@ -26,6 +26,16 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("confirmPending", html)
         self.assertIn("toolExecTable", html)
 
+    def test_workspace_exposes_unified_memory_management(self):
+        html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("/api/memory/items", html)
+        self.assertIn("Project", html)
+        self.assertIn("Experience", html)
+        self.assertIn("Skill", html)
+        self.assertIn("toggleMemory", html)
+        self.assertIn("memoryTable", html)
+
 
 if __name__ == "__main__":
     unittest.main()

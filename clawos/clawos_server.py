@@ -439,6 +439,43 @@ def _confirmed_tools_from_request(req_data: dict[str, Any]) -> set[str]:
     return set()
 
 
+def save_memory_item(data: dict[str, Any]) -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    memory_type = str(data.get("memory_type", "") or data.get("type", "")).strip()
+    key = str(data.get("key", "") or data.get("title", "")).strip()
+    value = str(data.get("value", "") or data.get("content", "")).strip()
+    if not memory_type or not key or not value:
+        raise HTTPException(400, "memory_type, key, and value are required")
+    try:
+        return g_memory_store.upsert_memory(
+            memory_type=memory_type,
+            key=key,
+            value=value,
+            category=str(data.get("category", "general") or "general"),
+            source=str(data.get("source", "manual") or "manual"),
+            confidence=float(data.get("confidence", 0.7)),
+            enabled=bool(data.get("enabled", True)),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+def list_memory_items(memory_type: str = "", include_disabled: bool = False, limit: int = 200) -> list[dict[str, Any]]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    return g_memory_store.list_memories(memory_type, include_disabled, limit)
+
+
+def set_memory_item_enabled(memory_id: int, enabled: bool) -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    item = g_memory_store.set_memory_enabled(memory_id, enabled)
+    if not item:
+        raise HTTPException(404, "Memory item not found")
+    return item
+
+
 async def store_assistant_response(session_id: str, resp: JSONResponse):
     if not g_memory_store:
         return
@@ -722,6 +759,30 @@ async def memory_stats():
         except Exception as e:
             raise HTTPException(500, str(e))
     return JSONResponse({"error": "MemoryOS not initialized"}, status_code=503)
+
+@app.get("/api/memory/items")
+async def api_memory_items(memory_type: str = "", include_disabled: bool = False, limit: int = 200):
+    rows = list_memory_items(memory_type, include_disabled, limit)
+    return JSONResponse({"items": rows, "count": len(rows)})
+
+@app.post("/api/memory/items")
+async def api_memory_item_save(request: Request):
+    data = await request.json()
+    item = save_memory_item(data)
+    return JSONResponse({"item": item, "saved": True})
+
+@app.post("/api/memory/items/{memory_id}/enabled")
+async def api_memory_item_enabled(memory_id: int, request: Request):
+    data = await request.json()
+    item = set_memory_item_enabled(memory_id, bool(data.get("enabled", True)))
+    return JSONResponse({"item": item, "updated": True})
+
+@app.get("/api/memory/items/search")
+async def api_memory_items_search(q: str = "", memory_type: str = "", include_disabled: bool = False, limit: int = 20):
+    if not g_memory_store:
+        return JSONResponse({"items": [], "count": 0}, status_code=503)
+    rows = g_memory_store.search_memories(q, memory_type, limit, include_disabled)
+    return JSONResponse({"items": rows, "count": len(rows)})
 
 @app.get("/api/memory/profiles")
 async def api_memory_profiles():

@@ -29,6 +29,18 @@ class ContextBuilder:
             "Always use correct Windows paths. For file_write use the desktop path unless user specifies otherwise."
         ]
 
+        memories = self._store.list_memories(include_disabled=False, limit=20)
+        if memories:
+            by_type = {}
+            for item in memories:
+                by_type.setdefault(item.get("memory_type", "memory"), []).append(item)
+            lines = []
+            for memory_type in ("profile", "preference", "project", "experience", "skill"):
+                for item in by_type.get(memory_type, [])[:5]:
+                    lines.append(f"  [{memory_type}] {item.get('key','')}: {item.get('value','')}")
+            if lines:
+                parts.append("Long-term MemoryOS records:\n" + "\n".join(lines))
+
         # ── PROFILE ──
         profiles = self._store.get_all_profiles()
         if profiles:
