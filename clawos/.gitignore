@@ -8,6 +8,8 @@ build/
 
 # ClawOS runtime files
 *.db
+*.db-shm
+*.db-wal
 *.log
 .deps_installed
 clawos_todo.json
