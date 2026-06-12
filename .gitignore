@@ -1,0 +1,16 @@
+# Local CLI/tooling artifacts
+tools/
+gh-install.log
+gh_*.msi
+gh_*.zip
+
+# Runtime logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# OS/editor noise
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
