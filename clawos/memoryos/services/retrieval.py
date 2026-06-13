@@ -60,14 +60,24 @@ class RetrievalService:
         self._vector_store = vector_store
 
     def _ensure_bm25(self):
-        if self._bm25_populated:
-            return
+        self._bm25 = BM25Index()
         items = self._store.list_knowledge()
         for item in items:
             self._bm25.add(item.get("id", ""), item.get("title", "") + " " + item.get("content", ""))
         exps = self._store.get_recent_experiences(50)
         for exp in exps:
             self._bm25.add(f"exp_{exp.get('id','')}", exp.get("task", "") + " " + exp.get("lesson", ""))
+        memories = self._store.list_memories(include_disabled=False, limit=500)
+        for memory in memories:
+            self._bm25.add(
+                f"mem_{memory.get('id', '')}",
+                " ".join([
+                    memory.get("memory_type", ""),
+                    memory.get("category", ""),
+                    memory.get("key", ""),
+                    memory.get("value", ""),
+                ]),
+            )
         self._bm25_populated = True
 
     def retrieve(self, query, top_k=10, strategy="hybrid"):
@@ -90,7 +100,7 @@ class RetrievalService:
         if self._vector_store:
             vs = self._vector_store.search(query, top_k)
             for r in vs:
-                results.append({"source": "vector", "id": r["id"], "title": "",
+                results.append({"source": "vector", "id": r["id"], "title": r.get("metadata", {}).get("title", ""),
                               "content": r["text"], "score": r["score"], "strategy": "vector"})
 
         # Re-rank: deduplicate and normalize scores

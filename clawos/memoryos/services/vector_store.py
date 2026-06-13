@@ -12,6 +12,7 @@ import math
 import re
 import sqlite3
 import threading
+import hashlib
 from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
@@ -47,7 +48,8 @@ class VectorStore:
         for n in range(2, 5):
             for i in range(len(text) - n + 1):
                 gram = text[i:i + n]
-                idx = abs(hash(gram)) % self.dim
+                digest = hashlib.blake2b(gram.encode("utf-8"), digest_size=8).digest()
+                idx = int.from_bytes(digest, "little") % self.dim
                 vec[idx] += 1.0
         norm = np.linalg.norm(vec)
         if norm > 0:
@@ -158,7 +160,7 @@ class MemoryVectorStore:
             ).fetchall()
             for row in rows:
                 doc_id = f"exp_{row['id']}"
-                text = f"{row['task']} {row['lesson']} {row.get('context', '')} {row.get('solution', '')}"
+                text = f"{row['task']} {row['lesson']} {row['context']} {row['solution']}"
                 self._store.add(doc_id, text, {
                     "type": "experience",
                     "outcome": row["outcome"],
@@ -174,12 +176,30 @@ class MemoryVectorStore:
                 self._store.add(doc_id, text, {
                     "type": "knowledge",
                     "category": row["category"],
-                    "source": row.get("source", ""),
+                    "source": row["source"],
                     "title": row["title"],
                 })
+            rows = conn.execute(
+                """
+                SELECT id, memory_type, category, key, value, source, confidence
+                FROM memories
+                WHERE enabled=1
+                ORDER BY id
+                """
+            ).fetchall()
+            for row in rows:
+                doc_id = f"mem_{row['id']}"
+                text = f"{row['memory_type']} {row['category']} {row['key']} {row['value']}"
+                self._store.add(doc_id, text, {
+                    "type": row["memory_type"],
+                    "category": row["category"],
+                    "source": row["source"],
+                    "title": row["key"],
+                    "confidence": row["confidence"],
+                })
             conn.close()
-        except Exception:
-            pass
+        except sqlite3.Error:
+            return
 
     def add_experience(self, exp_id: int, task: str, lesson: str = "",
                        context: str = "", solution: str = "", outcome: str = "partial"):
@@ -234,4 +254,6 @@ class MemoryVectorStore:
                                 if r.get("metadata", {}).get("type") == "experience"]),
             "knowledge": len([r for r in self._store.list_all()
                               if r.get("metadata", {}).get("type") == "knowledge"]),
+            "memories": len([r for r in self._store.list_all()
+                             if r.get("id", "").startswith("mem_")]),
         }

@@ -43,7 +43,7 @@ def _save_registry(skills):
     _cache_mtime = time.time()
 
 def _sanitize_name(raw):
-    name = re.sub(r"[^a-zA-Z0-9_\\u4e00-\\u9fff]+", "_", raw.strip().lower())[:MAX_SKILL_NAME_LEN]
+    name = re.sub(r"[^a-zA-Z0-9_\u4e00-\u9fff]+", "_", raw.strip().lower())[:MAX_SKILL_NAME_LEN]
     return name.strip("_") or "unnamed_skill"
 
 def _now_iso():
@@ -51,8 +51,9 @@ def _now_iso():
 
 def register_skill(name, description, steps, trigger_keywords=None, tags=None, category="general"):
     safe_name = _sanitize_name(name)
-    if len(steps) > MAX_STEPS: return {"error": f"Too many steps"}
-    if len(steps) == 0: return {"error": "Skill must have steps"}
+    validation = validate_skill_steps(steps)
+    if validation["errors"]:
+        return {"error": "Invalid skill steps", "validation": validation}
     skills = _load_registry()
     now = _now_iso()
     existing = skills.get(safe_name)
@@ -87,19 +88,37 @@ def execute_skill(name, params=None):
         args = deepcopy(step.get("args", {}))
         for k, v in params.items():
             if k in args: args[k] = v
-        args = _resolve_refs(args, step_outputs)
+        args = _resolve_refs(args, step_outputs, params)
+        unresolved = _find_unresolved_refs(args)
+        if unresolved:
+            return {
+                "ok": False,
+                "skill": name,
+                "failed_step": i,
+                "error": f"Unresolved references: {', '.join(unresolved)}",
+                "outputs": outputs,
+            }
         t0 = time.perf_counter()
         result = _dispatch_tool(tool_name, args)
         elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
         step_outputs[f"step_{i}"] = result
         outputs.append({"step": i, "tool": tool_name, "result": result, "elapsed_ms": elapsed_ms})
+        if isinstance(result, dict) and result.get("error"):
+            return {
+                "ok": False,
+                "skill": name,
+                "failed_step": i,
+                "error": str(result.get("error")),
+                "outputs": outputs,
+                "total_elapsed_ms": round(sum(o["elapsed_ms"] for o in outputs), 2),
+            }
     skill["use_count"] = skill.get("use_count", 0) + 1
     skill["last_used"] = _now_iso()
     skills = _load_registry()
     skills[skill["name"]] = skill
     _save_registry(skills)
     total_ms = round(sum(o["elapsed_ms"] for o in outputs), 2)
-    return {"skill": name, "steps": len(outputs), "outputs": outputs, "total_elapsed_ms": total_ms}
+    return {"ok": True, "skill": name, "steps": len(outputs), "outputs": outputs, "total_elapsed_ms": total_ms}
 
 def delete_skill(name):
     safe_name = _sanitize_name(name)
@@ -126,38 +145,30 @@ def match_skill_by_text(user_text):
     return best
 
 def _generate_replay_script(skill):
-    """Generate replay script, resolving refs at generation time."""
+    """Generate a standalone entry point that reuses the validated skill runtime."""
     script_path = SKILLS_DIR / f"skill_{skill['name']}.py"
-    prev_outputs = {}
-    for i, step in enumerate(skill["steps"]):
-        step_args = deepcopy(step.get("args", {}))
-        resolved = _resolve_refs(step_args, prev_outputs)
-        prev_outputs[f"step_{i}"] = dict(resolved, result="ok")
     lines = [
         "#!/usr/bin/env python3",
         f"# Auto-generated replay script for: {skill['display_name']}",
         f"# Generated: {_now_iso()}",
-        "import json, sys, os",
-        'sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))',
-        "from tool_runner import handlers", "", "def main():",
+        "import json",
+        "import sys",
+        "from pathlib import Path",
+        "sys.path.insert(0, str(Path(__file__).resolve().parent))",
+        "from skill_registry import execute_skill",
+        "",
+        "def main():",
         "    params = {}",
         "    if len(sys.argv) > 1:",
-        '        try: params = json.loads(sys.argv[1])',
-        "        except: pass"]
-    for i, step in enumerate(skill["steps"]):
-        tool = step.get("tool", "")
-        resolved = _resolve_refs(deepcopy(step.get("args", {})), prev_outputs)
-        sargs = json.dumps(resolved, ensure_ascii=False)
-        lines += [
-            f"    # Step {i}: {tool}",
-            "    import io, sys as _sys", "    _old = _sys.stdout",
-            "    _sys.stdout = io.StringIO()", "    import tool_runner",
-            f"    tool_runner.input_data = json.loads({sargs!r})",
-            f"    tool_runner.tool_name = {tool!r}",
-            f"    handlers[{tool!r}]()",
-            "    print(f'[Step {i}]', _sys.stdout.getvalue().strip())",
-            "    _sys.stdout = _old"]
-    lines += ["", "if __name__ == '__main__':", "    main()", ""]
+        "        params = json.loads(sys.argv[1])",
+        f"    result = execute_skill({skill['name']!r}, params)",
+        "    print(json.dumps(result, ensure_ascii=False, indent=2))",
+        "    return 0 if result.get('ok') else 1",
+        "",
+        "if __name__ == '__main__':",
+        "    raise SystemExit(main())",
+        "",
+    ]
     with open(script_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     return script_path
@@ -189,15 +200,66 @@ def _dispatch_tool(tool_name, args):
     except Exception as e: return {"error": str(e)}
     finally: sys.stdout = old
 
-def _resolve_refs(args, step_outputs):
-    resolved = {}
-    ref_pattern = re.compile(r"^\$step_(\d+)\.(\w+)$")
-    for key, value in args.items():
-        if isinstance(value, str) and value.startswith("$"):
-            m = ref_pattern.match(value)
-            if m:
-                step_result = step_outputs.get(f"step_{m.group(1)}", {})
-                resolved[key] = step_result.get(m.group(2), value)
-            else: resolved[key] = value
-        else: resolved[key] = value
-    return resolved
+def _resolve_refs(value, step_outputs, params=None):
+    params = params or {}
+    if isinstance(value, dict):
+        return {k: _resolve_refs(v, step_outputs, params) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_resolve_refs(v, step_outputs, params) for v in value]
+    if not isinstance(value, str) or not value.startswith("$"):
+        return value
+    param_match = re.fullmatch(r"\$param\.(\w+)", value)
+    if param_match:
+        return params.get(param_match.group(1), value)
+    step_match = re.fullmatch(r"\$step_(\d+)\.(\w+)", value)
+    if step_match:
+        step_result = step_outputs.get(f"step_{step_match.group(1)}", {})
+        return step_result.get(step_match.group(2), value)
+    return value
+
+
+def _find_unresolved_refs(value):
+    if isinstance(value, dict):
+        return [ref for item in value.values() for ref in _find_unresolved_refs(item)]
+    if isinstance(value, list):
+        return [ref for item in value for ref in _find_unresolved_refs(item)]
+    if isinstance(value, str) and value.startswith("$"):
+        return [value]
+    return []
+
+
+def _available_tools():
+    functions_file = SKILLS_DIR.parent / "functions.jsonl"
+    names = set()
+    if functions_file.exists():
+        with open(functions_file, "r", encoding="utf-8-sig") as f:
+            for line in f:
+                if line.strip():
+                    names.add(json.loads(line).get("name", ""))
+    return names
+
+
+def validate_skill_steps(steps):
+    errors = []
+    warnings = []
+    if not isinstance(steps, list) or not steps:
+        return {"errors": ["Skill must have at least one step"], "warnings": []}
+    if len(steps) > MAX_STEPS:
+        errors.append(f"Skill exceeds maximum of {MAX_STEPS} steps")
+    available = _available_tools()
+    for i, step in enumerate(steps[:MAX_STEPS]):
+        if not isinstance(step, dict):
+            errors.append(f"Step {i} must be an object")
+            continue
+        tool = str(step.get("tool", "")).strip()
+        args = step.get("args", {})
+        if not tool:
+            errors.append(f"Step {i} is missing tool")
+        elif tool not in available:
+            errors.append(f"Step {i} references unknown tool: {tool}")
+        if not isinstance(args, dict):
+            errors.append(f"Step {i} args must be an object")
+        for ref in _find_unresolved_refs(args):
+            if not re.fullmatch(r"\$(?:param\.\w+|step_\d+\.\w+)", ref):
+                warnings.append(f"Step {i} has unsupported reference: {ref}")
+    return {"errors": errors, "warnings": warnings}

@@ -10,6 +10,16 @@ class PerceptionLayer:
 
     def collect(self, session_id, tool_logs=None, task_description=""):
         """Collect execution trajectory from tool logs and conversation history."""
+        if not tool_logs:
+            stored_logs = self._store.list_tool_executions(session_id, limit=12)
+            tool_logs = [
+                {
+                    "name": item.get("tool_name", ""),
+                    "arguments": item.get("arguments", {}),
+                    "result": item.get("result", {}),
+                }
+                for item in reversed(stored_logs)
+            ]
         trajectory = {
             "session_id": session_id,
             "task_description": task_description,
@@ -96,8 +106,8 @@ class PerceptionLayer:
         signals = {"user_sentiment": "neutral", "error_signals": [], "success_signals": []}
         # Simple sentiment detection
         if user_text:
-            positive = ["good", "great", "thanks", "perfect", "?", "??", "??", "??"]
-            negative = ["wrong", "error", "bad", "not working", "??", "??", "??", "???"]
+            positive = ["good", "great", "thanks", "perfect", "很好", "正确", "满意", "谢谢"]
+            negative = ["wrong", "error", "bad", "not working", "错误", "失败", "不对", "不满意"]
             for w in positive:
                 if w.lower() in user_text.lower():
                     signals["user_sentiment"] = "positive"

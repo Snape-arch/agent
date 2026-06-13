@@ -20,12 +20,13 @@ SCRIPTS_DIR = BASE_DIR / "scripts"
 NOTES_DIR = BASE_DIR / "notes"
 TODO_FILE = BASE_DIR / "clawos_todo.json"
 
-MEMORY_DB = BASE_DIR / "memoryos.db"
+MEMORY_DB = Path(os.environ.get("CLAWOS_MEMORY_DB", str(BASE_DIR / "memoryos.db"))).expanduser().resolve()
 
 g_memory_store: Any = None
 g_reflection_engine: Any = None
 g_context_builder: Any = None
 g_vector_store: MemoryVectorStore | None = None
+g_mtclaw_adapter: Any = None
 
 SYSTEM_PROMPT = (
     "You are ClawOS, a personal AI assistant. Use the provided tools to "
@@ -319,13 +320,16 @@ async def run_tool_loop(
         if matched_skill:
             args = json.dumps({"name": matched_skill["name"], "params": {}}, ensure_ascii=False)
             result = execute_tool_call("skill_execute", args, session_id, confirmed_tools)
-            return {
-                "used_tools": True,
-                "tool_calls": [{"name": "skill_execute", "arguments": args, "result": result}],
-                "final_text": "",
-                "routing_rounds": 0,
-                "matched_skill": matched_skill["name"],
-            }
+            if result.get("ok"):
+                return {
+                    "used_tools": True,
+                    "tool_calls": [{"name": "skill_execute", "arguments": args, "result": result}],
+                    "final_text": "",
+                    "routing_rounds": 0,
+                    "matched_skill": matched_skill["name"],
+                }
+            if logger:
+                logger.info("Skill fast path needs parameters or failed: %s", matched_skill["name"])
     except Exception as e:
         logger.debug(f"Skill fast path skipped: {e}")
 
@@ -448,7 +452,7 @@ def save_memory_item(data: dict[str, Any]) -> dict[str, Any]:
     if not memory_type or not key or not value:
         raise HTTPException(400, "memory_type, key, and value are required")
     try:
-        return g_memory_store.upsert_memory(
+        item = g_memory_store.upsert_memory(
             memory_type=memory_type,
             key=key,
             value=value,
@@ -457,6 +461,9 @@ def save_memory_item(data: dict[str, Any]) -> dict[str, Any]:
             confidence=float(data.get("confidence", 0.7)),
             enabled=bool(data.get("enabled", True)),
         )
+        if g_vector_store:
+            g_vector_store.refresh()
+        return item
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -473,6 +480,8 @@ def set_memory_item_enabled(memory_id: int, enabled: bool) -> dict[str, Any]:
     item = g_memory_store.set_memory_enabled(memory_id, enabled)
     if not item:
         raise HTTPException(404, "Memory item not found")
+    if g_vector_store:
+        g_vector_store.refresh()
     return item
 
 
@@ -519,18 +528,21 @@ async def lifespan(app: FastAPI):
     http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
     g_routing_provider = create_model_provider(config.get("routing", {}))
     g_upstream_provider = create_model_provider(config.get("upstream", {}))
+    global g_mtclaw_adapter
+    from mtclaw import MTClawAdapter
+    g_mtclaw_adapter = MTClawAdapter(config.get("mtclaw", {}), http_client=http_client)
     NOTES_DIR.mkdir(exist_ok=True)
     # Init MemoryOS
-    global g_memory_store, g_context_builder
+    global g_memory_store, g_context_builder, g_vector_store
     from memoryos.memory_store import MemoryStore
     from memoryos.context_builder import ContextBuilder
     from memoryos.services.vector_store import MemoryVectorStore
     g_memory_store = MemoryStore(str(MEMORY_DB))
-    g_context_builder = ContextBuilder(g_memory_store)
-    
-    # Init VectorStore for semantic memory search
+
+    # Init VectorStore before ContextBuilder so retrieval uses the same live index.
     g_vector_store = MemoryVectorStore(str(MEMORY_DB))
     g_vector_store.refresh()  # Load existing data
+    g_context_builder = ContextBuilder(g_memory_store, g_vector_store)
     logger.info(f"VectorStore initialized | dim=256 docs={g_vector_store.stats().get('vector_count', 0)}")
     logger.info(f"MemoryOS initialized | db={MEMORY_DB}")
     
@@ -551,11 +563,12 @@ async def lifespan(app: FastAPI):
             provider_state["model"],
         )
     logger.info(
-        "ClawOS ready | provider=%s model=%s configured=%s tools=%s",
+        "ClawOS ready | provider=%s model=%s configured=%s tools=%s mtclaw=%s",
         provider_state["provider"],
         provider_state["model"],
         provider_state["configured"],
         len(tools_def),
+        g_mtclaw_adapter.enabled,
     )
     yield
     if http_client:
@@ -572,6 +585,11 @@ async def root():
 @app.get("/health")
 async def health():
     provider_state = model_provider_status(config) if config else {"provider": "", "model": "", "configured": False}
+    mtclaw_state = (
+        await g_mtclaw_adapter.health()
+        if g_mtclaw_adapter
+        else {"enabled": False, "reachable": False, "status": "not_initialized"}
+    )
     return {
         "status": "ok",
         "version": "1.0.0",
@@ -581,6 +599,7 @@ async def health():
         "model_provider": provider_state,
         "routing_model": config.get("routing", {}).get("model", ""),
         "upstream_model": config.get("upstream", {}).get("model", ""),
+        "mtclaw": mtclaw_state,
     }
 
 @app.get("/v1/models")
@@ -622,6 +641,54 @@ async def chat_completions(request: Request):
     elif g_memory_store:
         g_memory_store.add_message(session_id, "user", user_text)
 
+    if g_mtclaw_adapter and g_mtclaw_adapter.enabled and not stream:
+        mtclaw_messages = (
+            g_context_builder.build_messages(session_id, user_text)
+            if g_context_builder
+            else messages
+        )
+        mtclaw_result = await g_mtclaw_adapter.route(
+            mtclaw_messages,
+            session_id,
+            {"temperature": req_data.get("temperature", 0.0)},
+        )
+        if g_memory_store:
+            g_memory_store.record_mtclaw_trace(
+                session_id=session_id,
+                route_status="success" if mtclaw_result["ok"] else "fallback",
+                provider_url=g_mtclaw_adapter.base_url,
+                model=mtclaw_result.get("model", ""),
+                duration_ms=mtclaw_result.get("duration_ms", 0),
+                tool_history=mtclaw_result.get("trace", []),
+                error=mtclaw_result.get("error", ""),
+            )
+        if mtclaw_result["ok"]:
+            trace = mtclaw_result.get("trace", [])
+            text = mtclaw_result.get("content", "")
+            if g_memory_store and text:
+                g_memory_store.add_message(session_id, "assistant", text[:4000])
+            raw = mtclaw_result.get("raw") or build_openai_response(text)
+            raw["clawos"] = {
+                "mtclaw": {
+                    "used": True,
+                    "provider": g_mtclaw_adapter.base_url,
+                    "duration_ms": mtclaw_result.get("duration_ms", 0),
+                    "trace": trace,
+                },
+                "used_tools": bool(trace),
+                "tool_calls": [
+                    {
+                        "name": item.get("function_name", ""),
+                        "arguments": item.get("tool_input", {}),
+                        "result": item.get("tool_result", {}),
+                    }
+                    for item in trace
+                ],
+            }
+            return JSONResponse(raw)
+        if not g_mtclaw_adapter.fallback_on_error:
+            raise HTTPException(503, f"MTClaw unavailable: {mtclaw_result['error']}")
+
     tool_result = await run_tool_loop(user_text, session_id, confirmed_tools)
     confirmation_calls = [
         tc for tc in tool_result.get("tool_calls", [])
@@ -654,6 +721,8 @@ async def chat_completions(request: Request):
                     trigger, session_id,
                     tool_result["tool_calls"],
                     "", user_text[:100])
+                if g_vector_store:
+                    g_vector_store.refresh()
         except Exception as e:
             logger.warning(f"Reflection failed: {e}")
 
@@ -727,6 +796,8 @@ async def trigger_reflection(request: Request):
     task = req_data.get("task", "Manual reflection")
     fb = req_data.get("feedback", "")
     result = g_reflection_engine.reflect("user_triggered", sid, [], fb, task)
+    if g_vector_store:
+        g_vector_store.refresh()
     return JSONResponse(result)
 
 @app.get("/api/reflection/list")
@@ -806,6 +877,8 @@ async def api_memory_profile_set(request: Request):
         str(data.get("category", "general") or "general"),
         float(data.get("importance", 0.7)),
     )
+    if g_vector_store:
+        g_vector_store.refresh()
     return JSONResponse({"set": True, "key": key, "value": value})
 
 @app.get("/api/memory/preferences")
@@ -830,6 +903,8 @@ async def api_memory_preference_set(request: Request):
         str(data.get("category", "general") or "general"),
         float(data.get("confidence", 0.8)),
     )
+    if g_vector_store:
+        g_vector_store.refresh()
     return JSONResponse({"set": True, "key": key, "value": value})
 
 @app.get("/api/memory/experiences")
@@ -872,6 +947,13 @@ async def api_tool_executions(session_id: str = "", limit: int = 50):
         return JSONResponse({"executions": [], "count": 0}, status_code=503)
     rows = g_memory_store.list_tool_executions(session_id, limit)
     return JSONResponse({"executions": rows, "count": len(rows)})
+
+@app.get("/api/mtclaw/traces")
+async def api_mtclaw_traces(session_id: str = "", limit: int = 50):
+    if not g_memory_store:
+        return JSONResponse({"traces": [], "count": 0}, status_code=503)
+    rows = g_memory_store.list_mtclaw_traces(session_id, limit)
+    return JSONResponse({"traces": rows, "count": len(rows)})
 
 @app.get("/api/memory/context/{session_id}")
 async def memory_context(session_id: str):

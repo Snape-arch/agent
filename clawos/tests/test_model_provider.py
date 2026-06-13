@@ -151,6 +151,36 @@ class ModelProviderTests(unittest.TestCase):
         self.assertIn("network_error", body)
         self.assertIn("model_result", body)
 
+    def test_reflection_analyzer_uses_configured_model(self):
+        import tempfile
+        from memoryos.memory_store import MemoryStore
+        from reflection.analyzer import ReflectionAnalyzer
+
+        response = FakeResponse({
+            "choices": [{
+                "message": {
+                    "content": '```json\n{"root_cause":"none","insights":["ok"],"improvements":[],"patterns":[]}\n```'
+                }
+            }]
+        })
+        client = FakeHttpClient(response)
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            analyzer = ReflectionAnalyzer(
+                store,
+                client,
+                {"base_url": "http://local/v1", "model": "local-qwen", "api_key": "local"},
+            )
+            result = asyncio.run(analyzer.analyze_with_llm(
+                {"tool_calls": [], "key_events": []},
+                {"outcome": "success", "reason": "ok", "errors": []},
+                "demo",
+                "task_completed",
+            ))
+
+        self.assertEqual(client.calls[0]["json"]["model"], "local-qwen")
+        self.assertEqual(result["root_cause"], "none")
+
 
 if __name__ == "__main__":
     unittest.main()

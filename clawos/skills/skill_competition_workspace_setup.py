@@ -1,1 +1,19 @@
-#!/usr/bin/env python3\n# Auto-generated replay script for: Competition Workspace Setup\n# Generated: 2026-06-08T14:19:20Z\nimport json, sys, os\nsys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))\nfrom tool_runner import handlers\n\ndef main():\n    params = {}\n    if len(sys.argv) > 1:\n        try: params = json.loads(sys.argv[1])\n        except: pass\n    # Step 0: project_init\n    import io, sys as _sys\n    _old = _sys.stdout\n    _sys.stdout = io.StringIO()\n    import tool_runner\n    tool_runner.input_data = json.loads('{"name": "competition_proj", "type": "competition"}')\n    tool_runner.tool_name = 'project_init'\n    handlers['project_init']()\n    print(f'[Step {i}]', _sys.stdout.getvalue().strip())\n    _sys.stdout = _old\n    # Step 1: ls\n    import io, sys as _sys\n    _old = _sys.stdout\n    _sys.stdout = io.StringIO()\n    import tool_runner\n    tool_runner.input_data = json.loads('{"recursive": false}')\n    tool_runner.tool_name = 'ls'\n    handlers['ls']()\n    print(f'[Step {i}]', _sys.stdout.getvalue().strip())\n    _sys.stdout = _old\n\nif __name__ == '__main__':\n    main()\n
+#!/usr/bin/env python3
+# Auto-generated replay script for: Competition Workspace Setup
+# Generated: 2026-06-13T14:14:24Z
+import json
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from skill_registry import execute_skill
+
+def main():
+    params = {}
+    if len(sys.argv) > 1:
+        params = json.loads(sys.argv[1])
+    result = execute_skill('competition_workspace_setup', params)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result.get('ok') else 1
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -8,6 +8,14 @@ gh_*.zip
 *.log
 *.tmp
 *.temp
+.env
+.env.*
+!.env.example
+config.local.json
+*.db
+*.db-wal
+*.db-shm
+clawos/mtclaw_runtime/
 
 # OS/editor noise
 Thumbs.db

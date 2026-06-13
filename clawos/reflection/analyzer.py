@@ -1,5 +1,6 @@
 """ReflectionAnalyzer - root cause analysis and insight extraction."""
 import json
+import re
 
 class ReflectionAnalyzer:
     """Analyzes task outcomes to extract root causes, insights, and improvements."""
@@ -28,7 +29,7 @@ class ReflectionAnalyzer:
         prompt = self._build_analysis_prompt(trajectory, outcome, task_description)
         try:
             payload = {
-                "model": "deepseek-chat",
+                "model": self._config.get("model", "deepseek-chat"),
                 "messages": [
                     {"role": "system", "content": "You are a task analysis expert. Analyze the execution trajectory and provide root cause analysis, actionable insights, and improvement suggestions. Reply in JSON format with keys: root_cause, insights (array), improvements (array), patterns (array)."},
                     {"role": "user", "content": prompt}
@@ -45,7 +46,17 @@ class ReflectionAnalyzer:
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
             try:
-                return json.loads(content)
+                cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)
+                parsed = json.loads(cleaned)
+                if not isinstance(parsed, dict):
+                    raise json.JSONDecodeError("Expected object", cleaned, 0)
+                return {
+                    "root_cause": str(parsed.get("root_cause", "")),
+                    "insights": list(parsed.get("insights") or []),
+                    "improvements": list(parsed.get("improvements") or []),
+                    "patterns": list(parsed.get("patterns") or []),
+                    "trigger": trigger,
+                }
             except json.JSONDecodeError:
                 # Fallback: parse text
                 return {"root_cause": content[:500], "insights": [], "improvements": [], "patterns": []}

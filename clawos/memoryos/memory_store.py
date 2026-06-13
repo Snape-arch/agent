@@ -136,6 +136,18 @@ class MemoryStore:
                     created_at TEXT DEFAULT (datetime('now'))
                 );
                 CREATE INDEX IF NOT EXISTS idx_tool_exec_session ON tool_executions(session_id, id);
+                CREATE TABLE IF NOT EXISTS mtclaw_traces (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    route_status TEXT NOT NULL,
+                    provider_url TEXT DEFAULT '',
+                    model TEXT DEFAULT '',
+                    duration_ms REAL DEFAULT 0,
+                    tool_history TEXT DEFAULT '[]',
+                    error TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_mtclaw_trace_session ON mtclaw_traces(session_id, id);
                 CREATE TABLE IF NOT EXISTS memories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     memory_type TEXT NOT NULL CHECK(memory_type IN ('profile','preference','project','experience','skill')),
@@ -400,10 +412,20 @@ class MemoryStore:
 
     def add_experience(self, task, outcome, lesson="", context="", solution="", tags=None, importance=0.5):
         with self._conn() as c:
-            c.execute(
+            cursor = c.execute(
                 "INSERT INTO experiences (task,outcome,lesson,context,solution,tags,importance) VALUES (?,?,?,?,?,?,?)",
                 (task, outcome, lesson, context, solution, json.dumps(tags or []), importance)
             )
+            experience_id = int(cursor.lastrowid)
+        self.upsert_memory(
+            "experience",
+            f"reflection:{experience_id}",
+            lesson or solution or task,
+            category=outcome,
+            source="reflection_engine",
+            confidence=importance,
+        )
+        return experience_id
 
     def get_recent_experiences(self, limit: int = 20) -> list[dict]:
         with self._conn() as c:
@@ -444,6 +466,9 @@ class MemoryStore:
                 "projects": c.execute("SELECT COUNT(*) FROM projects").fetchone()[0],
                 "experiences": c.execute("SELECT COUNT(*) FROM experiences").fetchone()[0],
                 "memories": c.execute("SELECT COUNT(*) FROM memories").fetchone()[0],
+                "context_snapshots": c.execute("SELECT COUNT(*) FROM context_snapshots").fetchone()[0],
+                "tool_executions": c.execute("SELECT COUNT(*) FROM tool_executions").fetchone()[0],
+                "mtclaw_traces": c.execute("SELECT COUNT(*) FROM mtclaw_traces").fetchone()[0],
             }
     # ── KNOWLEDGE ──
 
@@ -554,6 +579,50 @@ class MemoryStore:
                     except Exception:
                         item[key] = {}
                 item["requires_confirmation"] = bool(item.get("requires_confirmation"))
+                items.append(item)
+            return items
+
+    def record_mtclaw_trace(self, session_id, route_status, provider_url="", model="",
+                            duration_ms=0, tool_history=None, error=""):
+        with self._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO mtclaw_traces
+                    (session_id, route_status, provider_url, model, duration_ms, tool_history, error)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    route_status,
+                    provider_url,
+                    model,
+                    float(duration_ms or 0),
+                    json.dumps(tool_history or [], ensure_ascii=False),
+                    error,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def list_mtclaw_traces(self, session_id="", limit=50):
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 50), 200))
+            if session_id:
+                rows = c.execute(
+                    "SELECT * FROM mtclaw_traces WHERE session_id=? ORDER BY id DESC LIMIT ?",
+                    (session_id, limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT * FROM mtclaw_traces ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            items = []
+            for row in rows:
+                item = dict(row)
+                try:
+                    item["tool_history"] = json.loads(item.get("tool_history") or "[]")
+                except json.JSONDecodeError:
+                    item["tool_history"] = []
                 items.append(item)
             return items
 

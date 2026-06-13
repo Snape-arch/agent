@@ -87,6 +87,6 @@ class ReflectionEngine:
             return "failure_detected"
         if len(tool_calls) >= 3:
             return "task_completed"
-        if user_text and any(kw in user_text.lower() for kw in ["reflect", "review", "summarize", "??", "??"]):
+        if user_text and any(kw in user_text.lower() for kw in ["reflect", "review", "summarize", "反思", "复盘", "总结"]):
             return "user_triggered"
         return None

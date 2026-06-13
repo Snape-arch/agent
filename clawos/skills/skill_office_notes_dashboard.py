@@ -1,1 +1,19 @@
-#!/usr/bin/env python3\n# Auto-generated replay script for: Office Notes Dashboard\n# Generated: 2026-06-08T14:19:20Z\nimport json, sys, os\nsys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))\nfrom tool_runner import handlers\n\ndef main():\n    params = {}\n    if len(sys.argv) > 1:\n        try: params = json.loads(sys.argv[1])\n        except: pass\n    # Step 0: meeting_template\n    import io, sys as _sys\n    _old = _sys.stdout\n    _sys.stdout = io.StringIO()\n    import tool_runner\n    tool_runner.input_data = json.loads('{"title": "Weekly Review", "date": "2026-06-08"}')\n    tool_runner.tool_name = 'meeting_template'\n    handlers['meeting_template']()\n    print(f'[Step {i}]', _sys.stdout.getvalue().strip())\n    _sys.stdout = _old\n    # Step 1: note_list\n    import io, sys as _sys\n    _old = _sys.stdout\n    _sys.stdout = io.StringIO()\n    import tool_runner\n    tool_runner.input_data = json.loads('{}')\n    tool_runner.tool_name = 'note_list'\n    handlers['note_list']()\n    print(f'[Step {i}]', _sys.stdout.getvalue().strip())\n    _sys.stdout = _old\n    # Step 2: todo_list\n    import io, sys as _sys\n    _old = _sys.stdout\n    _sys.stdout = io.StringIO()\n    import tool_runner\n    tool_runner.input_data = json.loads('{"action": "read"}')\n    tool_runner.tool_name = 'todo_list'\n    handlers['todo_list']()\n    print(f'[Step {i}]', _sys.stdout.getvalue().strip())\n    _sys.stdout = _old\n\nif __name__ == '__main__':\n    main()\n
+#!/usr/bin/env python3
+# Auto-generated replay script for: Office Notes Dashboard
+# Generated: 2026-06-13T14:14:24Z
+import json
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from skill_registry import execute_skill
+
+def main():
+    params = {}
+    if len(sys.argv) > 1:
+        params = json.loads(sys.argv[1])
+    result = execute_skill('office_notes_dashboard', params)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result.get('ok') else 1
+
+if __name__ == '__main__':
+    raise SystemExit(main())

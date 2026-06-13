@@ -7,6 +7,12 @@ BASE_DIR = os.path.dirname(SCRIPT_DIR)
 TODO_FILE = os.path.join(BASE_DIR, "clawos_todo.json")
 NOTES_DIR = os.path.join(BASE_DIR, "notes")
 
+
+def _memory_db_path():
+    return os.path.abspath(os.path.expanduser(
+        os.environ.get("CLAWOS_MEMORY_DB", os.path.join(BASE_DIR, "memoryos.db"))
+    ))
+
 tool_name = os.path.splitext(os.path.basename(__file__))[0]
 input_data = {}
 
@@ -636,7 +642,7 @@ def tool_memory_profile_set():
     if not key: print(json.dumps({"error": "key required"})); sys.exit(1)
     try:
         from memoryos.memory_store import MemoryStore
-        store = MemoryStore(os.path.join(BASE_DIR, "memoryos.db"))
+        store = MemoryStore(_memory_db_path())
         store.set_profile(key, value, category, importance=input_data.get("importance", 0.5))
         print(json.dumps({"set": True, "key": key, "value": value, "category": category}, ensure_ascii=False))
     except Exception as e:
@@ -648,7 +654,7 @@ def tool_memory_profile_get():
     key = input_data.get("key", ""); category = input_data.get("category", "general")
     try:
         from memoryos.memory_store import MemoryStore
-        store = MemoryStore(os.path.join(BASE_DIR, "memoryos.db"))
+        store = MemoryStore(_memory_db_path())
         if key:
             result = store.get_profile(key, category)
             print(json.dumps(result or {"not_found": key}, ensure_ascii=False))
@@ -666,7 +672,7 @@ def tool_memory_preference_set():
     if not key: print(json.dumps({"error": "key required"})); sys.exit(1)
     try:
         from memoryos.memory_store import MemoryStore
-        store = MemoryStore(os.path.join(BASE_DIR, "memoryos.db"))
+        store = MemoryStore(_memory_db_path())
         store.set_preference(key, value, category, confidence=input_data.get("confidence", 0.7))
         print(json.dumps({"set": True, "key": key, "value": value, "category": category}, ensure_ascii=False))
     except Exception as e:
@@ -678,7 +684,7 @@ def tool_memory_preference_get():
     key = input_data.get("key", ""); category = input_data.get("category", "general")
     try:
         from memoryos.memory_store import MemoryStore
-        store = MemoryStore(os.path.join(BASE_DIR, "memoryos.db"))
+        store = MemoryStore(_memory_db_path())
         if key:
             result = store.get_preference(key, category)
             print(json.dumps(result or {"not_found": key}, ensure_ascii=False))
@@ -693,7 +699,7 @@ def tool_memory_stats():
     """Get MemoryOS statistics."""
     try:
         from memoryos.memory_store import MemoryStore
-        store = MemoryStore(os.path.join(BASE_DIR, "memoryos.db"))
+        store = MemoryStore(_memory_db_path())
         stats = store.get_stats()
         print(json.dumps(stats, ensure_ascii=False))
     except Exception as e:
@@ -706,7 +712,7 @@ def tool_memory_history():
     limit = input_data.get("limit", 10)
     try:
         from memoryos.memory_store import MemoryStore
-        store = MemoryStore(os.path.join(BASE_DIR, "memoryos.db"))
+        store = MemoryStore(_memory_db_path())
         msgs = store.get_recent_messages(session_id, limit)
         # Truncate content for readability
         for m in msgs:
@@ -727,7 +733,7 @@ def tool_reflection_trigger():
     try:
         from reflection.engine import ReflectionEngine
         from memoryos.memory_store import MemoryStore
-        store = MemoryStore(os.path.join(BASE_DIR, "memoryos.db"))
+        store = MemoryStore(_memory_db_path())
         engine = ReflectionEngine(store)
         result = engine.reflect("user_triggered", session_id, [], feedback, task)
         print(json.dumps({"reflection": result, "status": "completed"}, ensure_ascii=False))
@@ -742,7 +748,7 @@ def tool_reflection_list():
     try:
         from reflection.memory_writer import ReflectionMemoryWriter
         from memoryos.memory_store import MemoryStore
-        store = MemoryStore(os.path.join(BASE_DIR, "memoryos.db"))
+        store = MemoryStore(_memory_db_path())
         writer = ReflectionMemoryWriter(store)
         cards = writer.get_reflection_cards(limit)
         print(json.dumps({"reflection_cards": cards, "count": len(cards)}, ensure_ascii=False))

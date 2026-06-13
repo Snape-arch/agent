@@ -13,10 +13,10 @@ from .services.evaluation import EvaluationService
 class ContextBuilder:
     """Build contextual system prompt from full MemoryOS pipeline."""
 
-    def __init__(self, store: MemoryStore):
+    def __init__(self, store: MemoryStore, vector_store=None):
         self._store = store
         self._ingestion = IngestionService(store)
-        self._retrieval = RetrievalService(store)
+        self._retrieval = RetrievalService(store, vector_store)
         self._evaluation = EvaluationService(store)
 
     def build_system_prompt(self, session_id: str) -> str:
@@ -119,10 +119,19 @@ class ContextBuilder:
         system = self.build_system_prompt(session_id)
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
 
+        retrieved = self._retrieval.retrieve_for_context(user_text)
+        if retrieved:
+            messages.append({
+                "role": "system",
+                "content": retrieved + "\nUse only relevant records. Ignore stale or unrelated memory.",
+            })
+
         # Inject conversation history
         history = self._store.get_recent_messages(session_id, max_history * 2)
         history = [m for m in history if m["role"] in ("user", "assistant")]
         history = history[-(max_history - 1):]
+        if history and history[-1]["role"] == "user" and history[-1].get("content", "") == user_text:
+            history = history[:-1]
         for m in history:
             messages.append({"role": m["role"], "content": m.get("content", "")[:4000]})
 

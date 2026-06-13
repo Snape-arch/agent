@@ -8,6 +8,13 @@
     "api_key": "${MODEL_API_KEY:-}",
     "timeout_s": 120.0
   },
+  "mtclaw": {
+    "enabled": "${MTCLAW_ENABLED:-false}",
+    "base_url": "${MTCLAW_BASE_URL:-http://127.0.0.1:18791}",
+    "model": "function-router",
+    "timeout_s": 120.0,
+    "fallback_on_error": "${MTCLAW_FALLBACK_ON_ERROR:-true}"
+  },
   "routing": {
     "temperature": 0.0
   },

@@ -131,6 +131,22 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertEqual(rows[0]["arguments"]["x"], 1)
         self.assertTrue(rows[0]["result"]["ok"])
 
+    def test_reflection_collects_persisted_tool_trajectory(self):
+        from memoryos.memory_store import MemoryStore
+        from reflection.perception import PerceptionLayer
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            store.record_tool_execution(
+                session_id="s1",
+                tool_name="time_now",
+                result={"ok": True, "status": "success", "data": {"time": "10:00"}},
+            )
+            trajectory = PerceptionLayer(store).collect("s1", tool_logs=[])
+
+        self.assertEqual(len(trajectory["tool_calls"]), 1)
+        self.assertEqual(trajectory["tool_calls"][0]["name"], "time_now")
+
 
 if __name__ == "__main__":
     unittest.main()

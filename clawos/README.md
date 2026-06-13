@@ -38,6 +38,29 @@ set DEEPSEEK_API_KEY=sk-your-api-key-here
 | DEEPSEEK_API_KEY | DeepSeek API 密钥 | **必填** |
 | DEEPSEEK_BASE_URL | API 端点地址 | https://api.deepseek.com/v1 |
 | DEEPSEEK_MODEL | 模型名称 | deepseek-chat |
+| CLAWOS_MEMORY_DB | MemoryOS SQLite 数据库路径 | clawos/memoryos.db |
+
+真实模型联调可运行：
+
+```powershell
+$env:MODEL_API_KEY="your-key"
+python scripts/provider_smoke.py
+```
+
+该脚本覆盖基础对话、Function Calling 和 Reflection JSON，不会输出 API Key。
+
+## MTClaw 比赛模式
+
+ClawOS 已通过 OpenAI-compatible Provider 契约真实接入本地 MTClaw Function Router。
+MTT AIBOOK Linux 环境可运行：
+
+```bash
+export MODEL_API_KEY="your-key"
+bash scripts/start_mtclaw_stack.sh
+```
+
+完整代码证据、Trace 验证和低风险工具清单见
+[`MTCLAW_INTEGRATION.md`](MTCLAW_INTEGRATION.md)。
 
 > 如果使用本地模型（如 Qwen-7B + vLLM），可将 DEEPSEEK_BASE_URL 指向本地端点。
 

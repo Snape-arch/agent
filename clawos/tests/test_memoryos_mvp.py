@@ -117,6 +117,33 @@ class MemoryOSMvpTests(unittest.TestCase):
         self.assertIn("\u667a\u80fd\u4f53\u7cfb\u7edf", values["research_direction"])
         self.assertIn("\u7b80\u6d01\u76f4\u63a5", values["reply_style"])
 
+    def test_vector_store_indexes_unified_memories_and_context_retrieves_them(self):
+        from memoryos.context_builder import ContextBuilder
+        from memoryos.memory_store import MemoryStore
+        from memoryos.services.vector_store import MemoryVectorStore
+
+        with tempfile.TemporaryDirectory() as td:
+            db_path = str(Path(td) / "memory.db")
+            store = MemoryStore(db_path)
+            store.upsert_memory(
+                "project",
+                "deployment_target",
+                "ClawOS must run offline on MTT AIBOOK",
+                source="plan",
+                confidence=0.95,
+            )
+            vectors = MemoryVectorStore(db_path)
+            vectors.refresh()
+            results = vectors.search("MTT AIBOOK offline", top_k=5, min_score=0.0)
+            messages = ContextBuilder(store, vectors).build_messages(
+                "s1",
+                "What is the offline deployment target?",
+                max_history=4,
+            )
+
+        self.assertTrue(any(r["id"].startswith("mem_") for r in results))
+        self.assertTrue(any("MTT AIBOOK" in m["content"] for m in messages if m["role"] == "system"))
+
 
 if __name__ == "__main__":
     unittest.main()
