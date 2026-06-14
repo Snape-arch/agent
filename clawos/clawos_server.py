@@ -232,17 +232,33 @@ def _record_tool_execution(session_id: str, envelope: dict[str, Any]):
             logger.warning(f"Tool execution log failed: {e}")
 
 
+def _task_step_status(tool_status: str) -> str:
+    if tool_status == "success":
+        return "succeeded"
+    if tool_status == "error":
+        return "failed"
+    return tool_status or "failed"
+
+
 def execute_tool_call(
     name: str,
     args_str: str,
     session_id: str = "default",
     confirmed_tools: set[str] | None = None,
+    task_id: int | None = None,
 ) -> dict[str, Any]:
     """Execute a tool and return a stable envelope for tracing and reflection."""
     confirmed_tools = confirmed_tools or set()
     args_obj = _parse_tool_arguments(args_str)
     requires_confirmation = name in TOOLS_REQUIRING_CONFIRMATION
     started = time.perf_counter()
+    task_step = None
+    if task_id and g_memory_store:
+        try:
+            task_step = g_memory_store.add_task_step(task_id, "tool", name, status="running", input_data=args_obj)
+        except Exception as e:
+            if logger:
+                logger.warning(f"Task step start failed: {e}")
 
     if requires_confirmation and name not in confirmed_tools:
         envelope = {
@@ -256,6 +272,13 @@ def execute_tool_call(
             "requires_confirmation": True,
         }
         _record_tool_execution(session_id, envelope)
+        if task_step and g_memory_store:
+            g_memory_store.finish_task_step(
+                task_step["id"],
+                status="needs_confirmation",
+                output_data=envelope,
+                error=envelope["error"],
+            )
         return envelope
 
     raw = execute_python_tool(name, args_str)
@@ -272,6 +295,13 @@ def execute_tool_call(
         "requires_confirmation": requires_confirmation,
     }
     _record_tool_execution(session_id, envelope)
+    if task_step and g_memory_store:
+        g_memory_store.finish_task_step(
+            task_step["id"],
+            status=_task_step_status(envelope["status"]),
+            output_data=envelope,
+            error=envelope["error"],
+        )
     return envelope
 
 # ---- LLM ROUTING ----
@@ -331,6 +361,7 @@ async def run_tool_loop(
     user_text: str,
     session_id: str = "default",
     confirmed_tools: set[str] | None = None,
+    task_id: int | None = None,
 ) -> dict[str, Any]:
     """Tool detection + execution loop."""
     confirmed_tools = confirmed_tools or set()
@@ -340,7 +371,7 @@ async def run_tool_loop(
         matched_skill = match_skill_by_text(user_text)
         if matched_skill:
             args = json.dumps({"name": matched_skill["name"], "params": {}}, ensure_ascii=False)
-            result = execute_tool_call("skill_execute", args, session_id, confirmed_tools)
+            result = execute_tool_call("skill_execute", args, session_id, confirmed_tools, task_id=task_id)
             if result.get("ok"):
                 return {
                     "used_tools": True,
@@ -358,7 +389,7 @@ async def run_tool_loop(
     if rb:
         fn_name, fn_args_obj = rb
         fn_args = json.dumps(fn_args_obj, ensure_ascii=False)
-        result = execute_tool_call(fn_name, fn_args, session_id, confirmed_tools)
+        result = execute_tool_call(fn_name, fn_args, session_id, confirmed_tools, task_id=task_id)
         return {
             "used_tools": True,
             "tool_calls": [{"name": fn_name, "arguments": fn_args, "result": result}],
@@ -406,7 +437,7 @@ async def run_tool_loop(
             tc_id = tc.get("id", f"call_{fn_name}_{ri}")
             tc_msgs.append({"id": tc_id, "type": "function", "function": {"name": fn_name, "arguments": fn_args}})
             logger.info(f"Tool: {fn_name}({fn_args[:150]})")
-            result = execute_tool_call(fn_name, fn_args, session_id, confirmed_tools)
+            result = execute_tool_call(fn_name, fn_args, session_id, confirmed_tools, task_id=task_id)
             tc_log.append({"name": fn_name, "arguments": fn_args, "result": result})
             tool_messages.append({"role": "tool", "tool_call_id": tc_id, "name": fn_name, "content": json.dumps(result, ensure_ascii=False)})
         assistant_msg = {"role": "assistant", "content": content or "", "tool_calls": tc_msgs}
@@ -502,8 +533,35 @@ def set_memory_item_enabled(memory_id: int, enabled: bool) -> dict[str, Any]:
     if not item:
         raise HTTPException(404, "Memory item not found")
     if g_vector_store:
-        g_vector_store.refresh()
+            g_vector_store.refresh()
     return item
+
+
+def create_runtime_task(session_id: str, title: str, source: str = "chat", metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    return g_memory_store.start_task(session_id, title, source=source, metadata=metadata or {})
+
+
+def list_runtime_tasks(session_id: str = "", status: str = "", limit: int = 50) -> list[dict[str, Any]]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    return g_memory_store.list_tasks(session_id=session_id, status=status, limit=limit)
+
+
+def get_runtime_task(task_id: int) -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    detail = g_memory_store.get_task(task_id)
+    if not detail:
+        raise HTTPException(404, "Task not found")
+    return detail
+
+
+def finish_runtime_task(task_id: int | None, status: str, error: str = "") -> dict[str, Any]:
+    if not task_id or not g_memory_store:
+        return {}
+    return g_memory_store.finish_task(task_id, status, error=error)
 
 
 async def store_assistant_response(session_id: str, resp: JSONResponse):
@@ -657,6 +715,16 @@ async def chat_completions(request: Request):
             await store_assistant_response(session_id, resp)
         return resp
 
+    runtime_task = None
+    task_id = None
+    if g_memory_store:
+        runtime_task = create_runtime_task(
+            session_id,
+            user_text[:120] or "Chat completion",
+            metadata={"stream": bool(stream)},
+        )
+        task_id = runtime_task.get("id")
+
     # --- TOOL ROUTING ---
     if g_context_builder:
         g_context_builder.ingest_and_store(session_id, "user", user_text)
@@ -697,6 +765,7 @@ async def chat_completions(request: Request):
                     "duration_ms": mtclaw_result.get("duration_ms", 0),
                     "trace": trace,
                 },
+                "task_id": task_id,
                 "used_tools": bool(trace),
                 "tool_calls": [
                     {
@@ -707,11 +776,13 @@ async def chat_completions(request: Request):
                     for item in trace
                 ],
             }
+            finish_runtime_task(task_id, "succeeded")
             return JSONResponse(raw)
         if not g_mtclaw_adapter.fallback_on_error:
+            finish_runtime_task(task_id, "failed", mtclaw_result["error"])
             raise HTTPException(503, f"MTClaw unavailable: {mtclaw_result['error']}")
 
-    tool_result = await run_tool_loop(user_text, session_id, confirmed_tools)
+    tool_result = await run_tool_loop(user_text, session_id, confirmed_tools, task_id=task_id)
     confirmation_calls = [
         tc for tc in tool_result.get("tool_calls", [])
         if isinstance(tc.get("result"), dict) and tc["result"].get("status") == "needs_confirmation"
@@ -725,6 +796,7 @@ async def chat_completions(request: Request):
             "needs_confirmation": True,
             "routing_rounds": tool_result.get("routing_rounds", 0),
             "matched_skill": tool_result.get("matched_skill", ""),
+            "task_id": task_id,
         }
         if g_memory_store:
             g_memory_store.add_message(session_id, "assistant", text[:4000])
@@ -769,12 +841,14 @@ async def chat_completions(request: Request):
             "reflection": reflection_result,
             "routing_rounds": tool_result.get("routing_rounds", 0),
             "matched_skill": tool_result.get("matched_skill", ""),
+            "task_id": task_id,
         }
         if not has_api_key("upstream"):
             text = "已完成本地工具执行，结果如下：\n" + tc_lines.strip()
             body = build_openai_response(text, extra=extra)
             if g_memory_store:
                 g_memory_store.add_message(session_id, "assistant", text[:4000])
+            finish_runtime_task(task_id, "succeeded")
             if stream:
                 return sse_from_text(text)
             return JSONResponse(body)
@@ -785,6 +859,7 @@ async def chat_completions(request: Request):
             body["clawos"] = extra
             if g_memory_store and text:
                 g_memory_store.add_message(session_id, "assistant", text[:4000])
+            finish_runtime_task(task_id, "succeeded")
             return JSONResponse(body)
         return resp
 
@@ -792,15 +867,18 @@ async def chat_completions(request: Request):
     if stream:
         if g_memory_store and final_text:
             g_memory_store.add_message(session_id, "assistant", final_text[:4000])
+        finish_runtime_task(task_id, "succeeded")
         return sse_from_text(final_text)
 
     resp_payload = build_openai_response(final_text, extra={
         "used_tools": False,
         "tool_calls": [],
         "routing_rounds": tool_result.get("routing_rounds", 0),
+        "task_id": task_id,
     })
     if g_memory_store and final_text:
         g_memory_store.add_message(session_id, "assistant", final_text[:4000])
+    finish_runtime_task(task_id, "succeeded")
     return JSONResponse(resp_payload)
 
 # ---- MAIN ----
@@ -876,6 +954,17 @@ async def api_memory_items_search(q: str = "", memory_type: str = "", include_di
         return JSONResponse({"items": [], "count": 0}, status_code=503)
     rows = g_memory_store.search_memories(q, memory_type, limit, include_disabled)
     return JSONResponse({"items": rows, "count": len(rows)})
+
+
+@app.get("/api/tasks")
+async def api_tasks(session_id: str = "", status: str = "", limit: int = 50):
+    rows = list_runtime_tasks(session_id=session_id, status=status, limit=limit)
+    return JSONResponse({"tasks": rows, "count": len(rows)})
+
+
+@app.get("/api/tasks/{task_id}")
+async def api_task_detail(task_id: int):
+    return JSONResponse(get_runtime_task(task_id))
 
 @app.get("/api/memory/profiles")
 async def api_memory_profiles():

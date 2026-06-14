@@ -92,6 +92,7 @@
       <button data-view="reflection"><span class="ico">04</span>反思循环</button>
       <button data-view="skills"><span class="ico">05</span>固化技能</button>
       <button data-view="tools"><span class="ico">06</span>工具路由</button>
+      <button data-view="tasks"><span class="ico">07</span>任务轨迹</button>
     </div>
     <button class="new-chat" onclick="newChat()"><span class="ico">+</span>新建会话</button>
     <div class="sessions" id="sessions"></div>
@@ -112,6 +113,7 @@
       <button data-view="reflection">反思</button>
       <button data-view="skills">技能</button>
       <button data-view="tools">工具</button>
+      <button data-view="tasks">任务</button>
     </div>
 
     <section class="view on" id="view-chat">
@@ -143,6 +145,7 @@
     <section class="view" id="view-reflection"><div class="panel-view"><button class="secondary" onclick="triggerReflection()">触发反思</button><div class="section"><h2>反思卡片</h2><table class="table" id="reflectionTable"></table></div><div class="section"><h2>经验记忆</h2><table class="table" id="experienceTable"></table></div></div></section>
     <section class="view" id="view-skills"><div class="panel-view"><div class="section"><h2>固化技能</h2><table class="table" id="skillsTable"></table></div><div class="section"><h2>执行质量</h2><table class="table" id="skillStatsTable"></table></div></div></section>
     <section class="view" id="view-tools"><div class="panel-view"><div class="searchbar"><input id="toolQuery" placeholder="筛选工具" oninput="renderTools()"><button class="secondary" onclick="renderTools()">筛选</button></div><table class="table" id="toolsTable"></table><div class="section"><h2>运行轨迹</h2><table class="table" id="toolExecTable"></table></div></div></section>
+    <section class="view" id="view-tasks"><div class="panel-view"><div class="section"><h2>任务轨迹</h2><table class="table" id="taskTable"></table></div><div class="section"><h2>步骤与事件</h2><table class="table" id="taskDetailTable"></table></div></div></section>
   </main>
 
   <aside class="right">
@@ -157,16 +160,16 @@
 </div>
 
 <script>
-const API=location.origin;let currentSession="default",busy=false,lastToolCalls=[],allTools=[],pendingConfirmation=null;
+const API=location.origin;let currentSession="default",busy=false,lastToolCalls=[],allTools=[],pendingConfirmation=null,lastTaskId=null;
 const $=id=>document.getElementById(id);const esc=s=>{const d=document.createElement("div");d.textContent=s??"";return d.innerHTML};
 function usePrompt(text){$("prompt").value=text;$("prompt").focus()}
 async function api(path,opts){const r=await fetch(API+path,opts||{});if(!r.ok)throw new Error(path+" "+r.status);return await r.json()}
-function setView(v){document.querySelectorAll(".nav button,.mobile-tabs button").forEach(b=>b.classList.toggle("on",b.dataset.view===v));document.querySelectorAll(".view").forEach(e=>e.classList.remove("on"));$("view-"+v).classList.add("on");const names={chat:["智能体会话","观察、规划、执行、反思、记忆、改进"],dash:["状态总览","系统健康度、记忆增长和工具执行概览"],memory:["记忆中枢","用户画像、偏好、经验和知识检索"],reflection:["反思循环","任务后分析、经验沉淀和改进卡片"],skills:["固化技能","可复用工作流和本地快速执行记录"],tools:["工具路由","本地函数注册表和可调用能力"]};$("viewTitle").textContent=names[v][0];$("viewSub").textContent=names[v][1];refreshAll()}
+function setView(v){document.querySelectorAll(".nav button,.mobile-tabs button").forEach(b=>b.classList.toggle("on",b.dataset.view===v));document.querySelectorAll(".view").forEach(e=>e.classList.remove("on"));$("view-"+v).classList.add("on");const names={chat:["智能体会话","观察、规划、执行、反思、记忆、改进"],dash:["状态总览","系统健康度、记忆增长和工具执行概览"],memory:["记忆中枢","用户画像、偏好、经验和知识检索"],reflection:["反思循环","任务后分析、经验沉淀和改进卡片"],skills:["固化技能","可复用工作流和本地快速执行记录"],tools:["工具路由","本地函数注册表和可调用能力"],tasks:["任务轨迹","持久化 Task、Step、Event 运行时审计"]};$("viewTitle").textContent=names[v][0];$("viewSub").textContent=names[v][1];refreshAll()}
 document.querySelectorAll(".nav button,.mobile-tabs button").forEach(b=>b.onclick=()=>setView(b.dataset.view));
 function md(t){t=esc(t||"");t=t.replace(/```([\s\S]*?)```/g,"<pre>$1</pre>").replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>").replace(/\n/g,"<br>");return t}
 function addMessage(role,text,tools){const inner=$("chatInner");if(inner.querySelector(".empty"))inner.innerHTML="";const div=document.createElement("div");div.className="msg "+(role==="assistant"?"agent":"user");let chips="";(tools||[]).forEach(t=>chips+=`<span class="tool ${String(JSON.stringify(t.result||{})).includes("error")?"err":""}">${esc(t.name)}</span>`);div.innerHTML=`<div class="avatar">${role==="assistant"?"C":"U"}</div><div class="bubble"><div class="mh">${role==="assistant"?"ClawOS":"你"}</div>${chips?`<div class="tool-row">${chips}</div>`:""}<div class="mc">${md(text)}</div></div>`;inner.appendChild(div);$("chat").scrollTop=$("chat").scrollHeight}
 function sendMessage(){const text=$("prompt").value.trim();if(!text||busy)return;$("prompt").value="";submitMessage(text,[])}
-async function submitMessage(text,confirmedTools){busy=true;$("send").disabled=true;addMessage("user",text);const pending=setTimeout(()=>addMessage("assistant","正在处理..."),220);try{const data=await api("/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:currentSession,stream:false,clawos_confirmed_tools:confirmedTools||[],messages:[{role:"user",content:text}]})});clearTimeout(pending);const tools=data.clawos?.tool_calls||[];lastToolCalls=tools;const content=data.choices?.[0]?.message?.content||"";addMessage("assistant",content,tools);if(data.clawos?.needs_confirmation){const names=tools.map(t=>t.name).filter(Boolean);pendingConfirmation={text,tools:names};$("confirmText").textContent="需要确认："+names.join("、");$("confirmBar").classList.add("on")}else{pendingConfirmation=null;$("confirmBar").classList.remove("on")}renderLastTools();if(data.clawos?.reflection){renderLastReflection(data.clawos.reflection)}await loadSessions();await refreshAll()}catch(e){clearTimeout(pending);addMessage("assistant","请求失败："+e.message)}finally{busy=false;$("send").disabled=false;$("prompt").focus()}}
+async function submitMessage(text,confirmedTools){busy=true;$("send").disabled=true;addMessage("user",text);const pending=setTimeout(()=>addMessage("assistant","正在处理..."),220);try{const data=await api("/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:currentSession,stream:false,clawos_confirmed_tools:confirmedTools||[],messages:[{role:"user",content:text}]})});clearTimeout(pending);const tools=data.clawos?.tool_calls||[];lastToolCalls=tools;lastTaskId=data.clawos?.task_id||lastTaskId;const content=data.choices?.[0]?.message?.content||"";addMessage("assistant",content,tools);if(data.clawos?.needs_confirmation){const names=tools.map(t=>t.name).filter(Boolean);pendingConfirmation={text,tools:names};$("confirmText").textContent="需要确认："+names.join("、");$("confirmBar").classList.add("on")}else{pendingConfirmation=null;$("confirmBar").classList.remove("on")}renderLastTools();if(data.clawos?.reflection){renderLastReflection(data.clawos.reflection)}await loadSessions();await refreshAll()}catch(e){clearTimeout(pending);addMessage("assistant","请求失败："+e.message)}finally{busy=false;$("send").disabled=false;$("prompt").focus()}}
 function confirmPending(){if(!pendingConfirmation||busy)return;const p=pendingConfirmation;pendingConfirmation=null;$("confirmBar").classList.remove("on");submitMessage(p.text,p.tools)}
 function cancelPending(){pendingConfirmation=null;$("confirmBar").classList.remove("on")}
 function newChat(){currentSession="s_"+Date.now();$("chatInner").innerHTML='<div class="empty"><b>新的任务空间</b><span>短期上下文已清空，长期 MemoryOS、技能库与反思经验继续共享。</span><div class="quick-grid"><button class="quick" onclick="usePrompt(\'分析当前项目并给出下一步开发计划\')">分析项目与开发计划</button><button class="quick" onclick="usePrompt(\'查看我的长期记忆和偏好\')">检查 MemoryOS</button></div></div>';loadSessions();setView("chat")}
@@ -187,12 +190,14 @@ async function triggerReflection(){const d=await api("/api/reflection/trigger",{
 async function loadSkills(){const [s,st]=await Promise.all([api("/api/skills/list"),api("/api/skills/stats")]);$("skillsTable").innerHTML=table(["名称","分类","说明","调用次数"],(s.skills||[]).map(x=>[x.display_name||x.name,x.category,x.description,x.use_count]));$("skillStatsTable").innerHTML=table(["工具/技能","调用","成功","平均耗时 ms","质量"],(st.records||[]).map(x=>[x.skill_name,x.usage_count,x.success_count,x.avg_duration_ms,x.quality_score]))}
 async function loadTools(){const d=await api("/api/tools/list");allTools=d.tools||[];renderTools()}
 function renderTools(){const q=($("toolQuery")?.value||"").toLowerCase();const rows=allTools.filter(t=>!q||t.name.toLowerCase().includes(q)||String(t.description).toLowerCase().includes(q)).map(t=>[t.name,t.description,Object.keys(t.parameters?.properties||{}).join(", ")]);$("toolsTable").innerHTML=table(["工具","说明","参数"],rows)}
-function statusBadge(status){const cls=status==="success"?"ok":status==="needs_confirmation"?"wait":"err";return `<span class="state ${cls}">${esc(status||"unknown")}</span>`}
+function statusBadge(status){const cls=(status==="success"||status==="succeeded")?"ok":(["needs_confirmation","running","pending"].includes(status)?"wait":"err");return `<span class="state ${cls}">${esc(status||"unknown")}</span>`}
 function renderToolRows(rows){return rows.map(t=>[t.tool_name||t.name,{html:statusBadge(t.status||t.result?.status)},String(t.duration_ms??t.result?.duration_ms??0),t.created_at||"",JSON.stringify(t.result?.data||t.result||{}).slice(0,160)])}
 async function loadToolExecutions(){try{const d=await api("/api/tools/executions?session_id="+encodeURIComponent(currentSession)+"&limit=20");const rows=d.executions||[];$("toolExecTable").innerHTML=table(["工具","状态","耗时 ms","时间","结果"],renderToolRows(rows));if(rows.length){lastToolCalls=rows.slice(0,5).map(r=>({name:r.tool_name,result:r.result}));renderLastTools()}}catch(e){if($("toolExecTable"))$("toolExecTable").innerHTML=table(["工具","状态","耗时 ms","时间","结果"],[])}}
 function renderLastTools(){$("lastTools").innerHTML=lastToolCalls.length?lastToolCalls.map(t=>{const r=t.result||{};return `<div class="item"><b>${esc(t.name||r.tool||"tool")}</b>${statusBadge(r.status||"success")}<span>${esc(JSON.stringify(r.data||r).slice(0,180))}</span></div>`}).join(""):'<div class="item"><span>暂无工具调用</span></div>'}
 function renderLastReflection(r){const card=r.card||{};$("lastReflection").innerHTML=`<div class="item"><b>${esc(card.outcome||r.outcome?.outcome||"反思")}</b><span>${esc(card.task||"最近任务")}</span><span>${esc(card.lesson||r.analysis?.root_cause||"已写入 MemoryOS")}</span></div>`}
-async function refreshAll(){await Promise.allSettled([loadHealth(),loadDash(),loadMemory(),loadReflection(),loadSkills(),loadTools(),loadToolExecutions()])}
+async function loadTasks(){try{const d=await api("/api/tasks?session_id="+encodeURIComponent(currentSession)+"&limit=20");const rows=d.tasks||[];if(!lastTaskId&&rows[0])lastTaskId=rows[0].id;$("taskTable").innerHTML=table(["ID","状态","标题","来源","开始","操作"],rows.map(t=>[t.id,{html:statusBadge(t.status)},t.title,t.source,t.started_at,{html:`<button class="secondary" onclick="showTask(${Number(t.id)})">查看</button>`}]));if(lastTaskId)await showTask(lastTaskId)}catch(e){if($("taskTable"))$("taskTable").innerHTML=table(["ID","状态","标题","来源","开始","操作"],[])}}
+async function showTask(task_id){lastTaskId=task_id;const d=await api("/api/tasks/"+encodeURIComponent(task_id));const steps=(d.steps||[]).map(s=>["Step",s.name,{html:statusBadge(s.status)},s.started_at,JSON.stringify(s.output||{}).slice(0,180)]);const events=(d.events||[]).map(e=>["Event",e.event_type,"",e.created_at,JSON.stringify(e.data||{}).slice(0,180)]);$("taskDetailTable").innerHTML=table(["类型","名称","状态","时间","数据"],steps.concat(events))}
+async function refreshAll(){await Promise.allSettled([loadHealth(),loadDash(),loadMemory(),loadReflection(),loadSkills(),loadTools(),loadToolExecutions(),loadTasks()])}
 loadSessions();refreshAll();setInterval(loadHealth,30000);
 </script>
 </body>
