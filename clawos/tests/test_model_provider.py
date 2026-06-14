@@ -101,6 +101,47 @@ class ModelProviderTests(unittest.TestCase):
         self.assertNotIn("api_key", status)
         self.assertNotIn("secret", str(status))
 
+    def test_server_loads_local_env_without_overriding_existing_values(self):
+        import os
+        import tempfile
+        import clawos_server as server
+
+        old_model_api_key = os.environ.pop("MODEL_API_KEY", None)
+        old_model_name = os.environ.get("MODEL_NAME")
+        old_memory_db = os.environ.pop("CLAWOS_MEMORY_DB", None)
+        os.environ["MODEL_NAME"] = "existing-model"
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                env_path = Path(td) / ".env"
+                env_path.write_text(
+                    "\n".join([
+                        "# local config",
+                        "MODEL_API_KEY=local-test-key",
+                        "MODEL_NAME=file-model",
+                        "CLAWOS_MEMORY_DB=./data/memoryos.db",
+                    ]),
+                    encoding="utf-8",
+                )
+                server.load_local_env(env_path)
+
+            self.assertEqual(os.environ.get("MODEL_API_KEY"), "local-test-key")
+            self.assertEqual(os.environ.get("MODEL_NAME"), "existing-model")
+            self.assertTrue(os.path.isabs(os.environ.get("CLAWOS_MEMORY_DB", "")))
+            self.assertTrue(os.environ.get("CLAWOS_MEMORY_DB", "").endswith(os.path.join("data", "memoryos.db")))
+        finally:
+            if old_model_api_key is None:
+                os.environ.pop("MODEL_API_KEY", None)
+            else:
+                os.environ["MODEL_API_KEY"] = old_model_api_key
+            if old_model_name is None:
+                os.environ.pop("MODEL_NAME", None)
+            else:
+                os.environ["MODEL_NAME"] = old_model_name
+            if old_memory_db is None:
+                os.environ.pop("CLAWOS_MEMORY_DB", None)
+            else:
+                os.environ["CLAWOS_MEMORY_DB"] = old_memory_db
+
     def test_server_proxy_upstream_uses_configured_mock_provider(self):
         import clawos_server as server
         from providers import create_model_provider
