@@ -15,6 +15,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+class FakeRequest:
+    def __init__(self, payload):
+        self._payload = payload
+
+    async def body(self):
+        return json.dumps(self._payload).encode("utf-8")
+
+
 class MemoryAndRoutingTests(unittest.TestCase):
     def test_chinese_memory_ingestion_extracts_profile_and_preference(self):
         from memoryos.context_builder import ContextBuilder
@@ -137,6 +145,102 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertEqual(rows[0]["status"], "success")
         self.assertEqual(rows[0]["arguments"]["x"], 1)
         self.assertTrue(rows[0]["result"]["ok"])
+
+    def test_run_tool_loop_records_task_step_for_rule_based_tool(self):
+        from memoryos.memory_store import MemoryStore
+
+        server = importlib.import_module("clawos_server")
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            server.g_memory_store = store
+            task = store.start_task("s1", "查看工具列表", source="chat")
+            try:
+                result = asyncio.run(server.run_tool_loop("查看工具列表", "s1", task_id=task["id"]))
+                detail = store.get_task(task["id"])
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertTrue(result["used_tools"])
+        self.assertEqual(detail["steps"][0]["name"], "tools_list")
+        self.assertEqual(detail["steps"][0]["status"], "succeeded")
+        self.assertTrue(detail["steps"][0]["output"]["ok"])
+        self.assertIn("step_finished", [event["event_type"] for event in detail["events"]])
+
+    def test_server_task_helpers_list_and_return_detail(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            try:
+                task = server.create_runtime_task("s1", "demo task")
+                server.g_memory_store.add_task_event(task["id"], "custom", "hello")
+                listed = server.list_runtime_tasks(session_id="s1")
+                detail = server.get_runtime_task(task["id"])
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertEqual(listed[0]["id"], task["id"])
+        self.assertEqual(detail["task"]["title"], "demo task")
+        self.assertEqual(detail["events"][-1]["event_type"], "custom")
+
+    def test_chat_completion_creates_finished_runtime_task(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_context = server.g_context_builder
+            old_mtclaw = server.g_mtclaw_adapter
+            old_reflection = server.g_reflection_engine
+            old_config = server.config
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            server.g_context_builder = None
+            server.g_mtclaw_adapter = None
+            server.g_reflection_engine = None
+            server.config = {"upstream": {}, "routing": {}}
+            try:
+                resp = asyncio.run(server.chat_completions(FakeRequest({
+                    "session_id": "s-task",
+                    "messages": [{"role": "user", "content": "查看工具列表"}],
+                    "stream": False,
+                })))
+                body = json.loads(resp.body)
+                task_id = body["clawos"]["task_id"]
+                detail = server.g_memory_store.get_task(task_id)
+            finally:
+                server.g_memory_store = old_store
+                server.g_context_builder = old_context
+                server.g_mtclaw_adapter = old_mtclaw
+                server.g_reflection_engine = old_reflection
+                server.config = old_config
+
+        self.assertEqual(detail["task"]["status"], "succeeded")
+        self.assertEqual(detail["steps"][0]["name"], "tools_list")
+        self.assertTrue(detail["steps"][0]["output"]["ok"])
+
+    def test_task_api_routes_expose_list_and_detail(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            try:
+                task = server.create_runtime_task("s1", "api task")
+                list_resp = asyncio.run(server.api_tasks(session_id="s1"))
+                detail_resp = asyncio.run(server.api_task_detail(task["id"]))
+                listed = json.loads(list_resp.body)
+                detail = json.loads(detail_resp.body)
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertEqual(listed["count"], 1)
+        self.assertEqual(listed["tasks"][0]["title"], "api task")
+        self.assertEqual(detail["task"]["id"], task["id"])
+        self.assertIn("events", detail)
 
     def test_reflection_collects_persisted_tool_trajectory(self):
         from memoryos.memory_store import MemoryStore

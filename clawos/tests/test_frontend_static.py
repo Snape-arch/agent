@@ -36,6 +36,14 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("toggleMemory", html)
         self.assertIn("memoryTable", html)
 
+    def test_workspace_exposes_task_trace_panel(self):
+        html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("/api/tasks", html)
+        self.assertIn("taskTable", html)
+        self.assertIn("loadTasks", html)
+        self.assertIn("task_id", html)
+
 
 if __name__ == "__main__":
     unittest.main()

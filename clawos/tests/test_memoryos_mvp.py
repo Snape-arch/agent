@@ -144,6 +144,30 @@ class MemoryOSMvpTests(unittest.TestCase):
         self.assertTrue(any(r["id"].startswith("mem_") for r in results))
         self.assertTrue(any("MTT AIBOOK" in m["content"] for m in messages if m["role"] == "system"))
 
+    def test_task_runtime_persists_steps_events_and_status(self):
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            task = store.start_task("s1", "查看工具列表", source="chat")
+            step = store.add_task_step(task["id"], "tool", "tools_list", status="running", input_data={"q": "tools"})
+            store.finish_task_step(step["id"], status="succeeded", output_data={"count": 3}, error="")
+            store.add_task_event(task["id"], "tool_completed", "tools_list", step_id=step["id"], data={"ok": True})
+            finished = store.finish_task(task["id"], "succeeded")
+            detail = store.get_task(task["id"])
+            tasks = store.list_tasks(session_id="s1")
+
+        self.assertEqual(finished["status"], "succeeded")
+        self.assertEqual(tasks[0]["id"], task["id"])
+        self.assertEqual(detail["task"]["title"], "查看工具列表")
+        self.assertEqual(detail["steps"][0]["name"], "tools_list")
+        self.assertEqual(detail["steps"][0]["status"], "succeeded")
+        self.assertEqual(detail["steps"][0]["output"]["count"], 3)
+        event_types = [event["event_type"] for event in detail["events"]]
+        self.assertIn("task_started", event_types)
+        self.assertIn("tool_completed", event_types)
+        self.assertIn("task_finished", event_types)
+
 
 if __name__ == "__main__":
     unittest.main()

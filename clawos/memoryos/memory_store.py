@@ -136,6 +136,43 @@ class MemoryStore:
                     created_at TEXT DEFAULT (datetime('now'))
                 );
                 CREATE INDEX IF NOT EXISTS idx_tool_exec_session ON tool_executions(session_id, id);
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    source TEXT DEFAULT '',
+                    metadata TEXT DEFAULT '{}',
+                    started_at TEXT DEFAULT (datetime('now')),
+                    completed_at TEXT DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id, id);
+                CREATE TABLE IF NOT EXISTS task_steps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id INTEGER NOT NULL,
+                    step_type TEXT NOT NULL DEFAULT 'tool',
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    input_data TEXT DEFAULT '{}',
+                    output_data TEXT DEFAULT '{}',
+                    error TEXT DEFAULT '',
+                    started_at TEXT DEFAULT (datetime('now')),
+                    completed_at TEXT DEFAULT '',
+                    FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_task_steps_task ON task_steps(task_id, id);
+                CREATE TABLE IF NOT EXISTS task_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id INTEGER NOT NULL,
+                    step_id INTEGER,
+                    event_type TEXT NOT NULL,
+                    message TEXT DEFAULT '',
+                    data TEXT DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                    FOREIGN KEY(step_id) REFERENCES task_steps(id) ON DELETE SET NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id, id);
                 CREATE TABLE IF NOT EXISTS mtclaw_traces (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT NOT NULL,
@@ -186,6 +223,21 @@ class MemoryStore:
                 "duration_ms": "REAL DEFAULT 0",
                 "requires_confirmation": "INTEGER DEFAULT 0",
             })
+            self._ensure_columns(c, "tasks", {
+                "source": "TEXT DEFAULT ''",
+                "metadata": "TEXT DEFAULT '{}'",
+                "completed_at": "TEXT DEFAULT ''",
+            })
+            self._ensure_columns(c, "task_steps", {
+                "input_data": "TEXT DEFAULT '{}'",
+                "output_data": "TEXT DEFAULT '{}'",
+                "error": "TEXT DEFAULT ''",
+                "completed_at": "TEXT DEFAULT ''",
+            })
+            self._ensure_columns(c, "task_events", {
+                "message": "TEXT DEFAULT ''",
+                "data": "TEXT DEFAULT '{}'",
+            })
             self._ensure_columns(c, "memories", {
                 "source": "TEXT DEFAULT ''",
                 "confidence": "REAL DEFAULT 0.5",
@@ -206,6 +258,170 @@ class MemoryStore:
         return item
 
     # ── UNIFIED MEMORIES ──
+
+    def _json_loads(self, value, default):
+        try:
+            return json.loads(value or "")
+        except Exception:
+            return default
+
+    def _task_row_to_dict(self, row) -> dict:
+        item = dict(row)
+        item["metadata"] = self._json_loads(item.get("metadata"), {})
+        return item
+
+    def _step_row_to_dict(self, row) -> dict:
+        item = dict(row)
+        item["input"] = self._json_loads(item.pop("input_data", "{}"), {})
+        item["output"] = self._json_loads(item.pop("output_data", "{}"), {})
+        return item
+
+    def _event_row_to_dict(self, row) -> dict:
+        item = dict(row)
+        item["data"] = self._json_loads(item.get("data"), {})
+        return item
+
+    # ---- TASK RUNTIME ----
+
+    def start_task(self, session_id, title, source="", metadata=None, status="running"):
+        with self._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO tasks (session_id, title, status, source, metadata)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    str(session_id or "default"),
+                    str(title or "Untitled task")[:300],
+                    status,
+                    source,
+                    json.dumps(metadata or {}, ensure_ascii=False),
+                ),
+            )
+            task_id = int(cursor.lastrowid)
+            c.execute(
+                "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
+                (task_id, "task_started", "Task started", "{}"),
+            )
+            row = c.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+            return self._task_row_to_dict(row)
+
+    def finish_task(self, task_id, status, error=""):
+        with self._conn() as c:
+            c.execute(
+                "UPDATE tasks SET status=?, completed_at=datetime('now') WHERE id=?",
+                (status, int(task_id)),
+            )
+            c.execute(
+                "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
+                (
+                    int(task_id),
+                    "task_finished",
+                    status,
+                    json.dumps({"error": error} if error else {}, ensure_ascii=False),
+                ),
+            )
+            row = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
+            return self._task_row_to_dict(row) if row else {}
+
+    def add_task_step(self, task_id, step_type, name, status="running", input_data=None):
+        with self._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO task_steps (task_id, step_type, name, status, input_data)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    int(task_id),
+                    str(step_type or "tool"),
+                    str(name or "step"),
+                    status,
+                    json.dumps(input_data or {}, ensure_ascii=False),
+                ),
+            )
+            step_id = int(cursor.lastrowid)
+            c.execute(
+                "INSERT INTO task_events (task_id, step_id, event_type, message, data) VALUES (?, ?, ?, ?, ?)",
+                (int(task_id), step_id, "step_started", str(name or "step"), "{}"),
+            )
+            row = c.execute("SELECT * FROM task_steps WHERE id=?", (step_id,)).fetchone()
+            return self._step_row_to_dict(row)
+
+    def finish_task_step(self, step_id, status, output_data=None, error=""):
+        with self._conn() as c:
+            c.execute(
+                """
+                UPDATE task_steps
+                SET status=?, output_data=?, error=?, completed_at=datetime('now')
+                WHERE id=?
+                """,
+                (
+                    status,
+                    json.dumps(output_data or {}, ensure_ascii=False),
+                    error,
+                    int(step_id),
+                ),
+            )
+            row = c.execute("SELECT * FROM task_steps WHERE id=?", (int(step_id),)).fetchone()
+            if not row:
+                return {}
+            c.execute(
+                "INSERT INTO task_events (task_id, step_id, event_type, message, data) VALUES (?, ?, ?, ?, ?)",
+                (
+                    int(row["task_id"]),
+                    int(step_id),
+                    "step_finished",
+                    status,
+                    json.dumps({"error": error} if error else {}, ensure_ascii=False),
+                ),
+            )
+            return self._step_row_to_dict(row)
+
+    def add_task_event(self, task_id, event_type, message="", step_id=None, data=None):
+        with self._conn() as c:
+            cursor = c.execute(
+                "INSERT INTO task_events (task_id, step_id, event_type, message, data) VALUES (?, ?, ?, ?, ?)",
+                (
+                    int(task_id),
+                    int(step_id) if step_id else None,
+                    str(event_type or "event"),
+                    str(message or ""),
+                    json.dumps(data or {}, ensure_ascii=False),
+                ),
+            )
+            row = c.execute("SELECT * FROM task_events WHERE id=?", (int(cursor.lastrowid),)).fetchone()
+            return self._event_row_to_dict(row)
+
+    def list_tasks(self, session_id="", status="", limit=50):
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 50), 200))
+            clauses = []
+            params = []
+            if session_id:
+                clauses.append("session_id=?")
+                params.append(session_id)
+            if status:
+                clauses.append("status=?")
+                params.append(status)
+            where = " WHERE " + " AND ".join(clauses) if clauses else ""
+            rows = c.execute(
+                f"SELECT * FROM tasks{where} ORDER BY id DESC LIMIT ?",
+                [*params, limit],
+            ).fetchall()
+            return [self._task_row_to_dict(row) for row in rows]
+
+    def get_task(self, task_id):
+        with self._conn() as c:
+            task = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
+            if not task:
+                return {}
+            steps = c.execute("SELECT * FROM task_steps WHERE task_id=? ORDER BY id", (int(task_id),)).fetchall()
+            events = c.execute("SELECT * FROM task_events WHERE task_id=? ORDER BY id", (int(task_id),)).fetchall()
+            return {
+                "task": self._task_row_to_dict(task),
+                "steps": [self._step_row_to_dict(row) for row in steps],
+                "events": [self._event_row_to_dict(row) for row in events],
+            }
 
     def upsert_memory(self, memory_type, key, value, category="general", source="", confidence=0.5, enabled=True):
         memory_type = str(memory_type or "").strip().lower()
