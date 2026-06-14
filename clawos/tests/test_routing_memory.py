@@ -3,6 +3,7 @@ import contextlib
 import importlib
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -43,7 +44,9 @@ class MemoryAndRoutingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             old_base = tool_runner.BASE_DIR
+            old_memory_db = os.environ.get("CLAWOS_MEMORY_DB")
             tool_runner.BASE_DIR = td
+            os.environ["CLAWOS_MEMORY_DB"] = str(Path(td) / "memoryos.db")
             try:
                 store = MemoryStore(str(Path(td) / "memoryos.db"))
                 store.add_message("s1", "user", "hello")
@@ -57,6 +60,10 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 self.assertNotIn("error", payload)
             finally:
                 tool_runner.BASE_DIR = old_base
+                if old_memory_db is None:
+                    os.environ.pop("CLAWOS_MEMORY_DB", None)
+                else:
+                    os.environ["CLAWOS_MEMORY_DB"] = old_memory_db
 
     def test_rule_based_tool_recognizes_chinese_memory_and_tool_queries(self):
         server = importlib.import_module("clawos_server")

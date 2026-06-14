@@ -9,9 +9,11 @@ NOTES_DIR = os.path.join(BASE_DIR, "notes")
 
 
 def _memory_db_path():
-    return os.path.abspath(os.path.expanduser(
+    path = os.path.abspath(os.path.expanduser(
         os.environ.get("CLAWOS_MEMORY_DB", os.path.join(BASE_DIR, "memoryos.db"))
     ))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path
 
 tool_name = os.path.splitext(os.path.basename(__file__))[0]
 input_data = {}

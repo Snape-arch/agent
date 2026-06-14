@@ -20,6 +20,27 @@ SCRIPTS_DIR = BASE_DIR / "scripts"
 NOTES_DIR = BASE_DIR / "notes"
 TODO_FILE = BASE_DIR / "clawos_todo.json"
 
+
+def load_local_env(env_path: Path) -> None:
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key == "CLAWOS_MEMORY_DB" and value:
+            db_path = Path(value).expanduser()
+            if not db_path.is_absolute():
+                value = str((env_path.parent / db_path).resolve())
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_local_env(BASE_DIR / ".env")
+
 MEMORY_DB = Path(os.environ.get("CLAWOS_MEMORY_DB", str(BASE_DIR / "memoryos.db"))).expanduser().resolve()
 
 g_memory_store: Any = None
@@ -537,6 +558,7 @@ async def lifespan(app: FastAPI):
     from memoryos.memory_store import MemoryStore
     from memoryos.context_builder import ContextBuilder
     from memoryos.services.vector_store import MemoryVectorStore
+    MEMORY_DB.parent.mkdir(parents=True, exist_ok=True)
     g_memory_store = MemoryStore(str(MEMORY_DB))
 
     # Init VectorStore before ContextBuilder so retrieval uses the same live index.
