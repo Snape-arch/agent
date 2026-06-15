@@ -9,6 +9,8 @@ from typing import Any
 
 SKILLS_DIR = Path(__file__).parent
 REGISTRY_FILE = SKILLS_DIR / "skill_registry.jsonl"
+FUNCTIONS_FILE = SKILLS_DIR.parent / "functions.jsonl"
+SCRIPTS_DIR = SKILLS_DIR.parent / "scripts"
 MAX_SKILL_NAME_LEN = 64
 MAX_STEPS = 50
 _skills_cache = None
@@ -68,6 +70,39 @@ def register_skill(name, description, steps, trigger_keywords=None, tags=None, c
     _generate_replay_script(skill)
     return {"registered": True, "skill": skill}
 
+
+def publish_skill_definition(skill):
+    """Publish an already versioned definition without silently changing its version."""
+    skill = deepcopy(skill)
+    safe_name = _sanitize_name(str(skill.get("name") or skill.get("display_name") or ""))
+    validation = validate_skill_steps(skill.get("steps"))
+    if validation["errors"]:
+        return {"error": "Invalid skill steps", "validation": validation}
+    if int(skill.get("version", 0)) < 1:
+        return {"error": "Skill version must be a positive integer"}
+    now = _now_iso()
+    skills = _load_registry()
+    existing = skills.get(safe_name)
+    skill.update({
+        "name": safe_name,
+        "display_name": str(skill.get("display_name") or safe_name),
+        "description": str(skill.get("description") or ""),
+        "trigger_keywords": list(skill.get("trigger_keywords") or []),
+        "tags": list(skill.get("tags") or []),
+        "category": str(skill.get("category") or "general"),
+        "created_at": (
+            str(skill.get("created_at") or "")
+            or (existing.get("created_at", now) if existing else now)
+        ),
+        "updated_at": now,
+        "use_count": int(skill.get("use_count", 0)),
+    })
+    skills[safe_name] = skill
+    _save_registry(skills)
+    _generate_replay_script(skill)
+    return {"published": True, "skill": skill}
+
+
 def get_skill(name):
     return _load_registry().get(_sanitize_name(name))
 
@@ -80,6 +115,23 @@ def list_skills(category=None):
 def execute_skill(name, params=None):
     skill = get_skill(name)
     if not skill: return {"error": f"Skill not found: {name}"}
+    result = execute_skill_definition(skill, params=params)
+    if not result.get("ok"):
+        return result
+    skill["use_count"] = skill.get("use_count", 0) + 1
+    skill["last_used"] = _now_iso()
+    skills = _load_registry()
+    skills[skill["name"]] = skill
+    _save_registry(skills)
+    return result
+
+
+def execute_skill_definition(skill, params=None, plan_only=False):
+    """Validate and execute a candidate definition without publishing it."""
+    validation = validate_skill_steps(skill.get("steps"))
+    if validation["errors"]:
+        return {"ok": False, "error": "Invalid skill steps", "validation": validation}
+    name = str(skill.get("name") or skill.get("display_name") or "candidate")
     params = params or {}
     outputs = []
     step_outputs = {}
@@ -90,6 +142,11 @@ def execute_skill(name, params=None):
             if k in args: args[k] = v
         args = _resolve_refs(args, step_outputs, params)
         unresolved = _find_unresolved_refs(args)
+        if plan_only:
+            unresolved = [
+                ref for ref in unresolved
+                if not _is_prior_step_ref(ref, i)
+            ]
         if unresolved:
             return {
                 "ok": False,
@@ -99,7 +156,10 @@ def execute_skill(name, params=None):
                 "outputs": outputs,
             }
         t0 = time.perf_counter()
-        result = _dispatch_tool(tool_name, args)
+        result = (
+            {"planned": True, "tool": tool_name, "args": args}
+            if plan_only else _dispatch_tool(tool_name, args)
+        )
         elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
         step_outputs[f"step_{i}"] = result
         outputs.append({"step": i, "tool": tool_name, "result": result, "elapsed_ms": elapsed_ms})
@@ -112,13 +172,16 @@ def execute_skill(name, params=None):
                 "outputs": outputs,
                 "total_elapsed_ms": round(sum(o["elapsed_ms"] for o in outputs), 2),
             }
-    skill["use_count"] = skill.get("use_count", 0) + 1
-    skill["last_used"] = _now_iso()
-    skills = _load_registry()
-    skills[skill["name"]] = skill
-    _save_registry(skills)
     total_ms = round(sum(o["elapsed_ms"] for o in outputs), 2)
-    return {"ok": True, "skill": name, "steps": len(outputs), "outputs": outputs, "total_elapsed_ms": total_ms}
+    return {
+        "ok": True,
+        "skill": name,
+        "version": int(skill.get("version", 0)),
+        "mode": "plan" if plan_only else "execute",
+        "steps": len(outputs),
+        "outputs": outputs,
+        "total_elapsed_ms": total_ms,
+    }
 
 def delete_skill(name):
     safe_name = _sanitize_name(name)
@@ -174,7 +237,7 @@ def _generate_replay_script(skill):
     return script_path
 
 def _dispatch_tool(tool_name, args):
-    scripts_dir = SKILLS_DIR.parent / "scripts"
+    scripts_dir = SCRIPTS_DIR
     if str(scripts_dir) not in sys.path: sys.path.insert(0, str(scripts_dir))
     try:
         import tool_runner, importlib
@@ -182,6 +245,10 @@ def _dispatch_tool(tool_name, args):
     except ImportError: return {"error": "tool_runner not found"}
     handlers = getattr(tool_runner, "handlers", {})
     if tool_name not in handlers: return {"error": f"Unknown tool: {tool_name}"}
+    try:
+        args = tool_runner.security_check(tool_name, args)
+    except PermissionError as exc:
+        return {"error": str(exc), "status": "denied"}
     old = sys.stdout; buf = io.StringIO(); sys.stdout = buf
     tool_runner.input_data = args; tool_runner.tool_name = tool_name
     try:
@@ -228,11 +295,15 @@ def _find_unresolved_refs(value):
     return []
 
 
+def _is_prior_step_ref(ref, current_step):
+    match = re.fullmatch(r"\$step_(\d+)\.\w+", str(ref))
+    return bool(match and int(match.group(1)) < int(current_step))
+
+
 def _available_tools():
-    functions_file = SKILLS_DIR.parent / "functions.jsonl"
     names = set()
-    if functions_file.exists():
-        with open(functions_file, "r", encoding="utf-8-sig") as f:
+    if FUNCTIONS_FILE.exists():
+        with open(FUNCTIONS_FILE, "r", encoding="utf-8-sig") as f:
             for line in f:
                 if line.strip():
                     names.add(json.loads(line).get("name", ""))

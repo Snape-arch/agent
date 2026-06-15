@@ -34,16 +34,50 @@ class IngestionService:
             if m:
                 value = m.group(1).strip()[:100]
                 category = "basic_info" if key in ("role", "name") else "interests" if key in ("interests", "research_direction") else "skills"
-                self._store.set_profile(key, value, category, importance=0.7)
-                pf.append({"key": key, "value": value})
+                result = self._store.set_profile(
+                    key,
+                    value,
+                    category,
+                    importance=0.7,
+                    source="conversation_ingestion",
+                    actor_id=session_id,
+                    evidence=[{
+                        "evidence_type": "conversation",
+                        "source_ref": session_id,
+                        "excerpt": content[:1000],
+                    }],
+                    conflict_policy="review",
+                )
+                pf.append({
+                    "key": key,
+                    "value": value,
+                    "review_required": bool(result.get("review_required")),
+                })
         pr = []
         for pattern, key in self.PREFERENCE_PATTERNS:
             m = re.search(pattern, content, re.IGNORECASE)
             if m:
                 value = m.group(1).strip()[:100]
                 category = "content" if key in ("code_style", "ppt_style", "reply_style") else "tool"
-                self._store.set_preference(key, value, category, confidence=0.6)
-                pr.append({"key": key, "value": value})
+                result = self._store.set_preference(
+                    key,
+                    value,
+                    category,
+                    confidence=0.6,
+                    source="conversation_ingestion",
+                    actor_id=session_id,
+                    evidence=[{
+                        "evidence_type": "conversation",
+                        "source_ref": session_id,
+                        "excerpt": content[:1000],
+                    }],
+                    conflict_policy="review",
+                )
+                pr.append({
+                    "key": key,
+                    "value": value,
+                    "review_required": bool(result.get("review_required")),
+                })
         return {"profiles": pf, "preferences": pr}
 
     def extract_knowledge(self, title, content, category="domain"):

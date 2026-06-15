@@ -14,6 +14,7 @@ class ReflectionAnalyzer:
         """Rule-based analysis (fast, offline)."""
         analysis = {
             "root_cause": self._find_root_cause(trajectory, outcome),
+            "failure_category": self._classify_failure(trajectory, outcome),
             "insights": self._extract_insights(trajectory, outcome),
             "improvements": self._generate_improvements(outcome),
             "patterns": self._mine_patterns(trajectory),
@@ -52,6 +53,9 @@ class ReflectionAnalyzer:
                     raise json.JSONDecodeError("Expected object", cleaned, 0)
                 return {
                     "root_cause": str(parsed.get("root_cause", "")),
+                    "failure_category": str(
+                        parsed.get("failure_category", self._classify_failure(trajectory, outcome))
+                    ),
                     "insights": list(parsed.get("insights") or []),
                     "improvements": list(parsed.get("improvements") or []),
                     "patterns": list(parsed.get("patterns") or []),
@@ -59,7 +63,13 @@ class ReflectionAnalyzer:
                 }
             except json.JSONDecodeError:
                 # Fallback: parse text
-                return {"root_cause": content[:500], "insights": [], "improvements": [], "patterns": []}
+                return {
+                    "root_cause": content[:500],
+                    "failure_category": self._classify_failure(trajectory, outcome),
+                    "insights": [],
+                    "improvements": [],
+                    "patterns": [],
+                }
         except Exception:
             return self.analyze(trajectory, outcome, task_description, trigger)
 
@@ -127,3 +137,21 @@ Please analyze the root cause and provide insights."""
                 patterns.append(f"Similar to past experience: {exp.get('task', '')[:80]}")
                 break
         return patterns
+
+    def _classify_failure(self, trajectory, outcome):
+        if outcome.get("outcome") == "success":
+            return ""
+        text = " ".join(
+            str(call.get("result", "")) for call in trajectory.get("tool_calls", [])
+        ).lower()
+        categories = (
+            ("permission", ("permission", "denied", "forbidden", "unauthorized", "权限")),
+            ("parameter", ("parameter", "argument", "invalid input", "参数")),
+            ("environment", ("not found", "missing", "connection", "timeout", "环境")),
+            ("model", ("model", "token", "rate limit", "llm")),
+            ("user_cancelled", ("cancel", "cancelled", "用户取消")),
+        )
+        for category, markers in categories:
+            if any(marker in text for marker in markers):
+                return category
+        return "tool" if trajectory.get("tool_calls") else "planning"

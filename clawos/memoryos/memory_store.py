@@ -194,11 +194,257 @@ class MemoryStore:
                     source TEXT DEFAULT '',
                     confidence REAL DEFAULT 0.5,
                     enabled INTEGER DEFAULT 1,
+                    owner_id TEXT NOT NULL DEFAULT 'default',
+                    workspace_id TEXT NOT NULL DEFAULT 'default',
+                    current_version INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT DEFAULT (datetime('now')),
                     updated_at TEXT DEFAULT (datetime('now')),
                     UNIQUE(memory_type, category, key)
                 );
                 CREATE INDEX IF NOT EXISTS idx_memories_lookup ON memories(memory_type, enabled, updated_at);
+                CREATE TABLE IF NOT EXISTS memory_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    memory_id INTEGER NOT NULL,
+                    version INTEGER NOT NULL,
+                    value TEXT NOT NULL,
+                    source TEXT DEFAULT '',
+                    confidence REAL DEFAULT 0.5,
+                    enabled INTEGER DEFAULT 1,
+                    change_type TEXT NOT NULL DEFAULT 'update',
+                    changed_by TEXT NOT NULL DEFAULT 'system',
+                    change_reason TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(memory_id) REFERENCES memories(id) ON DELETE CASCADE,
+                    UNIQUE(memory_id, version)
+                );
+                CREATE INDEX IF NOT EXISTS idx_memory_versions_memory ON memory_versions(memory_id, version DESC);
+                CREATE TABLE IF NOT EXISTS memory_evidence (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    memory_id INTEGER NOT NULL,
+                    version_id INTEGER,
+                    evidence_type TEXT NOT NULL DEFAULT 'manual',
+                    source_ref TEXT DEFAULT '',
+                    excerpt TEXT DEFAULT '',
+                    metadata TEXT DEFAULT '{}',
+                    created_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(memory_id) REFERENCES memories(id) ON DELETE CASCADE,
+                    FOREIGN KEY(version_id) REFERENCES memory_versions(id) ON DELETE SET NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_memory_evidence_memory ON memory_evidence(memory_id, id DESC);
+                CREATE TABLE IF NOT EXISTS memory_conflicts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    memory_id INTEGER NOT NULL,
+                    existing_value TEXT NOT NULL,
+                    candidate_value TEXT NOT NULL,
+                    conflict_type TEXT NOT NULL DEFAULT 'value_changed',
+                    source TEXT DEFAULT '',
+                    evidence TEXT DEFAULT '[]',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    resolution TEXT DEFAULT '',
+                    submitted_by TEXT NOT NULL DEFAULT 'system',
+                    reviewed_by TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    resolved_at TEXT DEFAULT '',
+                    FOREIGN KEY(memory_id) REFERENCES memories(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_memory_conflicts_status ON memory_conflicts(status, id DESC);
+                CREATE TABLE IF NOT EXISTS memory_reviews (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    memory_id INTEGER NOT NULL,
+                    conflict_id INTEGER,
+                    review_type TEXT NOT NULL DEFAULT 'conflict',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    submitted_by TEXT NOT NULL DEFAULT 'system',
+                    reviewed_by TEXT DEFAULT '',
+                    notes TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    resolved_at TEXT DEFAULT '',
+                    FOREIGN KEY(memory_id) REFERENCES memories(id) ON DELETE CASCADE,
+                    FOREIGN KEY(conflict_id) REFERENCES memory_conflicts(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_memory_reviews_status ON memory_reviews(status, id DESC);
+                CREATE TABLE IF NOT EXISTS memory_acl (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    memory_id INTEGER NOT NULL,
+                    principal_type TEXT NOT NULL CHECK(principal_type IN ('user','role','workspace')),
+                    principal_id TEXT NOT NULL,
+                    permission TEXT NOT NULL CHECK(permission IN ('read','write','review','admin')),
+                    granted_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(memory_id) REFERENCES memories(id) ON DELETE CASCADE,
+                    UNIQUE(memory_id, principal_type, principal_id, permission)
+                );
+                CREATE INDEX IF NOT EXISTS idx_memory_acl_memory ON memory_acl(memory_id);
+                CREATE TABLE IF NOT EXISTS retrieval_evaluation_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL DEFAULT 'memory-retrieval',
+                    top_k INTEGER NOT NULL DEFAULT 5,
+                    case_count INTEGER NOT NULL DEFAULT 0,
+                    metrics TEXT NOT NULL DEFAULT '{}',
+                    cases TEXT NOT NULL DEFAULT '[]',
+                    created_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS reflection_cards (
+                    id TEXT PRIMARY KEY,
+                    task TEXT NOT NULL,
+                    session_id TEXT NOT NULL DEFAULT 'default',
+                    trigger_type TEXT NOT NULL DEFAULT 'user_triggered',
+                    outcome TEXT NOT NULL DEFAULT 'partial',
+                    outcome_detail TEXT NOT NULL DEFAULT '{}',
+                    root_cause TEXT DEFAULT '',
+                    failure_category TEXT DEFAULT '',
+                    insights TEXT NOT NULL DEFAULT '[]',
+                    patterns TEXT NOT NULL DEFAULT '[]',
+                    trajectory TEXT NOT NULL DEFAULT '{}',
+                    evidence TEXT NOT NULL DEFAULT '[]',
+                    user_feedback TEXT NOT NULL DEFAULT '{}',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    version INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_reflection_cards_session ON reflection_cards(session_id, created_at DESC);
+                CREATE TABLE IF NOT EXISTS reflection_improvements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    card_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    detail TEXT DEFAULT '',
+                    action_type TEXT NOT NULL DEFAULT 'policy',
+                    target_type TEXT NOT NULL DEFAULT 'agent_policy',
+                    target_key TEXT NOT NULL,
+                    candidate_payload TEXT NOT NULL DEFAULT '{}',
+                    status TEXT NOT NULL DEFAULT 'proposed',
+                    baseline_metrics TEXT NOT NULL DEFAULT '{}',
+                    candidate_metrics TEXT NOT NULL DEFAULT '{}',
+                    regression_result TEXT NOT NULL DEFAULT '{}',
+                    rollback_payload TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    published_at TEXT DEFAULT '',
+                    rolled_back_at TEXT DEFAULT '',
+                    FOREIGN KEY(card_id) REFERENCES reflection_cards(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_reflection_improvements_status ON reflection_improvements(status, id DESC);
+                CREATE TABLE IF NOT EXISTS reflection_improvement_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    improvement_id INTEGER NOT NULL,
+                    from_status TEXT DEFAULT '',
+                    to_status TEXT NOT NULL,
+                    actor_id TEXT NOT NULL DEFAULT 'system',
+                    reason TEXT DEFAULT '',
+                    data TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(improvement_id) REFERENCES reflection_improvements(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_reflection_events_improvement ON reflection_improvement_events(improvement_id, id);
+                CREATE TABLE IF NOT EXISTS runtime_policies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    target_type TEXT NOT NULL,
+                    target_key TEXT NOT NULL,
+                    payload TEXT NOT NULL DEFAULT '{}',
+                    version INTEGER NOT NULL DEFAULT 1,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    updated_by TEXT NOT NULL DEFAULT 'system',
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    UNIQUE(target_type, target_key)
+                );
+                CREATE TABLE IF NOT EXISTS policy_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    optimizer_type TEXT NOT NULL DEFAULT 'contextual_ucb',
+                    exploration_rate REAL NOT NULL DEFAULT 0.1,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS policy_arms (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    arm_type TEXT NOT NULL CHECK(arm_type IN ('tool','agent','prompt','workflow')),
+                    payload TEXT NOT NULL DEFAULT '{}',
+                    contexts TEXT NOT NULL DEFAULT '[]',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    pull_count INTEGER NOT NULL DEFAULT 0,
+                    reward_sum REAL NOT NULL DEFAULT 0,
+                    reward_sq_sum REAL NOT NULL DEFAULT 0,
+                    success_count INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(group_id) REFERENCES policy_groups(id) ON DELETE CASCADE,
+                    UNIQUE(group_id, name)
+                );
+                CREATE INDEX IF NOT EXISTS idx_policy_arms_group ON policy_arms(group_id, status);
+                CREATE TABLE IF NOT EXISTS policy_selections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_id INTEGER NOT NULL,
+                    arm_id INTEGER NOT NULL,
+                    context TEXT NOT NULL DEFAULT '{}',
+                    score REAL NOT NULL DEFAULT 0,
+                    exploration INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'selected',
+                    task_id INTEGER,
+                    session_id TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(group_id) REFERENCES policy_groups(id) ON DELETE CASCADE,
+                    FOREIGN KEY(arm_id) REFERENCES policy_arms(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_policy_selections_group ON policy_selections(group_id, id DESC);
+                CREATE TABLE IF NOT EXISTS policy_rewards (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    selection_id INTEGER NOT NULL UNIQUE,
+                    success REAL NOT NULL DEFAULT 0,
+                    satisfaction REAL NOT NULL DEFAULT 0,
+                    latency_cost REAL NOT NULL DEFAULT 0,
+                    resource_cost REAL NOT NULL DEFAULT 0,
+                    reward REAL NOT NULL,
+                    evidence TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(selection_id) REFERENCES policy_selections(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS policy_promotions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_id INTEGER NOT NULL,
+                    arm_id INTEGER NOT NULL,
+                    target_type TEXT NOT NULL,
+                    target_key TEXT NOT NULL,
+                    previous_payload TEXT NOT NULL DEFAULT '{}',
+                    previous_existed INTEGER NOT NULL DEFAULT 0,
+                    promoted_payload TEXT NOT NULL DEFAULT '{}',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    promoted_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    rolled_back_at TEXT DEFAULT '',
+                    FOREIGN KEY(group_id) REFERENCES policy_groups(id) ON DELETE CASCADE,
+                    FOREIGN KEY(arm_id) REFERENCES policy_arms(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    actor_id TEXT NOT NULL DEFAULT 'system',
+                    session_id TEXT DEFAULT '',
+                    task_id INTEGER,
+                    action TEXT NOT NULL,
+                    resource_type TEXT DEFAULT '',
+                    resource_id TEXT DEFAULT '',
+                    decision TEXT NOT NULL DEFAULT 'allow',
+                    reason TEXT DEFAULT '',
+                    details TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events(action, id DESC);
+                CREATE TABLE IF NOT EXISTS secret_refs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    env_var TEXT NOT NULL,
+                    purpose TEXT DEFAULT '',
+                    allowed_tools TEXT NOT NULL DEFAULT '[]',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
             """)
             self._ensure_columns(c, "experiences", {
                 "solution": "TEXT DEFAULT ''",
@@ -242,8 +488,12 @@ class MemoryStore:
                 "source": "TEXT DEFAULT ''",
                 "confidence": "REAL DEFAULT 0.5",
                 "enabled": "INTEGER DEFAULT 1",
+                "owner_id": "TEXT NOT NULL DEFAULT 'default'",
+                "workspace_id": "TEXT NOT NULL DEFAULT 'default'",
+                "current_version": "INTEGER NOT NULL DEFAULT 1",
                 "updated_at": "TEXT DEFAULT ''",
             })
+            self._backfill_memory_versions(c)
 
     def _ensure_columns(self, conn: sqlite3.Connection, table: str, columns: dict[str, str]):
         existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
@@ -255,7 +505,34 @@ class MemoryStore:
         item = dict(row)
         item["enabled"] = bool(item.get("enabled"))
         item["confidence"] = float(item.get("confidence") or 0)
+        item["current_version"] = int(item.get("current_version") or 1)
         return item
+
+    def _backfill_memory_versions(self, conn: sqlite3.Connection):
+        rows = conn.execute(
+            """
+            SELECT m.* FROM memories m
+            WHERE NOT EXISTS (
+                SELECT 1 FROM memory_versions v WHERE v.memory_id=m.id
+            )
+            """
+        ).fetchall()
+        for row in rows:
+            conn.execute(
+                """
+                INSERT INTO memory_versions
+                    (memory_id, version, value, source, confidence, enabled, change_type, changed_by, change_reason)
+                VALUES (?, 1, ?, ?, ?, ?, 'create', 'migration', 'Backfilled existing memory')
+                """,
+                (
+                    int(row["id"]),
+                    row["value"],
+                    row["source"],
+                    float(row["confidence"] or 0),
+                    int(row["enabled"] or 0),
+                ),
+            )
+            conn.execute("UPDATE memories SET current_version=1 WHERE id=?", (int(row["id"]),))
 
     # ── UNIFIED MEMORIES ──
 
@@ -423,7 +700,22 @@ class MemoryStore:
                 "events": [self._event_row_to_dict(row) for row in events],
             }
 
-    def upsert_memory(self, memory_type, key, value, category="general", source="", confidence=0.5, enabled=True):
+    def upsert_memory(
+        self,
+        memory_type,
+        key,
+        value,
+        category="general",
+        source="",
+        confidence=0.5,
+        enabled=True,
+        actor_id="system",
+        owner_id="default",
+        workspace_id="default",
+        evidence=None,
+        change_reason="",
+        conflict_policy="overwrite",
+    ):
         memory_type = str(memory_type or "").strip().lower()
         if memory_type not in {"profile", "preference", "project", "experience", "skill"}:
             raise ValueError(f"Invalid memory_type: {memory_type}")
@@ -432,23 +724,1143 @@ class MemoryStore:
         if not key or not value:
             raise ValueError("key and value are required")
         with self._conn() as c:
+            existing = c.execute(
+                "SELECT * FROM memories WHERE memory_type=? AND category=? AND key=?",
+                (memory_type, category, key),
+            ).fetchone()
+            if (
+                existing
+                and existing["value"] != value
+                and str(conflict_policy or "").lower() == "review"
+            ):
+                conflict_cursor = c.execute(
+                    """
+                    INSERT INTO memory_conflicts
+                        (memory_id, existing_value, candidate_value, source, evidence, submitted_by)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        int(existing["id"]),
+                        existing["value"],
+                        value,
+                        source,
+                        json.dumps(evidence or [], ensure_ascii=False),
+                        str(actor_id or "system"),
+                    ),
+                )
+                conflict_id = int(conflict_cursor.lastrowid)
+                review_cursor = c.execute(
+                    """
+                    INSERT INTO memory_reviews (memory_id, conflict_id, submitted_by)
+                    VALUES (?, ?, ?)
+                    """,
+                    (int(existing["id"]), conflict_id, str(actor_id or "system")),
+                )
+                item = self._memory_row_to_dict(existing)
+                item.update({
+                    "review_required": True,
+                    "conflict_id": conflict_id,
+                    "review_id": int(review_cursor.lastrowid),
+                    "candidate_value": value,
+                })
+                return item
+
+            changed = (
+                existing is None
+                or existing["value"] != value
+                or existing["source"] != source
+                or float(existing["confidence"] or 0) != float(confidence)
+                or bool(existing["enabled"]) != bool(enabled)
+            )
+            next_version = int(existing["current_version"] or 1) + 1 if existing else 1
             c.execute("""
-                INSERT INTO memories (memory_type, category, key, value, source, confidence, enabled, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                INSERT INTO memories
+                    (memory_type, category, key, value, source, confidence, enabled,
+                     owner_id, workspace_id, current_version, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(memory_type, category, key) DO UPDATE SET
                     value = excluded.value,
                     source = excluded.source,
                     confidence = excluded.confidence,
                     enabled = excluded.enabled,
+                    owner_id = excluded.owner_id,
+                    workspace_id = excluded.workspace_id,
+                    current_version = excluded.current_version,
                     updated_at = datetime('now')
-            """, (memory_type, category, key, value, source, float(confidence), 1 if enabled else 0))
+            """, (
+                memory_type, category, key, value, source, float(confidence),
+                1 if enabled else 0, owner_id, workspace_id,
+                next_version if changed else int(existing["current_version"] or 1),
+            ))
             row = c.execute(
                 "SELECT * FROM memories WHERE memory_type=? AND category=? AND key=?",
                 (memory_type, category, key),
             ).fetchone()
-            return self._memory_row_to_dict(row)
+            version_id = None
+            if changed:
+                cursor = c.execute(
+                    """
+                    INSERT INTO memory_versions
+                        (memory_id, version, value, source, confidence, enabled,
+                         change_type, changed_by, change_reason)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        int(row["id"]),
+                        next_version,
+                        value,
+                        source,
+                        float(confidence),
+                        1 if enabled else 0,
+                        "create" if existing is None else "update",
+                        str(actor_id or "system"),
+                        str(change_reason or ""),
+                    ),
+                )
+                version_id = int(cursor.lastrowid)
+            for item in evidence or []:
+                self._insert_memory_evidence(c, int(row["id"]), version_id, item, actor_id)
+            result = self._memory_row_to_dict(row)
+            result["review_required"] = False
+            return result
 
-    def list_memories(self, memory_type="", include_disabled=False, limit=200):
+    def _insert_memory_evidence(self, conn, memory_id, version_id, evidence, actor_id="system"):
+        item = evidence if isinstance(evidence, dict) else {"excerpt": str(evidence)}
+        conn.execute(
+            """
+            INSERT INTO memory_evidence
+                (memory_id, version_id, evidence_type, source_ref, excerpt, metadata, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(memory_id),
+                int(version_id) if version_id else None,
+                str(item.get("evidence_type", item.get("type", "manual")) or "manual"),
+                str(item.get("source_ref", "") or ""),
+                str(item.get("excerpt", "") or "")[:4000],
+                json.dumps(item.get("metadata", {}), ensure_ascii=False),
+                str(actor_id or "system"),
+            ),
+        )
+
+    def list_memory_versions(self, memory_id, limit=100):
+        with self._conn() as c:
+            rows = c.execute(
+                """
+                SELECT * FROM memory_versions
+                WHERE memory_id=? ORDER BY version DESC LIMIT ?
+                """,
+                (int(memory_id), max(1, min(int(limit or 100), 500))),
+            ).fetchall()
+            return [self._version_row_to_dict(row) for row in rows]
+
+    def list_memory_evidence(self, memory_id, limit=100):
+        with self._conn() as c:
+            rows = c.execute(
+                """
+                SELECT * FROM memory_evidence
+                WHERE memory_id=? ORDER BY id DESC LIMIT ?
+                """,
+                (int(memory_id), max(1, min(int(limit or 100), 500))),
+            ).fetchall()
+            return [self._evidence_row_to_dict(row) for row in rows]
+
+    def _version_row_to_dict(self, row):
+        item = dict(row)
+        item["enabled"] = bool(item.get("enabled"))
+        item["confidence"] = float(item.get("confidence") or 0)
+        return item
+
+    def _evidence_row_to_dict(self, row):
+        item = dict(row)
+        item["metadata"] = self._json_loads(item.get("metadata"), {})
+        return item
+
+    def list_memory_reviews(self, status="pending", limit=100):
+        with self._conn() as c:
+            clauses = []
+            params = []
+            if status:
+                clauses.append("r.status=?")
+                params.append(status)
+            where = " WHERE " + " AND ".join(clauses) if clauses else ""
+            rows = c.execute(
+                f"""
+                SELECT r.*, c.existing_value, c.candidate_value, c.conflict_type,
+                       c.source AS conflict_source, c.evidence, m.memory_type,
+                       m.category, m.key, m.value AS current_value
+                FROM memory_reviews r
+                JOIN memories m ON m.id=r.memory_id
+                LEFT JOIN memory_conflicts c ON c.id=r.conflict_id
+                {where}
+                ORDER BY r.id DESC LIMIT ?
+                """,
+                [*params, max(1, min(int(limit or 100), 500))],
+            ).fetchall()
+            items = []
+            for row in rows:
+                item = dict(row)
+                item["evidence"] = self._json_loads(item.get("evidence"), [])
+                items.append(item)
+            return items
+
+    def resolve_memory_review(self, review_id, decision, reviewer="system", notes=""):
+        decision = str(decision or "").lower()
+        if decision not in {"approve", "reject"}:
+            raise ValueError("decision must be approve or reject")
+        with self._conn() as c:
+            review = c.execute(
+                """
+                SELECT r.*, c.candidate_value, c.source, c.evidence
+                FROM memory_reviews r
+                LEFT JOIN memory_conflicts c ON c.id=r.conflict_id
+                WHERE r.id=?
+                """,
+                (int(review_id),),
+            ).fetchone()
+            if not review:
+                return None
+            if review["status"] != "pending":
+                raise ValueError("review is already resolved")
+            status = "approved" if decision == "approve" else "rejected"
+            if decision == "approve" and review["candidate_value"] is not None:
+                memory = c.execute("SELECT * FROM memories WHERE id=?", (int(review["memory_id"]),)).fetchone()
+                version = int(memory["current_version"] or 1) + 1
+                c.execute(
+                    """
+                    UPDATE memories
+                    SET value=?, source=?, current_version=?, updated_at=datetime('now')
+                    WHERE id=?
+                    """,
+                    (review["candidate_value"], review["source"], version, int(review["memory_id"])),
+                )
+                cursor = c.execute(
+                    """
+                    INSERT INTO memory_versions
+                        (memory_id, version, value, source, confidence, enabled,
+                         change_type, changed_by, change_reason)
+                    VALUES (?, ?, ?, ?, ?, ?, 'conflict_resolution', ?, ?)
+                    """,
+                    (
+                        int(review["memory_id"]), version, review["candidate_value"],
+                        review["source"], float(memory["confidence"] or 0),
+                        int(memory["enabled"] or 0), str(reviewer or "system"),
+                        str(notes or "Approved from Review Inbox"),
+                    ),
+                )
+                if memory["memory_type"] == "profile":
+                    c.execute(
+                        """
+                        INSERT INTO profiles (category, key, value, importance, updated_at)
+                        VALUES (?, ?, ?, ?, datetime('now'))
+                        ON CONFLICT(category, key) DO UPDATE SET
+                            value=excluded.value, updated_at=datetime('now')
+                        """,
+                        (
+                            memory["category"], memory["key"], review["candidate_value"],
+                            float(memory["confidence"] or 0.5),
+                        ),
+                    )
+                elif memory["memory_type"] == "preference":
+                    c.execute(
+                        """
+                        INSERT INTO preferences (category, key, value, confidence, updated_at)
+                        VALUES (?, ?, ?, ?, datetime('now'))
+                        ON CONFLICT(category, key) DO UPDATE SET
+                            value=excluded.value, updated_at=datetime('now')
+                        """,
+                        (
+                            memory["category"], memory["key"], review["candidate_value"],
+                            float(memory["confidence"] or 0.5),
+                        ),
+                    )
+                for evidence in self._json_loads(review["evidence"], []):
+                    self._insert_memory_evidence(
+                        c, int(review["memory_id"]), int(cursor.lastrowid), evidence, reviewer
+                    )
+            c.execute(
+                """
+                UPDATE memory_reviews
+                SET status=?, reviewed_by=?, notes=?, resolved_at=datetime('now')
+                WHERE id=?
+                """,
+                (status, str(reviewer or "system"), str(notes or ""), int(review_id)),
+            )
+            if review["conflict_id"]:
+                c.execute(
+                    """
+                    UPDATE memory_conflicts
+                    SET status=?, resolution=?, reviewed_by=?, resolved_at=datetime('now')
+                    WHERE id=?
+                    """,
+                    (status, decision, str(reviewer or "system"), int(review["conflict_id"])),
+                )
+            return dict(c.execute("SELECT * FROM memory_reviews WHERE id=?", (int(review_id),)).fetchone())
+
+    def grant_memory_acl(self, memory_id, principal_type, principal_id, permission, granted_by="system"):
+        if principal_type not in {"user", "role", "workspace"}:
+            raise ValueError("principal_type must be user, role, or workspace")
+        if permission not in {"read", "write", "review", "admin"}:
+            raise ValueError("permission must be read, write, review, or admin")
+        if not str(principal_id or "").strip():
+            raise ValueError("principal_id is required")
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT OR IGNORE INTO memory_acl
+                    (memory_id, principal_type, principal_id, permission, granted_by)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    int(memory_id), str(principal_type), str(principal_id),
+                    str(permission), str(granted_by or "system"),
+                ),
+            )
+            rows = c.execute("SELECT * FROM memory_acl WHERE memory_id=? ORDER BY id", (int(memory_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def list_memory_acl(self, memory_id):
+        with self._conn() as c:
+            return [
+                dict(row) for row in c.execute(
+                    "SELECT * FROM memory_acl WHERE memory_id=? ORDER BY id",
+                    (int(memory_id),),
+                ).fetchall()
+            ]
+
+    def check_memory_access(self, memory_id, actor_id="default", roles=None, workspace_id="default", permission="read"):
+        with self._conn() as c:
+            memory = c.execute("SELECT * FROM memories WHERE id=?", (int(memory_id),)).fetchone()
+            if not memory:
+                return False
+            return self._check_memory_access(c, memory, actor_id, roles, workspace_id, permission)
+
+    def _check_memory_access(self, conn, memory, actor_id, roles, workspace_id, permission):
+        if str(actor_id) == "system":
+            return True
+        acl = conn.execute("SELECT * FROM memory_acl WHERE memory_id=?", (int(memory["id"]),)).fetchall()
+        if not acl:
+            return True
+        if actor_id and str(actor_id) == str(memory["owner_id"]):
+            return True
+        accepted = {
+            "read": {"read", "write", "review", "admin"},
+            "write": {"write", "admin"},
+            "review": {"review", "admin"},
+            "admin": {"admin"},
+        }.get(permission, {permission})
+        role_set = {str(role) for role in (roles or [])}
+        for entry in acl:
+            principal_match = (
+                (entry["principal_type"] == "user" and entry["principal_id"] == str(actor_id))
+                or (entry["principal_type"] == "role" and entry["principal_id"] in role_set)
+                or (
+                    entry["principal_type"] == "workspace"
+                    and entry["principal_id"] == str(workspace_id)
+                )
+            )
+            if principal_match and entry["permission"] in accepted:
+                return True
+        return False
+
+    def record_retrieval_evaluation(self, name, top_k, metrics, cases, created_by="system"):
+        with self._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO retrieval_evaluation_runs
+                    (name, top_k, case_count, metrics, cases, created_by)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(name or "memory-retrieval"), int(top_k), len(cases or []),
+                    json.dumps(metrics or {}, ensure_ascii=False),
+                    json.dumps(cases or [], ensure_ascii=False),
+                    str(created_by or "system"),
+                ),
+            )
+            return self.get_retrieval_evaluation(int(cursor.lastrowid), conn=c)
+
+    def get_retrieval_evaluation(self, run_id, conn=None):
+        def convert(row):
+            if not row:
+                return None
+            item = dict(row)
+            item["metrics"] = self._json_loads(item.get("metrics"), {})
+            item["cases"] = self._json_loads(item.get("cases"), [])
+            return item
+        if conn is not None:
+            return convert(conn.execute("SELECT * FROM retrieval_evaluation_runs WHERE id=?", (int(run_id),)).fetchone())
+        with self._conn() as c:
+            return convert(c.execute("SELECT * FROM retrieval_evaluation_runs WHERE id=?", (int(run_id),)).fetchone())
+
+    # ---- REFLECTION 2.0 ----
+
+    def create_reflection_card(self, card, improvements=None):
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO reflection_cards
+                    (id, task, session_id, trigger_type, outcome, outcome_detail,
+                     root_cause, failure_category, insights, patterns, trajectory,
+                     evidence, user_feedback, status, version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    card["id"],
+                    card.get("task", "Reflection"),
+                    card.get("session_id", "default"),
+                    card.get("trigger", "user_triggered"),
+                    card.get("outcome", "partial"),
+                    json.dumps(card.get("outcome_detail", {}), ensure_ascii=False),
+                    card.get("root_cause", ""),
+                    card.get("failure_category", ""),
+                    json.dumps(card.get("insights", []), ensure_ascii=False),
+                    json.dumps(card.get("patterns", []), ensure_ascii=False),
+                    json.dumps(card.get("trajectory", {}), ensure_ascii=False),
+                    json.dumps(card.get("evidence", []), ensure_ascii=False),
+                    json.dumps(card.get("user_feedback", {}), ensure_ascii=False),
+                    card.get("status", "active"),
+                    int(card.get("version", 1)),
+                ),
+            )
+            improvement_rows = []
+            for index, improvement in enumerate(improvements or []):
+                item = improvement if isinstance(improvement, dict) else {"detail": str(improvement)}
+                detail = str(item.get("detail", item.get("title", "")) or "")
+                title = str(item.get("title", detail) or f"Improvement {index + 1}")[:200]
+                target_key = str(item.get("target_key", f"{card['id']}:{index + 1}"))
+                cursor = c.execute(
+                    """
+                    INSERT INTO reflection_improvements
+                        (card_id, title, detail, action_type, target_type, target_key,
+                         candidate_payload, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'proposed')
+                    """,
+                    (
+                        card["id"], title, detail,
+                        str(item.get("action_type", "policy")),
+                        str(item.get("target_type", "agent_policy")),
+                        target_key,
+                        json.dumps(
+                            item.get("candidate_payload", {"instruction": detail}),
+                            ensure_ascii=False,
+                        ),
+                    ),
+                )
+                improvement_id = int(cursor.lastrowid)
+                c.execute(
+                    """
+                    INSERT INTO reflection_improvement_events
+                        (improvement_id, from_status, to_status, actor_id, reason)
+                    VALUES (?, '', 'proposed', 'reflection_engine', 'Created from reflection card')
+                    """,
+                    (improvement_id,),
+                )
+                improvement_rows.append(self._reflection_improvement_from_row(
+                    c.execute("SELECT * FROM reflection_improvements WHERE id=?", (improvement_id,)).fetchone()
+                ))
+            stored = self._reflection_card_from_row(
+                c.execute("SELECT * FROM reflection_cards WHERE id=?", (card["id"],)).fetchone()
+            )
+            stored["improvements"] = improvement_rows
+            return stored
+
+    def list_reflection_cards(self, limit=20, session_id=""):
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 20), 200))
+            if session_id:
+                rows = c.execute(
+                    "SELECT * FROM reflection_cards WHERE session_id=? ORDER BY created_at DESC LIMIT ?",
+                    (session_id, limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT * FROM reflection_cards ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [self._reflection_card_from_row(row) for row in rows]
+
+    def get_reflection_card(self, card_id):
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM reflection_cards WHERE id=?", (str(card_id),)).fetchone()
+            if not row:
+                return None
+            card = self._reflection_card_from_row(row)
+            improvements = c.execute(
+                "SELECT * FROM reflection_improvements WHERE card_id=? ORDER BY id",
+                (str(card_id),),
+            ).fetchall()
+            card["improvements"] = [self._reflection_improvement_from_row(item) for item in improvements]
+            return card
+
+    def update_reflection_feedback(self, card_id, feedback, actor_id="system"):
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM reflection_cards WHERE id=?", (str(card_id),)).fetchone()
+            if not row:
+                return None
+            current = self._json_loads(row["user_feedback"], {})
+            current.update(feedback or {})
+            current["updated_by"] = str(actor_id or "system")
+            c.execute(
+                """
+                UPDATE reflection_cards
+                SET user_feedback=?, version=version+1, updated_at=datetime('now')
+                WHERE id=?
+                """,
+                (json.dumps(current, ensure_ascii=False), str(card_id)),
+            )
+            return self._reflection_card_from_row(
+                c.execute("SELECT * FROM reflection_cards WHERE id=?", (str(card_id),)).fetchone()
+            )
+
+    def list_reflection_improvements(self, status="", limit=100):
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 100), 500))
+            if status:
+                rows = c.execute(
+                    "SELECT * FROM reflection_improvements WHERE status=? ORDER BY id DESC LIMIT ?",
+                    (status, limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT * FROM reflection_improvements ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [self._reflection_improvement_from_row(row) for row in rows]
+
+    def get_reflection_improvement(self, improvement_id, conn=None):
+        def fetch(c):
+            row = c.execute("SELECT * FROM reflection_improvements WHERE id=?", (int(improvement_id),)).fetchone()
+            if not row:
+                return None
+            item = self._reflection_improvement_from_row(row)
+            events = c.execute(
+                "SELECT * FROM reflection_improvement_events WHERE improvement_id=? ORDER BY id",
+                (int(improvement_id),),
+            ).fetchall()
+            item["events"] = [
+                {**dict(event), "data": self._json_loads(event["data"], {})}
+                for event in events
+            ]
+            return item
+        if conn is not None:
+            return fetch(conn)
+        with self._conn() as c:
+            return fetch(c)
+
+    def update_reflection_improvement(
+        self, improvement_id, from_status, to_status, actor_id="system",
+        reason="", data=None, fields=None,
+    ):
+        allowed_fields = {
+            "baseline_metrics", "candidate_metrics", "regression_result",
+            "rollback_payload", "published_at", "rolled_back_at",
+        }
+        with self._conn() as c:
+            current = c.execute(
+                "SELECT * FROM reflection_improvements WHERE id=?",
+                (int(improvement_id),),
+            ).fetchone()
+            if not current:
+                return None
+            if current["status"] != from_status:
+                raise ValueError(f"expected status {from_status}, got {current['status']}")
+            assignments = ["status=?", "updated_at=datetime('now')"]
+            params = [to_status]
+            for key, value in (fields or {}).items():
+                if key not in allowed_fields:
+                    continue
+                assignments.append(f"{key}=?")
+                params.append(
+                    json.dumps(value, ensure_ascii=False)
+                    if key.endswith("_metrics") or key.endswith("_result") or key == "rollback_payload"
+                    else value
+                )
+            params.append(int(improvement_id))
+            c.execute(
+                f"UPDATE reflection_improvements SET {', '.join(assignments)} WHERE id=?",
+                params,
+            )
+            c.execute(
+                """
+                INSERT INTO reflection_improvement_events
+                    (improvement_id, from_status, to_status, actor_id, reason, data)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(improvement_id), from_status, to_status,
+                    str(actor_id or "system"), str(reason or ""),
+                    json.dumps(data or {}, ensure_ascii=False),
+                ),
+            )
+            return self.get_reflection_improvement(improvement_id, conn=c)
+
+    def get_runtime_policy(self, target_type, target_key, conn=None):
+        def fetch(c):
+            row = c.execute(
+                "SELECT * FROM runtime_policies WHERE target_type=? AND target_key=?",
+                (str(target_type), str(target_key)),
+            ).fetchone()
+            if not row:
+                return None
+            item = dict(row)
+            item["payload"] = self._json_loads(item.get("payload"), {})
+            item["active"] = bool(item.get("active"))
+            return item
+        if conn is not None:
+            return fetch(conn)
+        with self._conn() as c:
+            return fetch(c)
+
+    def set_runtime_policy(self, target_type, target_key, payload, actor_id="system"):
+        with self._conn() as c:
+            current = self.get_runtime_policy(target_type, target_key, conn=c)
+            version = int(current["version"]) + 1 if current else 1
+            c.execute(
+                """
+                INSERT INTO runtime_policies
+                    (target_type, target_key, payload, version, active, updated_by, updated_at)
+                VALUES (?, ?, ?, ?, 1, ?, datetime('now'))
+                ON CONFLICT(target_type, target_key) DO UPDATE SET
+                    payload=excluded.payload,
+                    version=excluded.version,
+                    active=1,
+                    updated_by=excluded.updated_by,
+                    updated_at=datetime('now')
+                """,
+                (
+                    str(target_type), str(target_key),
+                    json.dumps(payload or {}, ensure_ascii=False),
+                    version, str(actor_id or "system"),
+                ),
+            )
+            return self.get_runtime_policy(target_type, target_key, conn=c)
+
+    def publish_reflection_improvement(self, improvement_id, actor_id="system", reason=""):
+        with self._conn() as c:
+            improvement = c.execute(
+                "SELECT * FROM reflection_improvements WHERE id=?",
+                (int(improvement_id),),
+            ).fetchone()
+            if not improvement:
+                raise ValueError("improvement not found")
+            if improvement["status"] != "validated":
+                raise ValueError("only validated improvements can be published")
+            current = self.get_runtime_policy(
+                improvement["target_type"], improvement["target_key"], conn=c
+            )
+            rollback = {
+                "existed": bool(current),
+                "payload": current["payload"] if current else {},
+            }
+            version = int(current["version"]) + 1 if current else 1
+            c.execute(
+                """
+                INSERT INTO runtime_policies
+                    (target_type, target_key, payload, version, active, updated_by, updated_at)
+                VALUES (?, ?, ?, ?, 1, ?, datetime('now'))
+                ON CONFLICT(target_type, target_key) DO UPDATE SET
+                    payload=excluded.payload,
+                    version=excluded.version,
+                    active=1,
+                    updated_by=excluded.updated_by,
+                    updated_at=datetime('now')
+                """,
+                (
+                    improvement["target_type"], improvement["target_key"],
+                    improvement["candidate_payload"], version, str(actor_id or "system"),
+                ),
+            )
+            c.execute(
+                """
+                UPDATE reflection_improvements
+                SET status='published', rollback_payload=?, published_at=datetime('now'),
+                    updated_at=datetime('now')
+                WHERE id=?
+                """,
+                (json.dumps(rollback, ensure_ascii=False), int(improvement_id)),
+            )
+            c.execute(
+                """
+                INSERT INTO reflection_improvement_events
+                    (improvement_id, from_status, to_status, actor_id, reason, data)
+                VALUES (?, 'validated', 'published', ?, ?, ?)
+                """,
+                (
+                    int(improvement_id), str(actor_id or "system"),
+                    str(reason or "Validated strategy published"),
+                    json.dumps({"policy_version": version}, ensure_ascii=False),
+                ),
+            )
+            return self.get_reflection_improvement(improvement_id, conn=c)
+
+    def rollback_reflection_improvement(self, improvement_id, actor_id="system", reason=""):
+        with self._conn() as c:
+            improvement = c.execute(
+                "SELECT * FROM reflection_improvements WHERE id=?",
+                (int(improvement_id),),
+            ).fetchone()
+            if not improvement:
+                raise ValueError("improvement not found")
+            if improvement["status"] != "published":
+                raise ValueError("only published improvements can be rolled back")
+            rollback = self._json_loads(improvement["rollback_payload"], {})
+            current = self.get_runtime_policy(
+                improvement["target_type"], improvement["target_key"], conn=c
+            )
+            version = int(current["version"]) + 1 if current else 1
+            if rollback.get("existed"):
+                c.execute(
+                    """
+                    UPDATE runtime_policies
+                    SET payload=?, version=?, active=1, updated_by=?, updated_at=datetime('now')
+                    WHERE target_type=? AND target_key=?
+                    """,
+                    (
+                        json.dumps(rollback.get("payload", {}), ensure_ascii=False),
+                        version, str(actor_id or "system"),
+                        improvement["target_type"], improvement["target_key"],
+                    ),
+                )
+            else:
+                c.execute(
+                    """
+                    UPDATE runtime_policies
+                    SET payload='{}', version=?, active=0, updated_by=?, updated_at=datetime('now')
+                    WHERE target_type=? AND target_key=?
+                    """,
+                    (
+                        version, str(actor_id or "system"),
+                        improvement["target_type"], improvement["target_key"],
+                    ),
+                )
+            c.execute(
+                """
+                UPDATE reflection_improvements
+                SET status='rolled_back', rolled_back_at=datetime('now'),
+                    updated_at=datetime('now')
+                WHERE id=?
+                """,
+                (int(improvement_id),),
+            )
+            c.execute(
+                """
+                INSERT INTO reflection_improvement_events
+                    (improvement_id, from_status, to_status, actor_id, reason, data)
+                VALUES (?, 'published', 'rolled_back', ?, ?, ?)
+                """,
+                (
+                    int(improvement_id), str(actor_id or "system"),
+                    str(reason or "Published strategy rolled back"),
+                    json.dumps({"policy_version": version}, ensure_ascii=False),
+                ),
+            )
+            return self.get_reflection_improvement(improvement_id, conn=c)
+
+    def _reflection_card_from_row(self, row):
+        item = dict(row)
+        for key, default in (
+            ("outcome_detail", {}), ("insights", []), ("patterns", []),
+            ("trajectory", {}), ("evidence", []), ("user_feedback", {}),
+        ):
+            item[key] = self._json_loads(item.get(key), default)
+        item["trigger"] = item.pop("trigger_type", "")
+        return item
+
+    def _reflection_improvement_from_row(self, row):
+        item = dict(row)
+        for key in (
+            "candidate_payload", "baseline_metrics", "candidate_metrics",
+            "regression_result", "rollback_payload",
+        ):
+            item[key] = self._json_loads(item.get(key), {})
+        return item
+
+    # ---- POLICY OPTIMIZER ----
+
+    def upsert_policy_group(self, name, optimizer_type="contextual_ucb", exploration_rate=0.1):
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO policy_groups (name, optimizer_type, exploration_rate, updated_at)
+                VALUES (?, ?, ?, datetime('now'))
+                ON CONFLICT(name) DO UPDATE SET
+                    optimizer_type=excluded.optimizer_type,
+                    exploration_rate=excluded.exploration_rate,
+                    updated_at=datetime('now')
+                """,
+                (str(name), str(optimizer_type), float(exploration_rate)),
+            )
+            return dict(c.execute("SELECT * FROM policy_groups WHERE name=?", (str(name),)).fetchone())
+
+    def upsert_policy_arm(self, group_name, name, arm_type, payload=None, contexts=None, status="active"):
+        group = self.upsert_policy_group(group_name)
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO policy_arms
+                    (group_id, name, arm_type, payload, contexts, status, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(group_id, name) DO UPDATE SET
+                    arm_type=excluded.arm_type,
+                    payload=excluded.payload,
+                    contexts=excluded.contexts,
+                    status=excluded.status,
+                    updated_at=datetime('now')
+                """,
+                (
+                    int(group["id"]), str(name), str(arm_type),
+                    json.dumps(payload or {}, ensure_ascii=False),
+                    json.dumps(contexts or [], ensure_ascii=False),
+                    str(status),
+                ),
+            )
+            row = c.execute(
+                "SELECT * FROM policy_arms WHERE group_id=? AND name=?",
+                (int(group["id"]), str(name)),
+            ).fetchone()
+            return self._policy_arm_from_row(row)
+
+    def list_policy_arms(self, group_name, include_inactive=False):
+        with self._conn() as c:
+            group = c.execute("SELECT * FROM policy_groups WHERE name=?", (str(group_name),)).fetchone()
+            if not group:
+                return [], None
+            sql = "SELECT * FROM policy_arms WHERE group_id=?"
+            params = [int(group["id"])]
+            if not include_inactive:
+                sql += " AND status='active'"
+            sql += " ORDER BY id"
+            rows = c.execute(sql, params).fetchall()
+            return [self._policy_arm_from_row(row) for row in rows], dict(group)
+
+    def create_policy_selection(
+        self, group_id, arm_id, context, score, exploration=False,
+        task_id=None, session_id="",
+    ):
+        with self._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO policy_selections
+                    (group_id, arm_id, context, score, exploration, task_id, session_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(group_id), int(arm_id),
+                    json.dumps(context or {}, ensure_ascii=False),
+                    float(score), 1 if exploration else 0,
+                    int(task_id) if task_id else None, str(session_id or ""),
+                ),
+            )
+            return self.get_policy_selection(int(cursor.lastrowid), conn=c)
+
+    def get_policy_selection(self, selection_id, conn=None):
+        def fetch(c):
+            row = c.execute(
+                """
+                SELECT s.*, g.name AS group_name, a.name AS arm_name,
+                       a.arm_type, a.payload, a.contexts
+                FROM policy_selections s
+                JOIN policy_groups g ON g.id=s.group_id
+                JOIN policy_arms a ON a.id=s.arm_id
+                WHERE s.id=?
+                """,
+                (int(selection_id),),
+            ).fetchone()
+            if not row:
+                return None
+            item = dict(row)
+            for key, default in (("context", {}), ("payload", {}), ("contexts", [])):
+                item[key] = self._json_loads(item.get(key), default)
+            item["exploration"] = bool(item.get("exploration"))
+            return item
+        if conn is not None:
+            return fetch(conn)
+        with self._conn() as c:
+            return fetch(c)
+
+    def record_policy_reward(
+        self, selection_id, success, satisfaction, latency_cost,
+        resource_cost, reward, evidence=None,
+    ):
+        with self._conn() as c:
+            selection = c.execute(
+                "SELECT * FROM policy_selections WHERE id=?", (int(selection_id),)
+            ).fetchone()
+            if not selection:
+                raise ValueError("policy selection not found")
+            if c.execute(
+                "SELECT 1 FROM policy_rewards WHERE selection_id=?", (int(selection_id),)
+            ).fetchone():
+                raise ValueError("reward already recorded")
+            c.execute(
+                """
+                INSERT INTO policy_rewards
+                    (selection_id, success, satisfaction, latency_cost,
+                     resource_cost, reward, evidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(selection_id), float(success), float(satisfaction),
+                    float(latency_cost), float(resource_cost), float(reward),
+                    json.dumps(evidence or {}, ensure_ascii=False),
+                ),
+            )
+            c.execute(
+                """
+                UPDATE policy_arms
+                SET pull_count=pull_count+1,
+                    reward_sum=reward_sum+?,
+                    reward_sq_sum=reward_sq_sum+(? * ?),
+                    success_count=success_count+?,
+                    updated_at=datetime('now')
+                WHERE id=?
+                """,
+                (
+                    float(reward), float(reward), float(reward),
+                    1 if float(success) >= 0.5 else 0, int(selection["arm_id"]),
+                ),
+            )
+            c.execute(
+                "UPDATE policy_selections SET status='rewarded' WHERE id=?",
+                (int(selection_id),),
+            )
+            return self.get_policy_selection(selection_id, conn=c)
+
+    def policy_group_stats(self, group_name):
+        arms, group = self.list_policy_arms(group_name, include_inactive=True)
+        if not group:
+            return None
+        for arm in arms:
+            pulls = int(arm["pull_count"])
+            arm["average_reward"] = round(float(arm["reward_sum"]) / pulls, 4) if pulls else 0.0
+            arm["success_rate"] = round(int(arm["success_count"]) / pulls, 4) if pulls else 0.0
+        return {"group": group, "arms": arms}
+
+    def promote_policy_arm(
+        self, group_id, arm_id, target_type, target_key, actor_id="system",
+    ):
+        with self._conn() as c:
+            arm = c.execute(
+                "SELECT * FROM policy_arms WHERE id=? AND group_id=?",
+                (int(arm_id), int(group_id)),
+            ).fetchone()
+            if not arm:
+                raise ValueError("policy arm not found")
+            current = self.get_runtime_policy(target_type, target_key, conn=c)
+            previous_payload = current["payload"] if current else {}
+            payload = self._json_loads(arm["payload"], {})
+            version = int(current["version"]) + 1 if current else 1
+            c.execute(
+                """
+                INSERT INTO runtime_policies
+                    (target_type, target_key, payload, version, active, updated_by, updated_at)
+                VALUES (?, ?, ?, ?, 1, ?, datetime('now'))
+                ON CONFLICT(target_type, target_key) DO UPDATE SET
+                    payload=excluded.payload,
+                    version=excluded.version,
+                    active=1,
+                    updated_by=excluded.updated_by,
+                    updated_at=datetime('now')
+                """,
+                (
+                    str(target_type), str(target_key),
+                    json.dumps(payload, ensure_ascii=False),
+                    version, str(actor_id or "system"),
+                ),
+            )
+            cursor = c.execute(
+                """
+                INSERT INTO policy_promotions
+                    (group_id, arm_id, target_type, target_key, previous_payload,
+                     previous_existed, promoted_payload, promoted_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(group_id), int(arm_id), str(target_type), str(target_key),
+                    json.dumps(previous_payload, ensure_ascii=False),
+                    1 if current else 0,
+                    json.dumps(payload, ensure_ascii=False),
+                    str(actor_id or "system"),
+                ),
+            )
+            return self.get_policy_promotion(int(cursor.lastrowid), conn=c)
+
+    def rollback_policy_promotion(self, promotion_id, actor_id="system"):
+        with self._conn() as c:
+            promotion = c.execute(
+                "SELECT * FROM policy_promotions WHERE id=?", (int(promotion_id),)
+            ).fetchone()
+            if not promotion:
+                raise ValueError("policy promotion not found")
+            if promotion["status"] != "active":
+                raise ValueError("policy promotion is not active")
+            current = self.get_runtime_policy(
+                promotion["target_type"], promotion["target_key"], conn=c
+            )
+            version = int(current["version"]) + 1 if current else 1
+            if promotion["previous_existed"]:
+                c.execute(
+                    """
+                    UPDATE runtime_policies
+                    SET payload=?, version=?, active=1, updated_by=?, updated_at=datetime('now')
+                    WHERE target_type=? AND target_key=?
+                    """,
+                    (
+                        promotion["previous_payload"], version, str(actor_id or "system"),
+                        promotion["target_type"], promotion["target_key"],
+                    ),
+                )
+            else:
+                c.execute(
+                    """
+                    UPDATE runtime_policies
+                    SET payload='{}', version=?, active=0, updated_by=?, updated_at=datetime('now')
+                    WHERE target_type=? AND target_key=?
+                    """,
+                    (
+                        version, str(actor_id or "system"),
+                        promotion["target_type"], promotion["target_key"],
+                    ),
+                )
+            c.execute(
+                """
+                UPDATE policy_promotions
+                SET status='rolled_back', rolled_back_at=datetime('now')
+                WHERE id=?
+                """,
+                (int(promotion_id),),
+            )
+            return self.get_policy_promotion(promotion_id, conn=c)
+
+    def get_policy_promotion(self, promotion_id, conn=None):
+        def fetch(c):
+            row = c.execute(
+                """
+                SELECT p.*, g.name AS group_name, a.name AS arm_name
+                FROM policy_promotions p
+                JOIN policy_groups g ON g.id=p.group_id
+                JOIN policy_arms a ON a.id=p.arm_id
+                WHERE p.id=?
+                """,
+                (int(promotion_id),),
+            ).fetchone()
+            if not row:
+                return None
+            item = dict(row)
+            item["previous_payload"] = self._json_loads(item.get("previous_payload"), {})
+            item["promoted_payload"] = self._json_loads(item.get("promoted_payload"), {})
+            item["previous_existed"] = bool(item.get("previous_existed"))
+            return item
+        if conn is not None:
+            return fetch(conn)
+        with self._conn() as c:
+            return fetch(c)
+
+    def _policy_arm_from_row(self, row):
+        item = dict(row)
+        item["payload"] = self._json_loads(item.get("payload"), {})
+        item["contexts"] = self._json_loads(item.get("contexts"), [])
+        return item
+
+    # ---- AUDIT AND SECRET REFERENCES ----
+
+    def record_audit_event(
+        self, action, decision="allow", actor_id="system", session_id="",
+        task_id=None, resource_type="", resource_id="", reason="", details=None,
+    ):
+        with self._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO audit_events
+                    (actor_id, session_id, task_id, action, resource_type,
+                     resource_id, decision, reason, details)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(actor_id or "system"), str(session_id or ""),
+                    int(task_id) if task_id else None, str(action),
+                    str(resource_type or ""), str(resource_id or ""),
+                    str(decision), str(reason or ""),
+                    json.dumps(details or {}, ensure_ascii=False),
+                ),
+            )
+            row = c.execute("SELECT * FROM audit_events WHERE id=?", (int(cursor.lastrowid),)).fetchone()
+            return self._audit_row_to_dict(row)
+
+    def list_audit_events(self, action="", decision="", limit=100):
+        with self._conn() as c:
+            clauses = []
+            params = []
+            if action:
+                clauses.append("action=?")
+                params.append(str(action))
+            if decision:
+                clauses.append("decision=?")
+                params.append(str(decision))
+            where = " WHERE " + " AND ".join(clauses) if clauses else ""
+            rows = c.execute(
+                f"SELECT * FROM audit_events{where} ORDER BY id DESC LIMIT ?",
+                [*params, max(1, min(int(limit or 100), 500))],
+            ).fetchall()
+            return [self._audit_row_to_dict(row) for row in rows]
+
+    def register_secret_ref(self, name, env_var, purpose="", allowed_tools=None, created_by="system"):
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO secret_refs
+                    (name, env_var, purpose, allowed_tools, created_by, updated_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(name) DO UPDATE SET
+                    env_var=excluded.env_var,
+                    purpose=excluded.purpose,
+                    allowed_tools=excluded.allowed_tools,
+                    enabled=1,
+                    updated_at=datetime('now')
+                """,
+                (
+                    str(name), str(env_var), str(purpose or ""),
+                    json.dumps(allowed_tools or [], ensure_ascii=False),
+                    str(created_by or "system"),
+                ),
+            )
+            return self.get_secret_ref(name, conn=c)
+
+    def get_secret_ref(self, name, conn=None):
+        def fetch(c):
+            row = c.execute("SELECT * FROM secret_refs WHERE name=?", (str(name),)).fetchone()
+            if not row:
+                return None
+            item = dict(row)
+            item["allowed_tools"] = self._json_loads(item.get("allowed_tools"), [])
+            item["enabled"] = bool(item.get("enabled"))
+            return item
+        if conn is not None:
+            return fetch(conn)
+        with self._conn() as c:
+            return fetch(c)
+
+    def list_secret_refs(self):
+        with self._conn() as c:
+            rows = c.execute("SELECT * FROM secret_refs ORDER BY name").fetchall()
+            items = []
+            for row in rows:
+                item = dict(row)
+                item["allowed_tools"] = self._json_loads(item.get("allowed_tools"), [])
+                item["enabled"] = bool(item.get("enabled"))
+                items.append(item)
+            return items
+
+    def _audit_row_to_dict(self, row):
+        item = dict(row)
+        item["details"] = self._json_loads(item.get("details"), {})
+        return item
+
+    def list_memories(
+        self, memory_type="", include_disabled=False, limit=200,
+        actor_id="system", roles=None, workspace_id="default",
+    ):
         with self._conn() as c:
             limit = max(1, min(int(limit or 200), 500))
             clauses = []
@@ -463,23 +1875,50 @@ class MemoryStore:
                 f"SELECT * FROM memories{where} ORDER BY updated_at DESC, id DESC LIMIT ?",
                 (*params, limit),
             ).fetchall()
-            return [self._memory_row_to_dict(r) for r in rows]
+            return [
+                self._memory_row_to_dict(r) for r in rows
+                if self._check_memory_access(c, r, actor_id, roles, workspace_id, "read")
+            ]
 
     def get_memory(self, memory_id):
         with self._conn() as c:
             row = c.execute("SELECT * FROM memories WHERE id=?", (int(memory_id),)).fetchone()
             return self._memory_row_to_dict(row) if row else None
 
-    def set_memory_enabled(self, memory_id, enabled):
+    def set_memory_enabled(self, memory_id, enabled, actor_id="system", change_reason=""):
         with self._conn() as c:
+            existing = c.execute("SELECT * FROM memories WHERE id=?", (int(memory_id),)).fetchone()
+            if not existing:
+                return None
+            version = int(existing["current_version"] or 1) + 1
             c.execute(
-                "UPDATE memories SET enabled=?, updated_at=datetime('now') WHERE id=?",
-                (1 if enabled else 0, int(memory_id)),
+                """
+                UPDATE memories
+                SET enabled=?, current_version=?, updated_at=datetime('now')
+                WHERE id=?
+                """,
+                (1 if enabled else 0, version, int(memory_id)),
+            )
+            c.execute(
+                """
+                INSERT INTO memory_versions
+                    (memory_id, version, value, source, confidence, enabled,
+                     change_type, changed_by, change_reason)
+                VALUES (?, ?, ?, ?, ?, ?, 'status_change', ?, ?)
+                """,
+                (
+                    int(memory_id), version, existing["value"], existing["source"],
+                    float(existing["confidence"] or 0), 1 if enabled else 0,
+                    str(actor_id or "system"), str(change_reason or ""),
+                ),
             )
             row = c.execute("SELECT * FROM memories WHERE id=?", (int(memory_id),)).fetchone()
             return self._memory_row_to_dict(row) if row else None
 
-    def search_memories(self, query, memory_type="", limit=20, include_disabled=False):
+    def search_memories(
+        self, query, memory_type="", limit=20, include_disabled=False,
+        actor_id="system", roles=None, workspace_id="default",
+    ):
         query = str(query or "").strip()
         if not query:
             return []
@@ -496,11 +1935,24 @@ class MemoryStore:
                 f"SELECT * FROM memories WHERE {' AND '.join(clauses)} ORDER BY confidence DESC, updated_at DESC LIMIT ?",
                 (*params, limit),
             ).fetchall()
-            return [self._memory_row_to_dict(r) for r in rows]
+            return [
+                self._memory_row_to_dict(r) for r in rows
+                if self._check_memory_access(c, r, actor_id, roles, workspace_id, "read")
+            ]
 
     # ── PROFILE ──
 
-    def set_profile(self, key: str, value: str, category: str = "general", importance: float = 0.5):
+    def set_profile(
+        self, key: str, value: str, category: str = "general", importance: float = 0.5,
+        source: str = "profile_ingestion", actor_id: str = "system",
+        evidence=None, conflict_policy: str = "overwrite",
+    ):
+        result = self.upsert_memory(
+            "profile", key, value, category, source, importance,
+            actor_id=actor_id, evidence=evidence, conflict_policy=conflict_policy,
+        )
+        if result.get("review_required"):
+            return result
         with self._conn() as c:
             c.execute("""
                 INSERT INTO profiles (category, key, value, importance, updated_at)
@@ -510,7 +1962,7 @@ class MemoryStore:
                     importance = excluded.importance,
                     updated_at = datetime('now')
             """, (category, key, value, importance))
-        self.upsert_memory("profile", key, value, category, "profile_ingestion", importance)
+        return result
 
     def get_profile(self, key: str, category: str = "general") -> dict | None:
         with self._conn() as c:
@@ -526,7 +1978,17 @@ class MemoryStore:
 
     # ── PREFERENCES ──
 
-    def set_preference(self, key: str, value: str, category: str = "general", confidence: float = 0.5):
+    def set_preference(
+        self, key: str, value: str, category: str = "general", confidence: float = 0.5,
+        source: str = "preference_ingestion", actor_id: str = "system",
+        evidence=None, conflict_policy: str = "overwrite",
+    ):
+        result = self.upsert_memory(
+            "preference", key, value, category, source, confidence,
+            actor_id=actor_id, evidence=evidence, conflict_policy=conflict_policy,
+        )
+        if result.get("review_required"):
+            return result
         with self._conn() as c:
             c.execute("""
                 INSERT INTO preferences (category, key, value, confidence, updated_at)
@@ -536,7 +1998,7 @@ class MemoryStore:
                     confidence = excluded.confidence,
                     updated_at = datetime('now')
             """, (category, key, value, confidence))
-        self.upsert_memory("preference", key, value, category, "preference_ingestion", confidence)
+        return result
 
     def get_preference(self, key: str, category: str = "general") -> dict | None:
         with self._conn() as c:
@@ -685,6 +2147,16 @@ class MemoryStore:
                 "context_snapshots": c.execute("SELECT COUNT(*) FROM context_snapshots").fetchone()[0],
                 "tool_executions": c.execute("SELECT COUNT(*) FROM tool_executions").fetchone()[0],
                 "mtclaw_traces": c.execute("SELECT COUNT(*) FROM mtclaw_traces").fetchone()[0],
+                "memory_reviews_pending": c.execute(
+                    "SELECT COUNT(*) FROM memory_reviews WHERE status='pending'"
+                ).fetchone()[0],
+                "reflection_cards": c.execute("SELECT COUNT(*) FROM reflection_cards").fetchone()[0],
+                "reflection_improvements_pending": c.execute(
+                    """
+                    SELECT COUNT(*) FROM reflection_improvements
+                    WHERE status IN ('proposed','approved','testing','validated')
+                    """
+                ).fetchone()[0],
             }
     # ── KNOWLEDGE ──
 

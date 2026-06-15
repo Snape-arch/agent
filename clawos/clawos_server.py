@@ -48,6 +48,11 @@ g_reflection_engine: Any = None
 g_context_builder: Any = None
 g_vector_store: MemoryVectorStore | None = None
 g_mtclaw_adapter: Any = None
+g_policy_optimizer: Any = None
+g_security_policy: Any = None
+g_secret_manager: Any = None
+g_workspace_services: Any = None
+g_skill_evolution: Any = None
 
 SYSTEM_PROMPT = (
     "You are ClawOS, a personal AI assistant. Use the provided tools to "
@@ -143,67 +148,47 @@ TOOLS_REQUIRING_CONFIRMATION = {
     "file_write",
     "shell_exec",
     "skill_delete",
+    "template_instantiate",
 }
 
 def execute_python_tool(name: str, args_str: str) -> dict[str, Any]:
-    """Execute a Python tool via the tool_runner module."""
-    global _runner_module
-    # Always reload to pick up latest changes
-    import importlib
-    if _runner_module is not None:
-        try:
-            importlib.reload(_runner_module)
-        except:
-            _runner_module = None
-    if _runner_module is None:
-        import importlib.util
-        sys.path.insert(0, str(SCRIPTS_DIR))
-        spec = importlib.util.spec_from_file_location("tool_runner", SCRIPTS_DIR / "tool_runner.py")
-        _runner_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(_runner_module)
-
-    handlers = getattr(_runner_module, "handlers", {})
-    # Alias
+    """Execute a tool in a separate worker process with a hard timeout."""
     if name in ("bash", "exec", "sh"):
         name = "shell_exec"
-    if name not in handlers:
-        return {"error": f"Unknown tool: {name}"}
-
+    timeout_s = max(1, min(int(config.get("tool_exec_timeout_s", 30) if config else 30), 60))
+    allowed_env = {
+        key: value for key, value in os.environ.items()
+        if key.upper() in {
+            "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC",
+            "USERPROFILE", "HOME", "TEMP", "TMP", "CLAWOS_MEMORY_DB",
+            "CLAWOS_ALLOWED_ROOTS", "PYTHONPATH",
+        }
+    }
+    command = [sys.executable, str(SCRIPTS_DIR / "tool_worker.py"), name]
+    creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     try:
-        args_obj = json.loads(args_str)
-    except json.JSONDecodeError:
-        args_obj = {}
-
-    # Capture stdout
-    import io
-    old_stdout = sys.stdout
-    old_stdin = sys.stdin
-    sys.stdout = io.StringIO()
-    sys.stdin = io.StringIO(json.dumps(args_obj))
-    _runner_module.input_data = args_obj
-    _runner_module.tool_name = name
-
-    exit_code = 0
-    try:
-        handlers[name]()
-    except SystemExit as e:
-        exit_code = e.code or 0
-    except Exception as e:
-        result = {"error": str(e)}
-        sys.stdout = old_stdout
-        sys.stdin = old_stdin
-        return result
-    finally:
-        output = sys.stdout.getvalue().strip()
-        sys.stdout = old_stdout
-        sys.stdin = old_stdin
-
-    if output:
+        proc = subprocess.run(
+            command,
+            input=args_str or "{}",
+            cwd=str(BASE_DIR),
+            env=allowed_env,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            creationflags=creationflags,
+        )
+        output = proc.stdout.strip()
+        if not output:
+            return {"error": proc.stderr.strip() or f"Tool worker exited with code {proc.returncode}"}
         try:
-            return json.loads(output)
+            result = json.loads(output)
         except json.JSONDecodeError:
-            return {"result": output[:2000]}
-    return {"result": "ok", "exit_code": exit_code}
+            result = {"result": output[:2000]}
+        if proc.returncode and not result.get("error"):
+            result["error"] = proc.stderr.strip() or f"Tool worker exited with code {proc.returncode}"
+        return result
+    except subprocess.TimeoutExpired:
+        return {"error": f"Tool worker timed out after {timeout_s}s"}
 
 
 def _parse_tool_arguments(args_str: str) -> dict[str, Any]:
@@ -250,6 +235,40 @@ def execute_tool_call(
     """Execute a tool and return a stable envelope for tracing and reflection."""
     confirmed_tools = confirmed_tools or set()
     args_obj = _parse_tool_arguments(args_str)
+    policy_result = {
+        "allowed": True,
+        "decision": "allow",
+        "reason": "security policy not initialized",
+        "normalized_arguments": args_obj,
+    }
+    if g_security_policy:
+        policy_result = g_security_policy.evaluate(name, args_obj)
+        args_obj = policy_result.get("normalized_arguments", args_obj)
+        args_str = json.dumps(args_obj, ensure_ascii=False)
+    if g_memory_store:
+        g_memory_store.record_audit_event(
+            "tool.preflight",
+            decision=policy_result.get("decision", "allow"),
+            session_id=session_id,
+            task_id=task_id,
+            resource_type="tool",
+            resource_id=name,
+            reason=policy_result.get("reason", ""),
+            details={"arguments": args_obj},
+        )
+    if not policy_result.get("allowed", False):
+        envelope = {
+            "ok": False,
+            "status": "denied",
+            "tool": name,
+            "arguments": args_obj,
+            "data": None,
+            "error": policy_result.get("reason", "Denied by security policy"),
+            "duration_ms": 0,
+            "requires_confirmation": False,
+        }
+        _record_tool_execution(session_id, envelope)
+        return envelope
     requires_confirmation = name in TOOLS_REQUIRING_CONFIRMATION
     started = time.perf_counter()
     task_step = None
@@ -295,6 +314,21 @@ def execute_tool_call(
         "requires_confirmation": requires_confirmation,
     }
     _record_tool_execution(session_id, envelope)
+    if g_memory_store:
+        g_memory_store.record_audit_event(
+            "tool.execute",
+            decision="allow" if ok else "error",
+            session_id=session_id,
+            task_id=task_id,
+            resource_type="tool",
+            resource_id=name,
+            reason=envelope["error"],
+            details={
+                "duration_ms": duration_ms,
+                "requires_confirmation": requires_confirmation,
+                "arguments": args_obj,
+            },
+        )
     if task_step and g_memory_store:
         g_memory_store.finish_task_step(
             task_step["id"],
@@ -512,6 +546,12 @@ def save_memory_item(data: dict[str, Any]) -> dict[str, Any]:
             source=str(data.get("source", "manual") or "manual"),
             confidence=float(data.get("confidence", 0.7)),
             enabled=bool(data.get("enabled", True)),
+            actor_id=str(data.get("actor_id", "system") or "system"),
+            owner_id=str(data.get("owner_id", "default") or "default"),
+            workspace_id=str(data.get("workspace_id", "default") or "default"),
+            evidence=data.get("evidence", []),
+            change_reason=str(data.get("change_reason", "") or ""),
+            conflict_policy=str(data.get("conflict_policy", "overwrite") or "overwrite"),
         )
         if g_vector_store:
             g_vector_store.refresh()
@@ -520,10 +560,24 @@ def save_memory_item(data: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(400, str(e))
 
 
-def list_memory_items(memory_type: str = "", include_disabled: bool = False, limit: int = 200) -> list[dict[str, Any]]:
+def list_memory_items(
+    memory_type: str = "",
+    include_disabled: bool = False,
+    limit: int = 200,
+    actor_id: str = "system",
+    roles: list[str] | None = None,
+    workspace_id: str = "default",
+) -> list[dict[str, Any]]:
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
-    return g_memory_store.list_memories(memory_type, include_disabled, limit)
+    return g_memory_store.list_memories(
+        memory_type,
+        include_disabled,
+        limit,
+        actor_id=actor_id,
+        roles=roles or [],
+        workspace_id=workspace_id,
+    )
 
 
 def set_memory_item_enabled(memory_id: int, enabled: bool) -> dict[str, Any]:
@@ -612,7 +666,9 @@ async def lifespan(app: FastAPI):
     g_mtclaw_adapter = MTClawAdapter(config.get("mtclaw", {}), http_client=http_client)
     NOTES_DIR.mkdir(exist_ok=True)
     # Init MemoryOS
-    global g_memory_store, g_context_builder, g_vector_store
+    global g_memory_store, g_context_builder, g_vector_store, g_policy_optimizer
+    global g_security_policy, g_secret_manager
+    global g_workspace_services, g_skill_evolution
     from memoryos.memory_store import MemoryStore
     from memoryos.context_builder import ContextBuilder
     from memoryos.services.vector_store import MemoryVectorStore
@@ -623,6 +679,15 @@ async def lifespan(app: FastAPI):
     g_vector_store = MemoryVectorStore(str(MEMORY_DB))
     g_vector_store.refresh()  # Load existing data
     g_context_builder = ContextBuilder(g_memory_store, g_vector_store)
+    from policy_optimizer import PolicyOptimizer
+    g_policy_optimizer = PolicyOptimizer(g_memory_store)
+    from security import SecretManager, ToolSecurityPolicy
+    g_security_policy = ToolSecurityPolicy()
+    g_secret_manager = SecretManager(g_memory_store)
+    from workspace_services import WorkspaceServices
+    g_workspace_services = WorkspaceServices(g_memory_store, g_security_policy)
+    from skills.skill_evolution import SkillEvolutionManager
+    g_skill_evolution = SkillEvolutionManager(g_memory_store)
     logger.info(f"VectorStore initialized | dim=256 docs={g_vector_store.stats().get('vector_count', 0)}")
     logger.info(f"MemoryOS initialized | db={MEMORY_DB}")
     
@@ -676,6 +741,11 @@ async def health():
         "tools": len(tools_def),
         "memory": bool(g_memory_store),
         "reflection": bool(g_reflection_engine),
+        "policy_optimizer": bool(g_policy_optimizer),
+        "security_policy": bool(g_security_policy),
+        "secret_manager": bool(g_secret_manager),
+        "workspace_services": bool(g_workspace_services),
+        "skill_evolution": bool(g_skill_evolution),
         "model_provider": provider_state,
         "routing_model": config.get("routing", {}).get("model", ""),
         "upstream_model": config.get("upstream", {}).get("model", ""),
@@ -800,6 +870,7 @@ async def chat_completions(request: Request):
         }
         if g_memory_store:
             g_memory_store.add_message(session_id, "assistant", text[:4000])
+        finish_runtime_task(task_id, "waiting_confirmation")
         if stream:
             return sse_from_text(text)
         return JSONResponse(build_openai_response(text, extra=extra))
@@ -909,6 +980,116 @@ async def list_reflections(limit: int = 20):
     cards = writer.get_reflection_cards(limit)
     return JSONResponse({"cards": cards, "count": len(cards)})
 
+
+@app.get("/api/reflection/cards/{card_id}")
+async def reflection_card_detail(card_id: str):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    card = g_memory_store.get_reflection_card(card_id)
+    if not card:
+        raise HTTPException(404, "Reflection card not found")
+    return JSONResponse({"card": card})
+
+
+@app.post("/api/reflection/cards/{card_id}/feedback")
+async def reflection_card_feedback(card_id: str, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    card = g_memory_store.update_reflection_feedback(
+        card_id,
+        {
+            "rating": data.get("rating"),
+            "satisfied": data.get("satisfied"),
+            "comment": str(data.get("comment", "") or ""),
+            "correction": str(data.get("correction", "") or ""),
+            "reason": str(data.get("reason", "") or ""),
+        },
+        actor_id=data.get("actor_id", "system"),
+    )
+    if not card:
+        raise HTTPException(404, "Reflection card not found")
+    return JSONResponse({"card": card, "updated": True})
+
+
+@app.get("/api/reflection/improvements")
+async def reflection_improvements(status: str = "", limit: int = 100):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    rows = g_memory_store.list_reflection_improvements(status, limit)
+    return JSONResponse({"improvements": rows, "count": len(rows)})
+
+
+@app.post("/api/reflection/improvements/{improvement_id}/transition")
+async def reflection_improvement_transition(improvement_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.improvement_manager import ImprovementManager
+    data = await request.json()
+    try:
+        item = ImprovementManager(g_memory_store).transition(
+            improvement_id,
+            str(data.get("to_status", "") or ""),
+            actor_id=data.get("actor_id", "system"),
+            reason=data.get("reason", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"improvement": item})
+
+
+@app.post("/api/reflection/improvements/{improvement_id}/validate")
+async def reflection_improvement_validate(improvement_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.improvement_manager import ImprovementManager
+    data = await request.json()
+    try:
+        item = ImprovementManager(g_memory_store).validate(
+            improvement_id,
+            baseline=data.get("baseline", {}),
+            candidate=data.get("candidate", {}),
+            thresholds=data.get("thresholds", {}),
+            actor_id=data.get("actor_id", "system"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"improvement": item})
+
+
+@app.post("/api/reflection/improvements/{improvement_id}/publish")
+async def reflection_improvement_publish(improvement_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.improvement_manager import ImprovementManager
+    data = await request.json()
+    try:
+        item = ImprovementManager(g_memory_store).publish(
+            improvement_id,
+            actor_id=data.get("actor_id", "system"),
+            reason=data.get("reason", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"improvement": item})
+
+
+@app.post("/api/reflection/improvements/{improvement_id}/rollback")
+async def reflection_improvement_rollback(improvement_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.improvement_manager import ImprovementManager
+    data = await request.json()
+    try:
+        item = ImprovementManager(g_memory_store).rollback(
+            improvement_id,
+            actor_id=data.get("actor_id", "system"),
+            reason=data.get("reason", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"improvement": item})
+
 @app.get("/api/reflection/stats")
 async def reflection_stats():
     if not g_reflection_engine:
@@ -916,6 +1097,292 @@ async def reflection_stats():
     from reflection.learning_loop import LearningLoop
     loop = LearningLoop(g_reflection_engine, g_memory_store)
     return JSONResponse(loop.get_cycle_stats())
+
+
+@app.post("/api/policy/groups")
+async def api_policy_group_register(request: Request):
+    if not g_policy_optimizer:
+        raise HTTPException(503, "Policy Optimizer not initialized")
+    data = await request.json()
+    name = str(data.get("name", "") or "").strip()
+    arms = data.get("arms", [])
+    if not name or not isinstance(arms, list) or not arms:
+        raise HTTPException(400, "name and non-empty arms are required")
+    try:
+        result = g_policy_optimizer.register_group(
+            name,
+            arms,
+            exploration_rate=data.get("exploration_rate", 0.1),
+        )
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+
+@app.post("/api/policy/groups/{group_name}/select")
+async def api_policy_select(group_name: str, request: Request):
+    if not g_policy_optimizer:
+        raise HTTPException(503, "Policy Optimizer not initialized")
+    data = await request.json()
+    try:
+        selection = g_policy_optimizer.select(
+            group_name,
+            context=data.get("context", {}),
+            task_id=data.get("task_id"),
+            session_id=data.get("session_id", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    return JSONResponse({"selection": selection})
+
+
+@app.post("/api/policy/selections/{selection_id}/reward")
+async def api_policy_reward(selection_id: int, request: Request):
+    if not g_policy_optimizer:
+        raise HTTPException(503, "Policy Optimizer not initialized")
+    data = await request.json()
+    try:
+        result = g_policy_optimizer.reward(
+            selection_id,
+            success=data.get("success", 0),
+            satisfaction=data.get("satisfaction", 0.5),
+            latency_ms=data.get("latency_ms", 0),
+            resource_cost=data.get("resource_cost", 0),
+            latency_budget_ms=data.get("latency_budget_ms", 1000),
+            evidence=data.get("evidence", {}),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+
+@app.get("/api/policy/groups/{group_name}/stats")
+async def api_policy_stats(group_name: str):
+    if not g_policy_optimizer:
+        raise HTTPException(503, "Policy Optimizer not initialized")
+    stats = g_policy_optimizer.stats(group_name)
+    if not stats:
+        raise HTTPException(404, "Policy group not found")
+    return JSONResponse(stats)
+
+
+@app.post("/api/policy/groups/{group_name}/promote")
+async def api_policy_promote(group_name: str, request: Request):
+    data = await request.json()
+    try:
+        promotion = g_policy_optimizer.promote(
+            group_name,
+            data.get("target_type", "agent_policy"),
+            data.get("target_key", group_name),
+            min_pulls=data.get("min_pulls", 3),
+            actor_id=data.get("actor_id", "system"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"promotion": promotion})
+
+
+@app.post("/api/policy/promotions/{promotion_id}/rollback")
+async def api_policy_promotion_rollback(promotion_id: int, request: Request):
+    data = await request.json()
+    try:
+        promotion = g_policy_optimizer.rollback(
+            promotion_id, actor_id=data.get("actor_id", "system")
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"promotion": promotion})
+
+
+@app.get("/api/security/audit")
+async def api_security_audit(action: str = "", decision: str = "", limit: int = 100):
+    if not g_memory_store:
+        raise HTTPException(503, "Audit store not initialized")
+    rows = g_memory_store.list_audit_events(action, decision, limit)
+    return JSONResponse({"events": rows, "count": len(rows)})
+
+
+@app.post("/api/security/secrets")
+async def api_secret_register(request: Request):
+    if not g_secret_manager:
+        raise HTTPException(503, "Secret Manager not initialized")
+    data = await request.json()
+    try:
+        item = g_secret_manager.register(
+            data.get("name", ""),
+            data.get("env_var", ""),
+            purpose=data.get("purpose", ""),
+            allowed_tools=data.get("allowed_tools", []),
+            actor_id=data.get("actor_id", "system"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"secret": item})
+
+
+@app.get("/api/security/secrets")
+async def api_secret_list():
+    if not g_secret_manager:
+        raise HTTPException(503, "Secret Manager not initialized")
+    return JSONResponse({"secrets": g_secret_manager.list()})
+
+
+@app.post("/api/security/policy/check")
+async def api_security_policy_check(request: Request):
+    if not g_security_policy:
+        raise HTTPException(503, "Security Policy not initialized")
+    data = await request.json()
+    result = g_security_policy.evaluate(
+        str(data.get("tool", "") or ""),
+        data.get("arguments", {}),
+    )
+    return JSONResponse(result)
+
+
+@app.post("/api/workspace/meetings")
+async def api_meeting_create(request: Request):
+    data = await request.json()
+    meeting = g_workspace_services.create_meeting(
+        data.get("title", "Untitled meeting"),
+        data.get("meeting_date", ""),
+        data.get("attendees", []),
+        data.get("agenda", []),
+    )
+    return JSONResponse({"meeting": meeting})
+
+
+@app.post("/api/workspace/meetings/{meeting_id}/transcript")
+async def api_meeting_transcript(meeting_id: int, request: Request):
+    data = await request.json()
+    meeting = g_workspace_services.process_meeting_transcript(
+        meeting_id, data.get("transcript", "")
+    )
+    if not meeting:
+        raise HTTPException(404, "Meeting not found")
+    if g_vector_store:
+        g_vector_store.refresh()
+    return JSONResponse({"meeting": meeting})
+
+
+@app.get("/api/workspace/meetings/{meeting_id}")
+async def api_meeting_detail(meeting_id: int):
+    meeting = g_workspace_services.get_meeting(meeting_id)
+    if not meeting:
+        raise HTTPException(404, "Meeting not found")
+    return JSONResponse({"meeting": meeting})
+
+
+@app.post("/api/workspace/research/import")
+async def api_research_import(request: Request):
+    data = await request.json()
+    try:
+        document = g_workspace_services.import_research_pdf(
+            data.get("file_path", ""), data.get("title", "")
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc))
+    if g_vector_store:
+        g_vector_store.refresh()
+    return JSONResponse({"document": document})
+
+
+@app.get("/api/workspace/research/search")
+async def api_research_search(q: str, limit: int = 10):
+    rows = g_workspace_services.search_research(q, limit)
+    return JSONResponse({"results": rows, "count": len(rows)})
+
+
+@app.post("/api/workspace/learning/goals")
+async def api_learning_goal_create(request: Request):
+    data = await request.json()
+    goal = g_workspace_services.create_learning_goal(
+        data.get("title", "Learning goal"),
+        data.get("description", ""),
+        data.get("target_date", ""),
+        data.get("topics", []),
+    )
+    return JSONResponse({"goal": goal})
+
+
+@app.get("/api/workspace/learning/goals/{goal_id}")
+async def api_learning_goal_detail(goal_id: int):
+    goal = g_workspace_services.get_learning_goal(goal_id)
+    if not goal:
+        raise HTTPException(404, "Learning goal not found")
+    return JSONResponse({"goal": goal})
+
+
+@app.post("/api/workspace/learning/items/{item_id}/reviews")
+async def api_learning_review(item_id: int, request: Request):
+    data = await request.json()
+    try:
+        item = g_workspace_services.record_learning_review(
+            item_id,
+            data.get("score", 0),
+            data.get("evidence", ""),
+            data.get("notes", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"item": item})
+
+
+@app.get("/api/workspace/git/snapshot")
+async def api_git_snapshot(path: str):
+    try:
+        return JSONResponse(g_workspace_services.git_snapshot(path))
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/workspace/git/commit-plan")
+async def api_git_commit_plan(request: Request):
+    data = await request.json()
+    try:
+        plan = g_workspace_services.prepare_commit_plan(
+            data.get("path", ""),
+            data.get("message", ""),
+            data.get("files"),
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"plan": plan})
+
+
+@app.get("/api/workspace/templates")
+async def api_templates_list():
+    rows = g_workspace_services.list_templates()
+    return JSONResponse({"templates": rows, "count": len(rows)})
+
+
+@app.post("/api/workspace/templates")
+async def api_template_register(request: Request):
+    data = await request.json()
+    try:
+        template = g_workspace_services.register_template(
+            data.get("name", ""),
+            data.get("description", ""),
+            data.get("files", {}),
+            data.get("version", 1),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"template": template})
+
+
+@app.post("/api/workspace/templates/{name}/instantiate")
+async def api_template_instantiate(name: str, request: Request):
+    data = await request.json()
+    try:
+        result = g_workspace_services.instantiate_template(
+            name,
+            data.get("target_path", ""),
+            data.get("parameters", {}),
+            data.get("version"),
+        )
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
 
 
 
@@ -932,8 +1399,22 @@ async def memory_stats():
     return JSONResponse({"error": "MemoryOS not initialized"}, status_code=503)
 
 @app.get("/api/memory/items")
-async def api_memory_items(memory_type: str = "", include_disabled: bool = False, limit: int = 200):
-    rows = list_memory_items(memory_type, include_disabled, limit)
+async def api_memory_items(
+    memory_type: str = "",
+    include_disabled: bool = False,
+    limit: int = 200,
+    actor_id: str = "system",
+    roles: str = "",
+    workspace_id: str = "default",
+):
+    rows = list_memory_items(
+        memory_type,
+        include_disabled,
+        limit,
+        actor_id=actor_id,
+        roles=[role for role in roles.split(",") if role],
+        workspace_id=workspace_id,
+    )
     return JSONResponse({"items": rows, "count": len(rows)})
 
 @app.post("/api/memory/items")
@@ -949,11 +1430,118 @@ async def api_memory_item_enabled(memory_id: int, request: Request):
     return JSONResponse({"item": item, "updated": True})
 
 @app.get("/api/memory/items/search")
-async def api_memory_items_search(q: str = "", memory_type: str = "", include_disabled: bool = False, limit: int = 20):
+async def api_memory_items_search(
+    q: str = "",
+    memory_type: str = "",
+    include_disabled: bool = False,
+    limit: int = 20,
+    actor_id: str = "system",
+    roles: str = "",
+    workspace_id: str = "default",
+):
     if not g_memory_store:
         return JSONResponse({"items": [], "count": 0}, status_code=503)
-    rows = g_memory_store.search_memories(q, memory_type, limit, include_disabled)
+    rows = g_memory_store.search_memories(
+        q,
+        memory_type,
+        limit,
+        include_disabled,
+        actor_id=actor_id,
+        roles=[role for role in roles.split(",") if role],
+        workspace_id=workspace_id,
+    )
     return JSONResponse({"items": rows, "count": len(rows)})
+
+
+@app.get("/api/memory/items/{memory_id}/versions")
+async def api_memory_versions(memory_id: int, limit: int = 100):
+    if not g_memory_store or not g_memory_store.get_memory(memory_id):
+        raise HTTPException(404, "Memory item not found")
+    rows = g_memory_store.list_memory_versions(memory_id, limit)
+    return JSONResponse({"versions": rows, "count": len(rows)})
+
+
+@app.get("/api/memory/items/{memory_id}/evidence")
+async def api_memory_evidence(memory_id: int, limit: int = 100):
+    if not g_memory_store or not g_memory_store.get_memory(memory_id):
+        raise HTTPException(404, "Memory item not found")
+    rows = g_memory_store.list_memory_evidence(memory_id, limit)
+    return JSONResponse({"evidence": rows, "count": len(rows)})
+
+
+@app.get("/api/memory/reviews")
+async def api_memory_reviews(status: str = "pending", limit: int = 100):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    rows = g_memory_store.list_memory_reviews(status, limit)
+    return JSONResponse({"reviews": rows, "count": len(rows)})
+
+
+@app.post("/api/memory/reviews/{review_id}/resolve")
+async def api_memory_review_resolve(review_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    try:
+        review = g_memory_store.resolve_memory_review(
+            review_id,
+            data.get("decision", ""),
+            reviewer=str(data.get("reviewer", "system") or "system"),
+            notes=str(data.get("notes", "") or ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if not review:
+        raise HTTPException(404, "Review not found")
+    if g_vector_store:
+        g_vector_store.refresh()
+    return JSONResponse({"review": review, "resolved": True})
+
+
+@app.get("/api/memory/items/{memory_id}/acl")
+async def api_memory_acl(memory_id: int):
+    if not g_memory_store or not g_memory_store.get_memory(memory_id):
+        raise HTTPException(404, "Memory item not found")
+    rows = g_memory_store.list_memory_acl(memory_id)
+    return JSONResponse({"acl": rows, "count": len(rows)})
+
+
+@app.post("/api/memory/items/{memory_id}/acl")
+async def api_memory_acl_grant(memory_id: int, request: Request):
+    if not g_memory_store or not g_memory_store.get_memory(memory_id):
+        raise HTTPException(404, "Memory item not found")
+    data = await request.json()
+    try:
+        rows = g_memory_store.grant_memory_acl(
+            memory_id,
+            data.get("principal_type", ""),
+            data.get("principal_id", ""),
+            data.get("permission", ""),
+            data.get("granted_by", "system"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"acl": rows, "count": len(rows)})
+
+
+@app.post("/api/memory/evaluations/run")
+async def api_memory_evaluation_run(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    cases = data.get("cases", [])
+    if not isinstance(cases, list) or not cases:
+        raise HTTPException(400, "cases must be a non-empty list")
+    from memoryos.services.retrieval import RetrievalService
+    from memoryos.services.retrieval_benchmark import RetrievalBenchmark
+    retrieval = RetrievalService(g_memory_store, g_vector_store)
+    run = RetrievalBenchmark(g_memory_store, retrieval).run(
+        cases,
+        top_k=data.get("top_k", 5),
+        name=data.get("name", "memory-retrieval"),
+        created_by=data.get("created_by", "system"),
+    )
+    return JSONResponse({"run": run})
 
 
 @app.get("/api/tasks")
@@ -1039,6 +1627,89 @@ async def skills_stats():
         return JSONResponse({"records": [], "count": 0})
     records = g_memory_store.get_skill_stats()
     return JSONResponse({"records": records, "count": len(records)})
+
+@app.get("/api/skills/evolution/versions")
+async def skill_evolution_versions(skill_name: str = "", limit: int = 100):
+    if not g_skill_evolution:
+        return JSONResponse({"versions": [], "count": 0}, status_code=503)
+    rows = g_skill_evolution.list_versions(skill_name, limit)
+    return JSONResponse({"versions": rows, "count": len(rows)})
+
+@app.get("/api/skills/evolution/runs")
+async def skill_evolution_runs(version_id: int = 0, limit: int = 100):
+    if not g_skill_evolution:
+        return JSONResponse({"runs": [], "count": 0}, status_code=503)
+    rows = g_skill_evolution.list_runs(version_id, limit)
+    return JSONResponse({"runs": rows, "count": len(rows)})
+
+@app.post("/api/skills/evolution/candidates")
+async def skill_evolution_candidate(request: Request):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    data = await request.json()
+    try:
+        result = g_skill_evolution.propose(
+            str(data.get("skill_name", "")),
+            data.get("definition") or {},
+            change_reason=str(data.get("change_reason", "")),
+            source_ref=str(data.get("source_ref", "")),
+            created_by=str(data.get("created_by", "user")),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+@app.post("/api/skills/evolution/suites")
+async def skill_evolution_suite(request: Request):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    data = await request.json()
+    try:
+        result = g_skill_evolution.create_suite(
+            str(data.get("name", "")),
+            str(data.get("skill_name", "")),
+            data.get("cases") or [],
+            frozen=bool(data.get("frozen", True)),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+@app.post("/api/skills/evolution/versions/{version_id}/evaluate")
+async def skill_evolution_evaluate(version_id: int, request: Request):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    data = await request.json()
+    try:
+        result = g_skill_evolution.evaluate(
+            version_id, int(data.get("suite_id", 0)), data.get("thresholds") or {}
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+@app.post("/api/skills/evolution/versions/{version_id}/promote")
+async def skill_evolution_promote(version_id: int, request: Request):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    data = await request.json()
+    try:
+        result = g_skill_evolution.promote(
+            version_id, actor=str(data.get("actor", "user"))
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+@app.post("/api/skills/evolution/promotions/{promotion_id}/rollback")
+async def skill_evolution_rollback(promotion_id: int):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    try:
+        result = g_skill_evolution.rollback(promotion_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
 
 @app.get("/api/tools/list")
 async def api_tools_list():

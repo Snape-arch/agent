@@ -31,10 +31,15 @@ class LearningLoop:
         )
         cycle["reflection"] = reflection
 
-        # 2. Apply improvements from reflection
-        improvements = reflection.get("analysis", {}).get("improvements", [])
-        applied = self._apply_improvements(improvements, session_id)
-        cycle["applied_improvements"] = applied
+        # 2. Improvements are queued for approval; none are applied automatically.
+        cycle["applied_improvements"] = [
+            {
+                "id": item.get("id"),
+                "status": item.get("status"),
+                "detail": item.get("detail", ""),
+            }
+            for item in reflection.get("card", {}).get("improvements", [])
+        ]
 
         # 3. Evaluate the effect (simple heuristic)
         cycle["evaluation"] = self._evaluate_effect(reflection)
@@ -43,21 +48,6 @@ class LearningLoop:
         self._store_cycle_metadata(cycle)
 
         return cycle
-
-    def _apply_improvements(self, improvements, session_id):
-        """Apply suggested improvements to the agent."""
-        applied = []
-        for imp in improvements:
-            imp_lower = imp.lower()
-            if "skill" in imp_lower or "solidif" in imp_lower:
-                applied.append({"action": "suggest_skill_solidification", "detail": imp})
-            elif "parameter" in imp_lower or "input" in imp_lower or "validate" in imp_lower:
-                applied.append({"action": "update_input_validation", "detail": imp})
-            elif "config" in imp_lower:
-                applied.append({"action": "review_configuration", "detail": imp})
-            else:
-                applied.append({"action": "note", "detail": imp[:200]})
-        return applied
 
     def _evaluate_effect(self, reflection):
         """Evaluate how effective the reflection was."""

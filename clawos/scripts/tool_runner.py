@@ -26,6 +26,17 @@ if SKILLS_DIR not in sys.path:
 if MEMORYOS_DIR not in sys.path:
     sys.path.insert(0, MEMORYOS_DIR)
 
+
+def security_check(name, arguments):
+    """Apply the same sandbox policy used by the API and MTClaw bridge."""
+    if BASE_DIR not in sys.path:
+        sys.path.insert(0, BASE_DIR)
+    from security.policy import ToolSecurityPolicy
+    result = ToolSecurityPolicy().evaluate(name, arguments)
+    if result.get("allowed"):
+        return result.get("normalized_arguments", arguments)
+    raise PermissionError(result.get("reason", "Denied by security policy"))
+
 def tool_weather():
     import urllib.request, urllib.parse
     city = input_data.get("city", "")
@@ -812,6 +823,106 @@ def tool_shell_exec():
         sys.exit(1)
 
 
+def _workspace_services():
+    from memoryos.memory_store import MemoryStore
+    from security.policy import ToolSecurityPolicy
+    from workspace_services import WorkspaceServices
+    return WorkspaceServices(MemoryStore(_memory_db_path()), ToolSecurityPolicy())
+
+
+def tool_meeting_workflow():
+    services = _workspace_services()
+    action = input_data.get("action", "create")
+    if action == "create":
+        result = services.create_meeting(
+            input_data.get("title", "Untitled meeting"),
+            input_data.get("meeting_date", ""),
+            input_data.get("attendees", []),
+            input_data.get("agenda", []),
+        )
+    elif action == "process":
+        result = services.process_meeting_transcript(
+            input_data.get("meeting_id"), input_data.get("transcript", "")
+        )
+    elif action == "get":
+        result = services.get_meeting(input_data.get("meeting_id"))
+    else:
+        result = {"error": f"unknown action: {action}"}
+    print(json.dumps({"meeting": result}, ensure_ascii=False))
+
+
+def tool_research_pdf():
+    services = _workspace_services()
+    action = input_data.get("action", "search")
+    if action == "import":
+        result = services.import_research_pdf(
+            input_data.get("file_path", ""), input_data.get("title", "")
+        )
+        print(json.dumps({"document": result}, ensure_ascii=False))
+    elif action == "search":
+        rows = services.search_research(
+            input_data.get("query", ""), input_data.get("limit", 10)
+        )
+        print(json.dumps({"results": rows, "count": len(rows)}, ensure_ascii=False))
+    else:
+        print(json.dumps({"error": f"unknown action: {action}"}, ensure_ascii=False))
+
+
+def tool_learning_workspace():
+    services = _workspace_services()
+    action = input_data.get("action", "create_goal")
+    if action == "create_goal":
+        result = services.create_learning_goal(
+            input_data.get("title", "Learning goal"),
+            input_data.get("description", ""),
+            input_data.get("target_date", ""),
+            input_data.get("topics", []),
+        )
+    elif action == "review":
+        result = services.record_learning_review(
+            input_data.get("item_id"),
+            input_data.get("score", 0),
+            input_data.get("evidence", ""),
+            input_data.get("notes", ""),
+        )
+    elif action == "get":
+        result = services.get_learning_goal(input_data.get("goal_id"))
+    else:
+        result = {"error": f"unknown action: {action}"}
+    print(json.dumps({"learning": result}, ensure_ascii=False))
+
+
+def tool_git_workspace():
+    services = _workspace_services()
+    action = input_data.get("action", "snapshot")
+    if action == "snapshot":
+        result = services.git_snapshot(input_data.get("path", ""))
+    elif action == "commit_plan":
+        result = services.prepare_commit_plan(
+            input_data.get("path", ""),
+            input_data.get("message", ""),
+            input_data.get("files"),
+        )
+    else:
+        result = {"error": f"unknown action: {action}"}
+    print(json.dumps({"git": result}, ensure_ascii=False))
+
+
+def tool_template_list():
+    rows = _workspace_services().list_templates()
+    print(json.dumps({"templates": rows, "count": len(rows)}, ensure_ascii=False))
+
+
+def tool_template_instantiate():
+    result = _workspace_services().instantiate_template(
+        input_data.get("name", ""),
+        input_data.get("target_path", ""),
+        input_data.get("parameters", {}),
+        input_data.get("version"),
+    )
+    print(json.dumps(result, ensure_ascii=False))
+
+
 
 
 handlers = {
@@ -837,9 +948,20 @@ handlers = {
     "reflection_trigger": tool_reflection_trigger,
     "reflection_list": tool_reflection_list,
     "file_write": tool_file_write,
-    "shell_exec": tool_shell_exec
+    "shell_exec": tool_shell_exec,
+    "meeting_workflow": tool_meeting_workflow,
+    "research_pdf": tool_research_pdf,
+    "learning_workspace": tool_learning_workspace,
+    "git_workspace": tool_git_workspace,
+    "template_list": tool_template_list,
+    "template_instantiate": tool_template_instantiate
 }
 
 if __name__ == "__main__":
     if tool_name in handlers:
-        handlers[tool_name]()
+        try:
+            input_data = security_check(tool_name, input_data)
+            handlers[tool_name]()
+        except PermissionError as exc:
+            print(json.dumps({"error": str(exc), "status": "denied"}, ensure_ascii=False))
+            raise SystemExit(3)

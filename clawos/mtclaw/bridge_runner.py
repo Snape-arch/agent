@@ -57,7 +57,14 @@ def main() -> int:
         print(json.dumps({"error": f"invalid JSON: {exc}"}))
         return 5
 
-    tool_runner.input_data = payload if isinstance(payload, dict) else {}
+    try:
+        guarded = tool_runner.security_check(
+            tool_name, payload if isinstance(payload, dict) else {}
+        )
+    except PermissionError as exc:
+        print(json.dumps({"error": str(exc), "status": "denied"}, ensure_ascii=False))
+        return 6
+    tool_runner.input_data = guarded
     output = io.StringIO()
     old_stdout = sys.stdout
     sys.stdout = output

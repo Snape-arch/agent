@@ -42,6 +42,8 @@ class ReflectionEngine:
             trajectory=trajectory,
             trigger=trigger,
             session_id=session_id,
+            outcome_detail=outcome,
+            user_feedback=user_feedback,
         )
 
         elapsed = round((time.perf_counter() - t0) * 1000, 2)
@@ -67,6 +69,8 @@ class ReflectionEngine:
             trajectory=trajectory,
             trigger=trigger,
             session_id=session_id,
+            outcome_detail=outcome,
+            user_feedback=user_feedback,
         )
         elapsed = round((time.perf_counter() - t0) * 1000, 2)
         return {"card": card, "outcome": outcome, "analysis": analysis, "elapsed_ms": elapsed, "trigger": trigger}
