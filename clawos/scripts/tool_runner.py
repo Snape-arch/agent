@@ -846,6 +846,22 @@ def tool_meeting_workflow():
         )
     elif action == "get":
         result = services.get_meeting(input_data.get("meeting_id"))
+    elif action == "audio_import":
+        result = services.import_meeting_audio(
+            input_data.get("audio_path", ""),
+            transcript_path=input_data.get("transcript_path", ""),
+            transcript=input_data.get("transcript", ""),
+            title=input_data.get("title", ""),
+            meeting_id=input_data.get("meeting_id"),
+        )
+    elif action == "connector_draft":
+        result = services.draft_meeting_connectors(
+            input_data.get("meeting_id"),
+            input_data.get("output_dir", ""),
+            calendar=bool(input_data.get("calendar", True)),
+            email=bool(input_data.get("email", True)),
+            recipients=input_data.get("recipients", []),
+        )
     else:
         result = {"error": f"unknown action: {action}"}
     print(json.dumps({"meeting": result}, ensure_ascii=False))
@@ -864,6 +880,23 @@ def tool_research_pdf():
             input_data.get("query", ""), input_data.get("limit", 10)
         )
         print(json.dumps({"results": rows, "count": len(rows)}, ensure_ascii=False))
+    elif action == "validate_citations":
+        result = services.validate_citations(input_data.get("citations", []))
+        print(json.dumps(result, ensure_ascii=False))
+    elif action == "compare_matrix":
+        result = services.research_compare_matrix(
+            input_data.get("document_ids"),
+            input_data.get("query_terms", []),
+        )
+        print(json.dumps(result, ensure_ascii=False))
+    elif action == "repro_workflow":
+        result = services.create_repro_workflow(
+            input_data.get("title", "Reproducible experiment"),
+            question=input_data.get("question", ""),
+            steps=input_data.get("steps"),
+            output_path=input_data.get("output_path", ""),
+        )
+        print(json.dumps(result, ensure_ascii=False))
     else:
         print(json.dumps({"error": f"unknown action: {action}"}, ensure_ascii=False))
 
@@ -887,6 +920,26 @@ def tool_learning_workspace():
         )
     elif action == "get":
         result = services.get_learning_goal(input_data.get("goal_id"))
+    elif action == "dependency":
+        result = services.add_learning_dependency(
+            input_data.get("goal_id"),
+            input_data.get("source_topic", ""),
+            input_data.get("target_topic", ""),
+            input_data.get("relation", "depends_on"),
+            input_data.get("evidence", ""),
+        )
+    elif action == "mistake":
+        result = services.record_learning_mistake(
+            input_data.get("item_id"),
+            input_data.get("prompt", ""),
+            input_data.get("wrong_answer", ""),
+            input_data.get("correct_answer", ""),
+            input_data.get("evidence", ""),
+        )
+    elif action == "graph":
+        result = services.learning_graph(input_data.get("goal_id"))
+    elif action == "assessment":
+        result = services.long_term_mastery(input_data.get("goal_id"))
     else:
         result = {"error": f"unknown action: {action}"}
     print(json.dumps({"learning": result}, ensure_ascii=False))
@@ -903,9 +956,56 @@ def tool_git_workspace():
             input_data.get("message", ""),
             input_data.get("files"),
         )
+    elif action == "request_commit":
+        result = services.create_git_change_request(
+            input_data.get("path", ""),
+            input_data.get("message", ""),
+            input_data.get("files"),
+            created_by=input_data.get("created_by", "agent"),
+        )
+    elif action == "approve":
+        result = services.approve_git_change_request(
+            input_data.get("request_id"),
+            approved_by=input_data.get("approved_by", "user"),
+        )
+    elif action == "rollback":
+        result = services.rollback_git_change_request(
+            input_data.get("request_id"),
+            actor_id=input_data.get("actor_id", "user"),
+        )
     else:
         result = {"error": f"unknown action: {action}"}
     print(json.dumps({"git": result}, ensure_ascii=False))
+
+
+def tool_skill_governance():
+    from memoryos.memory_store import MemoryStore
+    from skills.skill_evolution import SkillEvolutionManager
+    manager = SkillEvolutionManager(MemoryStore(_memory_db_path()))
+    action = input_data.get("action", "manifest")
+    version_id = input_data.get("version_id")
+    if action == "manifest":
+        result = manager.dependency_manifest(version_id)
+    elif action == "sign":
+        result = manager.sign_version(
+            version_id,
+            signer=input_data.get("signer", "agent"),
+            secret=input_data.get("secret", "clawos-local-signing"),
+        )
+    elif action == "fresh_audit":
+        result = manager.fresh_agent_audit(
+            version_id,
+            suite_id=input_data.get("suite_id"),
+        )
+    elif action == "canary":
+        result = manager.start_canary(
+            version_id,
+            percent=input_data.get("percent", 10),
+            actor=input_data.get("actor", "agent"),
+        )
+    else:
+        result = {"error": f"unknown action: {action}"}
+    print(json.dumps({"skill_governance": result}, ensure_ascii=False))
 
 
 def tool_template_list():
@@ -953,6 +1053,7 @@ handlers = {
     "research_pdf": tool_research_pdf,
     "learning_workspace": tool_learning_workspace,
     "git_workspace": tool_git_workspace,
+    "skill_governance": tool_skill_governance,
     "template_list": tool_template_list,
     "template_instantiate": tool_template_instantiate
 }

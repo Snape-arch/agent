@@ -30,7 +30,7 @@ User Request
 
 - 主项目目录：`clawos/`
 - 后端：FastAPI，入口 `clawos/clawos_server.py`
-- 前端：单文件工作台 `clawos/static/index.html`
+- 前端：多页企业级产品官网 + 控制台，入口 `clawos/static/index.html`，产品页 `clawos/static/product.html`，控制台 `clawos/static/console.html`，共享样式/脚本在 `clawos/static/assets/`
 - 存储：SQLite，核心在 `clawos/memoryos/memory_store.py`
 - 工具运行：`clawos/scripts/tool_runner.py`
 - 模型 provider：`clawos/providers/`
@@ -51,6 +51,88 @@ User Request
 - 前端已有 Memory、Reflection、Skills、Tools、Task Trace 视图
 
 ## 最近完成的开发块
+
+### 2026-06-16 - Advanced Scenario Workflows: local files, meetings, research, learning, Git approval, Skill governance
+
+新增/完善：
+- 本地能力确认 API：`GET /api/workspace/capabilities`，明确允许的本地文件根、TXT 读写、项目/模板创建、PDF 文本抽取、OCR 需求检测、音频会议能力、Git 审批写操作和 Skill 治理能力。
+- 会议全流程增强：`meeting_workflow` 支持本地音频登记、sidecar 转写导入、说话人标签解析、会议纪要结构化提取、日历 `.ics` 草稿和邮件 `.eml` 草稿。当前不自动发送邮件/日历，不内置真实 ASR；检测到 `whisper` 时暴露可用性。
+- 科研工作流增强：PDF 导入保留页码证据和 OCR 状态，新增引用校验、文献/术语对比矩阵、可复现实验目录与 `experiment_plan.json` 生成。
+- 学习系统增强：新增学习依赖边、错题证据、学习图谱和长期掌握度评估，支持从复习记录和错题趋势计算薄弱项。
+- Git 协作增强：新增写操作审批流，先生成 diff preview 与 HEAD checkpoint，再人工 approve commit；rollback 使用 `git revert`，避免破坏性 reset。
+- Skill 治理增强：新增依赖清单、HMAC 签名、fresh-context audit、canary 元数据发布；canary 不自动进生产路由，仍需显式 promote。
+- 控制台新增 “场景工作流” 页面，展示本地文件、TXT/PDF、音频会议、Git 审批、Skill 治理和交付边界。
+
+代码：
+- `clawos/workspace_services.py`
+- `clawos/scripts/tool_runner.py`
+- `clawos/functions.jsonl`
+- `clawos/security/policy.py`
+- `clawos/clawos_server.py`
+- `clawos/skills/skill_evolution.py`
+- `clawos/static/console.html`
+- `clawos/static/assets/console.js`
+- `clawos/ADVANCED_SCENARIOS_IMPLEMENTATION.md`
+
+验证：
+```powershell
+python -m unittest clawos.tests.test_workspace_services clawos.tests.test_skill_evolution
+python -m unittest clawos.tests.test_workspace_services clawos.tests.test_skill_evolution clawos.tests.test_frontend_static
+python -m py_compile clawos\workspace_services.py clawos\scripts\tool_runner.py clawos\skills\skill_evolution.py clawos\clawos_server.py clawos\security\policy.py
+python -m unittest discover -s clawos\tests
+git diff --check
+```
+
+结果：专项 `16 tests OK`，场景/技能/前端静态 `25 tests OK`，全量 `82 tests OK`，编译和 diff 空白检查通过。仅有既有 MTClaw FastAPI `on_event` deprecation warning。
+
+当前边界：本轮已支持本地文件操作、TXT/PDF 解析、音频资产登记、带 sidecar 转写的会议纪要、说话人标签分离、连接器草稿、科研/学习/Git/Skill 治理闭环；真实离线 Whisper/ASR、真实说话人声纹分离、OCR 引擎执行、邮箱/日历 OAuth 自动发送、远程 PR/CI 集成仍属于后续国产离线环境接入项。
+
+### 2026-06-16 - 冻结基准、可靠任务控制与 Skill Review Inbox
+
+新增/完善：
+- 冻结场景基准：新增 `clawos/scenario_benchmarks.py`，默认 `competition-frozen-v1`
+  覆盖会议、学习、模板、技能、记忆五类低风险场景，持久化逐例结果、Pass Rate、P95、阈值和场景列表。
+- Task Runtime 可靠性：`tasks` 增加 `idempotency_key`、`retry_of`、`attempt`、
+  `cancellation_requested`、`resume_state`；支持幂等返回已完成响应、取消请求、重试任务、启动恢复和事件游标。
+- 实时任务 API：新增任务取消、重试、恢复、事件查询和 SSE 事件流接口。
+- Skill Review Inbox：`skill_review_events` 记录 reviewer/action/notes，支持
+  `needs_changes`、`reject`、`reopen`，前端可发布已验证候选。
+- 控制台：运行轨迹页增加取消/重试/恢复和实时事件状态；技能页增加 Review Inbox；
+  新增冻结基准页，可运行默认套件并查看历史结果。
+- 实现说明：`clawos/RUNTIME_BENCHMARK_SKILL_REVIEW_IMPLEMENTATION.md`。
+
+验证：
+```powershell
+python -m unittest clawos.tests.test_frontend_static clawos.tests.test_runtime_task_control clawos.tests.test_scenario_benchmarks clawos.tests.test_skill_evolution
+python -m py_compile clawos\memoryos\memory_store.py clawos\clawos_server.py clawos\scenario_benchmarks.py clawos\skills\skill_evolution.py
+python -m unittest discover -s clawos\tests
+git diff --check
+```
+
+结果：专项 `19 tests OK`，全量 `76 tests OK`，编译和空白检查通过。仅有既有
+MTClaw FastAPI `on_event` deprecation warning。本机 PowerShell PATH 无 `node` 命令，
+已用 Node REPL `vm.Script` 检查 `console.js` 语法通过。
+
+### 2026-06-16 - 多页企业级产品官网与电影感控制台前端
+
+新增/重构：
+- 将原单页工作台重构为真实三页递进结构：`/` 首页、`/product` 产品页、`/console` 控制台。
+- 首页使用用户指定的 `d55c96717921508cafd61730a1623e08.jpg` 作为淡化/虚化全屏背景，并做成可进入的 3D 杂志封面入口：固定背景、红色边框光晕、前中后三层深度框、Canvas 星场、鼠标/滚动视差、玻璃卡片和电影感暗色入口。
+- 产品页学习 Adaline HTML、Cursor Compile PDF、ElevenLabs PDF：采用 sticky 胶囊导航、大标题留白、白底胶囊模块、证据网格、Compile 式线条图案和企业 SaaS 产品叙事。
+- 控制台拆到 `console.html`，保留原有接口能力：聊天、状态总览、MemoryOS、Reflection、Skills、Tools、Task Trace、工具确认条和工具执行轨迹。
+- `clawos_server.py` 新增 `/assets` 静态挂载以及 `/product`、`/console` 页面路由。
+- 新增共享前端资源：`clawos/static/assets/site.css`、`site.js`、`console.js`。
+- 修复前端中文文案与旧页面编码损坏问题。
+
+验证：
+```powershell
+python -m unittest clawos.tests.test_frontend_static
+python -m py_compile clawos\clawos_server.py
+git diff --check
+python -m unittest discover -s clawos\tests
+```
+
+结果：前端静态测试 `7 tests OK`，全量测试 `69 tests OK`，服务端编译通过，diff 空白检查通过。仅有既有 MTClaw FastAPI `on_event` deprecation warning。用 Node 动态导入检查 `site.js` 和 `console.js` 语法，结果均非 `SyntaxError`；最新首页用 Browser 插件访问临时 `127.0.0.1:18790` 静态服务完成 DOM/资源验证，确认封面背景、中心 3D 入口、10 个视差层、图片加载和前端日志均正常。
 
 ### 2026-06-15 - 项目复盘与受控自进化 Skill
 
@@ -220,17 +302,19 @@ python -m unittest clawos.tests.test_memoryos_governance clawos.tests.test_memor
 
 - MemoryOS 生命周期、硬删除证明、敏感字段加密和真实多租户身份接入。
 - Reflection 反思去重聚类、冻结回归任务集，以及各运行模块对 `runtime_policies` 的显式消费。
-- 持久化任务的取消、重试、恢复、幂等键。
+- Task Runtime 的生产级队列、自动重放 retry、进程级取消、断线补偿和长期事件保留策略。
 - 容器/seccomp 级工具隔离、CPU/内存配额和操作系统 Keyring。
 - MTT AIBOOK + 本地 Qwen/vLLM-MUSA 的离线部署、性能和质量证据。
 
 第二优先级：
 
 - Policy Optimizer 真实任务样本、离线评测和显著性检验。
-- Skill fresh-agent A/B 审计、silent-bypass 检测、签名和 canary 发布。
-- Git 写操作审批、补丁预览、检查点与补偿。
-- PDF OCR、本地 Whisper、日历/邮件连接器和学习可视化。
-- 前端企业级交互重构和可视化任务图。
+- Skill 治理已具备依赖清单、签名、fresh-context audit、silent-bypass 检测和 canary 元数据；下一步需要真实双 Agent A/B、密钥托管和生产路由灰度策略。
+- Git 写操作已具备审批、补丁预览、HEAD checkpoint 与 `git revert` 回滚；下一步需要远程 PR/CI、冲突处理和团队权限接入。
+- PDF 已具备文本抽取、页码证据、OCR 需求检测和引用校验；下一步需要接入真实 OCR 引擎并保存版面坐标证据。
+- 会议已具备音频登记、sidecar 转写、说话人标签解析、纪要抽取、日历/邮件草稿；下一步需要本地 Whisper/声纹分离和 OAuth 连接器。
+- 学习系统已具备学习图谱、错题证据和长期掌握度评估；下一步需要更强前端可视化和 spaced-repetition 调度。
+- 前端下一步是接入真实运行服务下的视觉回归、移动端细节打磨和任务图/DAG 的更强可视化。
 
 ## 下一步建议
 
@@ -238,14 +322,14 @@ python -m unittest clawos.tests.test_memoryos_governance clawos.tests.test_memor
 
 ```text
 可靠交付:
-任务取消/重试/恢复/幂等 + 冻结场景基准 + MTT AIBOOK 本地模型验收
+MTT AIBOOK 本地模型验收 + 冻结基准报告导出 + 生产级任务队列/自动重放
 ```
 
 原因：
 
-- MTClaw、Task Runtime、MemoryOS 2.0 和 Reflection 2.0 已形成后端可信闭环。
-- 当前最高风险已转为本地文件、Shell 和项目写操作的权限与恢复能力。
-- 先补运行时安全，再扩展会议、科研、学习、代码协作和高级前端更符合低风险比赛交付目标。
+- MTClaw、Task Runtime、MemoryOS 2.0、Reflection 2.0、Skill Review 和冻结场景基准已形成后端可信闭环。
+- 当前最高风险已转为本地模型实机性能、真实长任务恢复、外部连接器和高风险写操作补偿。
+- 离线模型尚未验收前，不要宣称 100% 企业级或工业级，只能称为“竞赛交付候选”。
 
 ## 本地运行注意事项
 

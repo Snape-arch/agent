@@ -3,202 +3,76 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ClawOS 工作台</title>
-  <style>
-    *{box-sizing:border-box}html,body{height:100%;margin:0}
-    :root{--bg:#f4f6f8;--panel:#ffffff;--ink:#18212f;--muted:#657386;--soft:#e5eaf0;--line:#d8dee7;--nav:#111827;--nav2:#1f2937;--teal:#0f766e;--blue:#2563eb;--amber:#b45309;--red:#b91c1c;--green:#15803d;--chip:#eef6f4;--shadow:0 12px 28px rgba(17,24,39,.08);--r:8px;--font:"Segoe UI",Arial,sans-serif;--mono:"Cascadia Mono","JetBrains Mono",Consolas,monospace}
-    body{background:var(--bg);color:var(--ink);font:14px/1.55 var(--font);overflow:hidden}
-    button,input,textarea,select{font:inherit}button{cursor:pointer}
-    .app{height:100vh;display:grid;grid-template-columns:280px minmax(0,1fr) 340px}
-    .side{background:var(--nav);color:#d1d5db;display:flex;flex-direction:column;min-width:0}
-    .brand{height:64px;display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid rgba(255,255,255,.08)}
-    .mark{width:34px;height:34px;border-radius:8px;background:#0f766e;display:grid;place-items:center;color:white;font-weight:800}
-    .brand b{display:block;color:white;font-size:15px}.brand span{display:block;color:#9ca3af;font-size:11px}
-    .nav{padding:14px 10px;border-bottom:1px solid rgba(255,255,255,.08)}
-    .nav button,.new-chat{width:100%;height:38px;border:0;border-radius:7px;background:transparent;color:#cbd5e1;display:flex;align-items:center;gap:10px;padding:0 12px;text-align:left}
-    .nav button:hover,.nav button.on,.new-chat:hover{background:var(--nav2);color:white}
-    .ico{width:18px;text-align:center;color:#93c5fd;font:13px var(--mono)}
-    .new-chat{margin:10px;width:calc(100% - 20px);border:1px solid rgba(255,255,255,.12);background:#172033}
-    .sessions{flex:1;overflow:auto;padding:4px 10px 12px}
-    .session{border-radius:7px;padding:9px 10px;margin:3px 0;color:#b8c1cd;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .session:hover,.session.on{background:var(--nav2);color:white}
-    .side-foot{height:46px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:8px;padding:0 16px;color:#9ca3af;font-size:12px}
-    .dot{width:8px;height:8px;border-radius:50%;background:#64748b}.dot.ok{background:#22c55e}.dot.bad{background:#ef4444}
-    .main{display:flex;flex-direction:column;min-width:0}
-    .top{height:64px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 22px}
-    .top h1{font-size:17px;margin:0;font-weight:700}.top .sub{color:var(--muted);font-size:12px}.spacer{flex:1}
-    .mobile-tabs{display:none;background:white;border-bottom:1px solid var(--line);gap:6px;overflow:auto;padding:8px 14px}.mobile-tabs button{height:32px;border:1px solid var(--line);background:#f8fafc;border-radius:999px;color:#475569;padding:0 12px;white-space:nowrap;font-size:12px}.mobile-tabs button.on{background:#0f766e;color:white;border-color:#0f766e}
-    .badge{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;background:#f1f5f9;color:#475569;border:1px solid var(--line);font-size:12px}
-    .view{display:none;min-height:0;flex:1}.view.on{display:flex}
-    .workspace{display:grid;grid-template-rows:minmax(0,1fr) auto;width:100%;min-width:0}
-    .chat{overflow:auto;padding:22px}.chat-inner{max-width:900px;margin:0 auto}
-    .empty{border:1px dashed var(--line);background:#fbfcfd;border-radius:var(--r);padding:26px;text-align:center;color:var(--muted)}
-    .empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
-    .msg{display:grid;grid-template-columns:38px minmax(0,1fr);gap:12px;margin:0 0 18px}
-    .avatar{width:38px;height:38px;border-radius:8px;display:grid;place-items:center;font-weight:800;color:white;background:var(--blue)}
-    .msg.agent .avatar{background:var(--teal)}.bubble{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 1px 2px rgba(15,23,42,.03)}
-    .mh{height:38px;border-bottom:1px solid var(--soft);display:flex;align-items:center;gap:8px;padding:0 14px;color:var(--muted);font-size:12px;font-weight:600}
-    .mc{padding:13px 14px;white-space:pre-wrap;word-break:break-word}.mc code{font-family:var(--mono);background:#eef2f7;border-radius:4px;padding:1px 5px}.mc pre{overflow:auto;background:#101827;color:#e5e7eb;border-radius:7px;padding:12px;font:12px/1.6 var(--mono)}
-    .tool-row{display:flex;gap:7px;flex-wrap:wrap;padding:10px 14px 0}.tool{border:1px solid #b7ddd6;background:var(--chip);color:#0f766e;border-radius:999px;padding:4px 9px;font:12px var(--mono)}.tool.err{border-color:#fecaca;background:#fff1f2;color:var(--red)}
-    .composer{background:var(--panel);border-top:1px solid var(--line);padding:14px 22px}.compose-inner{max-width:900px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:10px}
-    .confirmbar{max-width:900px;margin:0 auto 10px;display:none;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;border:1px solid #f4c36a;background:#fff8e6;color:#7a4c00;border-radius:var(--r);padding:9px 10px;font-size:12px}.confirmbar.on{display:grid}
-    textarea{min-height:48px;max-height:160px;resize:none;border:1px solid var(--line);border-radius:var(--r);padding:12px;background:#fbfcfd;color:var(--ink);outline:none}textarea:focus,input:focus,select:focus{border-color:#8bb9ff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
-    .primary{border:0;border-radius:var(--r);background:var(--teal);color:white;font-weight:700}.primary:disabled{opacity:.45;cursor:default}.secondary{height:34px;border:1px solid var(--line);background:white;color:#334155;border-radius:7px;padding:0 12px}
-    .panel-view{overflow:auto;padding:22px;width:100%}.grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:14px}.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
-    .metric{padding:16px}.metric .v{font:700 28px var(--mono)}.metric .l{font-size:12px;color:var(--muted)}
-    .section{margin-top:18px}.section h2{font-size:15px;margin:0 0 10px}.table{width:100%;border-collapse:collapse;background:white;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}.table th,.table td{text-align:left;border-bottom:1px solid var(--soft);padding:9px 11px;font-size:12px;vertical-align:top}.table th{color:#536174;background:#f8fafc;font-weight:700}.table tr:last-child td{border-bottom:0}
-    .form{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:12px}.field{display:flex;flex-direction:column;gap:4px}.field label{font-size:11px;color:var(--muted);font-weight:700}.field input,.field select{height:34px;border:1px solid var(--line);border-radius:7px;padding:0 10px;background:white;min-width:160px}
-    .right{background:#fbfcfd;border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}.right-h{height:64px;display:flex;align-items:center;padding:0 18px;border-bottom:1px solid var(--line);font-weight:700}.right-body{overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}.mini{background:white;border:1px solid var(--line);border-radius:var(--r);padding:12px}.mini h3{font-size:13px;margin:0 0 8px}.kv{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:12px;padding:4px 0}.kv b{color:var(--ink);font-family:var(--mono)}.list{display:flex;flex-direction:column;gap:7px}.item{border:1px solid var(--soft);border-radius:7px;padding:9px;background:#fbfcfd}.item b{display:block;font-size:12px}.item span{display:block;color:var(--muted);font-size:12px;margin-top:2px}
-    .searchbar{display:grid;grid-template-columns:minmax(0,1fr) 90px;gap:8px;margin-bottom:12px}.searchbar input{height:36px;border:1px solid var(--line);border-radius:7px;padding:0 10px;background:white}
-    .state{display:inline-flex;align-items:center;height:22px;border-radius:999px;padding:0 8px;font:11px var(--mono);background:#eef2f7;color:#475569}.state.ok{background:#e9f7ef;color:#166534}.state.err{background:#fff1f2;color:#b91c1c}.state.wait{background:#fff8e6;color:#92400e}
-    body{background:
-      radial-gradient(circle at 72% 12%,rgba(36,184,255,.12),transparent 28%),
-      radial-gradient(circle at 22% 86%,rgba(124,58,237,.12),transparent 30%),
-      #070b14;color:#dce8f8}
-    body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.22;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:42px 42px;mask-image:linear-gradient(to bottom,black,transparent 90%)}
-    .app{position:relative;grid-template-columns:264px minmax(0,1fr) 330px;gap:1px;background:rgba(116,144,181,.13);overflow:hidden}
-    .app>.side,.app>.main,.app>.right{min-height:0}
-    .side{background:linear-gradient(180deg,rgba(8,14,27,.98),rgba(10,17,31,.96));backdrop-filter:blur(24px)}
-    .brand{height:76px}.mark{position:relative;background:linear-gradient(145deg,#22d3ee,#2563eb 55%,#7c3aed);box-shadow:0 0 24px rgba(34,211,238,.35);border-radius:11px}.mark:after{content:"";position:absolute;inset:-5px;border:1px solid rgba(103,232,249,.22);border-radius:15px}
-    .brand b{font-size:16px;letter-spacing:.3px}.brand span{color:#6f819b}
-    .nav button,.new-chat{height:42px;border-radius:10px}.nav button.on{background:linear-gradient(90deg,rgba(37,99,235,.2),rgba(14,165,233,.08));box-shadow:inset 2px 0 #38bdf8;color:#f8fbff}.ico{color:#67e8f9}
-    .new-chat{background:linear-gradient(135deg,rgba(37,99,235,.22),rgba(124,58,237,.16));border-color:rgba(96,165,250,.25)}
-    .main{background:rgba(8,13,24,.82)}.top{height:76px;background:rgba(10,17,30,.72);border-color:rgba(148,163,184,.14);backdrop-filter:blur(20px)}.top h1{color:#f5f9ff;font-size:18px}.top .sub{color:#71839c}
-    .badge{background:rgba(15,25,43,.72);color:#a9c3e6;border-color:rgba(96,165,250,.18);height:30px}
-    .chat{padding:28px}.chat-inner{max-width:980px}.empty{position:relative;overflow:hidden;min-height:370px;display:flex;flex-direction:column;justify-content:center;align-items:center;border:1px solid rgba(96,165,250,.18);background:linear-gradient(145deg,rgba(15,26,46,.88),rgba(12,18,34,.68));box-shadow:0 30px 80px rgba(0,0,0,.25);border-radius:22px}
-    .empty:before{content:"";position:absolute;width:280px;height:280px;border-radius:50%;background:conic-gradient(from 90deg,transparent,#22d3ee,transparent,#7c3aed,transparent);filter:blur(36px);opacity:.18;animation:orbit 12s linear infinite}.empty>*{position:relative}.empty b{font-size:28px;color:#f5f9ff;letter-spacing:-.6px}.empty span{max-width:560px}
-    @keyframes orbit{to{transform:rotate(360deg)}}@keyframes pulse{50%{opacity:.45;transform:scale(.94)}}
-    .quick-grid{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,240px));gap:10px;margin-top:26px}.quick{border:1px solid rgba(96,165,250,.16);background:rgba(7,14,27,.62);color:#a9bdd8;border-radius:12px;padding:12px 14px;text-align:left;transition:.2s}.quick:hover{transform:translateY(-2px);border-color:rgba(34,211,238,.5);color:white;background:rgba(15,31,54,.8)}
-    .bubble,.card,.mini,.table{background:rgba(14,23,40,.84);border-color:rgba(148,163,184,.14);box-shadow:0 16px 40px rgba(0,0,0,.16)}.mh,.table td{border-color:rgba(148,163,184,.11)}.mh,.metric .l,.kv,.item span,.field label{color:#7387a3}.mc,.kv b,.item b{color:#dce8f8}
-    .msg .avatar{background:linear-gradient(145deg,#2563eb,#7c3aed)}.msg.agent .avatar{background:linear-gradient(145deg,#06b6d4,#0f766e)}
-    .composer{background:rgba(9,15,27,.86);border-color:rgba(148,163,184,.14);backdrop-filter:blur(20px)}textarea,.field input,.field select,.searchbar input{background:rgba(13,22,39,.9);color:#e6f0ff;border-color:rgba(148,163,184,.18)}textarea{border-radius:14px}.primary{background:linear-gradient(135deg,#0891b2,#2563eb);box-shadow:0 8px 22px rgba(37,99,235,.24)}.secondary{background:rgba(18,30,50,.9);color:#b9cbe3;border-color:rgba(148,163,184,.18)}
-    .panel-view{background:linear-gradient(180deg,rgba(8,14,26,.72),rgba(8,13,24,.9))}.metric{position:relative;overflow:hidden}.metric:after{content:"";position:absolute;width:90px;height:90px;border-radius:50%;right:-34px;top:-38px;background:currentColor;opacity:.08}.metric .v{color:#dff7ff!important}
-    .table th{background:rgba(17,29,49,.94);color:#8fa7c7;border-color:rgba(148,163,184,.12)}.table td{color:#b7c8dd}.item{background:rgba(10,18,32,.72);border-color:rgba(148,163,184,.12)}
-    .right{background:linear-gradient(180deg,rgba(10,17,30,.98),rgba(7,12,22,.98));border-color:rgba(148,163,184,.12)}.right-h{height:76px;border-color:rgba(148,163,184,.12);color:#eff6ff}
-    .cycle{display:grid;gap:7px}.cycle-step{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:8px;border:1px solid rgba(148,163,184,.1);border-radius:10px;background:rgba(7,14,26,.55)}.cycle-step i{width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:rgba(37,99,235,.18);color:#67e8f9;font:10px var(--mono);font-style:normal}.cycle-step em{width:6px;height:6px;border-radius:50%;background:#22d3ee;box-shadow:0 0 12px #22d3ee;animation:pulse 2s infinite}.cycle-step span{font-size:12px;color:#a9bdd8}
-    .side-foot .dot.ok{box-shadow:0 0 12px rgba(34,197,94,.75)}
-    @media(max-width:1100px){.app{grid-template-columns:240px minmax(0,1fr)}.right{display:none}.grid{grid-template-columns:repeat(2,minmax(150px,1fr))}}
-    @media(max-width:760px){.app{grid-template-columns:1fr}.side{display:none}.mobile-tabs{display:flex}.grid{grid-template-columns:1fr}.top{padding:0 14px}.chat,.panel-view{padding:14px}.compose-inner{grid-template-columns:1fr}.primary{height:42px}}
-  </style>
+  <title>ClawOS - 自进化智能体操作系统</title>
+  <link rel="stylesheet" href="/assets/site.css">
 </head>
-<body>
-<div class="app">
-  <aside class="side">
-    <div class="brand"><div class="mark">C</div><div><b>ClawOS 工作台</b><span>自进化个人智能体系统</span></div></div>
-    <div class="nav">
-      <button class="on" data-view="chat"><span class="ico">01</span>智能体会话</button>
-      <button data-view="dash"><span class="ico">02</span>状态总览</button>
-      <button data-view="memory"><span class="ico">03</span>记忆中枢</button>
-      <button data-view="reflection"><span class="ico">04</span>反思循环</button>
-      <button data-view="skills"><span class="ico">05</span>固化技能</button>
-      <button data-view="tools"><span class="ico">06</span>工具路由</button>
-      <button data-view="tasks"><span class="ico">07</span>任务轨迹</button>
+<body class="home-page">
+  <canvas class="starfield" id="starfield"></canvas>
+  <div class="magazine-backdrop" aria-hidden="true">
+    <img class="magazine-bg layer" data-depth="-0.04" src="/assets/hero/d55c96717921508cafd61730a1623e08.jpg" alt="">
+    <div class="magazine-fog layer" data-depth="0.03"></div>
+    <div class="red-rim layer" data-depth="0.08"></div>
+  </div>
+  <nav class="site-nav">
+    <a class="brand" href="/"><span class="mark">C</span><span><b>ClawOS</b><small>Self-Evolving Agent OS</small></span></a>
+    <div class="nav-links">
+      <a class="active" href="/">首页</a>
+      <a href="/product">产品</a>
+      <a href="/console">控制台</a>
     </div>
-    <button class="new-chat" onclick="newChat()"><span class="ico">+</span>新建会话</button>
-    <div class="sessions" id="sessions"></div>
-    <div class="side-foot"><span class="dot" id="healthDot"></span><span id="healthText">Starting</span></div>
-  </aside>
+    <a class="pill solid" href="/product">进入产品层</a>
+  </nav>
 
-  <main class="main">
-    <header class="top">
-      <div><h1 id="viewTitle">智能体会话</h1><div class="sub" id="viewSub">观察、规划、执行、反思、记忆、改进</div></div>
-      <div class="spacer"></div>
-      <span class="badge" id="modelBadge">模型：--</span>
-      <span class="badge" id="toolBadge">工具：--</span>
-    </header>
-    <div class="mobile-tabs">
-      <button class="on" data-view="chat">会话</button>
-      <button data-view="dash">总览</button>
-      <button data-view="memory">记忆</button>
-      <button data-view="reflection">反思</button>
-      <button data-view="skills">技能</button>
-      <button data-view="tools">工具</button>
-      <button data-view="tasks">任务</button>
-    </div>
+  <main class="home-cinema">
+    <section class="home-hero" aria-label="ClawOS 首页">
+      <div class="home-copy layer" data-depth="0.12">
+        <div class="eyebrow"><i></i> Local Agent Workbench / MTClaw Ready</div>
+        <h1><span>ClawOS</span><span>让智能体开始工作</span></h1>
+        <p>一个本地运行的智能体操作系统，把观察、规划、工具执行、任务轨迹、长期记忆、反思复盘和技能进化做成可审计、可复用、可进入的产品空间。</p>
+        <div class="actions">
+          <a class="pill solid" href="/product">进入产品页</a>
+          <a class="pill" href="/console">直接打开控制台</a>
+        </div>
+        <div class="proof-row">
+          <div><b>43</b><span>工具矩阵</span></div>
+          <div><b>6</b><span>闭环阶段</span></div>
+          <div><b>Local</b><span>Windows 工作台</span></div>
+        </div>
+      </div>
 
-    <section class="view on" id="view-chat">
-      <div class="workspace">
-        <div class="chat" id="chat"><div class="chat-inner" id="chatInner"><div class="empty"><b>让智能体真正开始工作</b><span>ClawOS 将任务路由、长期记忆、执行轨迹与反思学习汇聚在同一个可观测工作台。</span><div class="quick-grid"><button class="quick" onclick="usePrompt('分析当前项目并给出下一步开发计划')">分析项目与开发计划</button><button class="quick" onclick="usePrompt('查看我的长期记忆和偏好')">检查 MemoryOS</button><button class="quick" onclick="usePrompt('列出当前可用工具和固化技能')">探索工具与技能</button><button class="quick" onclick="usePrompt('复盘最近一次任务并总结改进建议')">运行反思复盘</button></div></div></div></div>
-        <div class="composer">
-          <div class="confirmbar" id="confirmBar"><span id="confirmText">等待确认</span><button class="secondary" onclick="cancelPending()">取消</button><button class="primary" style="height:34px;padding:0 14px" onclick="confirmPending()">确认执行</button></div>
-          <div class="compose-inner">
-            <textarea id="prompt" placeholder="例如：把我的代码风格记为 Python + 类型标注，或者列出当前项目结构" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
-            <button class="primary" id="send" onclick="sendMessage()">发送</button>
+      <div class="cinematic-stage" aria-hidden="true">
+        <div class="depth-frame frame-back layer" data-depth="0.06"></div>
+        <div class="depth-frame frame-mid layer" data-depth="0.13"></div>
+        <div class="portal magazine-portal layer" data-depth="0.2">
+          <img src="/assets/hero/d55c96717921508cafd61730a1623e08.jpg" alt="">
+          <div class="enter-label">
+            <span>ENTER</span>
+            <b>Architects of AI</b>
           </div>
         </div>
+        <div class="glass-card trace-card layer" data-depth="0.22">
+          <span>TRACE 01</span>
+          <b>Observe -> Route -> Execute</b>
+          <p>任务被拆成可记录的 Step 和 Event，而不是消失在一次回答里。</p>
+        </div>
+        <div class="glass-card code-card layer" data-depth="0.28">
+<pre>memory.write({
+  type: "experience",
+  evidence: task.trace,
+  promote: "skill_candidate"
+})</pre>
+        </div>
+        <div class="foreground-haze layer" data-depth="0.36"></div>
       </div>
     </section>
 
-    <section class="view" id="view-dash"><div class="panel-view"><div class="grid" id="metrics"></div><div class="section"><h2>近期活动</h2><table class="table" id="activityTable"></table></div></div></section>
-    <section class="view" id="view-memory"><div class="panel-view">
-      <div class="form">
-        <div class="field"><label>类型</label><select id="memType"><option value="profile">Profile</option><option value="preference">Preference</option><option value="project">Project</option><option value="experience">Experience</option><option value="skill">Skill</option></select></div>
-        <div class="field"><label>KEY</label><input id="memKey" placeholder="reply_style"></div>
-        <div class="field"><label>VALUE</label><input id="memValue" placeholder="Prefer concise direct answers"></div>
-        <div class="field"><label>来源</label><input id="memSource" placeholder="manual"></div>
-        <button class="primary" style="height:34px;padding:0 16px" onclick="saveMemory()">保存</button>
-      </div>
-      <div class="searchbar"><input id="memQuery" placeholder="搜索长期记忆" onkeydown="if(event.key==='Enter')searchMemory()"><button class="secondary" onclick="searchMemory()">搜索</button></div>
-      <div class="section"><h2>统一记忆</h2><table class="table" id="memoryTable"></table></div>
-      <div class="section"><h2>检索结果</h2><table class="table" id="searchTable"></table></div>
-    </div></section>
-    <section class="view" id="view-reflection"><div class="panel-view"><button class="secondary" onclick="triggerReflection()">触发反思</button><div class="section"><h2>反思卡片</h2><table class="table" id="reflectionTable"></table></div><div class="section"><h2>经验记忆</h2><table class="table" id="experienceTable"></table></div></div></section>
-    <section class="view" id="view-skills"><div class="panel-view"><div class="section"><h2>固化技能</h2><table class="table" id="skillsTable"></table></div><div class="section"><h2>执行质量</h2><table class="table" id="skillStatsTable"></table></div></div></section>
-    <section class="view" id="view-tools"><div class="panel-view"><div class="searchbar"><input id="toolQuery" placeholder="筛选工具" oninput="renderTools()"><button class="secondary" onclick="renderTools()">筛选</button></div><table class="table" id="toolsTable"></table><div class="section"><h2>运行轨迹</h2><table class="table" id="toolExecTable"></table></div></div></section>
-    <section class="view" id="view-tasks"><div class="panel-view"><div class="section"><h2>任务轨迹</h2><table class="table" id="taskTable"></table></div><div class="section"><h2>步骤与事件</h2><table class="table" id="taskDetailTable"></table></div></div></section>
+    <section class="home-strip">
+      <span>01 首页：电影式入口</span>
+      <span>02 产品页：企业级能力说明</span>
+      <span>03 控制台：真实 Agent 工作台</span>
+    </section>
   </main>
 
-  <aside class="right">
-    <div class="right-h">运行轨迹</div>
-    <div class="right-body">
-      <div class="mini"><h3>Agent 学习闭环</h3><div class="cycle"><div class="cycle-step"><i>01</i><span>Observe 观察</span><em></em></div><div class="cycle-step"><i>02</i><span>Plan 规划</span><em></em></div><div class="cycle-step"><i>03</i><span>Execute 执行</span><em></em></div><div class="cycle-step"><i>04</i><span>Reflect 反思</span><em></em></div><div class="cycle-step"><i>05</i><span>Memory 记忆</span><em></em></div><div class="cycle-step"><i>06</i><span>Improve 进化</span><em></em></div></div></div>
-      <div class="mini"><h3>系统</h3><div id="runtimeKv"></div></div>
-      <div class="mini"><h3>最近工具调用</h3><div class="list" id="lastTools"><div class="item"><span>暂无工具调用</span></div></div></div>
-      <div class="mini"><h3>最近反思</h3><div class="list" id="lastReflection"><div class="item"><span>暂无反思记录</span></div></div></div>
-    </div>
-  </aside>
-</div>
-
-<script>
-const API=location.origin;let currentSession="default",busy=false,lastToolCalls=[],allTools=[],pendingConfirmation=null,lastTaskId=null;
-const $=id=>document.getElementById(id);const esc=s=>{const d=document.createElement("div");d.textContent=s??"";return d.innerHTML};
-function usePrompt(text){$("prompt").value=text;$("prompt").focus()}
-async function api(path,opts){const r=await fetch(API+path,opts||{});if(!r.ok)throw new Error(path+" "+r.status);return await r.json()}
-function setView(v){document.querySelectorAll(".nav button,.mobile-tabs button").forEach(b=>b.classList.toggle("on",b.dataset.view===v));document.querySelectorAll(".view").forEach(e=>e.classList.remove("on"));$("view-"+v).classList.add("on");const names={chat:["智能体会话","观察、规划、执行、反思、记忆、改进"],dash:["状态总览","系统健康度、记忆增长和工具执行概览"],memory:["记忆中枢","用户画像、偏好、经验和知识检索"],reflection:["反思循环","任务后分析、经验沉淀和改进卡片"],skills:["固化技能","可复用工作流和本地快速执行记录"],tools:["工具路由","本地函数注册表和可调用能力"],tasks:["任务轨迹","持久化 Task、Step、Event 运行时审计"]};$("viewTitle").textContent=names[v][0];$("viewSub").textContent=names[v][1];refreshAll()}
-document.querySelectorAll(".nav button,.mobile-tabs button").forEach(b=>b.onclick=()=>setView(b.dataset.view));
-function md(t){t=esc(t||"");t=t.replace(/```([\s\S]*?)```/g,"<pre>$1</pre>").replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>").replace(/\n/g,"<br>");return t}
-function addMessage(role,text,tools){const inner=$("chatInner");if(inner.querySelector(".empty"))inner.innerHTML="";const div=document.createElement("div");div.className="msg "+(role==="assistant"?"agent":"user");let chips="";(tools||[]).forEach(t=>chips+=`<span class="tool ${String(JSON.stringify(t.result||{})).includes("error")?"err":""}">${esc(t.name)}</span>`);div.innerHTML=`<div class="avatar">${role==="assistant"?"C":"U"}</div><div class="bubble"><div class="mh">${role==="assistant"?"ClawOS":"你"}</div>${chips?`<div class="tool-row">${chips}</div>`:""}<div class="mc">${md(text)}</div></div>`;inner.appendChild(div);$("chat").scrollTop=$("chat").scrollHeight}
-function sendMessage(){const text=$("prompt").value.trim();if(!text||busy)return;$("prompt").value="";submitMessage(text,[])}
-async function submitMessage(text,confirmedTools){busy=true;$("send").disabled=true;addMessage("user",text);const pending=setTimeout(()=>addMessage("assistant","正在处理..."),220);try{const data=await api("/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:currentSession,stream:false,clawos_confirmed_tools:confirmedTools||[],messages:[{role:"user",content:text}]})});clearTimeout(pending);const tools=data.clawos?.tool_calls||[];lastToolCalls=tools;lastTaskId=data.clawos?.task_id||lastTaskId;const content=data.choices?.[0]?.message?.content||"";addMessage("assistant",content,tools);if(data.clawos?.needs_confirmation){const names=tools.map(t=>t.name).filter(Boolean);pendingConfirmation={text,tools:names};$("confirmText").textContent="需要确认："+names.join("、");$("confirmBar").classList.add("on")}else{pendingConfirmation=null;$("confirmBar").classList.remove("on")}renderLastTools();if(data.clawos?.reflection){renderLastReflection(data.clawos.reflection)}await loadSessions();await refreshAll()}catch(e){clearTimeout(pending);addMessage("assistant","请求失败："+e.message)}finally{busy=false;$("send").disabled=false;$("prompt").focus()}}
-function confirmPending(){if(!pendingConfirmation||busy)return;const p=pendingConfirmation;pendingConfirmation=null;$("confirmBar").classList.remove("on");submitMessage(p.text,p.tools)}
-function cancelPending(){pendingConfirmation=null;$("confirmBar").classList.remove("on")}
-function newChat(){currentSession="s_"+Date.now();$("chatInner").innerHTML='<div class="empty"><b>新的任务空间</b><span>短期上下文已清空，长期 MemoryOS、技能库与反思经验继续共享。</span><div class="quick-grid"><button class="quick" onclick="usePrompt(\'分析当前项目并给出下一步开发计划\')">分析项目与开发计划</button><button class="quick" onclick="usePrompt(\'查看我的长期记忆和偏好\')">检查 MemoryOS</button></div></div>';loadSessions();setView("chat")}
-async function switchSession(id){currentSession=id;const d=await api("/api/history/"+encodeURIComponent(id));$("chatInner").innerHTML="";(d.messages||[]).forEach(m=>addMessage(m.role==="assistant"?"assistant":"user",m.content));renderSessions(window._sessions||[]);setView("chat")}
-async function loadSessions(){try{const d=await api("/api/sessions");window._sessions=d.sessions||[];renderSessions(window._sessions)}catch(e){}}
-function renderSessions(list){$("sessions").innerHTML=(list||[]).map(s=>`<div class="session ${s.session_id===currentSession?"on":""}" onclick="switchSession('${esc(s.session_id)}')">${esc((s.last_message||s.session_id).slice(0,72))}</div>`).join("")||'<div class="session">暂无会话</div>'}
-async function loadHealth(){try{const h=await api("/health");const configured=h.model_provider?.configured,mt=h.mtclaw||{};$("healthDot").className="dot ok";$("healthText").textContent=configured?"系统在线 · 模型就绪":"系统在线 · 等待模型配置";$("modelBadge").textContent=(mt.enabled?"MTClaw · ":"")+(h.routing_model||"--");$("toolBadge").textContent="工具矩阵 · "+h.tools;$("runtimeKv").innerHTML=[["MTClaw",!mt.enabled?"DISABLED":mt.reachable?"CONNECTED":"FALLBACK"],["MemoryOS",h.memory?"READY":"OFF"],["Reflection",h.reflection?"READY":"OFF"],["Provider",h.model_provider?.provider||"--"],["Model",h.routing_model||"--"],["API",configured?"CONNECTED":"UNCONFIGURED"]].map(k=>`<div class="kv"><span>${k[0]}</span><b>${k[1]}</b></div>`).join("")}catch(e){$("healthDot").className="dot bad";$("healthText").textContent="系统离线"}}
-async function loadDash(){const [h,m,sk,rf]=await Promise.all([api("/health"),api("/api/memory/stats"),api("/api/skills/list"),api("/api/reflection/list").catch(()=>({cards:[]}))]);const vals=[["工具",h.tools,"#2563eb"],["记忆",m.memories??m.profiles,"#0f766e"],["经验",m.experiences,"#b45309"],["技能",sk.count,"#15803d"]];$("metrics").innerHTML=vals.map(v=>`<div class="card metric"><div class="v" style="color:${v[2]}">${v[1]??0}</div><div class="l">${v[0]}</div></div>`).join("");$("activityTable").innerHTML=table(["类型","摘要","时间"],(rf.cards||[]).slice(0,8).map(c=>["反思",c.task||"",c.created_at||""]))}
-function cell(c){return c&&typeof c==="object"&&c.html?c.html:esc(c)}
-function table(head,rows){return `<tr>${head.map(h=>`<th>${h}</th>`).join("")}</tr>`+(rows.length?rows.map(r=>`<tr>${r.map(c=>`<td>${cell(c)}</td>`).join("")}</tr>`).join(""):`<tr><td colspan="${head.length}">暂无数据</td></tr>`)}
-function renderMemoryRows(items){return (items||[]).map(x=>[x.memory_type,x.category,x.key,x.value,x.source,x.confidence,{html:statusBadge(x.enabled?"success":"disabled")},x.updated_at||"",{html:`<button class="secondary" onclick="toggleMemory(${Number(x.id)},${x.enabled?0:1})">${x.enabled?"禁用":"启用"}</button>`}])}
-async function loadMemory(){const [items,e]=await Promise.all([api("/api/memory/items?include_disabled=true&limit=200"),api("/api/memory/experiences")]);$("memoryTable").innerHTML=table(["类型","分类","键","值","来源","置信度","状态","更新时间","操作"],renderMemoryRows(items.items||[]));$("experienceTable").innerHTML=table(["结果","任务","经验","创建时间"],(e.experiences||[]).map(x=>[x.outcome,x.task,x.lesson,x.created_at]))}
-async function saveMemory(){const memory_type=$("memType").value,key=$("memKey").value.trim(),value=$("memValue").value.trim(),source=($("memSource").value.trim()||"manual");if(!memory_type||!key||!value)return;await api("/api/memory/items",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({memory_type,key,value,source,confidence:.8})});$("memKey").value="";$("memValue").value="";await loadMemory();await loadDash()}
-async function toggleMemory(id,enabled){await api("/api/memory/items/"+id+"/enabled",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!!enabled})});await loadMemory()}
-async function searchMemory(){const q=$("memQuery").value.trim();if(!q)return;const d=await api("/api/memory/items/search?q="+encodeURIComponent(q)+"&limit=12");$("searchTable").innerHTML=table(["类型","键","内容","来源","置信度"],(d.items||[]).map(r=>[r.memory_type,r.key,String(r.value||"").slice(0,180),r.source,r.confidence]))}
-async function loadReflection(){const [cards,stats]=await Promise.all([api("/api/reflection/list").catch(()=>({cards:[]})),api("/api/reflection/stats").catch(()=>({}))]);$("reflectionTable").innerHTML=table(["结果","任务","经验","方案"],(cards.cards||[]).map(c=>[c.outcome,c.task,c.lesson,c.solution]));if(cards.cards?.[0])renderLastReflection({card:cards.cards[0],outcome:{outcome:cards.cards[0].outcome}})}
-async function triggerReflection(){const d=await api("/api/reflection/trigger",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:currentSession,task:"Manual workspace reflection"})});renderLastReflection(d);await loadReflection();await loadMemory()}
-async function loadSkills(){const [s,st]=await Promise.all([api("/api/skills/list"),api("/api/skills/stats")]);$("skillsTable").innerHTML=table(["名称","分类","说明","调用次数"],(s.skills||[]).map(x=>[x.display_name||x.name,x.category,x.description,x.use_count]));$("skillStatsTable").innerHTML=table(["工具/技能","调用","成功","平均耗时 ms","质量"],(st.records||[]).map(x=>[x.skill_name,x.usage_count,x.success_count,x.avg_duration_ms,x.quality_score]))}
-async function loadTools(){const d=await api("/api/tools/list");allTools=d.tools||[];renderTools()}
-function renderTools(){const q=($("toolQuery")?.value||"").toLowerCase();const rows=allTools.filter(t=>!q||t.name.toLowerCase().includes(q)||String(t.description).toLowerCase().includes(q)).map(t=>[t.name,t.description,Object.keys(t.parameters?.properties||{}).join(", ")]);$("toolsTable").innerHTML=table(["工具","说明","参数"],rows)}
-function statusBadge(status){const cls=(status==="success"||status==="succeeded")?"ok":(["needs_confirmation","running","pending"].includes(status)?"wait":"err");return `<span class="state ${cls}">${esc(status||"unknown")}</span>`}
-function renderToolRows(rows){return rows.map(t=>[t.tool_name||t.name,{html:statusBadge(t.status||t.result?.status)},String(t.duration_ms??t.result?.duration_ms??0),t.created_at||"",JSON.stringify(t.result?.data||t.result||{}).slice(0,160)])}
-async function loadToolExecutions(){try{const d=await api("/api/tools/executions?session_id="+encodeURIComponent(currentSession)+"&limit=20");const rows=d.executions||[];$("toolExecTable").innerHTML=table(["工具","状态","耗时 ms","时间","结果"],renderToolRows(rows));if(rows.length){lastToolCalls=rows.slice(0,5).map(r=>({name:r.tool_name,result:r.result}));renderLastTools()}}catch(e){if($("toolExecTable"))$("toolExecTable").innerHTML=table(["工具","状态","耗时 ms","时间","结果"],[])}}
-function renderLastTools(){$("lastTools").innerHTML=lastToolCalls.length?lastToolCalls.map(t=>{const r=t.result||{};return `<div class="item"><b>${esc(t.name||r.tool||"tool")}</b>${statusBadge(r.status||"success")}<span>${esc(JSON.stringify(r.data||r).slice(0,180))}</span></div>`}).join(""):'<div class="item"><span>暂无工具调用</span></div>'}
-function renderLastReflection(r){const card=r.card||{};$("lastReflection").innerHTML=`<div class="item"><b>${esc(card.outcome||r.outcome?.outcome||"反思")}</b><span>${esc(card.task||"最近任务")}</span><span>${esc(card.lesson||r.analysis?.root_cause||"已写入 MemoryOS")}</span></div>`}
-async function loadTasks(){try{const d=await api("/api/tasks?session_id="+encodeURIComponent(currentSession)+"&limit=20");const rows=d.tasks||[];if(!lastTaskId&&rows[0])lastTaskId=rows[0].id;$("taskTable").innerHTML=table(["ID","状态","标题","来源","开始","操作"],rows.map(t=>[t.id,{html:statusBadge(t.status)},t.title,t.source,t.started_at,{html:`<button class="secondary" onclick="showTask(${Number(t.id)})">查看</button>`}]));if(lastTaskId)await showTask(lastTaskId)}catch(e){if($("taskTable"))$("taskTable").innerHTML=table(["ID","状态","标题","来源","开始","操作"],[])}}
-async function showTask(task_id){lastTaskId=task_id;const d=await api("/api/tasks/"+encodeURIComponent(task_id));const steps=(d.steps||[]).map(s=>["Step",s.name,{html:statusBadge(s.status)},s.started_at,JSON.stringify(s.output||{}).slice(0,180)]);const events=(d.events||[]).map(e=>["Event",e.event_type,"",e.created_at,JSON.stringify(e.data||{}).slice(0,180)]);$("taskDetailTable").innerHTML=table(["类型","名称","状态","时间","数据"],steps.concat(events))}
-async function refreshAll(){await Promise.allSettled([loadHealth(),loadDash(),loadMemory(),loadReflection(),loadSkills(),loadTools(),loadToolExecutions(),loadTasks()])}
-loadSessions();refreshAll();setInterval(loadHealth,30000);
-</script>
+  <script src="/assets/site.js"></script>
 </body>
 </html>

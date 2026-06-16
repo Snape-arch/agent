@@ -201,6 +201,58 @@ class SkillEvolutionTests(unittest.TestCase):
 
         self.assertTrue(run["passed"])
 
+    def test_review_inbox_supports_needs_changes_and_reopen(self):
+        candidate = self.manager.propose(
+            "daily_clock",
+            {
+                "steps": [{"tool": "time_now", "args": {}}],
+                "description": "candidate",
+            },
+        )
+
+        inbox = self.manager.review_inbox()
+        needs_changes = self.manager.review(
+            candidate["id"], "needs_changes", reviewer="tester", notes="add examples"
+        )
+        reopened = self.manager.review(candidate["id"], "reopen", reviewer="tester")
+        rejected = self.manager.review(candidate["id"], "reject", reviewer="tester")
+
+        self.assertTrue(any(item["id"] == candidate["id"] for item in inbox))
+        self.assertEqual(needs_changes["status"], "needs_changes")
+        self.assertEqual(reopened["status"], "candidate")
+        self.assertEqual(rejected["status"], "rejected")
+        self.assertEqual(self.manager.review_inbox(status="rejected")[0]["review_events"][0]["action"], "reject")
+
+    def test_signature_manifest_fresh_audit_and_canary(self):
+        candidate = self.manager.propose(
+            "daily_clock",
+            {
+                "steps": [{"tool": "time_now", "args": {}}],
+                "description": "candidate",
+            },
+        )
+        suite = self.manager.create_suite(
+            "clock-canary-v1",
+            "daily_clock",
+            [{
+                "mode": "plan",
+                "expected": {"ok": True, "step_count": 1, "tools": ["time_now"]},
+            }],
+        )
+        run = self.manager.evaluate(candidate["id"], suite["id"])
+        manifest = self.manager.dependency_manifest(candidate["id"])
+        signature = self.manager.sign_version(candidate["id"], signer="tester", secret="secret")
+        audit = self.manager.fresh_agent_audit(candidate["id"], suite["id"])
+        canary = self.manager.start_canary(candidate["id"], percent=5, actor="tester")
+        promotion = self.manager.promote(candidate["id"], actor="tester")
+
+        self.assertTrue(run["passed"])
+        self.assertEqual(manifest["tools"], ["time_now"])
+        self.assertEqual(signature["signer"], "tester")
+        self.assertTrue(audit["passed"])
+        self.assertEqual(canary["percent"], 5.0)
+        self.assertEqual(promotion["to_version_id"], candidate["id"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import math
+import hashlib
+import hmac
 from copy import deepcopy
 from datetime import datetime, timezone
 
@@ -34,6 +36,8 @@ def _row(row):
         ("case_results", []),
         ("thresholds", {}),
         ("previous_definition", None),
+        ("dependencies", []),
+        ("manifest", {}),
     ):
         if key in item:
             item[key] = _decode(item[key], default)
@@ -95,6 +99,41 @@ class SkillEvolutionManager:
                     promoted_by TEXT DEFAULT 'system',
                     created_at TEXT NOT NULL,
                     rolled_back_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS skill_review_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    version_id INTEGER NOT NULL,
+                    action TEXT NOT NULL,
+                    reviewer TEXT DEFAULT 'user',
+                    notes TEXT DEFAULT '',
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS skill_signatures (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    version_id INTEGER NOT NULL,
+                    signature TEXT NOT NULL,
+                    signer TEXT NOT NULL,
+                    dependencies TEXT NOT NULL DEFAULT '[]',
+                    signed_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS skill_audit_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    version_id INTEGER NOT NULL,
+                    suite_id INTEGER,
+                    audit_type TEXT NOT NULL,
+                    metrics TEXT NOT NULL DEFAULT '{}',
+                    case_results TEXT NOT NULL DEFAULT '[]',
+                    passed INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS skill_canaries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    version_id INTEGER NOT NULL,
+                    skill_name TEXT NOT NULL,
+                    percent REAL NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'running',
+                    manifest TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL
                 );
             """)
 
@@ -180,7 +219,7 @@ class SkillEvolutionManager:
             raise ValueError("skill version or evaluation suite not found")
         if version["skill_name"] != suite["skill_name"]:
             raise ValueError("evaluation suite belongs to another skill")
-        if version["status"] not in {"candidate", "validated", "rejected"}:
+        if version["status"] not in {"candidate", "validated", "rejected", "needs_changes"}:
             raise ValueError(f"version cannot be evaluated from {version['status']}")
 
         results = []
@@ -247,8 +286,8 @@ class SkillEvolutionManager:
         version = _row(version)
         if not version:
             raise ValueError("skill version not found")
-        if version["status"] != "validated":
-            raise ValueError("only validated skill versions can be promoted")
+        if version["status"] not in {"validated", "canary"}:
+            raise ValueError("only validated or canary skill versions can be promoted")
         current = skill_registry.get_skill(version["skill_name"])
         published = skill_registry.publish_skill_definition(version["definition"])
         if published.get("error"):
@@ -325,6 +364,207 @@ class SkillEvolutionManager:
             ).fetchone()
         return _row(result)
 
+    def review_inbox(self, status="", limit=100):
+        inbox_statuses = ["candidate", "needs_changes", "rejected", "validated", "canary"]
+        params = []
+        query = "SELECT * FROM skill_versions"
+        if status:
+            query += " WHERE status=?"
+            params.append(str(status))
+        else:
+            query += " WHERE status IN ({})".format(",".join("?" for _ in inbox_statuses))
+            params.extend(inbox_statuses)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(min(max(int(limit or 100), 1), 500))
+        with self._store._conn() as c:
+            rows = [_row(row) for row in c.execute(query, params).fetchall()]
+            for version in rows:
+                latest_run = c.execute(
+                    "SELECT * FROM skill_eval_runs WHERE version_id=? ORDER BY id DESC LIMIT 1",
+                    (int(version["id"]),),
+                ).fetchone()
+                events = c.execute(
+                    "SELECT * FROM skill_review_events WHERE version_id=? ORDER BY id DESC LIMIT 5",
+                    (int(version["id"]),),
+                ).fetchall()
+                version["latest_run"] = _row(latest_run)
+                version["review_events"] = [dict(row) for row in events]
+        return rows
+
+    def review(self, version_id, action, reviewer="user", notes=""):
+        allowed = {"needs_changes", "reject", "reopen"}
+        action = str(action or "").strip()
+        if action not in allowed:
+            raise ValueError(f"review action must be one of: {', '.join(sorted(allowed))}")
+        with self._store._conn() as c:
+            version = c.execute(
+                "SELECT * FROM skill_versions WHERE id=?", (int(version_id),)
+            ).fetchone()
+            if not version:
+                raise ValueError("skill version not found")
+            current = str(version["status"])
+            if current in {"active", "archived", "rolled_back"}:
+                raise ValueError(f"cannot review version from {current}")
+            next_status = {
+                "needs_changes": "needs_changes",
+                "reject": "rejected",
+                "reopen": "candidate",
+            }[action]
+            now = _now_iso()
+            c.execute(
+                "UPDATE skill_versions SET status=?, updated_at=? WHERE id=?",
+                (next_status, now, int(version_id)),
+            )
+            c.execute(
+                """INSERT INTO skill_review_events
+                   (version_id, action, reviewer, notes, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (int(version_id), action, reviewer, notes, now),
+            )
+            row = c.execute(
+                "SELECT * FROM skill_versions WHERE id=?", (int(version_id),)
+            ).fetchone()
+        return _row(row)
+
+    def dependency_manifest(self, version_id):
+        version = self._get_version(version_id)
+        tools = []
+        for step in version["definition"].get("steps", []):
+            tool = str(step.get("tool", "")).strip()
+            if tool and tool not in tools:
+                tools.append(tool)
+        manifest = {
+            "skill_name": version["skill_name"],
+            "version": version["version"],
+            "tools": tools,
+            "step_count": len(version["definition"].get("steps", [])),
+            "requires_confirmation": any(tool in {"shell_exec", "file_write", "skill_delete"} for tool in tools),
+        }
+        return manifest
+
+    def sign_version(self, version_id, signer="system", secret="clawos-local-signing"):
+        version = self._get_version(version_id)
+        dependencies = self.dependency_manifest(version_id)
+        payload = json.dumps({
+            "definition": version["definition"],
+            "dependencies": dependencies,
+        }, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        signature = hmac.new(str(secret).encode("utf-8"), payload, hashlib.sha256).hexdigest()
+        now = _now_iso()
+        with self._store._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO skill_signatures
+                    (version_id, signature, signer, dependencies, signed_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    int(version_id), signature, str(signer or "system"),
+                    json.dumps(dependencies, ensure_ascii=False), now,
+                ),
+            )
+            row = c.execute(
+                "SELECT * FROM skill_signatures WHERE id=?", (int(cursor.lastrowid),)
+            ).fetchone()
+            return _row(row)
+
+    def fresh_agent_audit(self, version_id, suite_id=None):
+        version = self._get_version(version_id)
+        suite = None
+        if suite_id:
+            with self._store._conn() as c:
+                suite = c.execute(
+                    "SELECT * FROM skill_eval_suites WHERE id=?", (int(suite_id),)
+                ).fetchone()
+            suite = _row(suite)
+            if not suite:
+                raise ValueError("evaluation suite not found")
+            if suite["skill_name"] != version["skill_name"]:
+                raise ValueError("suite belongs to another skill")
+            cases = suite["cases"]
+        else:
+            cases = [{
+                "name": "fresh-agent-plan",
+                "mode": "plan",
+                "expected": {
+                    "ok": True,
+                    "step_count": len(version["definition"].get("steps", [])),
+                    "tools": [step.get("tool") for step in version["definition"].get("steps", [])],
+                },
+            }]
+        results = []
+        for case in cases:
+            result = skill_registry.execute_skill_definition(
+                version["definition"],
+                params=case.get("params") or {},
+                plan_only=str(case.get("mode", "plan")) == "plan",
+            )
+            passed, reasons = self._check_case(case, result)
+            results.append({
+                "name": case.get("name", "case"),
+                "passed": passed,
+                "reasons": reasons,
+                "result": result,
+                "silent_bypass": not result.get("outputs"),
+            })
+        passed = all(item["passed"] and not item["silent_bypass"] for item in results)
+        metrics = {
+            "case_count": len(results),
+            "passed_count": sum(1 for item in results if item["passed"]),
+            "silent_bypass_count": sum(1 for item in results if item["silent_bypass"]),
+        }
+        now = _now_iso()
+        with self._store._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO skill_audit_runs
+                    (version_id, suite_id, audit_type, metrics, case_results, passed, created_at)
+                VALUES (?, ?, 'fresh_agent', ?, ?, ?, ?)
+                """,
+                (
+                    int(version_id), int(suite_id) if suite_id else None,
+                    json.dumps(metrics, ensure_ascii=False),
+                    json.dumps(results, ensure_ascii=False),
+                    int(passed), now,
+                ),
+            )
+            row = c.execute(
+                "SELECT * FROM skill_audit_runs WHERE id=?", (int(cursor.lastrowid),)
+            ).fetchone()
+            return _row(row)
+
+    def start_canary(self, version_id, percent=10, actor="system"):
+        version = self._get_version(version_id)
+        if version["status"] != "validated":
+            raise ValueError("only validated versions can enter canary")
+        percent = max(0.0, min(float(percent), 100.0))
+        manifest = {
+            "actor": actor,
+            "dependencies": self.dependency_manifest(version_id),
+            "note": "Canary metadata only; production router still requires explicit promotion.",
+        }
+        now = _now_iso()
+        with self._store._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO skill_canaries
+                    (version_id, skill_name, percent, manifest, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    int(version_id), version["skill_name"], percent,
+                    json.dumps(manifest, ensure_ascii=False), now,
+                ),
+            )
+            c.execute(
+                "UPDATE skill_versions SET status='canary', updated_at=? WHERE id=?",
+                (now, int(version_id)),
+            )
+            row = c.execute(
+                "SELECT * FROM skill_canaries WHERE id=?", (int(cursor.lastrowid),)
+            ).fetchone()
+            return _row(row)
+
     def list_versions(self, skill_name="", limit=100):
         query = "SELECT * FROM skill_versions"
         params = []
@@ -348,6 +588,16 @@ class SkillEvolutionManager:
         with self._store._conn() as c:
             rows = c.execute(query, params).fetchall()
         return [_row(row) for row in rows]
+
+    def _get_version(self, version_id):
+        with self._store._conn() as c:
+            row = c.execute(
+                "SELECT * FROM skill_versions WHERE id=?", (int(version_id),)
+            ).fetchone()
+        version = _row(row)
+        if not version:
+            raise ValueError("skill version not found")
+        return version
 
     @staticmethod
     def _check_case(case, result):

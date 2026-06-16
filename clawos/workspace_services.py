@@ -51,6 +51,28 @@ class WorkspaceServices:
                     updated_at TEXT DEFAULT (datetime('now')),
                     FOREIGN KEY(meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS meeting_audio_assets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    meeting_id INTEGER NOT NULL,
+                    audio_path TEXT NOT NULL,
+                    transcript_path TEXT DEFAULT '',
+                    transcript_status TEXT NOT NULL DEFAULT 'registered',
+                    diarization TEXT NOT NULL DEFAULT '[]',
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS meeting_connector_drafts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    meeting_id INTEGER NOT NULL,
+                    connector_type TEXT NOT NULL,
+                    target TEXT DEFAULT '',
+                    draft_path TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'drafted',
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+                );
                 CREATE TABLE IF NOT EXISTS research_documents (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL,
@@ -70,6 +92,15 @@ class WorkspaceServices:
                     FOREIGN KEY(document_id) REFERENCES research_documents(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_research_chunks_doc ON research_chunks(document_id, page_number);
+                CREATE TABLE IF NOT EXISTS research_repro_workflows (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    question TEXT DEFAULT '',
+                    output_path TEXT DEFAULT '',
+                    manifest TEXT NOT NULL DEFAULT '{}',
+                    status TEXT NOT NULL DEFAULT 'planned',
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
                 CREATE TABLE IF NOT EXISTS learning_goals (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL,
@@ -99,6 +130,42 @@ class WorkspaceServices:
                     notes TEXT DEFAULT '',
                     created_at TEXT DEFAULT (datetime('now')),
                     FOREIGN KEY(item_id) REFERENCES learning_items(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS learning_edges (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    goal_id INTEGER NOT NULL,
+                    source_topic TEXT NOT NULL,
+                    target_topic TEXT NOT NULL,
+                    relation TEXT NOT NULL DEFAULT 'depends_on',
+                    evidence TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(goal_id) REFERENCES learning_goals(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS learning_mistakes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id INTEGER NOT NULL,
+                    prompt TEXT NOT NULL,
+                    wrong_answer TEXT DEFAULT '',
+                    correct_answer TEXT NOT NULL,
+                    evidence TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'open',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(item_id) REFERENCES learning_items(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS git_change_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    repo_path TEXT NOT NULL,
+                    branch TEXT DEFAULT '',
+                    message TEXT NOT NULL,
+                    files TEXT NOT NULL DEFAULT '[]',
+                    diff_preview TEXT NOT NULL DEFAULT '',
+                    checkpoint_ref TEXT DEFAULT '',
+                    after_ref TEXT DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending_approval',
+                    created_by TEXT DEFAULT 'user',
+                    approved_by TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
                 );
                 CREATE TABLE IF NOT EXISTS project_templates (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,7 +266,17 @@ class WorkspaceServices:
                 "SELECT * FROM meeting_actions WHERE meeting_id=? ORDER BY id",
                 (int(meeting_id),),
             ).fetchall()
+            audio = c.execute(
+                "SELECT * FROM meeting_audio_assets WHERE meeting_id=? ORDER BY id",
+                (int(meeting_id),),
+            ).fetchall()
+            drafts = c.execute(
+                "SELECT * FROM meeting_connector_drafts WHERE meeting_id=? ORDER BY id",
+                (int(meeting_id),),
+            ).fetchall()
             item["actions"] = [dict(action) for action in actions]
+            item["audio_assets"] = [self._decode_record(row, ("diarization", "metadata")) for row in audio]
+            item["connector_drafts"] = [self._decode_record(row, ("metadata",)) for row in drafts]
             return item
         if conn is not None:
             return fetch(conn)
@@ -213,6 +290,11 @@ class WorkspaceServices:
             line = raw.strip(" -*\t")
             if not line:
                 continue
+            speaker_line = re.match(r"^(?:\[[^\]]+\]\s*)?[^:：]{1,40}[:：]\s*(.+)$", line)
+            if speaker_line:
+                inner = speaker_line.group(1).strip()
+                if re.match(r"^(decision|risk|action|决定|决议|风险|行动项|待办)\s*[:：]", inner, re.I):
+                    line = inner
             lower = line.lower()
             if re.match(r"^(decision|决定|决议)\s*[:：]", lower):
                 decisions.append(re.split(r"[:：]", line, maxsplit=1)[1].strip())
@@ -229,6 +311,91 @@ class WorkspaceServices:
                 })
         return decisions, risks, actions
 
+    def import_meeting_audio(self, audio_path, transcript_path="", transcript="", title="", meeting_id=None):
+        audio = self.security.resolve_path(audio_path)
+        if audio.suffix.lower() not in {".wav", ".mp3", ".m4a", ".flac", ".ogg"} or not audio.is_file():
+            raise ValueError("a readable local audio file is required")
+        transcript_text = str(transcript or "")
+        transcript_file = ""
+        if transcript_path:
+            path = self.security.resolve_path(transcript_path)
+            if path.suffix.lower() not in {".txt", ".md", ".srt", ".vtt"} or not path.is_file():
+                raise ValueError("transcript_path must point to a readable text transcript")
+            transcript_text = path.read_text(encoding="utf-8", errors="replace")
+            transcript_file = str(path)
+        if meeting_id:
+            meeting = self.get_meeting(meeting_id)
+            if not meeting:
+                raise ValueError("meeting not found")
+        else:
+            meeting = self.create_meeting(title or audio.stem)
+        diarization = self._parse_speaker_turns(transcript_text)
+        status = "transcript_imported" if transcript_text.strip() else "audio_registered_requires_transcription"
+        with self.store._conn() as c:
+            c.execute(
+                """
+                INSERT INTO meeting_audio_assets
+                    (meeting_id, audio_path, transcript_path, transcript_status, diarization, metadata)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(meeting["id"]), str(audio), transcript_file, status,
+                    json.dumps(diarization, ensure_ascii=False),
+                    json.dumps({
+                        "size_bytes": audio.stat().st_size,
+                        "speaker_count": len({turn["speaker"] for turn in diarization}),
+                        "transcription_engine": "external_or_sidecar",
+                    }, ensure_ascii=False),
+                ),
+            )
+        if transcript_text.strip():
+            meeting = self.process_meeting_transcript(meeting["id"], transcript_text)
+        return {
+            "meeting": self.get_meeting(meeting["id"]),
+            "audio_path": str(audio),
+            "transcript_status": status,
+            "diarization": diarization,
+            "capabilities": {
+                "audio_registered": True,
+                "sidecar_transcript_supported": True,
+                "speaker_separation": "label_based",
+                "local_whisper": shutil.which("whisper") is not None,
+            },
+        }
+
+    def draft_meeting_connectors(self, meeting_id, output_dir, calendar=True, email=True, recipients=None):
+        meeting = self.get_meeting(meeting_id)
+        if not meeting:
+            raise ValueError("meeting not found")
+        out = self.security.resolve_path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        created = []
+        if calendar:
+            ics = out / f"meeting-{meeting_id}.ics"
+            ics.write_text(self._build_ics(meeting), encoding="utf-8")
+            created.append(self._record_connector_draft(meeting_id, "calendar_ics", ics, {"recipients": recipients or []}))
+        if email:
+            eml = out / f"meeting-{meeting_id}-followup.eml"
+            eml.write_text(self._build_meeting_email(meeting, recipients or []), encoding="utf-8")
+            created.append(self._record_connector_draft(meeting_id, "email_eml", eml, {"recipients": recipients or []}))
+        return {"meeting_id": int(meeting_id), "drafts": created, "sent": False}
+
+    def _record_connector_draft(self, meeting_id, connector_type, path, metadata):
+        with self.store._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO meeting_connector_drafts
+                    (meeting_id, connector_type, draft_path, metadata)
+                VALUES (?, ?, ?, ?)
+                """,
+                (int(meeting_id), connector_type, str(path), json.dumps(metadata, ensure_ascii=False)),
+            )
+            row = c.execute(
+                "SELECT * FROM meeting_connector_drafts WHERE id=?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            return self._decode_record(row, ("metadata",))
+
     # ---- RESEARCH PDF ----
 
     def import_research_pdf(self, file_path, title=""):
@@ -240,6 +407,11 @@ class WorkspaceServices:
         if pages and not pages[-1].strip():
             pages.pop()
         digest = self._file_hash(path)
+        ocr_pages = [
+            index for index, page in enumerate(pages, 1)
+            if len(page.strip()) < 20
+        ]
+        ocr_status = "ocr_required" if ocr_pages else "text_extracted"
         knowledge_entries = []
         with self.store._conn() as c:
             existing = c.execute(
@@ -256,7 +428,11 @@ class WorkspaceServices:
                     """,
                     (
                         title or path.stem, digest, len(pages),
-                        json.dumps({"extractor": "pdftotext"}, ensure_ascii=False),
+                        json.dumps({
+                            "extractor": "pdftotext",
+                            "ocr_status": ocr_status,
+                            "ocr_pages": ocr_pages,
+                        }, ensure_ascii=False),
                         document_id,
                     ),
                 )
@@ -269,7 +445,11 @@ class WorkspaceServices:
                     """,
                     (
                         title or path.stem, str(path), digest, len(pages),
-                        json.dumps({"extractor": "pdftotext"}, ensure_ascii=False),
+                        json.dumps({
+                            "extractor": "pdftotext",
+                            "ocr_status": ocr_status,
+                            "ocr_pages": ocr_pages,
+                        }, ensure_ascii=False),
                     ),
                 )
                 document_id = int(cursor.lastrowid)
@@ -290,6 +470,7 @@ class WorkspaceServices:
                 "SELECT * FROM research_documents WHERE id=?", (document_id,)
             ).fetchone())
             document["chunk_count"] = chunk_count
+            document["metadata"] = json.loads(document.get("metadata") or "{}")
         for page_number, chunk_index, chunk in knowledge_entries:
             self.store.add_knowledge(
                 title=f"{title or path.stem} p.{page_number} #{chunk_index}",
@@ -299,6 +480,105 @@ class WorkspaceServices:
                 confidence=0.9,
             )
         return document
+
+    def validate_citations(self, citations):
+        results = []
+        with self.store._conn() as c:
+            docs = {
+                row["file_path"]: dict(row)
+                for row in c.execute("SELECT * FROM research_documents").fetchall()
+            }
+            for citation in citations or []:
+                raw = citation.get("source_ref") if isinstance(citation, dict) else str(citation)
+                match = re.search(r"(.+?)#page=(\d+)", str(raw))
+                valid = False
+                reason = "citation must include #page=N"
+                if match:
+                    file_path, page = match.group(1), int(match.group(2))
+                    doc = docs.get(str(Path(file_path).resolve(strict=False))) or docs.get(file_path)
+                    if not doc:
+                        reason = "document not imported"
+                    elif page < 1 or page > int(doc["page_count"] or 0):
+                        reason = "page out of range"
+                    else:
+                        valid, reason = True, "ok"
+                results.append({"citation": raw, "valid": valid, "reason": reason})
+        return {"valid": all(item["valid"] for item in results), "results": results}
+
+    def research_compare_matrix(self, document_ids=None, query_terms=None):
+        terms = [str(term).strip() for term in (query_terms or []) if str(term).strip()]
+        with self.store._conn() as c:
+            params = []
+            where = ""
+            if document_ids:
+                ids = [int(item) for item in document_ids]
+                where = "WHERE rd.id IN ({})".format(",".join("?" for _ in ids))
+                params.extend(ids)
+            docs = c.execute(f"SELECT * FROM research_documents rd {where} ORDER BY rd.id", params).fetchall()
+            matrix = []
+            for doc in docs:
+                chunks = c.execute(
+                    "SELECT content FROM research_chunks WHERE document_id=?",
+                    (int(doc["id"]),),
+                ).fetchall()
+                text = "\n".join(row["content"] for row in chunks).lower()
+                if not terms:
+                    terms = sorted(set(re.findall(r"[A-Za-z][A-Za-z0-9_-]{4,}", text)))[:8]
+                matrix.append({
+                    "document_id": int(doc["id"]),
+                    "title": doc["title"],
+                    "coverage": {term: text.count(term.lower()) for term in terms},
+                })
+        return {"terms": terms, "matrix": matrix}
+
+    def create_repro_workflow(self, title, question="", steps=None, output_path=""):
+        steps = steps or [
+            "Record data provenance",
+            "Run deterministic preprocessing",
+            "Execute experiment script",
+            "Export metrics and figures",
+        ]
+        manifest = {
+            "title": str(title),
+            "question": str(question or ""),
+            "steps": steps,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "artifacts": ["README.md", "experiment_plan.json", "notebooks/README.md"],
+        }
+        resolved_output = ""
+        if output_path:
+            out = self.security.resolve_path(output_path)
+            if out.exists():
+                raise ValueError("output_path already exists")
+            out.mkdir(parents=True)
+            (out / "notebooks").mkdir()
+            (out / "README.md").write_text(
+                f"# {title}\n\n## Question\n{question}\n\n## Reproduce\n" +
+                "\n".join(f"{i + 1}. {step}" for i, step in enumerate(steps)) + "\n",
+                encoding="utf-8",
+            )
+            (out / "experiment_plan.json").write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (out / "notebooks" / "README.md").write_text("Place reproducible notebooks here.\n", encoding="utf-8")
+            resolved_output = str(out)
+        with self.store._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO research_repro_workflows
+                    (title, question, output_path, manifest)
+                VALUES (?, ?, ?, ?)
+                """,
+                (str(title), str(question or ""), resolved_output, json.dumps(manifest, ensure_ascii=False)),
+            )
+            row = c.execute(
+                "SELECT * FROM research_repro_workflows WHERE id=?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            item = dict(row)
+            item["manifest"] = json.loads(item["manifest"])
+            return item
 
     def search_research(self, query, limit=10):
         terms = [term for term in re.findall(r"[\w\u4e00-\u9fff]{2,}", str(query))][:6]
@@ -386,11 +666,100 @@ class WorkspaceServices:
                 (int(goal_id),),
             ).fetchall()
             goal["items"] = [dict(item) for item in items]
+            edges = c.execute(
+                "SELECT * FROM learning_edges WHERE goal_id=? ORDER BY id",
+                (int(goal_id),),
+            ).fetchall()
+            goal["edges"] = [dict(edge) for edge in edges]
             return goal
         if conn is not None:
             return fetch(conn)
         with self.store._conn() as c:
             return fetch(c)
+
+    def add_learning_dependency(self, goal_id, source_topic, target_topic, relation="depends_on", evidence=""):
+        with self.store._conn() as c:
+            if not c.execute("SELECT 1 FROM learning_goals WHERE id=?", (int(goal_id),)).fetchone():
+                raise ValueError("learning goal not found")
+            cursor = c.execute(
+                """
+                INSERT INTO learning_edges
+                    (goal_id, source_topic, target_topic, relation, evidence)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (int(goal_id), str(source_topic), str(target_topic), str(relation or "depends_on"), str(evidence or "")),
+            )
+            return dict(c.execute("SELECT * FROM learning_edges WHERE id=?", (int(cursor.lastrowid),)).fetchone())
+
+    def record_learning_mistake(self, item_id, prompt, wrong_answer, correct_answer, evidence):
+        if not str(evidence or "").strip():
+            raise ValueError("mistake evidence is required")
+        with self.store._conn() as c:
+            if not c.execute("SELECT 1 FROM learning_items WHERE id=?", (int(item_id),)).fetchone():
+                raise ValueError("learning item not found")
+            cursor = c.execute(
+                """
+                INSERT INTO learning_mistakes
+                    (item_id, prompt, wrong_answer, correct_answer, evidence)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (int(item_id), str(prompt), str(wrong_answer or ""), str(correct_answer), str(evidence)),
+            )
+            return dict(c.execute("SELECT * FROM learning_mistakes WHERE id=?", (int(cursor.lastrowid),)).fetchone())
+
+    def learning_graph(self, goal_id):
+        goal = self.get_learning_goal(goal_id)
+        if not goal:
+            raise ValueError("learning goal not found")
+        nodes = [
+            {
+                "id": item["topic"],
+                "item_id": int(item["id"]),
+                "mastery": float(item["mastery"]),
+                "evidence_count": int(item["evidence_count"]),
+                "next_review_at": item["next_review_at"],
+            }
+            for item in goal["items"]
+        ]
+        return {"goal": goal, "nodes": nodes, "edges": goal.get("edges", [])}
+
+    def long_term_mastery(self, goal_id):
+        with self.store._conn() as c:
+            items = c.execute(
+                "SELECT * FROM learning_items WHERE goal_id=?",
+                (int(goal_id),),
+            ).fetchall()
+            if not items:
+                return {"goal_id": int(goal_id), "mastery": 0, "items": [], "risk": "no_items"}
+            now = datetime.now(timezone.utc).isoformat()
+            mistake_counts = {
+                int(row["item_id"]): int(row["count"])
+                for row in c.execute(
+                    """
+                    SELECT item_id, COUNT(*) AS count
+                    FROM learning_mistakes GROUP BY item_id
+                    """
+                ).fetchall()
+            }
+            rows = []
+            for item in items:
+                evidence_count = int(item["evidence_count"] or 0)
+                mistakes = mistake_counts.get(int(item["id"]), 0)
+                adjusted = max(0.0, float(item["mastery"]) - mistakes * 0.05)
+                rows.append({
+                    **dict(item),
+                    "mistake_count": mistakes,
+                    "adjusted_mastery": round(adjusted, 4),
+                    "due": bool(item["next_review_at"] and item["next_review_at"] <= now),
+                    "evidence_sufficient": evidence_count >= 2,
+                })
+            mastery = round(sum(row["adjusted_mastery"] for row in rows) / len(rows), 4)
+            return {
+                "goal_id": int(goal_id),
+                "mastery": mastery,
+                "due_count": sum(1 for row in rows if row["due"]),
+                "items": rows,
+            }
 
     # ---- GIT COLLABORATION ----
 
@@ -427,6 +796,77 @@ class WorkspaceServices:
             "dry_run": True,
             "requires_confirmation": True,
         }
+
+    def create_git_change_request(self, repo_path, message, files=None, created_by="user"):
+        plan = self.prepare_commit_plan(repo_path, message, files)
+        repo = Path(plan["repo"])
+        selected = plan["files"]
+        diff_args = ["diff", "--binary", "--", *selected] if selected else ["diff", "--binary"]
+        diff_preview = self._git(repo, *diff_args)
+        checkpoint = self._git(repo, "rev-parse", "HEAD").strip()
+        with self.store._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO git_change_requests
+                    (repo_path, branch, message, files, diff_preview, checkpoint_ref, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    plan["repo"], plan["branch"], plan["message"],
+                    json.dumps(selected, ensure_ascii=False), diff_preview,
+                    checkpoint, str(created_by or "user"),
+                ),
+            )
+            row = c.execute("SELECT * FROM git_change_requests WHERE id=?", (int(cursor.lastrowid),)).fetchone()
+            return self._git_request_from_row(row)
+
+    def approve_git_change_request(self, request_id, approved_by="user"):
+        with self.store._conn() as c:
+            row = c.execute("SELECT * FROM git_change_requests WHERE id=?", (int(request_id),)).fetchone()
+            if not row:
+                raise ValueError("change request not found")
+            request = self._git_request_from_row(row)
+            if request["status"] != "pending_approval":
+                raise ValueError("change request is not pending approval")
+        repo = self.security.resolve_path(request["repo_path"])
+        self._git(repo, "add", "--", *request["files"])
+        self._git(repo, "commit", "-m", request["message"])
+        after = self._git(repo, "rev-parse", "HEAD").strip()
+        with self.store._conn() as c:
+            c.execute(
+                """
+                UPDATE git_change_requests
+                SET status='committed', approved_by=?, after_ref=?, updated_at=datetime('now')
+                WHERE id=?
+                """,
+                (str(approved_by or "user"), after, int(request_id)),
+            )
+            return self._git_request_from_row(c.execute(
+                "SELECT * FROM git_change_requests WHERE id=?", (int(request_id),)
+            ).fetchone())
+
+    def rollback_git_change_request(self, request_id, actor_id="user"):
+        with self.store._conn() as c:
+            row = c.execute("SELECT * FROM git_change_requests WHERE id=?", (int(request_id),)).fetchone()
+            if not row:
+                raise ValueError("change request not found")
+            request = self._git_request_from_row(row)
+            if request["status"] != "committed" or not request["after_ref"]:
+                raise ValueError("only committed change requests can be rolled back")
+        repo = self.security.resolve_path(request["repo_path"])
+        self._git(repo, "revert", "--no-edit", request["after_ref"])
+        with self.store._conn() as c:
+            c.execute(
+                """
+                UPDATE git_change_requests
+                SET status='rolled_back', approved_by=approved_by || '; rollback:' || ?, updated_at=datetime('now')
+                WHERE id=?
+                """,
+                (str(actor_id or "user"), int(request_id)),
+            )
+            return self._git_request_from_row(c.execute(
+                "SELECT * FROM git_change_requests WHERE id=?", (int(request_id),)
+            ).fetchone())
 
     # ---- TEMPLATE CENTER ----
 
@@ -604,6 +1044,70 @@ class WorkspaceServices:
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr.strip() or "git command failed")
         return proc.stdout
+
+    @staticmethod
+    def _parse_speaker_turns(transcript):
+        turns = []
+        pattern = re.compile(r"^(?:\[(?P<time>[^\]]+)\]\s*)?(?P<speaker>[^:：\n]{1,40})[:：]\s*(?P<text>.+)$")
+        for line in str(transcript or "").splitlines():
+            match = pattern.match(line.strip())
+            if match:
+                speaker = match.group("speaker").strip()
+                if speaker.lower() not in {"decision", "risk", "action"} and speaker not in {"决定", "风险", "行动项", "待办"}:
+                    turns.append({
+                        "time": match.group("time") or "",
+                        "speaker": speaker,
+                        "text": match.group("text").strip(),
+                    })
+        return turns
+
+    @staticmethod
+    def _build_ics(meeting):
+        uid = f"clawos-meeting-{meeting['id']}@local"
+        date = re.sub(r"[^0-9]", "", meeting.get("meeting_date") or "")[:8] or datetime.now(timezone.utc).strftime("%Y%m%d")
+        return "\n".join([
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//ClawOS//Meeting Draft//CN",
+            "BEGIN:VEVENT",
+            f"UID:{uid}",
+            f"DTSTART;VALUE=DATE:{date}",
+            f"SUMMARY:{meeting['title']}",
+            f"DESCRIPTION:{meeting.get('summary','')}",
+            "END:VEVENT",
+            "END:VCALENDAR",
+            "",
+        ])
+
+    @staticmethod
+    def _build_meeting_email(meeting, recipients):
+        actions = "\n".join(
+            f"- {a['description']} ({a.get('owner') or 'unassigned'}, {a.get('due_date') or 'no due date'})"
+            for a in meeting.get("actions", [])
+        ) or "- No action items"
+        return "\n".join([
+            f"To: {', '.join(recipients)}",
+            f"Subject: Meeting follow-up: {meeting['title']}",
+            "",
+            meeting.get("summary") or meeting["title"],
+            "",
+            "Actions:",
+            actions,
+            "",
+        ])
+
+    @staticmethod
+    def _decode_record(row, json_keys):
+        item = dict(row)
+        for key in json_keys:
+            item[key] = json.loads(item.get(key) or ("[]" if key == "diarization" else "{}"))
+        return item
+
+    @staticmethod
+    def _git_request_from_row(row):
+        item = dict(row)
+        item["files"] = json.loads(item.get("files") or "[]")
+        return item
 
     @staticmethod
     def _template_from_row(row):

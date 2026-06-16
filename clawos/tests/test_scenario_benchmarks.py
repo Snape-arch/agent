@@ -1,0 +1,66 @@
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+
+class ScenarioBenchmarkTests(unittest.TestCase):
+    def test_default_suite_is_frozen_and_runs_with_evidence(self):
+        from memoryos.memory_store import MemoryStore
+        from scenario_benchmarks import FrozenScenarioBenchmark
+
+        with tempfile.TemporaryDirectory() as td:
+            benchmark = FrozenScenarioBenchmark(MemoryStore(str(Path(td) / "memory.db")))
+            suites = benchmark.list_suites()
+
+            def runner(tool, args):
+                return {
+                    "ok": True,
+                    "status": "success",
+                    "tool": tool,
+                    "arguments": args,
+                    "duration_ms": 10,
+                }
+
+            run = benchmark.run_suite(suites[0]["id"], runner)
+            runs = benchmark.list_runs()
+
+        self.assertTrue(suites[0]["frozen"])
+        self.assertGreaterEqual(len(suites[0]["cases"]), 5)
+        self.assertTrue(run["passed"])
+        self.assertEqual(run["metrics"]["pass_rate"], 1.0)
+        self.assertEqual(len(run["case_results"]), len(suites[0]["cases"]))
+        self.assertEqual(runs[0]["id"], run["id"])
+
+    def test_benchmark_gate_fails_on_tool_error(self):
+        from memoryos.memory_store import MemoryStore
+        from scenario_benchmarks import FrozenScenarioBenchmark
+
+        with tempfile.TemporaryDirectory() as td:
+            benchmark = FrozenScenarioBenchmark(MemoryStore(str(Path(td) / "memory.db")))
+            suite = benchmark.create_suite(
+                "failure-suite",
+                [{
+                    "name": "bad-case",
+                    "scenario": "test",
+                    "tool": "bad_tool",
+                    "args": {},
+                    "expected": {"ok": True, "status": "success"},
+                }],
+            )
+            run = benchmark.run_suite(
+                suite["id"],
+                lambda _tool, _args: {"ok": False, "status": "error", "duration_ms": 1},
+            )
+
+        self.assertFalse(run["passed"])
+        self.assertIn("unexpected ok flag", run["case_results"][0]["reasons"])
+
+
+if __name__ == "__main__":
+    unittest.main()

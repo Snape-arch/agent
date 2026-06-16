@@ -143,10 +143,17 @@ class MemoryStore:
                     status TEXT NOT NULL DEFAULT 'pending',
                     source TEXT DEFAULT '',
                     metadata TEXT DEFAULT '{}',
+                    idempotency_key TEXT DEFAULT '',
+                    retry_of INTEGER,
+                    attempt INTEGER NOT NULL DEFAULT 1,
+                    cancellation_requested INTEGER NOT NULL DEFAULT 0,
+                    resume_state TEXT DEFAULT '',
                     started_at TEXT DEFAULT (datetime('now')),
                     completed_at TEXT DEFAULT ''
                 );
                 CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id, id);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency
+                    ON tasks(idempotency_key) WHERE idempotency_key <> '';
                 CREATE TABLE IF NOT EXISTS task_steps (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     task_id INTEGER NOT NULL,
@@ -472,8 +479,17 @@ class MemoryStore:
             self._ensure_columns(c, "tasks", {
                 "source": "TEXT DEFAULT ''",
                 "metadata": "TEXT DEFAULT '{}'",
+                "idempotency_key": "TEXT DEFAULT ''",
+                "retry_of": "INTEGER",
+                "attempt": "INTEGER NOT NULL DEFAULT 1",
+                "cancellation_requested": "INTEGER NOT NULL DEFAULT 0",
+                "resume_state": "TEXT DEFAULT ''",
                 "completed_at": "TEXT DEFAULT ''",
             })
+            c.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency "
+                "ON tasks(idempotency_key) WHERE idempotency_key <> ''"
+            )
             self._ensure_columns(c, "task_steps", {
                 "input_data": "TEXT DEFAULT '{}'",
                 "output_data": "TEXT DEFAULT '{}'",
@@ -545,6 +561,8 @@ class MemoryStore:
     def _task_row_to_dict(self, row) -> dict:
         item = dict(row)
         item["metadata"] = self._json_loads(item.get("metadata"), {})
+        item["attempt"] = int(item.get("attempt") or 1)
+        item["cancellation_requested"] = bool(item.get("cancellation_requested"))
         return item
 
     def _step_row_to_dict(self, row) -> dict:
@@ -560,12 +578,33 @@ class MemoryStore:
 
     # ---- TASK RUNTIME ----
 
-    def start_task(self, session_id, title, source="", metadata=None, status="running"):
+    def start_task(
+        self, session_id, title, source="", metadata=None, status="running",
+        idempotency_key="", retry_of=None,
+    ):
         with self._conn() as c:
+            key = str(idempotency_key or "").strip()
+            if key:
+                existing = c.execute(
+                    "SELECT * FROM tasks WHERE idempotency_key=?",
+                    (key,),
+                ).fetchone()
+                if existing:
+                    item = self._task_row_to_dict(existing)
+                    item["idempotent_replay"] = True
+                    return item
+            attempt = 1
+            if retry_of:
+                prior = c.execute(
+                    "SELECT COALESCE(MAX(attempt), 0) AS max_attempt FROM tasks WHERE id=? OR retry_of=?",
+                    (int(retry_of), int(retry_of)),
+                ).fetchone()
+                attempt = int(prior["max_attempt"] or 0) + 1
             cursor = c.execute(
                 """
-                INSERT INTO tasks (session_id, title, status, source, metadata)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO tasks
+                    (session_id, title, status, source, metadata, idempotency_key, retry_of, attempt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(session_id or "default"),
@@ -573,21 +612,33 @@ class MemoryStore:
                     status,
                     source,
                     json.dumps(metadata or {}, ensure_ascii=False),
+                    key,
+                    int(retry_of) if retry_of else None,
+                    attempt,
                 ),
             )
             task_id = int(cursor.lastrowid)
             c.execute(
                 "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
-                (task_id, "task_started", "Task started", "{}"),
+                (
+                    task_id,
+                    "task_started",
+                    "Task started",
+                    json.dumps({"idempotency_key": key, "retry_of": retry_of, "attempt": attempt}, ensure_ascii=False),
+                ),
             )
             row = c.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
             return self._task_row_to_dict(row)
 
-    def finish_task(self, task_id, status, error=""):
+    def finish_task(self, task_id, status, error="", result_payload=None):
         with self._conn() as c:
+            row = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
+            metadata = self._json_loads(row["metadata"], {}) if row else {}
+            if result_payload is not None:
+                metadata["response_payload"] = result_payload
             c.execute(
-                "UPDATE tasks SET status=?, completed_at=datetime('now') WHERE id=?",
-                (status, int(task_id)),
+                "UPDATE tasks SET status=?, metadata=?, completed_at=datetime('now') WHERE id=?",
+                (status, json.dumps(metadata, ensure_ascii=False), int(task_id)),
             )
             c.execute(
                 "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
@@ -600,6 +651,134 @@ class MemoryStore:
             )
             row = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
             return self._task_row_to_dict(row) if row else {}
+
+    def cancel_task(self, task_id, reason="", actor_id="user"):
+        with self._conn() as c:
+            task = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
+            if not task:
+                return {}
+            terminal = str(task["status"]) in {"succeeded", "failed", "canceled", "cancelled"}
+            status = str(task["status"]) if terminal else "cancel_requested"
+            c.execute(
+                "UPDATE tasks SET cancellation_requested=1, status=? WHERE id=?",
+                (status, int(task_id)),
+            )
+            c.execute(
+                "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
+                (
+                    int(task_id),
+                    "task_cancel_requested",
+                    reason or "Cancellation requested",
+                    json.dumps({"actor_id": actor_id, "terminal": terminal}, ensure_ascii=False),
+                ),
+            )
+            row = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
+            return self._task_row_to_dict(row)
+
+    def is_task_cancelled(self, task_id):
+        if not task_id:
+            return False
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT cancellation_requested, status FROM tasks WHERE id=?",
+                (int(task_id),),
+            ).fetchone()
+            return bool(row and (int(row["cancellation_requested"] or 0) or row["status"] in {"cancel_requested", "canceled"}))
+
+    def retry_task(self, task_id, actor_id="user", reason=""):
+        with self._conn() as c:
+            task = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
+            if not task:
+                return {}
+            metadata = self._json_loads(task["metadata"], {})
+            metadata["retry_reason"] = reason
+            metadata["retry_actor"] = actor_id
+            title = f"Retry: {task['title']}"[:300]
+            previous_key = str(task["idempotency_key"] or "")
+            retry_key = f"{previous_key}:retry:{int(time.time() * 1000)}" if previous_key else ""
+            prior = c.execute(
+                "SELECT COALESCE(MAX(attempt), 0) AS max_attempt FROM tasks WHERE id=? OR retry_of=?",
+                (int(task_id), int(task_id)),
+            ).fetchone()
+            attempt = int(prior["max_attempt"] or int(task["attempt"] or 1)) + 1
+            cursor = c.execute(
+                """
+                INSERT INTO tasks
+                    (session_id, title, status, source, metadata, idempotency_key, retry_of, attempt, resume_state)
+                VALUES (?, ?, 'pending_retry', ?, ?, ?, ?, ?, 'ready_to_replay')
+                """,
+                (
+                    task["session_id"], title, "retry",
+                    json.dumps(metadata, ensure_ascii=False), retry_key,
+                    int(task_id), attempt,
+                ),
+            )
+            new_id = int(cursor.lastrowid)
+            c.execute(
+                "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
+                (
+                    new_id,
+                    "task_retry_created",
+                    reason or "Retry task created",
+                    json.dumps({"retry_of": int(task_id), "actor_id": actor_id, "attempt": attempt}, ensure_ascii=False),
+                ),
+            )
+            c.execute(
+                "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
+                (
+                    int(task_id),
+                    "task_retry_requested",
+                    reason or "Retry requested",
+                    json.dumps({"new_task_id": new_id, "actor_id": actor_id}, ensure_ascii=False),
+                ),
+            )
+            row = c.execute("SELECT * FROM tasks WHERE id=?", (new_id,)).fetchone()
+            return self._task_row_to_dict(row)
+
+    def recover_interrupted_tasks(self, actor_id="system"):
+        recoverable = ("running", "pending", "cancel_requested", "waiting_confirmation")
+        with self._conn() as c:
+            rows = c.execute(
+                f"SELECT * FROM tasks WHERE status IN ({','.join('?' for _ in recoverable)})",
+                recoverable,
+            ).fetchall()
+            recovered = []
+            for row in rows:
+                status = "canceled" if row["status"] == "cancel_requested" else "interrupted"
+                c.execute(
+                    "UPDATE tasks SET status=?, resume_state='needs_retry', completed_at=datetime('now') WHERE id=?",
+                    (status, int(row["id"])),
+                )
+                c.execute(
+                    "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
+                    (
+                        int(row["id"]),
+                        "task_recovered",
+                        "Recovered after process restart or manual recovery",
+                        json.dumps({"actor_id": actor_id, "previous_status": row["status"]}, ensure_ascii=False),
+                    ),
+                )
+                recovered.append(int(row["id"]))
+            return {"recovered": recovered, "count": len(recovered)}
+
+    def list_task_events(self, session_id="", after_id=0, limit=100):
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 100), 500))
+            clauses = ["e.id>?"]
+            params = [int(after_id or 0)]
+            if session_id:
+                clauses.append("t.session_id=?")
+                params.append(session_id)
+            rows = c.execute(
+                f"""
+                SELECT e.*, t.session_id, t.status AS task_status, t.title AS task_title
+                FROM task_events e JOIN tasks t ON t.id=e.task_id
+                WHERE {' AND '.join(clauses)}
+                ORDER BY e.id ASC LIMIT ?
+                """,
+                [*params, limit],
+            ).fetchall()
+            return [self._event_row_to_dict(row) for row in rows]
 
     def add_task_step(self, task_id, step_type, name, status="running", input_data=None):
         with self._conn() as c:

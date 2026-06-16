@@ -1,7 +1,7 @@
 ﻿#!/usr/bin/env python3
 """ClawOS Server - Self-contained AI Agent with DeepSeek + Function Router."""
 from __future__ import annotations
-import argparse, asyncio, json, logging, os, re, sys, time, subprocess
+import argparse, asyncio, json, logging, os, re, sys, time, subprocess, shutil
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any
@@ -10,6 +10,7 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from providers import create_model_provider
 
 # ---- PATHS ----
@@ -53,6 +54,7 @@ g_security_policy: Any = None
 g_secret_manager: Any = None
 g_workspace_services: Any = None
 g_skill_evolution: Any = None
+g_scenario_benchmark: Any = None
 
 SYSTEM_PROMPT = (
     "You are ClawOS, a personal AI assistant. Use the provided tools to "
@@ -234,6 +236,19 @@ def execute_tool_call(
 ) -> dict[str, Any]:
     """Execute a tool and return a stable envelope for tracing and reflection."""
     confirmed_tools = confirmed_tools or set()
+    if task_id and g_memory_store and g_memory_store.is_task_cancelled(task_id):
+        envelope = {
+            "ok": False,
+            "status": "canceled",
+            "tool": name,
+            "arguments": _parse_tool_arguments(args_str),
+            "data": None,
+            "error": "Task cancellation requested before tool execution.",
+            "duration_ms": 0,
+            "requires_confirmation": False,
+        }
+        _record_tool_execution(session_id, envelope)
+        return envelope
     args_obj = _parse_tool_arguments(args_str)
     policy_result = {
         "allowed": True,
@@ -594,7 +609,15 @@ def set_memory_item_enabled(memory_id: int, enabled: bool) -> dict[str, Any]:
 def create_runtime_task(session_id: str, title: str, source: str = "chat", metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
-    return g_memory_store.start_task(session_id, title, source=source, metadata=metadata or {})
+    metadata = metadata or {}
+    return g_memory_store.start_task(
+        session_id,
+        title,
+        source=source,
+        metadata=metadata,
+        idempotency_key=str(metadata.get("idempotency_key", "") or ""),
+        retry_of=metadata.get("retry_of"),
+    )
 
 
 def list_runtime_tasks(session_id: str = "", status: str = "", limit: int = 50) -> list[dict[str, Any]]:
@@ -612,10 +635,28 @@ def get_runtime_task(task_id: int) -> dict[str, Any]:
     return detail
 
 
-def finish_runtime_task(task_id: int | None, status: str, error: str = "") -> dict[str, Any]:
+def finish_runtime_task(task_id: int | None, status: str, error: str = "", result_payload: dict[str, Any] | None = None) -> dict[str, Any]:
     if not task_id or not g_memory_store:
         return {}
-    return g_memory_store.finish_task(task_id, status, error=error)
+    return g_memory_store.finish_task(task_id, status, error=error, result_payload=result_payload)
+
+
+def cancel_runtime_task(task_id: int, reason: str = "", actor_id: str = "user") -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    item = g_memory_store.cancel_task(task_id, reason=reason, actor_id=actor_id)
+    if not item:
+        raise HTTPException(404, "Task not found")
+    return item
+
+
+def retry_runtime_task(task_id: int, reason: str = "", actor_id: str = "user") -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    item = g_memory_store.retry_task(task_id, actor_id=actor_id, reason=reason)
+    if not item:
+        raise HTTPException(404, "Task not found")
+    return item
 
 
 async def store_assistant_response(session_id: str, resp: JSONResponse):
@@ -668,7 +709,7 @@ async def lifespan(app: FastAPI):
     # Init MemoryOS
     global g_memory_store, g_context_builder, g_vector_store, g_policy_optimizer
     global g_security_policy, g_secret_manager
-    global g_workspace_services, g_skill_evolution
+    global g_workspace_services, g_skill_evolution, g_scenario_benchmark
     from memoryos.memory_store import MemoryStore
     from memoryos.context_builder import ContextBuilder
     from memoryos.services.vector_store import MemoryVectorStore
@@ -688,6 +729,11 @@ async def lifespan(app: FastAPI):
     g_workspace_services = WorkspaceServices(g_memory_store, g_security_policy)
     from skills.skill_evolution import SkillEvolutionManager
     g_skill_evolution = SkillEvolutionManager(g_memory_store)
+    from scenario_benchmarks import FrozenScenarioBenchmark
+    g_scenario_benchmark = FrozenScenarioBenchmark(g_memory_store)
+    recovered = g_memory_store.recover_interrupted_tasks(actor_id="lifespan_startup")
+    if recovered.get("count"):
+        logger.info("Recovered interrupted tasks | count=%s ids=%s", recovered["count"], recovered["recovered"])
     logger.info(f"VectorStore initialized | dim=256 docs={g_vector_store.stats().get('vector_count', 0)}")
     logger.info(f"MemoryOS initialized | db={MEMORY_DB}")
     
@@ -721,11 +767,20 @@ async def lifespan(app: FastAPI):
     logger.info("ClawOS stopped")
 
 app = FastAPI(title="ClawOS Agent", version="1.0.0", lifespan=lifespan)
+app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
 # ---- ROUTES ----
 @app.get("/")
 async def root():
     return FileResponse(STATIC_DIR / "index.html")
+
+@app.get("/product")
+async def product_page():
+    return FileResponse(STATIC_DIR / "product.html")
+
+@app.get("/console")
+async def console_page():
+    return FileResponse(STATIC_DIR / "console.html")
 
 @app.get("/health")
 async def health():
@@ -766,6 +821,7 @@ async def chat_completions(request: Request):
         raise HTTPException(400, f"Invalid JSON: {e}")
 
     messages = req_data.get("messages", [])
+    request_headers = getattr(request, "headers", {}) or {}
     if not messages:
         raise HTTPException(400, "messages array required")
 
@@ -791,9 +847,20 @@ async def chat_completions(request: Request):
         runtime_task = create_runtime_task(
             session_id,
             user_text[:120] or "Chat completion",
-            metadata={"stream": bool(stream)},
+            metadata={
+                "stream": bool(stream),
+                "user_text": user_text,
+                "idempotency_key": str(
+                    req_data.get("clawos_idempotency_key")
+                    or request_headers.get("Idempotency-Key", "")
+                    or ""
+                ),
+            },
         )
         task_id = runtime_task.get("id")
+        stored_payload = runtime_task.get("metadata", {}).get("response_payload")
+        if runtime_task.get("idempotent_replay") and stored_payload and not stream:
+            return JSONResponse(stored_payload)
 
     # --- TOOL ROUTING ---
     if g_context_builder:
@@ -846,11 +913,19 @@ async def chat_completions(request: Request):
                     for item in trace
                 ],
             }
-            finish_runtime_task(task_id, "succeeded")
+            finish_runtime_task(task_id, "succeeded", result_payload=raw)
             return JSONResponse(raw)
         if not g_mtclaw_adapter.fallback_on_error:
             finish_runtime_task(task_id, "failed", mtclaw_result["error"])
             raise HTTPException(503, f"MTClaw unavailable: {mtclaw_result['error']}")
+
+    if task_id and g_memory_store and g_memory_store.is_task_cancelled(task_id):
+        text = "任务已收到取消请求，未继续执行。"
+        body = build_openai_response(text, extra={"task_id": task_id, "canceled": True})
+        if g_memory_store:
+            g_memory_store.add_message(session_id, "assistant", text[:4000])
+        finish_runtime_task(task_id, "canceled", "Canceled before tool loop", result_payload=body)
+        return JSONResponse(body)
 
     tool_result = await run_tool_loop(user_text, session_id, confirmed_tools, task_id=task_id)
     confirmation_calls = [
@@ -919,7 +994,7 @@ async def chat_completions(request: Request):
             body = build_openai_response(text, extra=extra)
             if g_memory_store:
                 g_memory_store.add_message(session_id, "assistant", text[:4000])
-            finish_runtime_task(task_id, "succeeded")
+            finish_runtime_task(task_id, "succeeded", result_payload=body)
             if stream:
                 return sse_from_text(text)
             return JSONResponse(body)
@@ -930,7 +1005,7 @@ async def chat_completions(request: Request):
             body["clawos"] = extra
             if g_memory_store and text:
                 g_memory_store.add_message(session_id, "assistant", text[:4000])
-            finish_runtime_task(task_id, "succeeded")
+            finish_runtime_task(task_id, "succeeded", result_payload=body)
             return JSONResponse(body)
         return resp
 
@@ -949,7 +1024,7 @@ async def chat_completions(request: Request):
     })
     if g_memory_store and final_text:
         g_memory_store.add_message(session_id, "assistant", final_text[:4000])
-    finish_runtime_task(task_id, "succeeded")
+    finish_runtime_task(task_id, "succeeded", result_payload=resp_payload)
     return JSONResponse(resp_payload)
 
 # ---- MAIN ----
@@ -1238,6 +1313,48 @@ async def api_security_policy_check(request: Request):
     )
     return JSONResponse(result)
 
+@app.get("/api/workspace/capabilities")
+async def api_workspace_capabilities():
+    roots = [str(root) for root in (g_security_policy.allowed_roots if g_security_policy else [])]
+    templates = g_workspace_services.list_templates() if g_workspace_services else []
+    return JSONResponse({
+        "local_file_operations": {
+            "allowed_roots": roots,
+            "txt_read_write": True,
+            "project_create": True,
+            "template_create": True,
+            "requires_confirmation_for_writes": True,
+        },
+        "document_understanding": {
+            "txt": True,
+            "pdf_text": shutil.which("pdftotext") is not None,
+            "pdf_ocr": "ocr_required_detection",
+            "citation_validation": True,
+        },
+        "meeting_audio": {
+            "audio_file_registration": True,
+            "sidecar_transcript_import": True,
+            "speaker_diarization": "label_based",
+            "local_whisper_available": shutil.which("whisper") is not None,
+            "auto_transcription": shutil.which("whisper") is not None,
+        },
+        "connectors": {
+            "calendar": "ics_draft",
+            "email": "eml_draft",
+            "auto_send": False,
+        },
+        "git": {
+            "snapshot": True,
+            "patch_preview": True,
+            "approval_commit": True,
+            "rollback": "git_revert",
+        },
+        "templates": {
+            "count": len(templates),
+            "names": [item["name"] for item in templates],
+        },
+    })
+
 
 @app.post("/api/workspace/meetings")
 async def api_meeting_create(request: Request):
@@ -1262,6 +1379,38 @@ async def api_meeting_transcript(meeting_id: int, request: Request):
     if g_vector_store:
         g_vector_store.refresh()
     return JSONResponse({"meeting": meeting})
+
+@app.post("/api/workspace/meetings/audio")
+async def api_meeting_audio_import(request: Request):
+    data = await request.json()
+    try:
+        result = g_workspace_services.import_meeting_audio(
+            data.get("audio_path", ""),
+            transcript_path=data.get("transcript_path", ""),
+            transcript=data.get("transcript", ""),
+            title=data.get("title", ""),
+            meeting_id=data.get("meeting_id"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if g_vector_store:
+        g_vector_store.refresh()
+    return JSONResponse(result)
+
+@app.post("/api/workspace/meetings/{meeting_id}/connector-drafts")
+async def api_meeting_connector_drafts(meeting_id: int, request: Request):
+    data = await request.json()
+    try:
+        result = g_workspace_services.draft_meeting_connectors(
+            meeting_id,
+            data.get("output_dir", ""),
+            calendar=bool(data.get("calendar", True)),
+            email=bool(data.get("email", True)),
+            recipients=data.get("recipients", []),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
 
 
 @app.get("/api/workspace/meetings/{meeting_id}")
@@ -1290,6 +1439,33 @@ async def api_research_import(request: Request):
 async def api_research_search(q: str, limit: int = 10):
     rows = g_workspace_services.search_research(q, limit)
     return JSONResponse({"results": rows, "count": len(rows)})
+
+@app.post("/api/workspace/research/citations/validate")
+async def api_research_citations_validate(request: Request):
+    data = await request.json()
+    return JSONResponse(g_workspace_services.validate_citations(data.get("citations", [])))
+
+@app.post("/api/workspace/research/compare-matrix")
+async def api_research_compare_matrix(request: Request):
+    data = await request.json()
+    return JSONResponse(g_workspace_services.research_compare_matrix(
+        data.get("document_ids"),
+        data.get("query_terms", []),
+    ))
+
+@app.post("/api/workspace/research/repro-workflows")
+async def api_research_repro_workflow(request: Request):
+    data = await request.json()
+    try:
+        workflow = g_workspace_services.create_repro_workflow(
+            data.get("title", "Reproducible experiment"),
+            question=data.get("question", ""),
+            steps=data.get("steps"),
+            output_path=data.get("output_path", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"workflow": workflow})
 
 
 @app.post("/api/workspace/learning/goals")
@@ -1326,6 +1502,47 @@ async def api_learning_review(item_id: int, request: Request):
         raise HTTPException(400, str(exc))
     return JSONResponse({"item": item})
 
+@app.post("/api/workspace/learning/goals/{goal_id}/dependencies")
+async def api_learning_dependency(goal_id: int, request: Request):
+    data = await request.json()
+    try:
+        edge = g_workspace_services.add_learning_dependency(
+            goal_id,
+            data.get("source_topic", ""),
+            data.get("target_topic", ""),
+            data.get("relation", "depends_on"),
+            data.get("evidence", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"edge": edge})
+
+@app.post("/api/workspace/learning/items/{item_id}/mistakes")
+async def api_learning_mistake(item_id: int, request: Request):
+    data = await request.json()
+    try:
+        mistake = g_workspace_services.record_learning_mistake(
+            item_id,
+            data.get("prompt", ""),
+            data.get("wrong_answer", ""),
+            data.get("correct_answer", ""),
+            data.get("evidence", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"mistake": mistake})
+
+@app.get("/api/workspace/learning/goals/{goal_id}/graph")
+async def api_learning_graph(goal_id: int):
+    try:
+        return JSONResponse(g_workspace_services.learning_graph(goal_id))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+@app.get("/api/workspace/learning/goals/{goal_id}/assessment")
+async def api_learning_assessment(goal_id: int):
+    return JSONResponse(g_workspace_services.long_term_mastery(goal_id))
+
 
 @app.get("/api/workspace/git/snapshot")
 async def api_git_snapshot(path: str):
@@ -1347,6 +1564,44 @@ async def api_git_commit_plan(request: Request):
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse({"plan": plan})
+
+@app.post("/api/workspace/git/change-requests")
+async def api_git_change_request(request: Request):
+    data = await request.json()
+    try:
+        item = g_workspace_services.create_git_change_request(
+            data.get("path", ""),
+            data.get("message", ""),
+            data.get("files"),
+            created_by=data.get("created_by", "user"),
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"change_request": item})
+
+@app.post("/api/workspace/git/change-requests/{request_id}/approve")
+async def api_git_change_request_approve(request_id: int, request: Request):
+    data = await request.json()
+    try:
+        item = g_workspace_services.approve_git_change_request(
+            request_id,
+            approved_by=data.get("approved_by", "user"),
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"change_request": item})
+
+@app.post("/api/workspace/git/change-requests/{request_id}/rollback")
+async def api_git_change_request_rollback(request_id: int, request: Request):
+    data = await request.json()
+    try:
+        item = g_workspace_services.rollback_git_change_request(
+            request_id,
+            actor_id=data.get("actor_id", "user"),
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"change_request": item})
 
 
 @app.get("/api/workspace/templates")
@@ -1550,9 +1805,130 @@ async def api_tasks(session_id: str = "", status: str = "", limit: int = 50):
     return JSONResponse({"tasks": rows, "count": len(rows)})
 
 
+@app.post("/api/tasks/recover")
+async def api_tasks_recover(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    result = g_memory_store.recover_interrupted_tasks(actor_id=str(data.get("actor_id", "user")))
+    return JSONResponse(result)
+
+@app.get("/api/tasks/events")
+async def api_task_events(session_id: str = "", after_id: int = 0, limit: int = 100):
+    if not g_memory_store:
+        return JSONResponse({"events": [], "count": 0}, status_code=503)
+    rows = g_memory_store.list_task_events(session_id=session_id, after_id=after_id, limit=limit)
+    return JSONResponse({"events": rows, "count": len(rows)})
+
+@app.get("/api/tasks/stream")
+async def api_task_stream(session_id: str = "", after_id: int = 0):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+
+    async def gen():
+        cursor = int(after_id or 0)
+        for _ in range(180):
+            rows = g_memory_store.list_task_events(session_id=session_id, after_id=cursor, limit=50)
+            if rows:
+                cursor = max(int(row["id"]) for row in rows)
+                yield f"event: task_events\ndata: {json.dumps(rows, ensure_ascii=False)}\n\n"
+            else:
+                yield ": keepalive\n\n"
+            await asyncio.sleep(1)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
 @app.get("/api/tasks/{task_id}")
 async def api_task_detail(task_id: int):
     return JSONResponse(get_runtime_task(task_id))
+
+@app.post("/api/tasks/{task_id}/cancel")
+async def api_task_cancel(task_id: int, request: Request):
+    data = await request.json()
+    item = cancel_runtime_task(
+        task_id,
+        reason=str(data.get("reason", "")),
+        actor_id=str(data.get("actor_id", "user")),
+    )
+    return JSONResponse({"task": item})
+
+@app.post("/api/tasks/{task_id}/retry")
+async def api_task_retry(task_id: int, request: Request):
+    data = await request.json()
+    item = retry_runtime_task(
+        task_id,
+        reason=str(data.get("reason", "")),
+        actor_id=str(data.get("actor_id", "user")),
+    )
+    return JSONResponse({"task": item})
+
+@app.get("/api/benchmarks/scenarios/suites")
+async def api_scenario_benchmark_suites():
+    if not g_scenario_benchmark:
+        return JSONResponse({"suites": [], "count": 0}, status_code=503)
+    rows = g_scenario_benchmark.list_suites()
+    return JSONResponse({"suites": rows, "count": len(rows)})
+
+@app.post("/api/benchmarks/scenarios/suites")
+async def api_scenario_benchmark_create_suite(request: Request):
+    if not g_scenario_benchmark:
+        raise HTTPException(503, "Scenario benchmark is unavailable")
+    data = await request.json()
+    try:
+        suite = g_scenario_benchmark.create_suite(
+            str(data.get("name", "")),
+            data.get("cases") or [],
+            description=str(data.get("description", "")),
+            created_by=str(data.get("created_by", "user")),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(suite)
+
+@app.get("/api/benchmarks/scenarios/runs")
+async def api_scenario_benchmark_runs(suite_id: int = 0, limit: int = 50):
+    if not g_scenario_benchmark:
+        return JSONResponse({"runs": [], "count": 0}, status_code=503)
+    rows = g_scenario_benchmark.list_runs(suite_id=suite_id, limit=limit)
+    return JSONResponse({"runs": rows, "count": len(rows)})
+
+@app.post("/api/benchmarks/scenarios/run")
+async def api_scenario_benchmark_run(request: Request):
+    if not g_scenario_benchmark:
+        raise HTTPException(503, "Scenario benchmark is unavailable")
+    data = await request.json()
+    suite_id = int(data.get("suite_id", 0) or 0)
+    if not suite_id:
+        suites = g_scenario_benchmark.list_suites()
+        suite_id = int(suites[-1]["id"] if suites else 0)
+
+    def runner(tool_name: str, args: dict[str, Any]):
+        task = create_runtime_task(
+            "benchmark",
+            f"Benchmark: {tool_name}",
+            source="scenario_benchmark",
+            metadata={"tool": tool_name, "args": args},
+        )
+        result = execute_tool_call(
+            tool_name,
+            json.dumps(args or {}, ensure_ascii=False),
+            session_id="benchmark",
+            confirmed_tools=set(data.get("confirmed_tools") or []),
+            task_id=task.get("id"),
+        )
+        finish_runtime_task(task.get("id"), "succeeded" if result.get("ok") else "failed")
+        return result
+
+    try:
+        run = g_scenario_benchmark.run_suite(
+            suite_id,
+            runner,
+            thresholds=data.get("thresholds") or {},
+            created_by=str(data.get("created_by", "user")),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(run)
 
 @app.get("/api/memory/profiles")
 async def api_memory_profiles():
@@ -1642,6 +2018,13 @@ async def skill_evolution_runs(version_id: int = 0, limit: int = 100):
     rows = g_skill_evolution.list_runs(version_id, limit)
     return JSONResponse({"runs": rows, "count": len(rows)})
 
+@app.get("/api/skills/evolution/review-inbox")
+async def skill_evolution_review_inbox(status: str = "", limit: int = 100):
+    if not g_skill_evolution:
+        return JSONResponse({"items": [], "count": 0}, status_code=503)
+    rows = g_skill_evolution.review_inbox(status=status, limit=limit)
+    return JSONResponse({"items": rows, "count": len(rows)})
+
 @app.post("/api/skills/evolution/candidates")
 async def skill_evolution_candidate(request: Request):
     if not g_skill_evolution:
@@ -1696,6 +2079,76 @@ async def skill_evolution_promote(version_id: int, request: Request):
     try:
         result = g_skill_evolution.promote(
             version_id, actor=str(data.get("actor", "user"))
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+@app.post("/api/skills/evolution/versions/{version_id}/review")
+async def skill_evolution_review(version_id: int, request: Request):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    data = await request.json()
+    try:
+        result = g_skill_evolution.review(
+            version_id,
+            action=str(data.get("action", "")),
+            reviewer=str(data.get("reviewer", "user")),
+            notes=str(data.get("notes", "")),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+@app.get("/api/skills/evolution/versions/{version_id}/manifest")
+async def skill_evolution_manifest(version_id: int):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    try:
+        result = g_skill_evolution.dependency_manifest(version_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    return JSONResponse(result)
+
+@app.post("/api/skills/evolution/versions/{version_id}/sign")
+async def skill_evolution_sign(version_id: int, request: Request):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    data = await request.json()
+    try:
+        result = g_skill_evolution.sign_version(
+            version_id,
+            signer=str(data.get("signer", "user")),
+            secret=str(data.get("secret", "clawos-local-signing")),
+        )
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    return JSONResponse(result)
+
+@app.post("/api/skills/evolution/versions/{version_id}/fresh-audit")
+async def skill_evolution_fresh_audit(version_id: int, request: Request):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    data = await request.json()
+    try:
+        result = g_skill_evolution.fresh_agent_audit(
+            version_id,
+            suite_id=data.get("suite_id"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+@app.post("/api/skills/evolution/versions/{version_id}/canary")
+async def skill_evolution_canary(version_id: int, request: Request):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    data = await request.json()
+    try:
+        result = g_skill_evolution.start_canary(
+            version_id,
+            percent=data.get("percent", 10),
+            actor=str(data.get("actor", "user")),
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
