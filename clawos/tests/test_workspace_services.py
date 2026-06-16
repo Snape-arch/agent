@@ -124,6 +124,41 @@ class WorkspaceServicesTests(unittest.TestCase):
         self.assertGreater(matrix["matrix"][0]["coverage"]["retrieval"], 0)
         self.assertTrue(plan_exists)
 
+    def test_research_learning_analysis_generates_markdown_and_pdf(self):
+        from reportlab.pdfgen import canvas
+
+        with tempfile.TemporaryDirectory() as td:
+            _, services = self._services(td)
+            pdf = Path(td) / "paper.pdf"
+            doc = canvas.Canvas(str(pdf))
+            doc.drawString(72, 720, "1 Introduction")
+            doc.drawString(72, 700, "Retrieval augmented generation solves evidence grounded question answering.")
+            doc.showPage()
+            doc.drawString(72, 720, "2 Method")
+            doc.drawString(72, 700, "The system combines a retriever, a generator, citations, and evaluation metrics.")
+            doc.save()
+            imported = services.import_research_pdf(pdf, "RAG Study")
+            result = services.generate_research_learning_analysis(
+                document_id=imported["id"],
+                output_dir=Path(td) / "analysis",
+                formats=["markdown", "pdf"],
+                depth=3,
+                question_count=9,
+            )
+            report = result["report"]
+            markdown = Path(report["markdown_path"])
+            generated_pdf = Path(report["pdf_path"])
+            content = markdown.read_text(encoding="utf-8")
+            markdown_exists = markdown.exists()
+            pdf_exists = generated_pdf.exists()
+
+        self.assertEqual(report["question_count"], 9)
+        self.assertTrue(markdown_exists)
+        self.assertTrue(pdf_exists)
+        self.assertIn("论文深度解析报告", content)
+        self.assertIn("L1 自问", content)
+        self.assertIn("证据：第", content)
+
     def test_learning_mastery_requires_evidence(self):
         with tempfile.TemporaryDirectory() as td:
             _, services = self._services(td)

@@ -897,6 +897,17 @@ def tool_research_pdf():
             output_path=input_data.get("output_path", ""),
         )
         print(json.dumps(result, ensure_ascii=False))
+    elif action == "learning_analysis":
+        result = services.generate_research_learning_analysis(
+            document_id=input_data.get("document_id"),
+            file_path=input_data.get("file_path", ""),
+            title=input_data.get("title", ""),
+            output_dir=input_data.get("output_dir", ""),
+            formats=input_data.get("formats"),
+            depth=input_data.get("depth", 5),
+            question_count=input_data.get("question_count", 50),
+        )
+        print(json.dumps(result, ensure_ascii=False))
     else:
         print(json.dumps({"error": f"unknown action: {action}"}, ensure_ascii=False))
 

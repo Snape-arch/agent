@@ -27,7 +27,7 @@ class ToolSecurityPolicy:
         "batch_rename": ("path",),
         "project_init": ("root",),
         "meeting_workflow": ("audio_path", "transcript_path", "output_dir"),
-        "research_pdf": ("file_path", "output_path"),
+        "research_pdf": ("file_path", "output_path", "output_dir"),
         "git_workspace": ("path",),
         "template_instantiate": ("target_path",),
         "shell_exec": ("workdir",),

@@ -104,6 +104,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("capabilityTable", html)
         self.assertIn("sceneBoundaryTable", html)
         self.assertIn("/api/workspace/capabilities", js)
+        self.assertIn("结构化文件生成", js)
+        self.assertIn("论文学习解析文件", js)
         self.assertIn("PDF 文本识别", js)
         self.assertIn("音频会议", js)
 

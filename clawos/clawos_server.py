@@ -1323,6 +1323,7 @@ async def api_workspace_capabilities():
             "txt_read_write": True,
             "project_create": True,
             "template_create": True,
+            "structured_file_generation": ["markdown", "pdf", "json", "txt"],
             "requires_confirmation_for_writes": True,
         },
         "document_understanding": {
@@ -1330,6 +1331,7 @@ async def api_workspace_capabilities():
             "pdf_text": shutil.which("pdftotext") is not None,
             "pdf_ocr": "ocr_required_detection",
             "citation_validation": True,
+            "paper_learning_analysis": ["markdown", "pdf"],
         },
         "meeting_audio": {
             "audio_file_registration": True,
@@ -1466,6 +1468,24 @@ async def api_research_repro_workflow(request: Request):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse({"workflow": workflow})
+
+
+@app.post("/api/workspace/research/learning-analysis")
+async def api_research_learning_analysis(request: Request):
+    data = await request.json()
+    try:
+        result = g_workspace_services.generate_research_learning_analysis(
+            document_id=data.get("document_id"),
+            file_path=data.get("file_path", ""),
+            title=data.get("title", ""),
+            output_dir=data.get("output_dir", ""),
+            formats=data.get("formats"),
+            depth=data.get("depth", 5),
+            question_count=data.get("question_count", 50),
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
 
 
 @app.post("/api/workspace/learning/goals")

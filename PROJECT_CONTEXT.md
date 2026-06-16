@@ -52,6 +52,32 @@ User Request
 
 ## 最近完成的开发块
 
+### 2026-06-16 - File generation and paper learning analysis report
+
+新增/完善：
+- 明确当前系统可以在路径白名单内生成结构化文件，适用于会议纪要、数据整理、科研学习报告等场景。
+- `GET /api/workspace/capabilities` 新增 `structured_file_generation` 和 `paper_learning_analysis`，前端“场景工作流”页展示 Markdown/PDF 等输出能力。
+- `research_pdf` 新增 `learning_analysis` 动作，支持客户选择 `document_id` 或 `file_path`、`output_dir`、`formats`、`depth`、`question_count`。
+- 新增 `POST /api/workspace/research/learning-analysis`。
+- 新增 `research_analysis_reports` 表，记录论文学习解析报告产物、深度、问题数量和元数据。
+- 新增自我提问式论文解析文件生成：总览、论文框架、核心学习问题、L1-L5 追问树、页码证据、概念表、局限和系统学习建议。
+- 输出 Markdown + PDF；Markdown 便于知识库和二次编辑，PDF 面向客户交付。
+- 已用用户提供的范例 PDF 生成演示产物：
+  - `output/pdf/paper_learning_analysis_sample_v5/GalaxyVS_Sample_Learning_Analysis_learning_analysis.md`
+  - `output/pdf/paper_learning_analysis_sample_v5/GalaxyVS_Sample_Learning_Analysis_learning_analysis.pdf`
+- 实现说明：`clawos/FILE_GENERATION_PAPER_ANALYSIS_IMPLEMENTATION.md`。
+
+验证：
+```powershell
+python -m unittest clawos.tests.test_workspace_services clawos.tests.test_frontend_static
+python -m py_compile clawos\workspace_services.py clawos\scripts\tool_runner.py clawos\clawos_server.py clawos\security\policy.py
+git diff --check
+```
+
+结果：`19 tests OK`，编译通过，diff 空白检查通过；仅有 Windows LF/CRLF 提示。
+
+当前边界：论文解析生成器目前是确定性证据驱动版本，不调用外部模型扩写，优点是低风险、可追溯、不会凭空补论文细节；下一步可在相同 API 上接 DeepSeek/本地模型，对每个追问节点进行更高质量的学习化扩写，并保留页码证据约束。
+
 ### 2026-06-16 - Advanced Scenario Workflows: local files, meetings, research, learning, Git approval, Skill governance
 
 新增/完善：

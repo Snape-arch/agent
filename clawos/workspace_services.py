@@ -8,9 +8,11 @@ import re
 import shutil
 import subprocess
 import tempfile
+import textwrap
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 
 class WorkspaceServices:
@@ -100,6 +102,19 @@ class WorkspaceServices:
                     manifest TEXT NOT NULL DEFAULT '{}',
                     status TEXT NOT NULL DEFAULT 'planned',
                     created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS research_analysis_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    document_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    output_dir TEXT NOT NULL,
+                    markdown_path TEXT DEFAULT '',
+                    pdf_path TEXT DEFAULT '',
+                    question_count INTEGER NOT NULL DEFAULT 0,
+                    depth INTEGER NOT NULL DEFAULT 0,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(document_id) REFERENCES research_documents(id) ON DELETE CASCADE
                 );
                 CREATE TABLE IF NOT EXISTS learning_goals (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -579,6 +594,368 @@ class WorkspaceServices:
             item = dict(row)
             item["manifest"] = json.loads(item["manifest"])
             return item
+
+    def generate_research_learning_analysis(
+        self,
+        document_id=None,
+        file_path="",
+        title="",
+        output_dir="",
+        formats=None,
+        depth=5,
+        question_count=50,
+    ):
+        """Generate an editable self-questioning paper study report."""
+        formats = formats or ["markdown", "pdf"]
+        formats = [str(item).lower() for item in formats]
+        if not output_dir:
+            raise ValueError("output_dir is required")
+        out = self.security.resolve_path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        document = self._resolve_research_document(document_id, file_path, title)
+        chunks = self._research_document_chunks(document["id"])
+        if not chunks:
+            raise ValueError("document has no extracted text chunks")
+        pages = {}
+        for chunk in chunks:
+            pages.setdefault(int(chunk["page_number"]), []).append(chunk["content"])
+        page_text = {page: "\n".join(parts) for page, parts in pages.items()}
+        full_text = "\n".join(page_text[page] for page in sorted(page_text))
+        max_depth = max(1, min(int(depth or 5), 5))
+        max_questions = max(6, min(int(question_count or 50), 80))
+        outline = self._paper_outline(full_text)
+        topics = self._analysis_topics(outline, full_text, max(3, min(8, max_questions // max_depth)))
+        questions = self._analysis_questions(topics, page_text, max_depth, max_questions)
+        concepts = self._paper_concepts(full_text, limit=14)
+        report = self._render_learning_analysis_markdown(document, outline, questions, concepts, max_depth)
+        safe_name = self._safe_filename(f"{document['title']}_learning_analysis")
+        markdown_path = ""
+        pdf_path = ""
+        if "markdown" in formats or "md" in formats:
+            markdown = out / f"{safe_name}.md"
+            markdown.write_text(report, encoding="utf-8")
+            markdown_path = str(markdown)
+        if "pdf" in formats:
+            pdf = out / f"{safe_name}.pdf"
+            self._write_learning_analysis_pdf(pdf, document["title"], report)
+            pdf_path = str(pdf)
+        metadata = {
+            "formats": formats,
+            "source_file": document["file_path"],
+            "page_count": document["page_count"],
+            "outline_count": len(outline),
+            "concept_count": len(concepts),
+            "mode": "deterministic_evidence_based",
+        }
+        with self.store._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO research_analysis_reports
+                    (document_id, title, output_dir, markdown_path, pdf_path, question_count, depth, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(document["id"]), document["title"], str(out), markdown_path, pdf_path,
+                    len(questions), max_depth, json.dumps(metadata, ensure_ascii=False),
+                ),
+            )
+            row = c.execute(
+                "SELECT * FROM research_analysis_reports WHERE id=?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+        item = dict(row)
+        item["metadata"] = json.loads(item["metadata"] or "{}")
+        return {"report": item, "document": document, "preview": report[:1200]}
+
+    def _resolve_research_document(self, document_id=None, file_path="", title=""):
+        with self.store._conn() as c:
+            if document_id:
+                row = c.execute(
+                    "SELECT * FROM research_documents WHERE id=?",
+                    (int(document_id),),
+                ).fetchone()
+                if not row:
+                    raise ValueError("research document not found")
+                return dict(row)
+            if file_path:
+                path = self.security.resolve_path(file_path)
+                row = c.execute(
+                    "SELECT * FROM research_documents WHERE file_path=?",
+                    (str(path),),
+                ).fetchone()
+                if row:
+                    return dict(row)
+        if file_path:
+            return self.import_research_pdf(file_path, title)
+        raise ValueError("document_id or file_path is required")
+
+    def _research_document_chunks(self, document_id):
+        with self.store._conn() as c:
+            return [dict(row) for row in c.execute(
+                """
+                SELECT page_number, chunk_index, content
+                FROM research_chunks
+                WHERE document_id=?
+                ORDER BY page_number, chunk_index
+                """,
+                (int(document_id),),
+            ).fetchall()]
+
+    def _paper_outline(self, text):
+        lines = [line.strip() for line in str(text).splitlines() if line.strip()]
+        outline = []
+        for line in lines:
+            compact = re.sub(r"\s+", " ", line)
+            if len(compact) > 90:
+                continue
+            if self._is_outline_noise(compact):
+                continue
+            if re.match(r"^(\d+(\.\d+)*|[一二三四五六七八九十]+[、.．]|第.+[章节部分]|[A-Z][A-Za-z ]{4,})", compact):
+                outline.append(compact)
+            if len(outline) >= 18:
+                break
+        return outline or [line[:80] for line in lines[:8]]
+
+    def _analysis_topics(self, outline, text, target_count):
+        topics = []
+        for item in outline:
+            clean = re.sub(r"^[\d.．、\s]+", "", item).strip()
+            if clean and len(clean) <= 55 and not self._is_outline_noise(clean) and clean not in topics:
+                topics.append(clean)
+            if len(topics) >= target_count:
+                break
+        for concept in self._paper_concepts(text, limit=target_count * 2):
+            if concept not in topics:
+                topics.append(concept)
+            if len(topics) >= target_count:
+                break
+        return topics or ["研究问题", "方法框架", "实验设计"]
+
+    def _analysis_questions(self, topics, page_text, depth, question_count):
+        pages = sorted(page_text)
+        questions = []
+        templates = [
+            "这篇论文围绕“{topic}”到底想解决什么核心问题？",
+            "作者为什么认为“{topic}”是必要的，而不是可选优化？",
+            "论文中支撑“{topic}”的关键方法、系统模块或假设是什么？",
+            "如果从实验和证据角度追问，“{topic}”的结论由哪些结果支撑？",
+            "继续深挖，“{topic}”还有哪些局限、适用边界和可复现风险？",
+        ]
+        cursor = 0
+        while len(questions) < question_count and topics:
+            for topic_index, topic in enumerate(topics, 1):
+                for level in range(1, depth + 1):
+                    if len(questions) >= question_count:
+                        break
+                    page = pages[(len(questions) + cursor) % len(pages)]
+                    evidence = self._best_evidence_for_topic(page_text, topic, page)
+                    questions.append({
+                        "topic_index": topic_index,
+                        "topic": topic,
+                        "level": level,
+                        "question": templates[level - 1].format(topic=topic),
+                        "answer": self._evidence_answer(topic, evidence, level),
+                        "evidence": evidence,
+                        "page": evidence["page"],
+                    })
+                if len(questions) >= question_count:
+                    break
+            cursor += 1
+        return questions
+
+    @staticmethod
+    def _is_outline_noise(text):
+        compact = str(text or "").strip()
+        if not compact:
+            return True
+        lowered = compact.lower()
+        if lowered in {"contents", "references", "acknowledgements"}:
+            return True
+        if re.fullmatch(r"第[一二三四五六七八九十]+部分[·：:].*", compact):
+            return True
+        if compact in {"总览", "关键概念名词表", "局限性与可改进方向"}:
+            return True
+        if re.fullmatch(r"\d+", compact):
+            return True
+        if re.search(r"\.{4,}", compact):
+            return True
+        if len(compact) <= 2:
+            return True
+        return False
+
+    def _best_evidence_for_topic(self, page_text, topic, fallback_page):
+        topic_terms = [term.lower() for term in re.findall(r"[\w\u4e00-\u9fff]{2,}", str(topic))[:4]]
+        best = (0, fallback_page, page_text.get(fallback_page, ""))
+        for page, text in page_text.items():
+            lowered = text.lower()
+            score = sum(lowered.count(term) for term in topic_terms)
+            if score > best[0]:
+                best = (score, page, text)
+        sentences = re.split(r"(?<=[。！？.!?])\s+", best[2].strip())
+        snippet = next((
+            s.strip() for s in sentences
+            if len(s.strip()) > 30
+            and not self._is_outline_noise(s.strip())
+            and not s.strip().lower().startswith("contents")
+            and (not topic_terms or any(term in s.lower() for term in topic_terms))
+        ), "")
+        if not snippet:
+            snippet = next((
+                s.strip() for s in sentences
+                if len(s.strip()) > 30
+                and not self._is_outline_noise(s.strip())
+                and not s.strip().lower().startswith("contents")
+            ), best[2].strip()[:420])
+        return {"page": best[1], "snippet": snippet[:520]}
+
+    def _evidence_answer(self, topic, evidence, level):
+        lead = [
+            "先抓主线：",
+            "继续追问动机：",
+            "落到机制层：",
+            "回到证据链：",
+            "最后检查边界：",
+        ][min(level - 1, 4)]
+        return (
+            f"{lead}围绕“{topic}”，报告应从论文原文证据出发解释其角色。"
+            f"当前可引用第 {evidence['page']} 页片段：{evidence['snippet']}"
+        )
+
+    def _paper_concepts(self, text, limit=12):
+        words = re.findall(r"[A-Za-z][A-Za-z0-9_-]{3,}|[\u4e00-\u9fff]{2,8}", str(text))
+        stop = {
+            "the", "and", "with", "from", "this", "that", "contents",
+            "研究", "论文", "方法", "系统", "结果", "总览", "主题", "解析报告",
+        }
+        counts = {}
+        for word in words:
+            key = word.strip()
+            if key.lower() in stop or len(key) < 2:
+                continue
+            counts[key] = counts.get(key, 0) + 1
+        return [word for word, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]]
+
+    def _render_learning_analysis_markdown(self, document, outline, questions, concepts, depth):
+        lines = [
+            f"# 《{document['title']}》论文深度解析报告",
+            "",
+            f"本报告由 ClawOS 论文学习工作流生成：先抽取论文结构，再以自我提问方式逐层追问，共形成 {len(questions)} 个问答节点（深度至 L{depth}）。",
+            "",
+            "## 第一部分 · 总览",
+            "",
+            "### 1. 论文一句话概述",
+            self._one_sentence_summary(questions),
+            "",
+            "### 2. 论文框架目录",
+        ]
+        lines.extend(f"- {item}" for item in outline[:18])
+        lines.extend([
+            "",
+            "### 3. 学习时必须回答的核心问题",
+            "- 论文解决的对象、痛点和应用场景是什么？",
+            "- 方法框架由哪些模块组成，模块之间的数据流是什么？",
+            "- 作者用哪些实验、指标或案例支撑结论？",
+            "- 哪些结论是强证据，哪些只是合理推断？",
+            "- 如果要复现或改进，最先卡住的依赖是什么？",
+            "",
+            "## 第二部分 · 主题深度解析（按追问分支逐层展开）",
+        ])
+        grouped = {}
+        for question in questions:
+            grouped.setdefault(question["topic"], []).append(question)
+        for idx, (topic, items) in enumerate(grouped.items(), 1):
+            lines.extend(["", f"### 主题 {idx}：{topic}"])
+            for item in items:
+                lines.extend([
+                    "",
+                    f"#### L{item['level']} 自问：{item['question']}",
+                    "",
+                    item["answer"],
+                    "",
+                    f"证据：第 {item['page']} 页。",
+                ])
+        lines.extend([
+            "",
+            "## 第三部分 · 概念表、局限与学习建议",
+            "",
+            "### 关键概念名词表",
+        ])
+        lines.extend(f"- **{concept}**：需要结合论文上下文解释定义、作用、输入输出和与其他概念的关系。" for concept in concepts)
+        lines.extend([
+            "",
+            "### 局限性与可改进方向",
+            "- 检查论文是否给出足够的消融实验、误差分析和失败案例。",
+            "- 检查数据集、硬件环境、超参数和评价指标是否足以复现。",
+            "- 区分论文明确声明、实验支持结论和本报告自动生成的学习性推断。",
+            "",
+            "### 系统性学习建议",
+            "- 第一遍只读标题、摘要、图表和结论，建立问题地图。",
+            "- 第二遍按本报告问题树逐项回到原文定位证据。",
+            "- 第三遍把每个 L4/L5 问题改写成自己的复现任务或讨论题。",
+            "- 最后输出一页纸复盘：贡献、证据、局限、可复现计划。",
+        ])
+        return "\n".join(lines) + "\n"
+
+    def _one_sentence_summary(self, questions):
+        if not questions:
+            return "本文围绕一个具体研究问题提出方法并通过实验验证。"
+        first = questions[0]
+        return f"本文围绕“{first['topic']}”展开，核心学习路径应从问题动机、方法机制、实验支撑与边界局限四层理解。"
+
+    def _write_learning_analysis_pdf(self, path, title, markdown):
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+            from reportlab.pdfbase.ttfonts import TTFont
+        except Exception as exc:  # pragma: no cover - depends on local optional package
+            raise RuntimeError(f"reportlab is required to generate PDF: {exc}") from exc
+        font_name = "STSong-Light"
+        for font_path in (
+            Path("C:/Windows/Fonts/NotoSansSC-VF.ttf"),
+            Path("C:/Windows/Fonts/simhei.ttf"),
+            Path("C:/Windows/Fonts/simsunb.ttf"),
+        ):
+            if font_path.is_file():
+                font_name = "ClawOSCJK"
+                pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
+                break
+        else:
+            pdfmetrics.registerFont(UnicodeCIDFont(font_name))
+        doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=42, leftMargin=42, topMargin=48, bottomMargin=42)
+        styles = getSampleStyleSheet()
+        for style in styles.byName.values():
+            if hasattr(style, "fontName"):
+                style.fontName = font_name
+            if hasattr(style, "leading") and hasattr(style, "fontSize"):
+                style.leading = max(style.leading, style.fontSize + 4)
+        story = []
+        for raw in markdown.splitlines():
+            line = raw.strip()
+            if not line:
+                story.append(Spacer(1, 8))
+                continue
+            if line.startswith("# "):
+                story.append(Paragraph(xml_escape(line[2:]), styles["Title"]))
+            elif line.startswith("## "):
+                story.append(Paragraph(xml_escape(line[3:]), styles["Heading1"]))
+            elif line.startswith("### "):
+                story.append(Paragraph(xml_escape(line[4:]), styles["Heading2"]))
+            elif line.startswith("#### "):
+                story.append(Paragraph(xml_escape(line[5:]), styles["Heading3"]))
+            elif line.startswith("- "):
+                story.append(Paragraph("- " + xml_escape(line[2:]), styles["BodyText"]))
+            else:
+                for wrapped in textwrap.wrap(line, width=92) or [line]:
+                    story.append(Paragraph(xml_escape(wrapped), styles["BodyText"]))
+        doc.build(story)
+
+    @staticmethod
+    def _safe_filename(name):
+        safe = re.sub(r"[^\w\u4e00-\u9fff.-]+", "_", str(name)).strip("._")
+        return safe[:80] or f"report_{uuid.uuid4().hex[:8]}"
 
     def search_research(self, query, limit=10):
         terms = [term for term in re.findall(r"[\w\u4e00-\u9fff]{2,}", str(query))][:6]
