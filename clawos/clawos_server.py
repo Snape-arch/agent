@@ -1921,7 +1921,10 @@ async def api_tasks_recover(request: Request):
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
     data = await request.json()
-    result = g_memory_store.recover_interrupted_tasks(actor_id=str(data.get("actor_id", "user")))
+    result = g_memory_store.recover_interrupted_tasks(
+        actor_id=str(data.get("actor_id", "user")),
+        create_retries=bool(data.get("create_retries", False)),
+    )
     return JSONResponse(result)
 
 @app.get("/api/tasks/events")
@@ -1930,6 +1933,19 @@ async def api_task_events(session_id: str = "", after_id: int = 0, limit: int = 
         return JSONResponse({"events": [], "count": 0}, status_code=503)
     rows = g_memory_store.list_task_events(session_id=session_id, after_id=after_id, limit=limit)
     return JSONResponse({"events": rows, "count": len(rows)})
+
+@app.post("/api/tasks/events/prune")
+async def api_task_events_prune(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    result = g_memory_store.prune_task_events(
+        older_than_days=data.get("older_than_days", 30),
+        retain_latest_per_task=data.get("retain_latest_per_task", 100),
+        dry_run=bool(data.get("dry_run", False)),
+        actor_id=str(data.get("actor_id", "user")),
+    )
+    return JSONResponse(result)
 
 @app.get("/api/tasks/stream")
 async def api_task_stream(session_id: str = "", after_id: int = 0):

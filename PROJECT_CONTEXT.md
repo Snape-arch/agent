@@ -52,6 +52,73 @@ User Request
 
 ## 最近完成的开发块
 
+### 2026-06-17 - Task event retention pruning
+
+新增/完善：
+- `MemoryStore.prune_task_events(...)` 支持按天数清理旧 Task Event。
+- 生命周期事件会保留，避免丢失任务开始、结束、取消、恢复、重试等审计主线。
+- 每个任务可通过 `retain_latest_per_task` 保留最近 N 条旧明细事件，避免清理后完全失去排障尾迹。
+- 支持 `dry_run` 预览清理数量。
+- 新增 `POST /api/tasks/events/prune`，控制层可显式触发保留策略。
+
+验证：
+
+```powershell
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_runtime_task_control
+.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
+```
+
+结果：运行时专项 `7 tests OK`；全量 `88 tests OK`。
+
+边界：
+- 本轮提供可控清理策略和 API，不做后台定时任务；后续生产级 worker 可按配置周期调用该 API 或 Store 方法。
+
+### 2026-06-17 - Task recovery replay retry queue
+
+新增/完善：
+- `MemoryStore.recover_interrupted_tasks(..., create_retries=True)` 可在恢复 `running/pending` 中断任务时，自动创建 `pending_retry` 重放任务。
+- 自动重放任务保留原任务 metadata，并写入 `recovery_actor`；`retry_of` 指向原任务，`attempt` 自动递增，`resume_state` 为 `ready_to_replay`。
+- `cancel_requested` 任务恢复为 `canceled/needs_retry`，但不会自动创建重放任务，避免违背用户取消意图。
+- `POST /api/tasks/recover` 支持 `create_retries` 参数，前端或外部控制层可以显式触发恢复重放队列。
+
+验证：
+
+```powershell
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_runtime_task_control
+.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
+```
+
+结果：运行时专项 `5 tests OK`；全量 `86 tests OK`。
+
+边界：
+- 本轮只创建可重放的 `pending_retry` 任务，不自动执行工具链；真正的生产级队列 worker、并发控制和长期事件保留仍是后续 P0。
+
+### 2026-06-17 - Windows PDF extraction dependency fix after remote sync
+
+背景：
+- 已从远程同步到 `c7d71f7`，本地分支快进后工作区开始验证。
+- 全量测试初次失败在科研 PDF / 学习分析相关用例，根因是新增测试和 PDF 报告生成路径依赖未完整声明。
+- Windows 本地默认没有 `pdftotext` 命令，原实现把它作为必备外部命令，导致 PDF 导入无法在普通本地环境闭环。
+
+修复：
+- `clawos/requirements.txt` 新增 `reportlab>=4.0.0`，用于测试 PDF 构造和学习分析 PDF 输出。
+- `clawos/requirements.txt` 新增 `pypdf>=4.0.0`，用于无 `pdftotext` 时的纯 Python PDF 文本提取。
+- `clawos/workspace_services.py` 保留 `pdftotext` 优先路径；缺失时自动使用 `pypdf` 兜底。
+- PDF 文档 metadata 中的 `extractor` 改为记录真实使用的 `pdftotext` 或 `pypdf`，不再硬编码。
+
+验证：
+
+```powershell
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_workspace_services.WorkspaceServicesTests.test_research_pdf_import_preserves_page_citations clawos.tests.test_workspace_services.WorkspaceServicesTests.test_research_citation_matrix_and_repro_workflow clawos.tests.test_workspace_services.WorkspaceServicesTests.test_research_learning_analysis_generates_markdown_and_pdf
+.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
+```
+
+结果：目标 3 个 PDF/科研工作流测试通过；全量 `84 tests OK`。
+
+注意：
+- 测试会修改 `clawos/skills/skill_registry.jsonl` 的 `use_count/last_used`，属于运行态副作用，提交前应恢复。
+- MTClaw FastAPI `on_event` deprecation warning 仍存在，但本轮不是失败项。
+
 ### 2026-06-17 - Frontend asset cleanup guidance and unified product skin
 
 结论：
@@ -508,7 +575,7 @@ python -m unittest clawos.tests.test_memoryos_governance clawos.tests.test_memor
 .\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
 ```
 
-最近一次验证结果：`44 tests OK`。
+最近一次验证结果：`86 tests OK`。
 
 ## 当前主要差距
 
@@ -516,7 +583,7 @@ python -m unittest clawos.tests.test_memoryos_governance clawos.tests.test_memor
 
 - MemoryOS 生命周期、硬删除证明、敏感字段加密和真实多租户身份接入。
 - Reflection 反思去重聚类、冻结回归任务集，以及各运行模块对 `runtime_policies` 的显式消费。
-- Task Runtime 的生产级队列、自动重放 retry、进程级取消、断线补偿和长期事件保留策略。
+- Task Runtime 已支持恢复时显式创建 `pending_retry` 重放任务和 Task Event 保留清理；仍缺生产级队列 worker、进程级取消和更完整的断线补偿。
 - 容器/seccomp 级工具隔离、CPU/内存配额和操作系统 Keyring。
 - MTT AIBOOK + 本地 Qwen/vLLM-MUSA 的离线部署、性能和质量证据。
 
@@ -549,8 +616,8 @@ MTT AIBOOK 本地模型验收 + 冻结基准报告导出 + 生产级任务队列
 
 - Windows 本地优先用 `start_clawos.bat`。
 - `.env` 放在 `clawos/.env`，不要提交。
-- 如果测试用系统 Python 报缺 `uvicorn`，改用 `clawos/.venv/Scripts/python.exe`。
-- 当前工作区未发现 `clawos/.venv`，2026-06-15 使用系统 `python` 完成 MemoryOS 专项测试。
+- 当前工作区已有 `clawos/.venv`，测试优先用 `clawos/.venv/Scripts/python.exe`。
+- 如果重新建环境，先安装 `clawos/requirements.txt`；PDF 工作流在无 `pdftotext` 的 Windows 环境下会使用 `pypdf` 兜底。
 - MTClaw 相关测试可能打印 FastAPI deprecation warning，通常不是失败。
 
 ## 协作习惯

@@ -733,7 +733,7 @@ class MemoryStore:
             row = c.execute("SELECT * FROM tasks WHERE id=?", (new_id,)).fetchone()
             return self._task_row_to_dict(row)
 
-    def recover_interrupted_tasks(self, actor_id="system"):
+    def recover_interrupted_tasks(self, actor_id="system", create_retries=False):
         recoverable = ("running", "pending", "cancel_requested", "waiting_confirmation")
         with self._conn() as c:
             rows = c.execute(
@@ -741,6 +741,7 @@ class MemoryStore:
                 recoverable,
             ).fetchall()
             recovered = []
+            retry_tasks = []
             for row in rows:
                 status = "canceled" if row["status"] == "cancel_requested" else "interrupted"
                 c.execute(
@@ -757,7 +758,44 @@ class MemoryStore:
                     ),
                 )
                 recovered.append(int(row["id"]))
-            return {"recovered": recovered, "count": len(recovered)}
+                if create_retries and row["status"] in {"running", "pending"}:
+                    metadata = self._json_loads(row["metadata"], {})
+                    metadata["recovery_actor"] = actor_id
+                    prior = c.execute(
+                        "SELECT COALESCE(MAX(attempt), 0) AS max_attempt FROM tasks WHERE id=? OR retry_of=?",
+                        (int(row["id"]), int(row["id"])),
+                    ).fetchone()
+                    attempt = int(prior["max_attempt"] or int(row["attempt"] or 1)) + 1
+                    cursor = c.execute(
+                        """
+                        INSERT INTO tasks
+                            (session_id, title, status, source, metadata, idempotency_key, retry_of, attempt, resume_state)
+                        VALUES (?, ?, 'pending_retry', 'recovery', ?, '', ?, ?, 'ready_to_replay')
+                        """,
+                        (
+                            row["session_id"], f"Replay: {row['title']}"[:300],
+                            json.dumps(metadata, ensure_ascii=False),
+                            int(row["id"]), attempt,
+                        ),
+                    )
+                    retry_id = int(cursor.lastrowid)
+                    c.execute(
+                        "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
+                        (
+                            retry_id,
+                            "task_retry_created",
+                            "Replay retry created during recovery",
+                            json.dumps({"retry_of": int(row["id"]), "actor_id": actor_id, "attempt": attempt}, ensure_ascii=False),
+                        ),
+                    )
+                    retry_row = c.execute("SELECT * FROM tasks WHERE id=?", (retry_id,)).fetchone()
+                    retry_tasks.append(self._task_row_to_dict(retry_row))
+            return {
+                "recovered": recovered,
+                "count": len(recovered),
+                "retry_tasks": retry_tasks,
+                "created_retry_count": len(retry_tasks),
+            }
 
     def list_task_events(self, session_id="", after_id=0, limit=100):
         with self._conn() as c:
@@ -777,6 +815,57 @@ class MemoryStore:
                 [*params, limit],
             ).fetchall()
             return [self._event_row_to_dict(row) for row in rows]
+
+    def prune_task_events(self, older_than_days=30, retain_latest_per_task=100, dry_run=False, actor_id="system"):
+        lifecycle_events = {
+            "task_started",
+            "task_finished",
+            "task_cancel_requested",
+            "task_retry_created",
+            "task_retry_requested",
+            "task_recovered",
+        }
+        older_than_days = max(1, int(older_than_days or 30))
+        retain_latest_per_task = max(0, min(int(retain_latest_per_task or 0), 1000))
+        cutoff = f"-{older_than_days} days"
+        with self._conn() as c:
+            rows = c.execute(
+                """
+                SELECT *
+                FROM task_events
+                WHERE created_at < datetime('now', ?)
+                ORDER BY task_id ASC, id DESC
+                """,
+                (cutoff,),
+            ).fetchall()
+            detail_kept_by_task = {}
+            delete_ids = []
+            retained_lifecycle_count = 0
+            retained_tail_count = 0
+            for row in rows:
+                if row["event_type"] in lifecycle_events:
+                    retained_lifecycle_count += 1
+                    continue
+                task_id = int(row["task_id"])
+                kept = detail_kept_by_task.get(task_id, 0)
+                if kept < retain_latest_per_task:
+                    detail_kept_by_task[task_id] = kept + 1
+                    retained_tail_count += 1
+                    continue
+                delete_ids.append(int(row["id"]))
+            if delete_ids and not dry_run:
+                placeholders = ",".join("?" for _ in delete_ids)
+                c.execute(f"DELETE FROM task_events WHERE id IN ({placeholders})", delete_ids)
+        return {
+            "older_than_days": older_than_days,
+            "retain_latest_per_task": retain_latest_per_task,
+            "dry_run": bool(dry_run),
+            "actor_id": str(actor_id or "system"),
+            "candidate_count": len(rows),
+            "deleted_count": len(delete_ids),
+            "retained_lifecycle_count": retained_lifecycle_count,
+            "retained_tail_count": retained_tail_count,
+        }
 
     def add_task_step(self, task_id, step_type, name, status="running", input_data=None):
         with self._conn() as c:

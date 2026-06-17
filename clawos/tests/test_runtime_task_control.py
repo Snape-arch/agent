@@ -1,3 +1,5 @@
+import asyncio
+import json
 import sys
 import tempfile
 import unittest
@@ -7,6 +9,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+class JsonRequest:
+    def __init__(self, payload):
+        self._payload = payload
+
+    async def json(self):
+        return self._payload
 
 
 class RuntimeTaskControlTests(unittest.TestCase):
@@ -49,6 +59,125 @@ class RuntimeTaskControlTests(unittest.TestCase):
         self.assertGreater(len(later), 0)
         self.assertTrue(any(e["event_type"] == "task_cancel_requested" for e in events))
         self.assertTrue(any(e["event_type"] == "task_recovered" for e in later))
+
+    def test_recover_interrupted_tasks_can_create_replay_retry(self):
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            interrupted = store.start_task(
+                "s1", "Generate report",
+                metadata={"user_text": "make report", "tool": "research_pdf"},
+                status="running",
+            )
+            canceled = store.start_task("s1", "Canceled task", status="cancel_requested")
+            recovered = store.recover_interrupted_tasks(
+                actor_id="startup",
+                create_retries=True,
+            )
+            original = store.get_task(interrupted["id"])["task"]
+            retry = store.get_task(recovered["retry_tasks"][0]["id"])["task"]
+            canceled_after = store.get_task(canceled["id"])["task"]
+
+        self.assertEqual(recovered["created_retry_count"], 1)
+        self.assertEqual(original["status"], "interrupted")
+        self.assertEqual(original["resume_state"], "needs_retry")
+        self.assertEqual(retry["status"], "pending_retry")
+        self.assertEqual(retry["retry_of"], interrupted["id"])
+        self.assertEqual(retry["attempt"], 2)
+        self.assertEqual(retry["resume_state"], "ready_to_replay")
+        self.assertEqual(retry["metadata"]["user_text"], "make report")
+        self.assertEqual(canceled_after["status"], "canceled")
+        self.assertEqual(canceled_after["resume_state"], "needs_retry")
+
+    def test_recover_api_can_create_replay_retry(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            try:
+                task = server.g_memory_store.start_task(
+                    "s-api", "Interrupted API task",
+                    metadata={"user_text": "resume me"},
+                    status="running",
+                )
+                response = asyncio.run(server.api_tasks_recover(
+                    JsonRequest({"actor_id": "startup", "create_retries": True})
+                ))
+                payload = response.body.decode("utf-8")
+                recovered = json.loads(payload)
+                self.assertEqual(recovered["created_retry_count"], 1)
+                retry = server.g_memory_store.get_task(recovered["retry_tasks"][0]["id"])["task"]
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertEqual(retry["retry_of"], task["id"])
+        self.assertEqual(retry["status"], "pending_retry")
+
+    def test_task_event_retention_prunes_old_detail_events_but_keeps_audit_tail(self):
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            task = store.start_task("s-retain", "Retention task")
+            for index in range(5):
+                store.add_task_event(task["id"], "step_trace", f"old detail {index}")
+            store.finish_task(task["id"], "succeeded")
+            recent = store.add_task_event(task["id"], "step_trace", "recent detail")
+            with store._conn() as c:
+                c.execute(
+                    "UPDATE task_events SET created_at=datetime('now','-90 days') WHERE id<>?",
+                    (recent["id"],),
+                )
+            dry_run = store.prune_task_events(
+                older_than_days=30,
+                retain_latest_per_task=2,
+                dry_run=True,
+            )
+            result = store.prune_task_events(
+                older_than_days=30,
+                retain_latest_per_task=2,
+                actor_id="retention-test",
+            )
+            remaining = store.get_task(task["id"])["events"]
+
+        self.assertEqual(dry_run["deleted_count"], 3)
+        self.assertEqual(result["deleted_count"], 3)
+        self.assertEqual(result["retained_lifecycle_count"], 2)
+        self.assertEqual(result["retained_tail_count"], 2)
+        self.assertEqual(
+            [event["event_type"] for event in remaining],
+            ["task_started", "step_trace", "step_trace", "task_finished", "step_trace"],
+        )
+        self.assertEqual(remaining[-1]["id"], recent["id"])
+
+    def test_task_event_retention_api_prunes_old_detail_events(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            try:
+                task = server.g_memory_store.start_task("s-api", "Retention API task")
+                for index in range(4):
+                    server.g_memory_store.add_task_event(task["id"], "step_trace", f"old detail {index}")
+                with server.g_memory_store._conn() as c:
+                    c.execute("UPDATE task_events SET created_at=datetime('now','-90 days')")
+                response = asyncio.run(server.api_task_events_prune(JsonRequest({
+                    "older_than_days": 30,
+                    "retain_latest_per_task": 1,
+                    "actor_id": "api-test",
+                })))
+                result = json.loads(response.body.decode("utf-8"))
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertEqual(result["deleted_count"], 3)
+        self.assertEqual(result["retained_lifecycle_count"], 1)
+        self.assertEqual(result["retained_tail_count"], 1)
 
     def test_server_helpers_expose_cancel_and_retry(self):
         import clawos_server as server
