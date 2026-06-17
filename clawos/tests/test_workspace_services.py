@@ -2,6 +2,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 
@@ -158,6 +159,47 @@ class WorkspaceServicesTests(unittest.TestCase):
         self.assertIn("论文深度解析报告", content)
         self.assertIn("L1 自问", content)
         self.assertIn("证据：第", content)
+
+    def test_office_artifacts_create_and_edit_xlsx_pptx_without_external_packages(self):
+        with tempfile.TemporaryDirectory() as td:
+            _, services = self._services(td)
+            xlsx = Path(td) / "report.xlsx"
+            xlsx_edited = Path(td) / "report_edited.xlsx"
+            pptx = Path(td) / "briefing.pptx"
+            pptx_edited = Path(td) / "briefing_edited.pptx"
+
+            spreadsheet = services.create_spreadsheet(
+                xlsx,
+                sheets=[{"name": "Metrics", "rows": [["Metric", "Value"], ["Pass Rate", 0.95]]}],
+                title="Metrics",
+            )
+            edited_sheet = services.edit_spreadsheet(
+                xlsx,
+                updates=[{"sheet": "Metrics", "cell": "B2", "value": 0.98}],
+                output_path=xlsx_edited,
+            )
+            deck = services.create_presentation(
+                pptx,
+                title="Demo Deck",
+                slides=[{"title": "Demo Deck", "bullets": ["XLSX and PPTX are built in"]}],
+            )
+            edited_deck = services.edit_presentation(
+                pptx,
+                replacements={"Demo Deck": "Customer Demo"},
+                output_path=pptx_edited,
+            )
+
+            with zipfile.ZipFile(xlsx_edited) as z:
+                sheet_xml = z.read("xl/worksheets/sheet1.xml").decode("utf-8")
+            with zipfile.ZipFile(pptx_edited) as z:
+                slide_xml = z.read("ppt/slides/slide1.xml").decode("utf-8")
+
+        self.assertEqual(spreadsheet["artifact_type"], "spreadsheet")
+        self.assertEqual(edited_sheet["action"], "edit")
+        self.assertEqual(deck["artifact_type"], "presentation")
+        self.assertEqual(edited_deck["action"], "edit")
+        self.assertIn("0.98", sheet_xml)
+        self.assertIn("Customer Demo", slide_xml)
 
     def test_learning_mastery_requires_evidence(self):
         with tempfile.TemporaryDirectory() as td:

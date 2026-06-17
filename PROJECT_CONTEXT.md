@@ -52,6 +52,51 @@ User Request
 
 ## 最近完成的开发块
 
+### 2026-06-17 - Architecture review and built-in Office artifacts
+
+架构复盘：
+- 已阅读 `架构说明.txt` 与 `架构图/` 下 5 张架构图：总架构图、数据库 ER、MemoryOS 详细架构、Reflection Engine 详细架构、通讯时序图。
+- 结论：目标架构层面基本完整，Application Layer 已包含 Office Assistant / Competition Assistant / DataAgent，MemoryOS 图已包含 Table Memory，通讯时序也覆盖文件/报告生成链路。
+- 主要缺口：代码层尚未把 XLSX/PPTX 作为 ClawOS 自带工具实现，不能依赖 Codex 桌面插件，否则换电脑部署时能力不可控。
+
+新增/完善：
+- 新增 `clawos/office_artifacts.py`：使用 Python 标准库 `zipfile` + OpenXML 生成和轻量编辑 Office 文件。
+- 新增 `office_artifacts` 表，记录 Office 产物类型、动作、路径和元数据。
+- 新增 WorkspaceServices 能力：
+  - `create_spreadsheet`
+  - `edit_spreadsheet`
+  - `create_presentation`
+  - `edit_presentation`
+- 新增 Agent 工具 `office_artifact`：
+  - `spreadsheet_create`
+  - `spreadsheet_edit`
+  - `presentation_create`
+  - `presentation_edit`
+- 新增 API：
+  - `POST /api/workspace/office/spreadsheets`
+  - `POST /api/workspace/office/spreadsheets/edit`
+  - `POST /api/workspace/office/presentations`
+  - `POST /api/workspace/office/presentations/edit`
+- `GET /api/workspace/capabilities` 新增 `office_artifacts`，明确 XLSX/PPTX 不依赖 Microsoft Office、openpyxl 或 python-pptx。
+- 前端“场景工作流”页新增“自带 XLSX 表格”和“自带 PPTX 演示文稿”能力展示。
+- 安全策略：`office_artifact` 纳入路径白名单与写工具确认策略。
+- 实现说明：`clawos/OFFICE_ARTIFACTS_IMPLEMENTATION.md`。
+
+验证：
+```powershell
+python -m unittest clawos.tests.test_workspace_services clawos.tests.test_frontend_static
+python -m py_compile clawos\office_artifacts.py clawos\workspace_services.py clawos\scripts\tool_runner.py clawos\clawos_server.py clawos\security\policy.py
+git diff --check
+```
+
+结果：专项 `20 tests OK`，编译通过，diff 空白检查通过；仅有 Windows LF/CRLF 提示。已生成演示产物：
+- `output/office/customer_metrics.xlsx`
+- `output/office/customer_metrics_edited.xlsx`
+- `output/office/customer_briefing.pptx`
+- `output/office/customer_briefing_edited.pptx`
+
+当前边界：已满足可迁移的基础 XLSX/PPTX 生成与轻量编辑；复杂图表、公式透视表、母版主题、图片、动画和高级排版仍作为后续增强项。
+
 ### 2026-06-16 - File generation and paper learning analysis report
 
 新增/完善：

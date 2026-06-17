@@ -28,6 +28,7 @@ class ToolSecurityPolicy:
         "project_init": ("root",),
         "meeting_workflow": ("audio_path", "transcript_path", "output_dir"),
         "research_pdf": ("file_path", "output_path", "output_dir"),
+        "office_artifact": ("file_path", "output_path"),
         "git_workspace": ("path",),
         "template_instantiate": ("target_path",),
         "shell_exec": ("workdir",),
@@ -35,6 +36,7 @@ class ToolSecurityPolicy:
     WRITE_TOOLS = {
         "file_write", "file_organize", "batch_rename", "project_init",
         "note_save", "meeting_template", "template_instantiate",
+        "office_artifact",
     }
     ALLOWED_COMMANDS = {
         "python", "python3", "py", "git", "pytest", "npm", "node",

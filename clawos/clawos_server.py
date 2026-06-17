@@ -1323,8 +1323,24 @@ async def api_workspace_capabilities():
             "txt_read_write": True,
             "project_create": True,
             "template_create": True,
-            "structured_file_generation": ["markdown", "pdf", "json", "txt"],
+            "structured_file_generation": ["markdown", "pdf", "json", "txt", "xlsx", "pptx"],
             "requires_confirmation_for_writes": True,
+        },
+        "office_artifacts": {
+            "xlsx": {
+                "create": True,
+                "edit_cells": True,
+                "engine": "stdlib-openxml",
+                "requires_microsoft_office": False,
+                "requires_extra_python_packages": False,
+            },
+            "pptx": {
+                "create": True,
+                "replace_text": True,
+                "engine": "stdlib-openxml",
+                "requires_microsoft_office": False,
+                "requires_extra_python_packages": False,
+            },
         },
         "document_understanding": {
             "txt": True,
@@ -1356,6 +1372,62 @@ async def api_workspace_capabilities():
             "names": [item["name"] for item in templates],
         },
     })
+
+
+@app.post("/api/workspace/office/spreadsheets")
+async def api_office_spreadsheet_create(request: Request):
+    data = await request.json()
+    try:
+        artifact = g_workspace_services.create_spreadsheet(
+            data.get("output_path", ""),
+            sheets=data.get("sheets", []),
+            title=data.get("title", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"artifact": artifact})
+
+
+@app.post("/api/workspace/office/spreadsheets/edit")
+async def api_office_spreadsheet_edit(request: Request):
+    data = await request.json()
+    try:
+        artifact = g_workspace_services.edit_spreadsheet(
+            data.get("file_path", ""),
+            updates=data.get("updates", []),
+            output_path=data.get("output_path", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"artifact": artifact})
+
+
+@app.post("/api/workspace/office/presentations")
+async def api_office_presentation_create(request: Request):
+    data = await request.json()
+    try:
+        artifact = g_workspace_services.create_presentation(
+            data.get("output_path", ""),
+            title=data.get("title", ""),
+            slides=data.get("slides", []),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"artifact": artifact})
+
+
+@app.post("/api/workspace/office/presentations/edit")
+async def api_office_presentation_edit(request: Request):
+    data = await request.json()
+    try:
+        artifact = g_workspace_services.edit_presentation(
+            data.get("file_path", ""),
+            replacements=data.get("replacements", {}),
+            output_path=data.get("output_path", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"artifact": artifact})
 
 
 @app.post("/api/workspace/meetings")

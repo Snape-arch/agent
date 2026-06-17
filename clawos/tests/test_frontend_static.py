@@ -106,6 +106,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("/api/workspace/capabilities", js)
         self.assertIn("结构化文件生成", js)
         self.assertIn("论文学习解析文件", js)
+        self.assertIn("自带 XLSX 表格", js)
+        self.assertIn("自带 PPTX 演示文稿", js)
         self.assertIn("PDF 文本识别", js)
         self.assertIn("音频会议", js)
 

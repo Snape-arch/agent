@@ -956,6 +956,38 @@ def tool_learning_workspace():
     print(json.dumps({"learning": result}, ensure_ascii=False))
 
 
+def tool_office_artifact():
+    services = _workspace_services()
+    action = input_data.get("action", "")
+    if action == "spreadsheet_create":
+        result = services.create_spreadsheet(
+            input_data.get("output_path", ""),
+            sheets=input_data.get("sheets") or [],
+            title=input_data.get("title", ""),
+        )
+    elif action == "spreadsheet_edit":
+        result = services.edit_spreadsheet(
+            input_data.get("file_path", ""),
+            updates=input_data.get("updates") or [],
+            output_path=input_data.get("output_path", ""),
+        )
+    elif action == "presentation_create":
+        result = services.create_presentation(
+            input_data.get("output_path", ""),
+            title=input_data.get("title", ""),
+            slides=input_data.get("slides") or [],
+        )
+    elif action == "presentation_edit":
+        result = services.edit_presentation(
+            input_data.get("file_path", ""),
+            replacements=input_data.get("replacements") or {},
+            output_path=input_data.get("output_path", ""),
+        )
+    else:
+        result = {"error": f"unknown action: {action}"}
+    print(json.dumps({"artifact": result}, ensure_ascii=False))
+
+
 def tool_git_workspace():
     services = _workspace_services()
     action = input_data.get("action", "snapshot")
@@ -1063,6 +1095,7 @@ handlers = {
     "meeting_workflow": tool_meeting_workflow,
     "research_pdf": tool_research_pdf,
     "learning_workspace": tool_learning_workspace,
+    "office_artifact": tool_office_artifact,
     "git_workspace": tool_git_workspace,
     "skill_governance": tool_skill_governance,
     "template_list": tool_template_list,
