@@ -52,6 +52,32 @@ User Request
 
 ## 最近完成的开发块
 
+### 2026-06-17 - Windows PDF extraction dependency fix after remote sync
+
+背景：
+- 已从远程同步到 `c7d71f7`，本地分支快进后工作区开始验证。
+- 全量测试初次失败在科研 PDF / 学习分析相关用例，根因是新增测试和 PDF 报告生成路径依赖未完整声明。
+- Windows 本地默认没有 `pdftotext` 命令，原实现把它作为必备外部命令，导致 PDF 导入无法在普通本地环境闭环。
+
+修复：
+- `clawos/requirements.txt` 新增 `reportlab>=4.0.0`，用于测试 PDF 构造和学习分析 PDF 输出。
+- `clawos/requirements.txt` 新增 `pypdf>=4.0.0`，用于无 `pdftotext` 时的纯 Python PDF 文本提取。
+- `clawos/workspace_services.py` 保留 `pdftotext` 优先路径；缺失时自动使用 `pypdf` 兜底。
+- PDF 文档 metadata 中的 `extractor` 改为记录真实使用的 `pdftotext` 或 `pypdf`，不再硬编码。
+
+验证：
+
+```powershell
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_workspace_services.WorkspaceServicesTests.test_research_pdf_import_preserves_page_citations clawos.tests.test_workspace_services.WorkspaceServicesTests.test_research_citation_matrix_and_repro_workflow clawos.tests.test_workspace_services.WorkspaceServicesTests.test_research_learning_analysis_generates_markdown_and_pdf
+.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
+```
+
+结果：目标 3 个 PDF/科研工作流测试通过；全量 `84 tests OK`。
+
+注意：
+- 测试会修改 `clawos/skills/skill_registry.jsonl` 的 `use_count/last_used`，属于运行态副作用，提交前应恢复。
+- MTClaw FastAPI `on_event` deprecation warning 仍存在，但本轮不是失败项。
+
 ### 2026-06-17 - Architecture review and built-in Office artifacts
 
 架构复盘：
@@ -365,7 +391,7 @@ python -m unittest clawos.tests.test_memoryos_governance clawos.tests.test_memor
 .\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
 ```
 
-最近一次验证结果：`44 tests OK`。
+最近一次验证结果：`84 tests OK`。
 
 ## 当前主要差距
 
@@ -406,8 +432,8 @@ MTT AIBOOK 本地模型验收 + 冻结基准报告导出 + 生产级任务队列
 
 - Windows 本地优先用 `start_clawos.bat`。
 - `.env` 放在 `clawos/.env`，不要提交。
-- 如果测试用系统 Python 报缺 `uvicorn`，改用 `clawos/.venv/Scripts/python.exe`。
-- 当前工作区未发现 `clawos/.venv`，2026-06-15 使用系统 `python` 完成 MemoryOS 专项测试。
+- 当前工作区已有 `clawos/.venv`，测试优先用 `clawos/.venv/Scripts/python.exe`。
+- 如果重新建环境，先安装 `clawos/requirements.txt`；PDF 工作流在无 `pdftotext` 的 Windows 环境下会使用 `pypdf` 兜底。
 - MTClaw 相关测试可能打印 FastAPI deprecation warning，通常不是失败。
 
 ## 协作习惯

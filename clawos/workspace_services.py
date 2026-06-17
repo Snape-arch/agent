@@ -497,7 +497,7 @@ class WorkspaceServices:
         path = self.security.resolve_path(file_path)
         if path.suffix.lower() != ".pdf" or not path.is_file():
             raise ValueError("a readable PDF file is required")
-        text = self._extract_pdf_text(path)
+        text, extractor = self._extract_pdf_text(path)
         pages = text.split("\f")
         if pages and not pages[-1].strip():
             pages.pop()
@@ -524,7 +524,7 @@ class WorkspaceServices:
                     (
                         title or path.stem, digest, len(pages),
                         json.dumps({
-                            "extractor": "pdftotext",
+                            "extractor": extractor,
                             "ocr_status": ocr_status,
                             "ocr_pages": ocr_pages,
                         }, ensure_ascii=False),
@@ -541,7 +541,7 @@ class WorkspaceServices:
                     (
                         title or path.stem, str(path), digest, len(pages),
                         json.dumps({
-                            "extractor": "pdftotext",
+                            "extractor": extractor,
                             "ocr_status": ocr_status,
                             "ocr_pages": ocr_pages,
                         }, ensure_ascii=False),
@@ -1470,16 +1470,21 @@ class WorkspaceServices:
     @staticmethod
     def _extract_pdf_text(path):
         executable = shutil.which("pdftotext")
-        if not executable:
-            raise RuntimeError("pdftotext is required for local PDF extraction")
-        proc = subprocess.run(
-            [executable, "-layout", str(path), "-"],
-            capture_output=True,
-            timeout=60,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr.decode("utf-8", errors="replace")[:500])
-        return proc.stdout.decode("utf-8", errors="replace")
+        if executable:
+            proc = subprocess.run(
+                [executable, "-layout", str(path), "-"],
+                capture_output=True,
+                timeout=60,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(proc.stderr.decode("utf-8", errors="replace")[:500])
+            return proc.stdout.decode("utf-8", errors="replace"), "pdftotext"
+        try:
+            from pypdf import PdfReader
+        except ImportError as exc:
+            raise RuntimeError("pdftotext or pypdf is required for local PDF extraction") from exc
+        reader = PdfReader(str(path))
+        return "\f".join((page.extract_text() or "") for page in reader.pages), "pypdf"
 
     @staticmethod
     def _file_hash(path):
