@@ -767,6 +767,25 @@ async def lifespan(app: FastAPI):
     logger.info("ClawOS stopped")
 
 app = FastAPI(title="ClawOS Agent", version="1.0.0", lifespan=lifespan)
+
+NO_CACHE_STATIC_PATHS = {
+    "/",
+    "/product",
+    "/console",
+    "/assets/site.css",
+    "/assets/site.js",
+    "/assets/console.js",
+}
+
+
+@app.middleware("http")
+async def no_cache_static_shell(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path in NO_CACHE_STATIC_PATHS or request.url.path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
 app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
 # ---- ROUTES ----

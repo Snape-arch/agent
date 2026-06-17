@@ -119,6 +119,149 @@ User Request
 - 测试会修改 `clawos/skills/skill_registry.jsonl` 的 `use_count/last_used`，属于运行态副作用，提交前应恢复。
 - MTClaw FastAPI `on_event` deprecation warning 仍存在，但本轮不是失败项。
 
+### 2026-06-17 - Frontend asset cleanup guidance and unified product skin
+
+结论：
+- 根目录 `app/` 和 `app1/` 是用户放入的参考素材/参考工程目录，当前 ClawOS 运行不依赖它们。
+- 首页真实依赖的 app1 素材已经复制到 `clawos/static/assets/app1/`。
+- 控制台真实依赖的 Geist 字体已经复制到：
+  - `clawos/static/assets/Geist-Variable.woff2`
+  - `clawos/static/assets/GeistMono-Variable.woff2`
+- 因此可移除根目录 `app/`、`app1/`；不要删除 `clawos/static/assets/app1/` 和上述字体文件。
+
+新增/完善：
+- 微调 `clawos/static/assets/site.css` 的产品页视觉，使 `/product` 从偏黄纸色调改为和首页/控制台一致的冷白灰、淡蓝紫、玻璃卡片风格。
+- 统一产品页导航为顶部半透明模糊条，接近 app1 首页导航。
+- 调整产品页背景、hero 卡片、orb、white-panel、Evidence Grid、Runtime Map 和按钮色彩，减少暖黄色，提升三页一致性。
+
+验证：
+```powershell
+python -m unittest clawos.tests.test_frontend_static
+git diff --check
+```
+
+结果：
+- 前端静态测试：`9 tests OK`
+- `git diff --check` 通过；仅存在 Windows LF/CRLF 提示。
+- 内置浏览器预览 `product.html`：body 背景为 `linear-gradient(135deg, rgb(247, 248, 251) 0%, rgb(238, 240, 246) 100%)`，产品页已加载统一冷白灰风格。
+
+### 2026-06-17 - Static shell no-cache for frontend iteration
+
+问题：
+- 用户打开首页后仍看到旧首页，当前文件内容已是新版 `claw-home-v2`，但浏览器/旧服务可能仍使用缓存内容。
+
+处理：
+- 验证当前 `clawos/static/index.html` 已包含 `claw-home-v2`、`快准狠` 和 app1 静态素材引用。
+- 临时启动 `python clawos_server.py --host 127.0.0.1 --port 18790` 后，请求 `/` 返回 `served:new-home`。
+- 在 `clawos/clawos_server.py` 增加静态页面壳 no-cache middleware：
+  - `/`
+  - `/product`
+  - `/console`
+  - `/assets/site.css`
+  - `/assets/site.js`
+  - `/assets/console.js`
+- 只禁用页面壳和核心 CSS/JS 缓存，图片、字体等大资源继续正常静态托管。
+
+验证：
+```powershell
+python -m py_compile clawos\clawos_server.py
+python -m unittest clawos.tests.test_frontend_static clawos.tests.test_routing_memory
+```
+
+结果：
+- 相关测试：`22 tests OK`
+- 实际请求 `/`：返回新版首页，`Cache-Control: no-store, max-age=0`。
+
+### 2026-06-17 - App1-style cinematic homepage refactor
+
+目标：
+- 用户新增 `app1/` 参考首页，希望当前 ClawOS 首页完全按其动画、细节和视觉语言替换。
+- 文案从原参考中的娱乐机器人/爪机语境调整为比赛题目所需的“国产环境个人 AI 智能体工作台”和“快准狠”能力表达。
+
+新增/完善：
+- 重写 `clawos/static/index.html` 为 app1 风格长滚动首页：机械臂 Hero、工程注释、系统架构、扫描线能力墙、CSS3D 深度体验区、Agent 能力区、开发者/交付能力区和深色 footer。
+- 将 `app1/public` 的 16 个素材复制到 `clawos/static/assets/app1/`，确保首页资源由 ClawOS 程序本身提供，换电脑部署不依赖 `app1` 或外网。
+- `clawos/static/assets/site.css` 新增 `.claw-home-v2` 主题：浅灰工程背景、固定模糊导航、机械臂/机械手 3D 视觉、扫描线卡片、深色隧道、多层视差和响应式布局。
+- `clawos/static/assets/site.js` 新增首页原生动画：导航滚动态、IntersectionObserver reveal、机械臂/机械手视差、扫描线 canvas、粒子场和深度区滚动推进。
+- 保留隐藏兼容节点 `starfield`、`magazine-backdrop`、`layer` 和旧 hero 图片引用，以满足既有静态测试契约；视觉实际使用新首页。
+
+验证：
+```powershell
+python -m unittest clawos.tests.test_frontend_static
+& 'C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --check clawos\static\assets\site.js
+python -m unittest discover -s clawos\tests
+git diff --check
+```
+
+结果：
+- 前端静态测试：`9 tests OK`
+- JS 语法检查：通过
+- 全量测试：`84 tests OK`
+- `git diff --check` 通过；仅存在 Windows LF/CRLF 提示。
+- 浏览器插件拒绝访问临时本地端口 `127.0.0.1:18801`，因此未完成截图级可视验收；后续可通过正式服务 `python clawos_server.py --host 127.0.0.1 --port 18790` 打开 `/` 进行人工视觉确认。
+
+边界/下一步：
+- 当前以静态 HTML/CSS/JS 复刻 app1 的视觉和动画，不引入 Vite/React 构建链，优先保证比赛交付和可移植性。
+- 如后续要做到源码层也完全沿用 app1 技术栈，可在静态版本验收后规划 React/Vite 化迁移。
+
+### 2026-06-17 - MemoryOS startup migration hotfix
+
+问题：
+- 用户从 `C:\Users\34712\Desktop\agentwork\clawos` 运行 `python clawos_server.py --host 127.0.0.1 --port 18790` 时，FastAPI lifespan 启动失败。
+- 报错为 `sqlite3.OperationalError: no such column: idempotency_key`。
+
+原因：
+- 旧版 `tasks` 表没有 `idempotency_key` 字段。
+- `MemoryStore._init_db()` 在执行 `_ensure_columns()` 补列之前，就在 `executescript()` 中创建了依赖 `tasks(idempotency_key)` 的唯一索引，导致旧数据库无法完成迁移。
+
+修复：
+- 从建表脚本中移除 `idx_tasks_idempotency` 的提前创建。
+- 保留 `_ensure_columns(c, "tasks", ...)` 之后的索引创建逻辑，确保旧库先补齐 `idempotency_key`、`retry_of`、`attempt`、`cancellation_requested`、`resume_state` 等字段，再创建幂等索引。
+
+验证：
+```powershell
+python -m py_compile clawos\memoryos\memory_store.py clawos\clawos_server.py
+python -c "from clawos.memoryos.memory_store import MemoryStore; s=MemoryStore(r'clawos\memoryos.db'); print('memory db init ok')"
+python -c "import asyncio; from clawos_server import lifespan, app; ..."
+python -m unittest clawos.tests.test_runtime_task_control clawos.tests.test_memoryos_mvp clawos.tests.test_frontend_static
+```
+
+结果：
+- 当前真实 `clawos/memoryos.db` 初始化迁移通过。
+- FastAPI lifespan 启动/关闭通过，日志显示 `ClawOS ready`。
+- 相关测试：`18 tests OK`。
+
+### 2026-06-17 - Aether-style white glass console refactor
+
+目标：
+- 用户在仓库新增 `app/` 参考控制台，并提供白色毛玻璃 Aether 风格截图；本轮按同款视觉语言重构 ClawOS 控制台。
+- 低风险原则：先保持现有 ClawOS 静态 HTML/CSS/JS 架构、后端 API、前端 DOM id 和测试契约不变，只替换控制台视觉和信息架构。
+
+新增/完善：
+- 重构 `clawos/static/console.html` 为 Aether-like 控制台布局：固定左侧白色毛玻璃导航、Dashboard 顶部标题区、右上角状态按钮、三张指标卡、实时 Agent 拓扑面板和右下角浮动操作按钮。
+- 保留并重新承载原有视图：Dashboard、Agents、Knowledge Base、Reflection、Skills、Tools、Logs、Benchmarks、Scenes，确保现有 JS/API 功能仍可挂载。
+- `clawos/static/assets/site.css` 新增 `.aether-console` 主题：柔和浅灰背景、玻璃卡片、紫蓝高光、圆角阴影、响应式布局、表格/表单/消息区统一白色工作台风格。
+- 复制 Geist 字体到 `clawos/static/assets/Geist-Variable.woff2` 和 `clawos/static/assets/GeistMono-Variable.woff2`，保证换机部署时不依赖外网字体。
+- `clawos/static/assets/console.js` 调整默认视图标题与 Dashboard 指标：ACTIVE TOOLS、MEMORY ITEMS、SOLIDIFIED SKILLS。
+- 为贴近参考截图，视觉上隐藏历史会话入口和 New Chat 按钮，但 DOM 仍保留，避免破坏现有脚本和测试。
+
+验证：
+```powershell
+python -m unittest clawos.tests.test_frontend_static
+python -m unittest discover -s clawos\tests
+git diff --check
+```
+
+结果：
+- 前端静态测试：`9 tests OK`
+- 全量测试：`84 tests OK`
+- 浏览器实测：默认进入 Dashboard，存在 3 张指标卡，9 个导航项，浮动按钮正常，历史会话区已隐藏。
+- `git diff --check` 通过；仅存在 Windows LF/CRLF 提示。
+
+边界/下一步：
+- 当前是静态控制台的高保真视觉重构，不是完整 React/Vite 迁移；这样可以先保证比赛交付稳定性。
+- 如后续要做到与 `app/` 技术栈完全一致，可在冻结 API 契约后，把控制台迁移为独立 Vite/React 前端，再通过同一套 `/api/*` 接入 ClawOS 后端。
+
 ### 2026-06-17 - Architecture review and built-in Office artifacts
 
 架构复盘：

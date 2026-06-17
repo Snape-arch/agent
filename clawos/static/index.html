@@ -3,75 +3,273 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ClawOS - 自进化智能体操作系统</title>
+  <title>ClawOS - 国产环境个人 AI 智能体工作台</title>
   <link rel="stylesheet" href="/assets/site.css">
 </head>
-<body class="home-page">
-  <canvas class="starfield" id="starfield"></canvas>
+<body class="home-page claw-home-v2">
+  <canvas class="starfield" id="starfield" aria-hidden="true"></canvas>
   <div class="magazine-backdrop" aria-hidden="true">
     <img class="magazine-bg layer" data-depth="-0.04" src="/assets/hero/d55c96717921508cafd61730a1623e08.jpg" alt="">
-    <div class="magazine-fog layer" data-depth="0.03"></div>
-    <div class="red-rim layer" data-depth="0.08"></div>
   </div>
-  <nav class="site-nav">
-    <a class="brand" href="/"><span class="mark">C</span><span><b>ClawOS</b><small>Self-Evolving Agent OS</small></span></a>
-    <div class="nav-links">
-      <a class="active" href="/">首页</a>
-      <a href="/product">产品</a>
-      <a href="/console">控制台</a>
+  <nav class="claw-home-nav" id="homeNav">
+    <a class="claw-home-brand" href="/">
+      <span>ClawOS</span>
+      <small>Agent Workbench</small>
+    </a>
+    <div class="claw-home-links">
+      <a href="#vision">Vision</a>
+      <a href="#technology">Technology</a>
+      <a href="#experience">Experience</a>
+      <a href="#agent">Agent</a>
+      <a href="#developers">Developers</a>
     </div>
-    <a class="pill solid" href="/product">进入产品层</a>
+    <a class="home-nav-cta" href="/console">Open Console</a>
   </nav>
 
-  <main class="home-cinema">
-    <section class="home-hero" aria-label="ClawOS 首页">
-      <div class="home-copy layer" data-depth="0.12">
-        <div class="eyebrow"><i></i> Local Agent Workbench / MTClaw Ready</div>
-        <h1><span>ClawOS</span><span>让智能体开始工作</span></h1>
-        <p>一个本地运行的智能体操作系统，把观察、规划、工具执行、任务轨迹、长期记忆、反思复盘和技能进化做成可审计、可复用、可进入的产品空间。</p>
-        <div class="actions">
-          <a class="pill solid" href="/product">进入产品页</a>
-          <a class="pill" href="/console">直接打开控制台</a>
-        </div>
-        <div class="proof-row">
-          <div><b>43</b><span>工具矩阵</span></div>
-          <div><b>6</b><span>闭环阶段</span></div>
-          <div><b>Local</b><span>Windows 工作台</span></div>
+  <main class="claw-home-main">
+    <section class="claw-hero home-section" id="top" data-section="hero">
+      <div class="home-engineering-lines" aria-hidden="true">
+        <i></i><i></i><i></i><i></i>
+      </div>
+
+      <div class="hero-arm-stage" aria-hidden="true">
+        <img class="hero-arm parallax-3d" data-speed="-0.18" src="/assets/app1/robotic-arm.png" alt="">
+      </div>
+
+      <div class="hero-annotations" aria-hidden="true">
+        <div class="annotation" style="left:25%;top:30%"><b>MTClaw Adapter</b><span>real router trace</span></div>
+        <div class="annotation" style="left:70%;top:25%"><b>MemoryOS</b><span>evidence-first memory</span></div>
+        <div class="annotation" style="left:60%;top:55%"><b>Reflection Engine</b><span>rollback-ready learning</span></div>
+        <div class="annotation" style="left:30%;top:70%"><b>Tool Sandbox</b><span>policy + audit</span></div>
+        <div class="annotation" style="left:80%;top:60%"><b>Local First</b><span>MTT AIBOOK ready</span></div>
+        <div class="annotation" style="left:15%;top:50%"><b>Fast Dispatch</b><span>task matched, routed, done</span></div>
+      </div>
+
+      <div class="hero-title-stack">
+        <div class="hero-kicker reveal-line">ClawOS Personal Agent System</div>
+        <h1>
+          <span class="reveal-line">快准狠，</span>
+          <span class="reveal-line">让智能体开始工作。</span>
+        </h1>
+        <p class="reveal-line">
+          面向国产环境的轻量级个人 AI 智能体工作台：自然语言精准理解、任务高效分发、工具安全执行、长期记忆沉淀与反思自进化。
+        </p>
+        <div class="hero-actions reveal-line">
+          <a href="/console" class="home-btn dark">进入控制台</a>
+          <a href="#vision" class="home-btn ghost">查看系统能力</a>
         </div>
       </div>
 
-      <div class="cinematic-stage" aria-hidden="true">
-        <div class="depth-frame frame-back layer" data-depth="0.06"></div>
-        <div class="depth-frame frame-mid layer" data-depth="0.13"></div>
-        <div class="portal magazine-portal layer" data-depth="0.2">
-          <img src="/assets/hero/d55c96717921508cafd61730a1623e08.jpg" alt="">
-          <div class="enter-label">
-            <span>ENTER</span>
-            <b>Architects of AI</b>
+      <div class="corner-index top-left">MTT AIBOOK / LOCAL AGENT</div>
+      <div class="corner-index bottom-right">v2.4.0-competition</div>
+    </section>
+
+    <section class="vision-section home-section light-section" id="vision">
+      <div class="section-grid-bg"></div>
+      <img class="vision-bg-hand parallax-3d" data-speed="0.12" src="/assets/app1/robotic-hand.png" alt="">
+      <div class="home-container">
+        <header class="home-section-head">
+          <span class="reveal-up">System Architecture</span>
+          <h2 class="reveal-up">看见任务背后的链路。</h2>
+          <p class="reveal-up">
+            ClawOS 把一次自然语言请求拆成可观察、可审计、可复用的工程闭环：理解意图，路由工具，记录轨迹，沉淀记忆，再由反思推动下一次更好完成。
+          </p>
+        </header>
+
+        <div class="vision-layout">
+          <div class="vision-card-grid">
+            <article class="vision-card reveal-card">
+              <i>01</i>
+              <h3>Intent Router</h3>
+              <p>面向会议、科研、学习、代码和本地项目任务做快速分类，把用户指令落到明确的执行计划。</p>
+            </article>
+            <article class="vision-card reveal-card">
+              <i>02</i>
+              <h3>MTClaw Tools</h3>
+              <p>通过真实 Adapter 接入 Function Router 风格工具，保留 trace、fallback 和任务证据。</p>
+            </article>
+            <article class="vision-card reveal-card">
+              <i>03</i>
+              <h3>MemoryOS</h3>
+              <p>版本、冲突、ACL、证据链和 Review Inbox 让记忆不是黑盒，而是可以治理的知识资产。</p>
+            </article>
+            <article class="vision-card reveal-card">
+              <i>04</i>
+              <h3>Reflection Loop</h3>
+              <p>完整反思卡、改进状态机、回归验证和回滚机制，让 Agent 能谨慎自我进化。</p>
+            </article>
+          </div>
+          <div class="vision-hand-stage reveal-card" aria-hidden="true">
+            <img src="/assets/app1/robotic-hand.png" alt="">
+            <div class="hud-ring r1"></div>
+            <div class="hud-ring r2"></div>
           </div>
         </div>
-        <div class="glass-card trace-card layer" data-depth="0.22">
-          <span>TRACE 01</span>
-          <b>Observe -> Route -> Execute</b>
-          <p>任务被拆成可记录的 Step 和 Event，而不是消失在一次回答里。</p>
-        </div>
-        <div class="glass-card code-card layer" data-depth="0.28">
-<pre>memory.write({
-  type: "experience",
-  evidence: task.trace,
-  promote: "skill_candidate"
-})</pre>
-        </div>
-        <div class="foreground-haze layer" data-depth="0.36"></div>
       </div>
+      <div class="corner-index top-right">MODULE: MEMORY_REFLECTION_v3.2</div>
+      <div class="corner-index bottom-left">TRACE: STEP/EVENT ENABLED</div>
     </section>
 
-    <section class="home-strip">
-      <span>01 首页：电影式入口</span>
-      <span>02 产品页：企业级能力说明</span>
-      <span>03 控制台：真实 Agent 工作台</span>
+    <section class="pioneer-section home-section light-section" id="technology">
+      <div class="section-grid-bg"></div>
+      <div class="home-container">
+        <header class="home-section-head left">
+          <span class="reveal-up">Core Workflows</span>
+          <h2 class="reveal-up">覆盖全工作场景，沉淀为个人能力层。</h2>
+          <p class="reveal-up">
+            首页保留 app1 的扫描线人物墙节奏，但内容转为 ClawOS 面向交付的能力矩阵：会议、科研、学习、知识库、代码协作、本地项目和技能进化。
+          </p>
+        </header>
+
+        <div class="scan-grid">
+          <article class="scan-card" data-tint="196,112,74">
+            <img src="/assets/app1/portrait-1.png" alt="">
+            <canvas></canvas>
+            <footer><b>Meeting Agent</b><span>音频纪要 / 日历邮件</span></footer>
+          </article>
+          <article class="scan-card" data-tint="139,115,85">
+            <img src="/assets/app1/portrait-2.png" alt="">
+            <canvas></canvas>
+            <footer><b>Research Agent</b><span>PDF OCR / 引用校验</span></footer>
+          </article>
+          <article class="scan-card" data-tint="181,166,66">
+            <img src="/assets/app1/portrait-3.png" alt="">
+            <canvas></canvas>
+            <footer><b>Learning Agent</b><span>学习图谱 / 错题证据</span></footer>
+          </article>
+          <article class="scan-card" data-tint="139,126,199">
+            <img src="/assets/app1/portrait-4.png" alt="">
+            <canvas></canvas>
+            <footer><b>Knowledge Agent</b><span>长期知识库治理</span></footer>
+          </article>
+          <article class="scan-card" data-tint="91,168,140">
+            <img src="/assets/app1/portrait-5.png" alt="">
+            <canvas></canvas>
+            <footer><b>Code Agent</b><span>补丁预览 / Git 审批</span></footer>
+          </article>
+          <article class="scan-card" data-tint="107,142,199">
+            <img src="/assets/app1/portrait-6.png" alt="">
+            <canvas></canvas>
+            <footer><b>Workspace Agent</b><span>文件生成 / 项目搭建</span></footer>
+          </article>
+          <article class="scan-card hide-mobile" data-tint="199,132,160">
+            <img src="/assets/app1/portrait-7.png" alt="">
+            <canvas></canvas>
+            <footer><b>Skill Agent</b><span>签名 / Canary / 审计</span></footer>
+          </article>
+        </div>
+
+        <div class="home-stats-row">
+          <div><b>7</b><span>核心工作场景</span></div>
+          <div><b>45</b><span>本地工具能力</span></div>
+          <div><b>100%</b><span>Trace-first 设计</span></div>
+          <div><b>∞</b><span>技能进化空间</span></div>
+        </div>
+      </div>
+      <div class="corner-index top-left">WORKFLOW.SCAN_ENGINE</div>
+      <div class="corner-index bottom-right">SCENE BENCHMARK FROZEN</div>
+    </section>
+
+    <section class="cinematic-depth-section home-section dark-section" id="experience">
+      <div class="depth-camera">
+        <div class="depth-tunnel">
+          <div class="depth-plane grid-floor"></div>
+          <div class="depth-plane ring-plane">
+            <i></i><i></i><i></i><i></i>
+          </div>
+          <div class="depth-plane cross-plane"></div>
+          <img class="depth-plane ghost-arm" src="/assets/app1/robotic-arm.png" alt="">
+        </div>
+        <div class="particle-field" id="particleField"></div>
+        <div class="depth-copy">
+          <div class="text-plane">
+            <span>Enter the Experience</span>
+            <h2>ClawOS</h2>
+            <h3>Personal Agent System</h3>
+          </div>
+          <div class="text-plane">
+            <p>每一步都有证据，每一次失败都能复盘，每一个高频动作都可能固化成 Skill。</p>
+            <div class="depth-metrics">
+              <div><b>84</b><span>tests passing</span></div>
+              <div><b>&lt;1s</b><span>task dispatch target</span></div>
+              <div><b>Local</b><span>offline-ready path</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="corner-index top-left white">SYS.DEPTH: DYNAMIC</div>
+      <div class="corner-index top-right white">RENDER: CSS3D</div>
+      <div class="corner-index bottom-left white">SCROLL TO NAVIGATE</div>
+      <div class="corner-index bottom-right white">LAYER: MULTI-Z</div>
+      <div class="progress-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    </section>
+
+    <section class="agent-section home-section dark-section" id="agent">
+      <div class="agent-abstract-bg"></div>
+      <div class="home-container agent-layout">
+        <div class="agent-copy">
+          <span class="reveal-up">Capabilities</span>
+          <h2 class="reveal-up">真正懂用户、懂场景、懂效率。</h2>
+          <p class="reveal-up">
+            ClawOS 的目标不是“聊天更聪明”，而是把个人工作中的文件、会议、科研、学习、代码和项目操作变成可控的 Agent 生产力。
+          </p>
+          <div class="agent-card-grid">
+            <article class="agent-cap-card reveal-card"><i>IN</i><h3>精准理解</h3><p>从一句话里识别目标、约束、风险和可执行工具。</p><b>routing</b></article>
+            <article class="agent-cap-card reveal-card"><i>RT</i><h3>任务闭环</h3><p>支持取消、重试、恢复、幂等和实时任务流。</p><b>runtime</b></article>
+            <article class="agent-cap-card reveal-card"><i>PX</i><h3>安全执行</h3><p>工具沙箱、路径白名单、命令策略、审计和密钥引用。</p><b>policy</b></article>
+            <article class="agent-cap-card reveal-card"><i>SK</i><h3>自我进化</h3><p>Skill Review、签名、依赖清单、canary 发布和 fresh-agent 审计。</p><b>skill</b></article>
+          </div>
+        </div>
+        <div class="agent-hand-stage reveal-card" aria-hidden="true">
+          <img class="agent-hand parallax-tilt" src="/assets/app1/robotic-hand.png" alt="">
+          <i class="ring-a"></i><i class="ring-b"></i>
+          <span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>
+        </div>
+      </div>
+      <div class="corner-index top-left white">AGENT.CLAWOS_v2.4</div>
+      <div class="corner-index bottom-right white">MODEL: DEEPSEEK / LOCAL LLM READY</div>
+    </section>
+
+    <section class="developer-section home-section light-section" id="developers">
+      <div class="section-grid-bg"></div>
+      <div class="home-container">
+        <header class="home-section-head">
+          <span class="reveal-up">For Builders</span>
+          <h2 class="reveal-up">以工程方式交付 Agent。</h2>
+          <p class="reveal-up">
+            面向比赛和真实客户，ClawOS 提供可演示、可测试、可审计、可迁移的本地智能体工作台基础设施。
+          </p>
+        </header>
+        <div class="dev-grid">
+          <article class="dev-card reveal-card"><i>API</i><h3>OpenAI-Compatible API</h3><p>兼容 Chat Completions，便于接入 DeepSeek 和后续本地大模型。</p><span>REST</span><span>SSE</span></article>
+          <article class="dev-card reveal-card"><i>MT</i><h3>MTClaw Adapter</h3><p>真实路由、trace 证据、fallback 策略和国产框架创新落地。</p><span>router</span><span>trace</span></article>
+          <article class="dev-card reveal-card"><i>DB</i><h3>SQLite MemoryOS</h3><p>轻量本地持久化，支撑个人知识库、证据链和长期掌握度。</p><span>ACL</span><span>review</span></article>
+          <article class="dev-card reveal-card"><i>UX</i><h3>Interactive Console</h3><p>白色毛玻璃工作台，展示任务、工具、记忆、反思、技能和场景。</p><span>dashboard</span><span>live</span></article>
+          <article class="dev-card reveal-card"><i>DOC</i><h3>File Generation</h3><p>内置会议纪要、论文解析、XLSX、PPTX 等文件产物能力。</p><span>xlsx</span><span>pptx</span></article>
+          <article class="dev-card reveal-card"><i>SEC</i><h3>Secure Runtime</h3><p>路径白名单、审批、审计事件和密钥引用，减少本地执行风险。</p><span>audit</span><span>policy</span></article>
+          <article class="dev-card reveal-card"><i>LAB</i><h3>Benchmarks</h3><p>冻结场景基准、检索评测和回归验证帮助证明“快准狠”。</p><span>eval</span><span>regression</span></article>
+          <article class="dev-card reveal-card"><i>SDK</i><h3>Skill System</h3><p>技能固化、Review Inbox、签名和 canary 发布形成可协作资产。</p><span>skill</span><span>canary</span></article>
+        </div>
+        <div class="developer-cta">
+          <a class="home-btn dark" href="/console">启动 ClawOS Console</a>
+          <p>python clawos_server.py --host 127.0.0.1 --port 18790</p>
+        </div>
+      </div>
     </section>
   </main>
+
+  <footer class="home-footer">
+    <div>
+      <b>ClawOS</b><span>Agent Workbench</span>
+      <p>国产环境下的轻量级个人 AI 智能体系统，面向全工作场景的下一代人机协作实践范本。</p>
+    </div>
+    <nav>
+      <a href="/product">Product</a>
+      <a href="/console">Console</a>
+      <a href="#developers">Developers</a>
+      <a href="#vision">Architecture</a>
+    </nav>
+  </footer>
 
   <script src="/assets/site.js"></script>
 </body>

@@ -152,8 +152,6 @@ class MemoryStore:
                     completed_at TEXT DEFAULT ''
                 );
                 CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id, id);
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency
-                    ON tasks(idempotency_key) WHERE idempotency_key <> '';
                 CREATE TABLE IF NOT EXISTS task_steps (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     task_id INTEGER NOT NULL,
