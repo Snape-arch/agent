@@ -919,6 +919,25 @@ def _validate_function_name(name: str) -> bool:
     return bool(re.match(r"^[a-zA-Z0-9_]+$", name))
 
 
+def _resolve_tool_script(function_name: str) -> tuple[Path | None, str | None]:
+    """Return the safest available tool wrapper for the current platform."""
+
+    if STATE.config is None:
+        raise RuntimeError("application config not initialized")
+
+    scripts_dir = STATE.config.resolved_scripts_dir.resolve()
+    suffixes = (".cmd", ".bat", ".sh") if os.name == "nt" else (".sh",)
+    candidates: list[str] = []
+    for suffix in suffixes:
+        candidate = (scripts_dir / f"{function_name}{suffix}").resolve()
+        candidates.append(candidate.name)
+        if not str(candidate).startswith(str(scripts_dir)):
+            return None, f"script path outside scripts directory: {function_name}"
+        if candidate.exists():
+            return candidate, None
+    return None, f"script not found: {', '.join(candidates)}"
+
+
 async def execute_tool(function_name: str, arguments_json: str) -> dict[str, Any]:
     """Execute a shell script for a tool call and parse its JSON stdout."""
 
@@ -936,22 +955,24 @@ async def execute_tool(function_name: str, arguments_json: str) -> dict[str, Any
             STATE.config.tool_exec_timeout_s,
         )
 
-    script_path = (STATE.config.resolved_scripts_dir / f"{function_name}.sh").resolve()
-    # Ensure script is within the expected directory (prevent directory traversal)
-    if not str(script_path).startswith(str(STATE.config.resolved_scripts_dir.resolve())):
-        return {"error": f"script path outside scripts directory: {function_name}"}
-
-    if not script_path.exists():
-        return {"error": f"script not found: {function_name}.sh"}
+    script_path, script_error = _resolve_tool_script(function_name)
+    if script_error:
+        return {"error": script_error}
+    assert script_path is not None
 
     # Build env with FR_TOOLS_BASE_DIR if configured
     env = dict(os.environ)
     if STATE.config.tools_base_dir:
         env["FR_TOOLS_BASE_DIR"] = STATE.config.tools_base_dir
 
+    command = [str(script_path)]
+    if script_path.suffix.lower() in {".cmd", ".bat"}:
+        command = ["cmd.exe", "/d", "/c", str(script_path)]
+    elif script_path.suffix.lower() == ".sh":
+        command = ["bash", str(script_path)]
+
     process = await asyncio.create_subprocess_exec(
-        "bash",
-        str(script_path),
+        *command,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

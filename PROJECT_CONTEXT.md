@@ -1,5 +1,34 @@
 # Project Context
 
+## 最新交接摘要
+
+### 2026-06-17 - Windows MTClaw 双服务链路修复
+
+已完成：
+- MTClaw runtime 现在会同时生成 Linux `.sh` 和 Windows `.cmd` 工具包装脚本。
+- MTClaw Function Router 在 Windows 下优先执行 `.cmd/.bat`，Linux 下仍执行 `.sh`。
+- ClawOS 访问本地 MTClaw 的 HTTP client 已关闭 `trust_env`，避免系统代理/Privoxy 拦截 `127.0.0.1:18791`。
+- 真实联调已验证：MTClaw `/health` 200，ClawOS `/health.mtclaw.reachable=true`，聊天请求 `clawos.mtclaw.used=true`，并写入 MTClaw `tool_history`。
+
+涉及文件：
+- `MTClaw-框架代码/function_router/server.py`
+- `clawos/clawos_server.py`
+- `clawos/mtclaw/adapter.py`
+- `clawos/mtclaw/prepare_runtime.py`
+- `clawos/tests/test_mtclaw_adapter.py`
+
+验证：
+```powershell
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_mtclaw_adapter
+.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
+```
+
+结果：MTClaw 专项 6 tests OK；全量 90 tests OK。
+
+注意：
+- `clawos/mtclaw_runtime/scripts/*.cmd` 是本地生成产物，未纳入 Git。
+- 不要记录或提交 API Key。
+
 这个文件用于让下一次协作快速了解当前项目情况。每次完成一个有意义的修改后，都应该更新本文件。
 
 ## 维护规则

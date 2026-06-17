@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -111,6 +112,57 @@ class MTClawAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("shell_exec", names)
         self.assertNotIn("file_write", names)
         self.assertNotIn("skill_delete", names)
+
+    def test_prepare_runtime_writes_windows_cmd_wrappers(self):
+        if os.name != "nt":
+            self.skipTest("Windows-specific wrapper generation")
+
+        from mtclaw.bridge_runner import SAFE_TOOLS
+        from mtclaw.prepare_runtime import prepare
+
+        with tempfile.TemporaryDirectory() as td:
+            prepare(Path(td))
+            wrappers = list((Path(td) / "scripts").glob("*.cmd"))
+            sample = (Path(td) / "scripts" / "time_now.cmd").read_text(encoding="utf-8")
+
+        self.assertEqual(len(wrappers), len(SAFE_TOOLS))
+        self.assertIn("bridge_runner.py", sample)
+        self.assertIn("time_now", sample)
+
+    async def test_mtclaw_execute_tool_uses_windows_cmd_wrapper(self):
+        if os.name != "nt":
+            self.skipTest("Windows-specific tool execution")
+
+        from function_router import server as mt_server
+
+        old_config = mt_server.STATE.config
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            (scripts / "time_now.cmd").write_text(
+                '@echo off\r\n'
+                'echo {"result":"ok","tool_output":"windows-cmd"}\r\n',
+                encoding="utf-8",
+            )
+            mt_server.STATE.config = mt_server.AppConfig(
+                listen_host="127.0.0.1",
+                listen_port=18791,
+                routing=mt_server.ModelConfig("http://router/v1", "router", "any"),
+                upstream=mt_server.ModelConfig("http://upstream/v1", "upstream", "any"),
+                functions_file="functions.jsonl",
+                scripts_dir="scripts",
+                max_tool_rounds=3,
+                tool_exec_timeout_s=30,
+                root_dir=root,
+                config_path=root / "config.json",
+            )
+            result = await mt_server.execute_tool("time_now", "{}")
+
+        mt_server.STATE.config = old_config
+
+        self.assertEqual(result["result"], "ok")
+        self.assertEqual(result["tool_output"], "windows-cmd")
 
     def test_memory_store_persists_mtclaw_trace_evidence(self):
         from memoryos.memory_store import MemoryStore

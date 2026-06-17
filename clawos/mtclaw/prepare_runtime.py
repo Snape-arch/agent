@@ -51,6 +51,16 @@ def prepare(runtime_dir: Path = RUNTIME) -> dict:
             newline="\n",
         )
         wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        cmd_wrapper = scripts_dir / f"{name}.cmd"
+        cmd_wrapper.write_text(
+            "@echo off\r\n"
+            "setlocal\r\n"
+            'if "%PYTHON%"=="" set "PYTHON=python"\r\n'
+            f'"%PYTHON%" "{bridge}" {name}\r\n'
+            "exit /b %ERRORLEVEL%\r\n",
+            encoding="utf-8",
+            newline="",
+        )
 
     config = {
         "listen_host": "127.0.0.1",

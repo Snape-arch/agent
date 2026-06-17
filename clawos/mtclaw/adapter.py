@@ -119,7 +119,10 @@ class MTClawAdapter:
 
     def _client(self):
         if self._http is None:
-            self._http = httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_s))
+            self._http = httpx.AsyncClient(
+                timeout=httpx.Timeout(self.timeout_s),
+                trust_env=False,
+            )
         return self._http
 
 
