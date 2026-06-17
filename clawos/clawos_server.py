@@ -1902,7 +1902,10 @@ async def api_tasks_recover(request: Request):
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
     data = await request.json()
-    result = g_memory_store.recover_interrupted_tasks(actor_id=str(data.get("actor_id", "user")))
+    result = g_memory_store.recover_interrupted_tasks(
+        actor_id=str(data.get("actor_id", "user")),
+        create_retries=bool(data.get("create_retries", False)),
+    )
     return JSONResponse(result)
 
 @app.get("/api/tasks/events")

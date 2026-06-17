@@ -735,7 +735,7 @@ class MemoryStore:
             row = c.execute("SELECT * FROM tasks WHERE id=?", (new_id,)).fetchone()
             return self._task_row_to_dict(row)
 
-    def recover_interrupted_tasks(self, actor_id="system"):
+    def recover_interrupted_tasks(self, actor_id="system", create_retries=False):
         recoverable = ("running", "pending", "cancel_requested", "waiting_confirmation")
         with self._conn() as c:
             rows = c.execute(
@@ -743,6 +743,7 @@ class MemoryStore:
                 recoverable,
             ).fetchall()
             recovered = []
+            retry_tasks = []
             for row in rows:
                 status = "canceled" if row["status"] == "cancel_requested" else "interrupted"
                 c.execute(
@@ -759,7 +760,44 @@ class MemoryStore:
                     ),
                 )
                 recovered.append(int(row["id"]))
-            return {"recovered": recovered, "count": len(recovered)}
+                if create_retries and row["status"] in {"running", "pending"}:
+                    metadata = self._json_loads(row["metadata"], {})
+                    metadata["recovery_actor"] = actor_id
+                    prior = c.execute(
+                        "SELECT COALESCE(MAX(attempt), 0) AS max_attempt FROM tasks WHERE id=? OR retry_of=?",
+                        (int(row["id"]), int(row["id"])),
+                    ).fetchone()
+                    attempt = int(prior["max_attempt"] or int(row["attempt"] or 1)) + 1
+                    cursor = c.execute(
+                        """
+                        INSERT INTO tasks
+                            (session_id, title, status, source, metadata, idempotency_key, retry_of, attempt, resume_state)
+                        VALUES (?, ?, 'pending_retry', 'recovery', ?, '', ?, ?, 'ready_to_replay')
+                        """,
+                        (
+                            row["session_id"], f"Replay: {row['title']}"[:300],
+                            json.dumps(metadata, ensure_ascii=False),
+                            int(row["id"]), attempt,
+                        ),
+                    )
+                    retry_id = int(cursor.lastrowid)
+                    c.execute(
+                        "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
+                        (
+                            retry_id,
+                            "task_retry_created",
+                            "Replay retry created during recovery",
+                            json.dumps({"retry_of": int(row["id"]), "actor_id": actor_id, "attempt": attempt}, ensure_ascii=False),
+                        ),
+                    )
+                    retry_row = c.execute("SELECT * FROM tasks WHERE id=?", (retry_id,)).fetchone()
+                    retry_tasks.append(self._task_row_to_dict(retry_row))
+            return {
+                "recovered": recovered,
+                "count": len(recovered),
+                "retry_tasks": retry_tasks,
+                "created_retry_count": len(retry_tasks),
+            }
 
     def list_task_events(self, session_id="", after_id=0, limit=100):
         with self._conn() as c:

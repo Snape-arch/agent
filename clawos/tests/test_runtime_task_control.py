@@ -1,3 +1,5 @@
+import asyncio
+import json
 import sys
 import tempfile
 import unittest
@@ -7,6 +9,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+class JsonRequest:
+    def __init__(self, payload):
+        self._payload = payload
+
+    async def json(self):
+        return self._payload
 
 
 class RuntimeTaskControlTests(unittest.TestCase):
@@ -49,6 +59,62 @@ class RuntimeTaskControlTests(unittest.TestCase):
         self.assertGreater(len(later), 0)
         self.assertTrue(any(e["event_type"] == "task_cancel_requested" for e in events))
         self.assertTrue(any(e["event_type"] == "task_recovered" for e in later))
+
+    def test_recover_interrupted_tasks_can_create_replay_retry(self):
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            interrupted = store.start_task(
+                "s1", "Generate report",
+                metadata={"user_text": "make report", "tool": "research_pdf"},
+                status="running",
+            )
+            canceled = store.start_task("s1", "Canceled task", status="cancel_requested")
+            recovered = store.recover_interrupted_tasks(
+                actor_id="startup",
+                create_retries=True,
+            )
+            original = store.get_task(interrupted["id"])["task"]
+            retry = store.get_task(recovered["retry_tasks"][0]["id"])["task"]
+            canceled_after = store.get_task(canceled["id"])["task"]
+
+        self.assertEqual(recovered["created_retry_count"], 1)
+        self.assertEqual(original["status"], "interrupted")
+        self.assertEqual(original["resume_state"], "needs_retry")
+        self.assertEqual(retry["status"], "pending_retry")
+        self.assertEqual(retry["retry_of"], interrupted["id"])
+        self.assertEqual(retry["attempt"], 2)
+        self.assertEqual(retry["resume_state"], "ready_to_replay")
+        self.assertEqual(retry["metadata"]["user_text"], "make report")
+        self.assertEqual(canceled_after["status"], "canceled")
+        self.assertEqual(canceled_after["resume_state"], "needs_retry")
+
+    def test_recover_api_can_create_replay_retry(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            try:
+                task = server.g_memory_store.start_task(
+                    "s-api", "Interrupted API task",
+                    metadata={"user_text": "resume me"},
+                    status="running",
+                )
+                response = asyncio.run(server.api_tasks_recover(
+                    JsonRequest({"actor_id": "startup", "create_retries": True})
+                ))
+                payload = response.body.decode("utf-8")
+                recovered = json.loads(payload)
+                self.assertEqual(recovered["created_retry_count"], 1)
+                retry = server.g_memory_store.get_task(recovered["retry_tasks"][0]["id"])["task"]
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertEqual(retry["retry_of"], task["id"])
+        self.assertEqual(retry["status"], "pending_retry")
 
     def test_server_helpers_expose_cancel_and_retry(self):
         import clawos_server as server

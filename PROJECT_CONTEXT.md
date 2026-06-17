@@ -52,6 +52,26 @@ User Request
 
 ## 最近完成的开发块
 
+### 2026-06-17 - Task recovery replay retry queue
+
+新增/完善：
+- `MemoryStore.recover_interrupted_tasks(..., create_retries=True)` 可在恢复 `running/pending` 中断任务时，自动创建 `pending_retry` 重放任务。
+- 自动重放任务保留原任务 metadata，并写入 `recovery_actor`；`retry_of` 指向原任务，`attempt` 自动递增，`resume_state` 为 `ready_to_replay`。
+- `cancel_requested` 任务恢复为 `canceled/needs_retry`，但不会自动创建重放任务，避免违背用户取消意图。
+- `POST /api/tasks/recover` 支持 `create_retries` 参数，前端或外部控制层可以显式触发恢复重放队列。
+
+验证：
+
+```powershell
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_runtime_task_control
+.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
+```
+
+结果：运行时专项 `5 tests OK`；全量 `86 tests OK`。
+
+边界：
+- 本轮只创建可重放的 `pending_retry` 任务，不自动执行工具链；真正的生产级队列 worker、并发控制和长期事件保留仍是后续 P0。
+
 ### 2026-06-17 - Windows PDF extraction dependency fix after remote sync
 
 背景：
@@ -391,7 +411,7 @@ python -m unittest clawos.tests.test_memoryos_governance clawos.tests.test_memor
 .\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
 ```
 
-最近一次验证结果：`84 tests OK`。
+最近一次验证结果：`86 tests OK`。
 
 ## 当前主要差距
 
@@ -399,7 +419,7 @@ python -m unittest clawos.tests.test_memoryos_governance clawos.tests.test_memor
 
 - MemoryOS 生命周期、硬删除证明、敏感字段加密和真实多租户身份接入。
 - Reflection 反思去重聚类、冻结回归任务集，以及各运行模块对 `runtime_policies` 的显式消费。
-- Task Runtime 的生产级队列、自动重放 retry、进程级取消、断线补偿和长期事件保留策略。
+- Task Runtime 已支持恢复时显式创建 `pending_retry` 重放任务；仍缺生产级队列 worker、进程级取消、断线补偿和长期事件保留策略。
 - 容器/seccomp 级工具隔离、CPU/内存配额和操作系统 Keyring。
 - MTT AIBOOK + 本地 Qwen/vLLM-MUSA 的离线部署、性能和质量证据。
 
