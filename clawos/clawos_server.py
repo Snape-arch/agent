@@ -69,6 +69,7 @@ SYSTEM_PROMPT = (
 config: dict[str, Any] = {}
 tools_def: list[dict[str, Any]] = []
 http_client: httpx.AsyncClient | None = None
+mtclaw_http_client: httpx.AsyncClient | None = None
 logger: logging.Logger | None = None
 g_routing_provider: Any = None
 g_upstream_provider: Any = None
@@ -692,7 +693,7 @@ async def proxy_upstream(req_data: dict, stream: bool, tool_context: str = "") -
 # ---- LIFESPAN ----
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global config, tools_def, http_client, logger, g_routing_provider, g_upstream_provider
+    global config, tools_def, http_client, mtclaw_http_client, logger, g_routing_provider, g_upstream_provider
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     logger = logging.getLogger("clawos")
     config = load_config(CONFIG_PATH)
@@ -700,11 +701,15 @@ async def lifespan(app: FastAPI):
     func_path = Path(config.get("functions_file", BASE_DIR / "functions.jsonl"))
     tools_def = load_tools(func_path)
     http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
+    mtclaw_http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(120.0),
+        trust_env=False,
+    )
     g_routing_provider = create_model_provider(config.get("routing", {}))
     g_upstream_provider = create_model_provider(config.get("upstream", {}))
     global g_mtclaw_adapter
     from mtclaw import MTClawAdapter
-    g_mtclaw_adapter = MTClawAdapter(config.get("mtclaw", {}), http_client=http_client)
+    g_mtclaw_adapter = MTClawAdapter(config.get("mtclaw", {}), http_client=mtclaw_http_client)
     NOTES_DIR.mkdir(exist_ok=True)
     # Init MemoryOS
     global g_memory_store, g_context_builder, g_vector_store, g_policy_optimizer
@@ -762,6 +767,8 @@ async def lifespan(app: FastAPI):
         g_mtclaw_adapter.enabled,
     )
     yield
+    if mtclaw_http_client:
+        await mtclaw_http_client.aclose()
     if http_client:
         await http_client.aclose()
     logger.info("ClawOS stopped")
