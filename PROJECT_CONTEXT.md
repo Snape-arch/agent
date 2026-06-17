@@ -52,6 +52,27 @@ User Request
 
 ## 最近完成的开发块
 
+### 2026-06-17 - Task event retention pruning
+
+新增/完善：
+- `MemoryStore.prune_task_events(...)` 支持按天数清理旧 Task Event。
+- 生命周期事件会保留，避免丢失任务开始、结束、取消、恢复、重试等审计主线。
+- 每个任务可通过 `retain_latest_per_task` 保留最近 N 条旧明细事件，避免清理后完全失去排障尾迹。
+- 支持 `dry_run` 预览清理数量。
+- 新增 `POST /api/tasks/events/prune`，控制层可显式触发保留策略。
+
+验证：
+
+```powershell
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_runtime_task_control
+.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
+```
+
+结果：运行时专项 `7 tests OK`；全量 `88 tests OK`。
+
+边界：
+- 本轮提供可控清理策略和 API，不做后台定时任务；后续生产级 worker 可按配置周期调用该 API 或 Store 方法。
+
 ### 2026-06-17 - Task recovery replay retry queue
 
 新增/完善：
@@ -419,7 +440,7 @@ python -m unittest clawos.tests.test_memoryos_governance clawos.tests.test_memor
 
 - MemoryOS 生命周期、硬删除证明、敏感字段加密和真实多租户身份接入。
 - Reflection 反思去重聚类、冻结回归任务集，以及各运行模块对 `runtime_policies` 的显式消费。
-- Task Runtime 已支持恢复时显式创建 `pending_retry` 重放任务；仍缺生产级队列 worker、进程级取消、断线补偿和长期事件保留策略。
+- Task Runtime 已支持恢复时显式创建 `pending_retry` 重放任务和 Task Event 保留清理；仍缺生产级队列 worker、进程级取消和更完整的断线补偿。
 - 容器/seccomp 级工具隔离、CPU/内存配额和操作系统 Keyring。
 - MTT AIBOOK + 本地 Qwen/vLLM-MUSA 的离线部署、性能和质量证据。
 

@@ -818,6 +818,57 @@ class MemoryStore:
             ).fetchall()
             return [self._event_row_to_dict(row) for row in rows]
 
+    def prune_task_events(self, older_than_days=30, retain_latest_per_task=100, dry_run=False, actor_id="system"):
+        lifecycle_events = {
+            "task_started",
+            "task_finished",
+            "task_cancel_requested",
+            "task_retry_created",
+            "task_retry_requested",
+            "task_recovered",
+        }
+        older_than_days = max(1, int(older_than_days or 30))
+        retain_latest_per_task = max(0, min(int(retain_latest_per_task or 0), 1000))
+        cutoff = f"-{older_than_days} days"
+        with self._conn() as c:
+            rows = c.execute(
+                """
+                SELECT *
+                FROM task_events
+                WHERE created_at < datetime('now', ?)
+                ORDER BY task_id ASC, id DESC
+                """,
+                (cutoff,),
+            ).fetchall()
+            detail_kept_by_task = {}
+            delete_ids = []
+            retained_lifecycle_count = 0
+            retained_tail_count = 0
+            for row in rows:
+                if row["event_type"] in lifecycle_events:
+                    retained_lifecycle_count += 1
+                    continue
+                task_id = int(row["task_id"])
+                kept = detail_kept_by_task.get(task_id, 0)
+                if kept < retain_latest_per_task:
+                    detail_kept_by_task[task_id] = kept + 1
+                    retained_tail_count += 1
+                    continue
+                delete_ids.append(int(row["id"]))
+            if delete_ids and not dry_run:
+                placeholders = ",".join("?" for _ in delete_ids)
+                c.execute(f"DELETE FROM task_events WHERE id IN ({placeholders})", delete_ids)
+        return {
+            "older_than_days": older_than_days,
+            "retain_latest_per_task": retain_latest_per_task,
+            "dry_run": bool(dry_run),
+            "actor_id": str(actor_id or "system"),
+            "candidate_count": len(rows),
+            "deleted_count": len(delete_ids),
+            "retained_lifecycle_count": retained_lifecycle_count,
+            "retained_tail_count": retained_tail_count,
+        }
+
     def add_task_step(self, task_id, step_type, name, status="running", input_data=None):
         with self._conn() as c:
             cursor = c.execute(

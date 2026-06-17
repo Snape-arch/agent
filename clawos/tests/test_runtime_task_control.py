@@ -116,6 +116,69 @@ class RuntimeTaskControlTests(unittest.TestCase):
         self.assertEqual(retry["retry_of"], task["id"])
         self.assertEqual(retry["status"], "pending_retry")
 
+    def test_task_event_retention_prunes_old_detail_events_but_keeps_audit_tail(self):
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            task = store.start_task("s-retain", "Retention task")
+            for index in range(5):
+                store.add_task_event(task["id"], "step_trace", f"old detail {index}")
+            store.finish_task(task["id"], "succeeded")
+            recent = store.add_task_event(task["id"], "step_trace", "recent detail")
+            with store._conn() as c:
+                c.execute(
+                    "UPDATE task_events SET created_at=datetime('now','-90 days') WHERE id<>?",
+                    (recent["id"],),
+                )
+            dry_run = store.prune_task_events(
+                older_than_days=30,
+                retain_latest_per_task=2,
+                dry_run=True,
+            )
+            result = store.prune_task_events(
+                older_than_days=30,
+                retain_latest_per_task=2,
+                actor_id="retention-test",
+            )
+            remaining = store.get_task(task["id"])["events"]
+
+        self.assertEqual(dry_run["deleted_count"], 3)
+        self.assertEqual(result["deleted_count"], 3)
+        self.assertEqual(result["retained_lifecycle_count"], 2)
+        self.assertEqual(result["retained_tail_count"], 2)
+        self.assertEqual(
+            [event["event_type"] for event in remaining],
+            ["task_started", "step_trace", "step_trace", "task_finished", "step_trace"],
+        )
+        self.assertEqual(remaining[-1]["id"], recent["id"])
+
+    def test_task_event_retention_api_prunes_old_detail_events(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            try:
+                task = server.g_memory_store.start_task("s-api", "Retention API task")
+                for index in range(4):
+                    server.g_memory_store.add_task_event(task["id"], "step_trace", f"old detail {index}")
+                with server.g_memory_store._conn() as c:
+                    c.execute("UPDATE task_events SET created_at=datetime('now','-90 days')")
+                response = asyncio.run(server.api_task_events_prune(JsonRequest({
+                    "older_than_days": 30,
+                    "retain_latest_per_task": 1,
+                    "actor_id": "api-test",
+                })))
+                result = json.loads(response.body.decode("utf-8"))
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertEqual(result["deleted_count"], 3)
+        self.assertEqual(result["retained_lifecycle_count"], 1)
+        self.assertEqual(result["retained_tail_count"], 1)
+
     def test_server_helpers_expose_cancel_and_retry(self):
         import clawos_server as server
         from memoryos.memory_store import MemoryStore
