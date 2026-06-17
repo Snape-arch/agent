@@ -1,0 +1,95 @@
+{
+  "name": "competition-frozen-v1",
+  "description": "File-backed frozen acceptance suite covering meeting, research, learning, Git collaboration, and template/tool workflows.",
+  "thresholds": {
+    "min_pass_rate": 1.0,
+    "max_p95_latency_ms": 3000.0
+  },
+  "cases": [
+    {
+      "name": "meeting_create_structured_record",
+      "scenario": "meeting",
+      "tool": "meeting_workflow",
+      "args": {
+        "action": "create",
+        "title": "Frozen benchmark weekly sync",
+        "meeting_date": "2026-06-17",
+        "attendees": ["Alice", "Bob"],
+        "agenda": ["progress", "risks", "next steps"]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "meeting_workflow",
+        "data_paths": ["meeting.id", "meeting.title", "meeting.agenda"],
+        "data_contains_text": ["Frozen benchmark weekly sync"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "research_search_returns_evidence_shape",
+      "scenario": "research",
+      "tool": "research_pdf",
+      "args": {
+        "action": "search",
+        "query": "MemoryOS evidence",
+        "limit": 5
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "research_pdf",
+        "data_paths": ["results", "count"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "learning_goal_creates_review_items",
+      "scenario": "learning",
+      "tool": "learning_workspace",
+      "args": {
+        "action": "create_goal",
+        "title": "Frozen benchmark learning goal",
+        "description": "Validate long-term learning workspace creation.",
+        "topics": ["MemoryOS", "Reflection", "MTClaw"]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "learning_workspace",
+        "data_paths": ["learning.id", "learning.items"],
+        "data_contains_text": ["Frozen benchmark learning goal"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "git_snapshot_reports_collaboration_state",
+      "scenario": "git",
+      "tool": "git_workspace",
+      "args": {
+        "action": "snapshot",
+        "path": "."
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "git_workspace",
+        "data_paths": ["git.repo", "git.branch", "git.status", "git.recent_commits"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "template_catalog_is_available",
+      "scenario": "template",
+      "tool": "template_list",
+      "args": {},
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "template_list",
+        "data_paths": ["templates", "count"]
+      },
+      "max_latency_ms": 2000
+    }
+  ]
+}
