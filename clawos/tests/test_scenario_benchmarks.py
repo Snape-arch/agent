@@ -180,6 +180,8 @@ class ScenarioBenchmarkTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("Frozen benchmark: passed=True", result.stdout)
+        self.assertIn("passed_count=30", result.stdout)
+        self.assertIn("failed_count=0", result.stdout)
         self.assertIn("meeting::meeting_create_structured_record", result.stdout)
         self.assertIn("cases=30/30", result.stdout)
 

@@ -101,6 +101,42 @@ class ModelProviderTests(unittest.TestCase):
         self.assertNotIn("api_key", status)
         self.assertNotIn("secret", str(status))
 
+    def test_health_reports_model_mtclaw_and_database_state(self):
+        import tempfile
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        class FakeMTClaw:
+            async def health(self):
+                return {"enabled": True, "reachable": True, "status": "ok"}
+
+        old_config = server.config
+        old_store = server.g_memory_store
+        old_mtclaw = server.g_mtclaw_adapter
+        old_tools = server.tools_def
+        server.config = server.normalize_config({
+            "model_provider": {"provider": "mock", "model": "mock-health", "mock_response": "ok"}
+        })
+        server.tools_def = [{"name": "time_now"}]
+        server.g_mtclaw_adapter = FakeMTClaw()
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+                payload = asyncio.run(server.health())
+        finally:
+            server.config = old_config
+            server.g_memory_store = old_store
+            server.g_mtclaw_adapter = old_mtclaw
+            server.tools_def = old_tools
+
+        self.assertEqual(payload["model_provider"]["provider"], "mock")
+        self.assertEqual(payload["model_provider"]["model"], "mock-health")
+        self.assertTrue(payload["model_provider"]["configured"])
+        self.assertTrue(payload["mtclaw"]["reachable"])
+        self.assertEqual(payload["database"]["engine"], "sqlite")
+        self.assertTrue(payload["database"]["configured"])
+        self.assertTrue(payload["database"]["reachable"])
+
     def test_model_config_payload_masks_secret(self):
         import clawos_server as server
 

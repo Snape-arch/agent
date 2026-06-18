@@ -217,9 +217,12 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         evaluation = result["evaluation"]
+        benchmark = result["benchmark"]
+        failed_count = benchmark["case_count"] - benchmark["passed_count"]
         print(
             f"Model acceptance: ok={result['ok']} provider={result['provider']} "
             f"model={result['model']} configured={result['configured']} "
+            f"passed_count={benchmark['passed_count']} failed_count={failed_count} "
             f"score={evaluation['total_score']}/{evaluation['max_score']} "
             f"rate={evaluation['score_rate']}"
         )
