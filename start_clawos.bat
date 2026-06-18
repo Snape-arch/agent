@@ -4,7 +4,8 @@ chcp 65001 >nul
 
 set "ROOT=%~dp0"
 set "CLAWOS_DIR=%ROOT%clawos"
-set "PYTHON=%CLAWOS_DIR%\.venv\Scripts\python.exe"
+set "VENV_PYTHON=%CLAWOS_DIR%\.venv\Scripts\python.exe"
+set "PYTHON="
 set "MTCLAW_DIR="
 set "MTCLAW_PORT=18791"
 set "CLAWOS_PORT=18790"
@@ -15,11 +16,41 @@ echo   ClawOS + MTClaw Windows Launcher
 echo ============================================
 echo.
 
-if not exist "%PYTHON%" (
-    echo [ERROR] Python virtualenv not found:
-    echo         %PYTHON%
+if exist "%VENV_PYTHON%" (
+    set "PYTHON=%VENV_PYTHON%"
+) else (
+    where python >nul 2>nul
+    if not errorlevel 1 (
+        set "PYTHON=python"
+    ) else (
+        where py >nul 2>nul
+        if not errorlevel 1 (
+            set "PYTHON=py"
+        )
+    )
+)
+
+if not defined PYTHON (
+    echo [ERROR] Python not found.
+    echo         Expected virtualenv: %VENV_PYTHON%
+    echo         Or install Python and make python/py available in PATH.
     echo.
-    echo Please create/install the ClawOS environment first.
+    pause
+    exit /b 1
+)
+
+if not exist "%VENV_PYTHON%" (
+    echo [WARN] Project virtualenv not found:
+    echo        %VENV_PYTHON%
+    echo [WARN] Falling back to system Python: %PYTHON%
+    echo        For a reproducible competition demo, creating clawos\.venv is still recommended.
+    echo.
+)
+
+echo [INFO] Python runtime: %PYTHON%
+%PYTHON% --version
+if errorlevel 1 (
+    echo [ERROR] Selected Python runtime is not usable: %PYTHON%
     pause
     exit /b 1
 )

@@ -37,12 +37,16 @@ class FrontendStaticTests(unittest.TestCase):
 
         self.assertIn("ClawOS 工作台", html)
         self.assertIn("状态总览", html)
-        self.assertIn("记忆中枢", html)
+        self.assertIn("资料库", html)
+        self.assertIn("搜索聊天", html)
+        self.assertIn("项目", html)
+        self.assertIn("更多应用", html)
+        self.assertIn("filePicker", html)
         self.assertIn("工具路由", html)
         self.assertIn("运行轨迹", html)
         self.assertIn("冻结基准", html)
         self.assertIn("场景工作流", html)
-        self.assertIn("Skill Review Inbox", html)
+        self.assertIn("技能审查", html)
 
     def test_pages_have_no_common_mojibake_fragments(self):
         combined = "\n".join(
@@ -62,14 +66,24 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("confirmPending", html + js)
         self.assertIn("toolExecTable", html)
 
+    def test_console_exposes_model_api_settings(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+
+        self.assertIn("模型 API 配置", html)
+        self.assertIn("cfgProvider", html)
+        self.assertIn("cfgApiKey", html)
+        self.assertIn("/api/config/model", js)
+        self.assertIn("saveModelSettings", js)
+
     def test_console_exposes_unified_memory_management(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
 
         self.assertIn("/api/memory/items", js)
-        self.assertIn("Project", html)
-        self.assertIn("Experience", html)
-        self.assertIn("Skill", html)
+        self.assertIn("项目记忆", html)
+        self.assertIn("经验记忆", html)
+        self.assertIn("技能记忆", html)
         self.assertIn("toggleMemory", js)
         self.assertIn("memoryTable", html)
         self.assertIn("memoryReviewTable", html)
@@ -80,8 +94,8 @@ class FrontendStaticTests(unittest.TestCase):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
 
-        self.assertIn("Memory Review Inbox", html)
-        self.assertIn("Reflection Review Inbox", html)
+        self.assertIn("记忆审查", html)
+        self.assertIn("改进审查", html)
         self.assertIn("reflectionReviewTable", html)
         self.assertIn("/api/reflection/improvements", js)
         self.assertIn("transitionReflection", js)

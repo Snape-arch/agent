@@ -242,3 +242,75 @@
 2. 用真实 DeepSeek API 跑 `evaluate_model_acceptance.py`，保存评分报告，并补充失败样例分析。
 3. 前端下一轮优先补真实浏览器截图验收和长任务状态联动。
 4. Task Runtime 下一轮优先做后台 worker、补偿事务和故障注入验收。
+### 2026-06-18 - Console visual refinement and model API settings
+
+Completed:
+- Refined `clawos/static/console.html` and `clawos/static/assets/site.css` toward a lighter console surface: fewer dashboard blocks, softer liquid-glass panels, reduced hard borders, overflow-safe layout, and a less cluttered first screen.
+- Added in-page model API configuration through the system settings sheet. The UI writes provider/base URL/model/API key through `/api/config/model` and never renders the full API key back to the page.
+- Added backend helpers in `clawos/clawos_server.py` to update `clawos/.env`, refresh routing/upstream providers at runtime, and return only masked model config state.
+- Updated `start_clawos.bat` so a missing `clawos\.venv` no longer hard-fails when system Python is available.
+
+Verification:
+```powershell
+python -m unittest clawos.tests.test_model_provider clawos.tests.test_frontend_static
+python -m py_compile clawos\clawos_server.py
+node --check clawos/static/assets/console.js
+```
+
+Result:
+- Model provider + frontend static tests: `21 tests OK`.
+- Python compile and JS syntax check passed.
+
+Known note:
+- Browser visual verification for `file:///.../console.html` was blocked by the in-app browser URL policy, so the next manual step is to refresh the open console page and visually inspect the liquid-glass layer and settings modal.
+### 2026-06-18 - Scenario tool expansion and skill evolution loop
+
+Completed:
+- Added five local scenario tools in `clawos/scripts/tool_runner.py` and registered them in `clawos/functions.jsonl`:
+  - `meeting_action_items`
+  - `paper_deep_read`
+  - `exam_practice_builder`
+  - `work_brief_builder`
+  - `research_experiment_plan`
+- Added five default solidified skills in `clawos/skills/skill_registry.jsonl`:
+  - `meeting_action_review`
+  - `paper_deep_reading`
+  - `exam_practice_coach`
+  - `work_delivery_brief`
+  - `research_experiment_designer`
+- Added scenario coverage tests in `clawos/tests/test_scenarios_e2e.py`.
+- Added a self-evolution loop test in `clawos/tests/test_skill_evolution.py`: propose a new scenario skill, run an execution suite, promote it, then execute the published skill.
+
+Verification:
+```powershell
+python -m unittest discover -s clawos\tests
+```
+
+Result:
+- Full suite: `102 tests OK`.
+
+Known note:
+- `tool_runner.py` is now too large. The next maintainability step should split scenario tools into a dedicated `scenario_tools.py` module and keep `tool_runner.py` as a thin dispatcher.
+
+### 2026-06-18 - Scenario dispatcher split and chat-first console layout
+
+Completed:
+- Split scenario-oriented tool implementations into `clawos/scripts/scenario_tools.py`; `clawos/scripts/tool_runner.py` now delegates meeting, research, learning, office, template, git workspace, and skill governance scenario tools through a dispatch layer.
+- Reworked the console into a chat-first product layout: default chat surface, compact sidebar, searchable history view, standalone library view, project workspace, local file attach button in the composer, and a More drawer for lower-frequency system panels.
+- Added library tabs for project/research-learning/skill/preference memory so the existing RAG/memory direction can evolve into multiple maintained knowledge bases.
+- Updated frontend static coverage for the new sidebar IA and scenario modules.
+
+Verification:
+```powershell
+python -m unittest discover -s clawos\tests
+python -m py_compile clawos\scripts\tool_runner.py clawos\scripts\scenario_tools.py clawos\clawos_server.py
+node --check clawos/static/assets/console.js
+```
+
+Result:
+- Full suite: `102 tests OK`.
+- Python compile and JS syntax checks passed.
+- Browser validation passed on `http://127.0.0.1:18790/console`: chat default, More drawer, search, library, projects, and file picker DOM all responded correctly.
+
+Known note:
+- Console CSS now has several override layers. A later cleanup should consolidate the console-only visual rules into a dedicated section or file before the final competition polish pass.

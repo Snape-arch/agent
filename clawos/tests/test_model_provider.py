@@ -101,6 +101,49 @@ class ModelProviderTests(unittest.TestCase):
         self.assertNotIn("api_key", status)
         self.assertNotIn("secret", str(status))
 
+    def test_model_config_payload_masks_secret(self):
+        import clawos_server as server
+
+        cfg = server.normalize_config({
+            "model_provider": {
+                "provider": "deepseek",
+                "base_url": "https://api.deepseek.com/v1",
+                "model": "deepseek-chat",
+                "api_key": "sk-test-secret",
+            }
+        })
+        payload = server.model_config_payload(cfg)
+
+        self.assertTrue(payload["api_key_present"])
+        self.assertEqual(payload["api_key_hint"], "set (...cret)")
+        self.assertNotIn("sk-test-secret", str(payload))
+
+    def test_write_model_env_preserves_unrelated_values(self):
+        import tempfile
+        import clawos_server as server
+
+        with tempfile.TemporaryDirectory() as td:
+            env_path = Path(td) / ".env"
+            env_path.write_text(
+                "\n".join([
+                    "CLAWOS_MEMORY_DB=./data/memoryos.db",
+                    "MODEL_PROVIDER=deepseek",
+                    "MODEL_NAME=old-model",
+                ]),
+                encoding="utf-8",
+            )
+            server.write_model_env(env_path, {
+                "MODEL_PROVIDER": "openai_compatible",
+                "MODEL_NAME": "local-qwen",
+                "MODEL_API_KEY": "local-key",
+            })
+            text = env_path.read_text(encoding="utf-8")
+
+        self.assertIn("CLAWOS_MEMORY_DB=./data/memoryos.db", text)
+        self.assertIn("MODEL_PROVIDER=openai_compatible", text)
+        self.assertIn("MODEL_NAME=local-qwen", text)
+        self.assertIn("MODEL_API_KEY=local-key", text)
+
     def test_server_loads_local_env_without_overriding_existing_values(self):
         import os
         import tempfile

@@ -129,6 +129,90 @@ def model_provider_status(cfg: dict[str, Any]) -> dict[str, Any]:
         "configured": bool(is_configured),
     }
 
+
+MODEL_ENV_KEYS = {
+    "provider": "MODEL_PROVIDER",
+    "base_url": "MODEL_BASE_URL",
+    "model": "MODEL_NAME",
+    "api_key": "MODEL_API_KEY",
+}
+
+
+def _mask_secret(value: str) -> str:
+    value = str(value or "")
+    if not value:
+        return ""
+    suffix = value[-4:] if len(value) > 4 else value[-1:]
+    return f"set (...{suffix})"
+
+
+def model_config_payload(cfg: dict[str, Any]) -> dict[str, Any]:
+    provider_cfg = dict((cfg or {}).get("model_provider") or {})
+    status = model_provider_status(cfg) if cfg else {"provider": "", "model": "", "configured": False}
+    api_key = str(provider_cfg.get("api_key") or "")
+    return {
+        "provider": str(provider_cfg.get("provider") or status.get("provider") or "deepseek"),
+        "base_url": str(provider_cfg.get("base_url") or ""),
+        "model": str(provider_cfg.get("model") or status.get("model") or ""),
+        "configured": bool(status.get("configured")),
+        "api_key_present": bool(api_key and "${" not in api_key),
+        "api_key_hint": _mask_secret(api_key),
+    }
+
+
+def write_model_env(env_path: Path, updates: dict[str, str]) -> None:
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = env_path.read_text(encoding="utf-8-sig").splitlines() if env_path.exists() else []
+    remaining: list[str] = []
+    pending = {key: str(value) for key, value in updates.items()}
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in line:
+            remaining.append(line)
+            continue
+        key, _ = line.split("=", 1)
+        key = key.strip()
+        if key in pending:
+            remaining.append(f"{key}={pending.pop(key)}")
+        else:
+            remaining.append(line)
+    for key, value in pending.items():
+        remaining.append(f"{key}={value}")
+    env_path.write_text("\n".join(remaining).rstrip() + "\n", encoding="utf-8")
+
+
+def apply_model_config_updates(payload: dict[str, Any]) -> dict[str, Any]:
+    allowed = {"deepseek", "openai_compatible", "openai-compatible", "local_openai", "mock"}
+    provider = str(payload.get("provider") or "deepseek").strip()
+    if provider not in allowed:
+        raise ValueError(f"Unsupported model provider: {provider}")
+
+    updates = {
+        "MODEL_PROVIDER": provider,
+        "MODEL_BASE_URL": str(payload.get("base_url") or "").strip(),
+        "MODEL_NAME": str(payload.get("model") or "").strip(),
+    }
+    if "api_key" in payload:
+        updates["MODEL_API_KEY"] = str(payload.get("api_key") or "").strip()
+
+    write_model_env(BASE_DIR / ".env", updates)
+    for key, value in updates.items():
+        os.environ[key] = value
+
+    global config, g_routing_provider, g_upstream_provider, g_reflection_engine
+    config = load_config(CONFIG_PATH)
+    config.setdefault("max_tool_rounds", 6)
+    g_routing_provider = create_model_provider(config.get("routing", {}))
+    g_upstream_provider = create_model_provider(config.get("upstream", {}))
+    if g_memory_store and http_client:
+        try:
+            from reflection.engine import ReflectionEngine
+            g_reflection_engine = ReflectionEngine(g_memory_store, http_client, config.get("routing", {}))
+        except Exception as exc:
+            if logger:
+                logger.warning(f"Reflection Engine refresh skipped: {exc}")
+    return model_config_payload(config)
+
 def load_tools(func_path: Path) -> list[dict[str, Any]]:
     if not func_path.exists():
         logger.warning(f"Functions file not found: {func_path}")
@@ -844,6 +928,21 @@ async def health():
         "upstream_model": config.get("upstream", {}).get("model", ""),
         "mtclaw": mtclaw_state,
     }
+
+@app.get("/api/config/model")
+async def get_model_config():
+    return model_config_payload(config)
+
+@app.post("/api/config/model")
+async def update_model_config(request: Request):
+    try:
+        payload = await request.json()
+        updated = apply_model_config_updates(payload if isinstance(payload, dict) else {})
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Model config update failed: {e}")
+    return updated
 
 @app.get("/v1/models")
 async def list_models():

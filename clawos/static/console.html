@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ClawOS 工作台 - Aether Console</title>
+  <title>ClawOS 控制台</title>
   <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body class="console-page aether-console">
@@ -12,43 +12,39 @@
       <div class="aether-logo"><span>⬡</span></div>
       <div>
         <b>ClawOS 工作台</b>
-        <small>Aether Control</small>
+        <small>运行控制</small>
       </div>
       <button class="side-collapse" aria-label="collapse">⌄</button>
     </div>
 
     <div class="side-search">
       <span>⌕</span>
-      <input id="consoleSearch" placeholder="Search...">
+      <input id="consoleSearch" placeholder="搜索会话、工具或任务">
     </div>
 
-    <div class="side-label">Menu</div>
+    <div class="side-label">工作区</div>
     <div class="side-nav">
-      <button class="on" data-view="dash"><span class="nav-ico">▦</span>Dashboard / 状态总览</button>
-      <button data-view="chat"><span class="nav-ico">◌</span>Agents / 智能体会话</button>
-      <button data-view="memory"><span class="nav-ico">□</span>Knowledge Base / 记忆中枢</button>
-      <button data-view="reflection"><span class="nav-ico">↻</span>Reflection / 反思循环</button>
-      <button data-view="skills"><span class="nav-ico">✦</span>Skills / 固化技能</button>
-      <button data-view="tools"><span class="nav-ico">⌘</span>Tools / 工具路由</button>
-      <button data-view="tasks"><span class="nav-ico">≋</span>Logs / 运行轨迹</button>
-      <button data-view="benchmarks"><span class="nav-ico">◇</span>Benchmarks / 冻结基准</button>
-      <button data-view="scenes"><span class="nav-ico">◎</span>Scenes / 场景工作流</button>
+      <button class="on" data-view="chat"><span class="nav-ico">✎</span>新聊天</button>
+      <button data-view="search"><span class="nav-ico">⌕</span>搜索聊天</button>
+      <button data-view="memory"><span class="nav-ico">▥</span>库</button>
+      <button data-view="projects"><span class="nav-ico">□</span>项目</button>
+      <button type="button" onclick="toggleCommandDrawer()"><span class="nav-ico">⋯</span>更多</button>
     </div>
 
-    <button class="new-chat" onclick="newChat()">+ 新建会话</button>
+    <div class="side-label recent-label">最近</div>
     <div class="sessions" id="sessions"></div>
 
     <div class="side-bottom">
-      <button><span class="nav-ico">⚙</span>Settings</button>
-      <button><span class="nav-ico">?</span>Help</button>
-      <div class="health"><span class="dot" id="healthDot"></span><span id="healthText">Starting</span></div>
+      <button onclick="openModelSettings()"><span class="nav-ico">⚙</span>系统设置</button>
+      <button onclick="toggleCommandDrawer()"><span class="nav-ico">⌘</span>工具与评测</button>
+      <div class="health"><span class="dot" id="healthDot"></span><span id="healthText">启动中</span></div>
     </div>
   </aside>
 
   <header class="console-head">
     <div>
-      <h1 id="viewTitle">Dashboard</h1>
-      <p id="viewSub">All general information appears in this field</p>
+      <h1 id="viewTitle">新聊天</h1>
+      <p id="viewSub">发起任务，连接工具、记忆、文件和项目上下文</p>
     </div>
     <div class="header-orbit" aria-hidden="true">
       <span></span><span></span><span></span><span></span>
@@ -62,44 +58,23 @@
   </header>
 
   <main class="console-main">
-    <section class="view on" id="view-dash">
+    <section class="view" id="view-dash">
       <div class="dashboard-stack">
         <div class="metric-grid" id="metrics"></div>
 
-        <div class="topology-panel glass-panel">
-          <div class="panel-title-row">
-            <div>
-              <h2>Real-time Agent Topology</h2>
-              <p>Live network of active agent connections</p>
-            </div>
-            <span class="live-pill"><i></i>Live</span>
-          </div>
-          <div class="topology-canvas">
-            <div class="mesh-line m1"></div>
-            <div class="mesh-line m2"></div>
-            <div class="mesh-line m3"></div>
-            <div class="node n1">Planner</div>
-            <div class="node n2">MemoryOS</div>
-            <div class="node n3">Tools</div>
-            <div class="node n4">Reflect</div>
-          </div>
-        </div>
-
-        <div class="dashboard-grid">
+        <div class="dashboard-grid dashboard-grid-lean">
           <div class="section-block glass-panel"><h2>近期活动</h2><table class="table" id="activityTable"></table></div>
           <div class="section-block glass-panel"><h2>系统</h2><div id="runtimeKv"></div></div>
-          <div class="section-block glass-panel"><h2>最近工具调用</h2><div class="list" id="lastTools"><div class="item"><span>暂无工具调用</span></div></div></div>
-          <div class="section-block glass-panel"><h2>最近反思</h2><div class="list" id="lastReflection"><div class="item"><span>暂无反思记录</span></div></div></div>
         </div>
       </div>
     </section>
 
-    <section class="view" id="view-chat">
+    <section class="view on" id="view-chat">
       <div class="workspace glass-panel">
         <div class="chat" id="chat"><div class="chat-inner" id="chatInner">
           <div class="empty">
-            <b>让智能体真正开始工作</b>
-            <span>ClawOS 将任务路由、长期记忆、执行轨迹与反思学习汇聚在同一个可观测工作台。</span>
+            <b>准备好了，随时开始</b>
+            <span>直接提问，或通过左侧库、项目和本地文件把上下文交给 ClawOS。</span>
             <div class="quick-grid">
               <button class="quick" onclick="usePrompt('分析当前项目并给出下一步开发计划')">分析项目与开发计划</button>
               <button class="quick" onclick="usePrompt('查看我的长期记忆和偏好')">检查 MemoryOS</button>
@@ -110,14 +85,25 @@
         </div></div>
         <div class="composer">
           <div class="confirmbar" id="confirmBar"><span id="confirmText">等待确认</span><button class="secondary" onclick="cancelPending()">取消</button><button class="primary" onclick="confirmPending()">确认执行</button></div>
-          <div class="compose-inner"><textarea id="prompt" placeholder="例如：把我的代码风格记为 Python + 类型标注，或者列出当前项目结构" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea><button class="primary" id="send" onclick="sendMessage()">发送</button></div>
+          <div class="compose-inner"><button class="attach-button" onclick="chooseLocalFile()" title="添加本地文件">+</button><textarea id="prompt" placeholder="有问题，尽管问。也可以点 + 读取本地文本文件作为上下文。" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea><button class="primary" id="send" onclick="sendMessage()">发送</button><input id="filePicker" type="file" multiple hidden onchange="handlePickedFiles(event)"></div>
         </div>
       </div>
     </section>
 
-    <section class="view" id="view-memory"><div class="panel-view glass-panel"><div class="form"><label>类型<select id="memType"><option value="profile">Profile</option><option value="preference">Preference</option><option value="project">Project</option><option value="experience">Experience</option><option value="skill">Skill</option></select></label><label>KEY<input id="memKey" placeholder="reply_style"></label><label>VALUE<input id="memValue" placeholder="Prefer concise direct answers"></label><label>来源<input id="memSource" placeholder="manual"></label><button class="primary" onclick="saveMemory()">保存</button></div><div class="searchbar"><input id="memQuery" placeholder="搜索长期记忆" onkeydown="if(event.key==='Enter')searchMemory()"><button class="secondary" onclick="searchMemory()">搜索</button></div><div class="section-block"><h2>Memory Review Inbox</h2><table class="table" id="memoryReviewTable"></table></div><div class="section-block"><h2>统一记忆</h2><table class="table" id="memoryTable"></table></div><div class="section-block"><h2>检索结果</h2><table class="table" id="searchTable"></table></div></div></section>
-    <section class="view" id="view-reflection"><div class="panel-view glass-panel"><button class="secondary" onclick="triggerReflection()">触发反思</button><div class="section-block"><h2>反思卡片</h2><table class="table" id="reflectionTable"></table></div><div class="section-block"><h2>Reflection Review Inbox</h2><table class="table" id="reflectionReviewTable"></table></div><div class="section-block"><h2>经验记忆</h2><table class="table" id="experienceTable"></table></div></div></section>
-    <section class="view" id="view-skills"><div class="panel-view glass-panel"><div class="section-block"><h2>固化技能</h2><table class="table" id="skillsTable"></table></div><div class="section-block"><h2>Skill Review Inbox</h2><p class="hint">候选 Skill 只有通过冻结评测后才能发布；未达标版本可标记为需修改或拒绝。</p><table class="table" id="skillReviewTable"></table></div><div class="section-block"><h2>执行质量</h2><table class="table" id="skillStatsTable"></table></div></div></section>
+    <section class="view" id="view-search">
+      <div class="panel-view glass-panel search-workspace">
+        <div class="library-head">
+          <div><h2>搜索聊天</h2><p class="hint">查找历史会话，点击后在聊天窗口继续。</p></div>
+          <div class="searchbar compact"><input id="sessionQuery" placeholder="搜索历史会话" oninput="renderSessionSearch()"><button class="secondary" onclick="renderSessionSearch()">搜索</button></div>
+        </div>
+        <div class="session-results" id="sessionSearchList"></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-memory"><div class="panel-view glass-panel"><div class="library-head"><div><h2>资料库</h2><p class="hint">维护多类 RAG/Memory 库：科研、学习、项目、经验和技能。</p></div><div class="library-tabs"><button class="on" data-mem="project" onclick="setMemoryType('project')">项目</button><button data-mem="experience" onclick="setMemoryType('experience')">科研/学习</button><button data-mem="skill" onclick="setMemoryType('skill')">技能</button><button data-mem="preference" onclick="setMemoryType('preference')">偏好</button></div></div><div class="form"><label>类型<select id="memType"><option value="profile">用户画像</option><option value="preference">偏好记忆</option><option value="project">项目记忆</option><option value="experience">经验记忆</option><option value="skill">技能记忆</option></select></label><label>键<input id="memKey" placeholder="reply_style"></label><label>内容<input id="memValue" placeholder="偏好简洁、直接、有证据的回答"></label><label>来源<input id="memSource" placeholder="manual"></label><button class="primary" onclick="saveMemory()">保存</button></div><div class="searchbar"><input id="memQuery" placeholder="搜索长期记忆、论文摘录、项目上下文" onkeydown="if(event.key==='Enter')searchMemory()"><button class="secondary" onclick="searchMemory()">搜索</button></div><div class="section-block"><h2>记忆审查</h2><table class="table" id="memoryReviewTable"></table></div><div class="section-block"><h2>统一记忆</h2><table class="table" id="memoryTable"></table></div><div class="section-block"><h2>检索结果</h2><table class="table" id="searchTable"></table></div></div></section>
+    <section class="view" id="view-projects"><div class="panel-view glass-panel project-workspace"><div class="library-head"><div><h2>项目</h2><p class="hint">把本地项目、科研目录和交付任务作为上下文入口。</p></div><button class="primary" onclick="usePrompt('分析当前项目结构、风险和下一步开发计划');setView('chat')">分析当前项目</button></div><div class="project-grid"><button class="quick" onclick="usePrompt('列出当前项目结构并找出最重要的入口文件');setView('chat')">项目结构</button><button class="quick" onclick="usePrompt('对当前项目做一次代码健康检查，包含 TODO、风险和测试建议');setView('chat')">健康检查</button><button class="quick" onclick="usePrompt('为当前项目生成一份工作汇报和交付计划');setView('chat')">交付简报</button><button class="quick" onclick="usePrompt('设计一个可复现实验来评估当前 Agent 的工具命中率和任务完成率');setView('chat')">实验设计</button></div></div></section>
+    <section class="view" id="view-reflection"><div class="panel-view glass-panel"><button class="secondary" onclick="triggerReflection()">触发反思</button><div class="section-block"><h2>反思卡片</h2><table class="table" id="reflectionTable"></table></div><div class="section-block"><h2>改进审查</h2><table class="table" id="reflectionReviewTable"></table></div><div class="section-block"><h2>经验记忆</h2><table class="table" id="experienceTable"></table></div></div></section>
+    <section class="view" id="view-skills"><div class="panel-view glass-panel"><div class="section-block"><h2>固化技能</h2><table class="table" id="skillsTable"></table></div><div class="section-block"><h2>技能审查</h2><p class="hint">候选技能必须通过冻结评测后才能发布；未达标版本可标记为需修改或拒绝。</p><table class="table" id="skillReviewTable"></table></div><div class="section-block"><h2>执行质量</h2><table class="table" id="skillStatsTable"></table></div></div></section>
     <section class="view" id="view-tools"><div class="panel-view glass-panel"><div class="searchbar"><input id="toolQuery" placeholder="筛选工具" oninput="renderTools()"><button class="secondary" onclick="renderTools()">筛选</button></div><table class="table" id="toolsTable"></table><div class="section-block"><h2>工具运行轨迹</h2><table class="table" id="toolExecTable"></table></div></div></section>
     <section class="view" id="view-tasks"><div class="panel-view glass-panel"><div class="action-row"><button class="secondary" onclick="recoverTasks()">恢复中断任务</button><button class="secondary" onclick="loadTaskQueue()">刷新队列</button><button class="primary" onclick="claimTask()">领取下一个任务</button><span class="hint" id="liveTaskState">实时事件：连接中</span></div><div class="section-block"><h2>恢复队列</h2><table class="table" id="taskQueueTable"></table></div><div class="section-block"><h2>任务运行轨迹</h2><table class="table" id="taskTable"></table></div><div class="section-block"><h2>步骤 Trace</h2><table class="table" id="taskStepTable"></table></div><div class="section-block"><h2>事件审计</h2><table class="table" id="taskEventTable"></table></div></div></section>
     <section class="view" id="view-benchmarks"><div class="panel-view glass-panel"><div class="action-row"><button class="primary" onclick="runScenarioBenchmark()">运行默认冻结基准</button><button class="secondary" onclick="loadBenchmarks()">刷新结果</button><span class="hint">覆盖会议、学习、项目模板、技能和记忆五类低风险场景。</span></div><div class="section-block"><h2>冻结场景套件</h2><table class="table" id="benchmarkSuiteTable"></table></div><div class="section-block"><h2>最近验收结果</h2><table class="table" id="benchmarkRunTable"></table></div></div></section>
@@ -125,8 +111,65 @@
   </main>
 
   <div class="floating-actions">
-    <button class="secondary" onclick="loadHealth()">⌁ Run Diagnostics</button>
-    <button class="primary" onclick="setView('chat')">☄ Deploy Agent</button>
+    <button class="secondary" onclick="loadHealth()">运行诊断</button>
+    <button class="primary" onclick="setView('chat')">打开会话</button>
+  </div>
+
+  <div class="command-drawer" id="commandDrawer" aria-hidden="true">
+    <div class="command-backdrop" onclick="closeCommandDrawer()"></div>
+    <section class="command-sheet liquid-panel">
+      <div class="settings-head">
+        <div><h2>更多应用</h2><p>把低频但专业的运行、评测和治理页面集中在这里。</p></div>
+        <button class="icon-button" onclick="closeCommandDrawer()" aria-label="关闭">×</button>
+      </div>
+      <div class="app-grid">
+        <button onclick="openDrawerView('dash')"><b>状态总览</b><span>模型、工具、系统健康</span></button>
+        <button onclick="openDrawerView('tools')"><b>工具路由</b><span>函数清单与调用轨迹</span></button>
+        <button onclick="openDrawerView('tasks')"><b>运行轨迹</b><span>任务、队列、事件审计</span></button>
+        <button onclick="openDrawerView('reflection')"><b>反思循环</b><span>复盘、改进、回滚</span></button>
+        <button onclick="openDrawerView('skills')"><b>固化技能</b><span>Skill 发布与质量</span></button>
+        <button onclick="openDrawerView('benchmarks')"><b>冻结基准</b><span>比赛验收和 P95</span></button>
+        <button onclick="openDrawerView('scenes')"><b>场景工作流</b><span>会议、科研、办公、学习</span></button>
+        <button onclick="openModelSettings()"><b>模型配置</b><span>DeepSeek/API/本地模型</span></button>
+      </div>
+    </section>
+  </div>
+
+  <div class="settings-modal" id="modelSettings" aria-hidden="true">
+    <div class="settings-backdrop" onclick="closeModelSettings()"></div>
+    <section class="settings-sheet liquid-panel">
+      <div class="settings-head">
+        <div>
+          <h2>模型 API 配置</h2>
+          <p id="modelConfigHint">配置保存在本地 .env，不会在页面显示完整密钥。</p>
+        </div>
+        <button class="icon-button" onclick="closeModelSettings()" aria-label="关闭">×</button>
+      </div>
+      <div class="settings-grid">
+        <label>供应商
+          <select id="cfgProvider">
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai_compatible">OpenAI Compatible</option>
+            <option value="local_openai">Local OpenAI</option>
+            <option value="mock">Mock</option>
+          </select>
+        </label>
+        <label>模型
+          <input id="cfgModel" placeholder="deepseek-chat">
+        </label>
+        <label class="wide">Base URL
+          <input id="cfgBaseUrl" placeholder="https://api.deepseek.com/v1">
+        </label>
+        <label class="wide">API Key
+          <input id="cfgApiKey" type="password" autocomplete="off" placeholder="留空则保持当前密钥">
+        </label>
+      </div>
+      <div class="settings-actions">
+        <span class="hint" id="cfgStatus">等待读取配置</span>
+        <button class="secondary" onclick="closeModelSettings()">取消</button>
+        <button class="primary" onclick="saveModelSettings()">保存配置</button>
+      </div>
+    </section>
   </div>
 
   <script src="/assets/console.js"></script>

@@ -26,11 +26,18 @@ class SkillEvolutionTests(unittest.TestCase):
         skills_dir = root / "skills"
         skills_dir.mkdir()
         (root / "functions.jsonl").write_text(
-            json.dumps({
-                "name": "time_now",
-                "description": "clock",
-                "parameters": {"type": "object", "properties": {}},
-            }) + "\n",
+            "\n".join([
+                json.dumps({
+                    "name": "time_now",
+                    "description": "clock",
+                    "parameters": {"type": "object", "properties": {}},
+                }),
+                json.dumps({
+                    "name": "work_brief_builder",
+                    "description": "work brief",
+                    "parameters": {"type": "object", "properties": {}},
+                }),
+            ]) + "\n",
             encoding="utf-8",
         )
         baseline = {
@@ -252,6 +259,52 @@ class SkillEvolutionTests(unittest.TestCase):
         self.assertTrue(audit["passed"])
         self.assertEqual(canary["percent"], 5.0)
         self.assertEqual(promotion["to_version_id"], candidate["id"])
+
+    def test_new_scenario_skill_can_complete_evolution_loop(self):
+        candidate = self.manager.propose(
+            "delivery_brief",
+            {
+                "display_name": "Delivery Brief",
+                "description": "Create a structured work delivery brief",
+                "steps": [{
+                    "tool": "work_brief_builder",
+                    "args": {
+                        "title": "$param.title",
+                        "context": "$param.context",
+                    },
+                }],
+                "trigger_keywords": ["delivery brief", "工作汇报"],
+                "category": "office",
+            },
+        )
+        suite = self.manager.create_suite(
+            "delivery-brief-v1",
+            "delivery_brief",
+            [{
+                "name": "creates work brief from context",
+                "mode": "execute",
+                "params": {
+                    "title": "Demo Delivery",
+                    "context": "Goal: ship the console demo. Risk: visual QA is short.",
+                },
+                "expected": {
+                    "ok": True,
+                    "step_count": 1,
+                    "tools": ["work_brief_builder"],
+                },
+            }],
+        )
+        run = self.manager.evaluate(candidate["id"], suite["id"])
+        promotion = self.manager.promote(candidate["id"], actor="tester")
+        active = self.registry.execute_skill(
+            "delivery_brief",
+            {"title": "Demo Delivery", "context": "Goal: ship. Risk: time."},
+        )
+
+        self.assertTrue(run["passed"])
+        self.assertEqual(promotion["to_version_id"], candidate["id"])
+        self.assertTrue(active["ok"])
+        self.assertEqual(active["outputs"][0]["tool"], "work_brief_builder")
 
 
 if __name__ == "__main__":

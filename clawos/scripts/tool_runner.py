@@ -1,6 +1,10 @@
 import json, sys, os
 from datetime import datetime, timezone, timedelta
 import re
+try:
+    from . import scenario_tools
+except ImportError:
+    import scenario_tools
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPT_DIR)
@@ -25,6 +29,12 @@ if SKILLS_DIR not in sys.path:
     sys.path.insert(0, SKILLS_DIR)
 if MEMORYOS_DIR not in sys.path:
     sys.path.insert(0, MEMORYOS_DIR)
+
+
+def _scenario_tool(name):
+    def _run():
+        scenario_tools.print_result(name, input_data)
+    return _run
 
 
 def security_check(name, arguments):
@@ -823,251 +833,6 @@ def tool_shell_exec():
         sys.exit(1)
 
 
-def _workspace_services():
-    from memoryos.memory_store import MemoryStore
-    from security.policy import ToolSecurityPolicy
-    from workspace_services import WorkspaceServices
-    return WorkspaceServices(MemoryStore(_memory_db_path()), ToolSecurityPolicy())
-
-
-def tool_meeting_workflow():
-    services = _workspace_services()
-    action = input_data.get("action", "create")
-    if action == "create":
-        result = services.create_meeting(
-            input_data.get("title", "Untitled meeting"),
-            input_data.get("meeting_date", ""),
-            input_data.get("attendees", []),
-            input_data.get("agenda", []),
-        )
-    elif action == "process":
-        result = services.process_meeting_transcript(
-            input_data.get("meeting_id"), input_data.get("transcript", "")
-        )
-    elif action == "get":
-        result = services.get_meeting(input_data.get("meeting_id"))
-    elif action == "audio_import":
-        result = services.import_meeting_audio(
-            input_data.get("audio_path", ""),
-            transcript_path=input_data.get("transcript_path", ""),
-            transcript=input_data.get("transcript", ""),
-            title=input_data.get("title", ""),
-            meeting_id=input_data.get("meeting_id"),
-        )
-    elif action == "connector_draft":
-        result = services.draft_meeting_connectors(
-            input_data.get("meeting_id"),
-            input_data.get("output_dir", ""),
-            calendar=bool(input_data.get("calendar", True)),
-            email=bool(input_data.get("email", True)),
-            recipients=input_data.get("recipients", []),
-        )
-    else:
-        result = {"error": f"unknown action: {action}"}
-    print(json.dumps({"meeting": result}, ensure_ascii=False))
-
-
-def tool_research_pdf():
-    services = _workspace_services()
-    action = input_data.get("action", "search")
-    if action == "import":
-        result = services.import_research_pdf(
-            input_data.get("file_path", ""), input_data.get("title", "")
-        )
-        print(json.dumps({"document": result}, ensure_ascii=False))
-    elif action == "search":
-        rows = services.search_research(
-            input_data.get("query", ""), input_data.get("limit", 10)
-        )
-        print(json.dumps({"results": rows, "count": len(rows)}, ensure_ascii=False))
-    elif action == "validate_citations":
-        result = services.validate_citations(input_data.get("citations", []))
-        print(json.dumps(result, ensure_ascii=False))
-    elif action == "compare_matrix":
-        result = services.research_compare_matrix(
-            input_data.get("document_ids"),
-            input_data.get("query_terms", []),
-        )
-        print(json.dumps(result, ensure_ascii=False))
-    elif action == "repro_workflow":
-        result = services.create_repro_workflow(
-            input_data.get("title", "Reproducible experiment"),
-            question=input_data.get("question", ""),
-            steps=input_data.get("steps"),
-            output_path=input_data.get("output_path", ""),
-        )
-        print(json.dumps(result, ensure_ascii=False))
-    elif action == "learning_analysis":
-        result = services.generate_research_learning_analysis(
-            document_id=input_data.get("document_id"),
-            file_path=input_data.get("file_path", ""),
-            title=input_data.get("title", ""),
-            output_dir=input_data.get("output_dir", ""),
-            formats=input_data.get("formats"),
-            depth=input_data.get("depth", 5),
-            question_count=input_data.get("question_count", 50),
-        )
-        print(json.dumps(result, ensure_ascii=False))
-    else:
-        print(json.dumps({"error": f"unknown action: {action}"}, ensure_ascii=False))
-
-
-def tool_learning_workspace():
-    services = _workspace_services()
-    action = input_data.get("action", "create_goal")
-    if action == "create_goal":
-        result = services.create_learning_goal(
-            input_data.get("title", "Learning goal"),
-            input_data.get("description", ""),
-            input_data.get("target_date", ""),
-            input_data.get("topics", []),
-        )
-    elif action == "review":
-        result = services.record_learning_review(
-            input_data.get("item_id"),
-            input_data.get("score", 0),
-            input_data.get("evidence", ""),
-            input_data.get("notes", ""),
-        )
-    elif action == "get":
-        result = services.get_learning_goal(input_data.get("goal_id"))
-    elif action == "dependency":
-        result = services.add_learning_dependency(
-            input_data.get("goal_id"),
-            input_data.get("source_topic", ""),
-            input_data.get("target_topic", ""),
-            input_data.get("relation", "depends_on"),
-            input_data.get("evidence", ""),
-        )
-    elif action == "mistake":
-        result = services.record_learning_mistake(
-            input_data.get("item_id"),
-            input_data.get("prompt", ""),
-            input_data.get("wrong_answer", ""),
-            input_data.get("correct_answer", ""),
-            input_data.get("evidence", ""),
-        )
-    elif action == "graph":
-        result = services.learning_graph(input_data.get("goal_id"))
-    elif action == "assessment":
-        result = services.long_term_mastery(input_data.get("goal_id"))
-    else:
-        result = {"error": f"unknown action: {action}"}
-    print(json.dumps({"learning": result}, ensure_ascii=False))
-
-
-def tool_office_artifact():
-    services = _workspace_services()
-    action = input_data.get("action", "")
-    if action == "spreadsheet_create":
-        result = services.create_spreadsheet(
-            input_data.get("output_path", ""),
-            sheets=input_data.get("sheets") or [],
-            title=input_data.get("title", ""),
-        )
-    elif action == "spreadsheet_edit":
-        result = services.edit_spreadsheet(
-            input_data.get("file_path", ""),
-            updates=input_data.get("updates") or [],
-            output_path=input_data.get("output_path", ""),
-        )
-    elif action == "presentation_create":
-        result = services.create_presentation(
-            input_data.get("output_path", ""),
-            title=input_data.get("title", ""),
-            slides=input_data.get("slides") or [],
-        )
-    elif action == "presentation_edit":
-        result = services.edit_presentation(
-            input_data.get("file_path", ""),
-            replacements=input_data.get("replacements") or {},
-            output_path=input_data.get("output_path", ""),
-        )
-    else:
-        result = {"error": f"unknown action: {action}"}
-    print(json.dumps({"artifact": result}, ensure_ascii=False))
-
-
-def tool_git_workspace():
-    services = _workspace_services()
-    action = input_data.get("action", "snapshot")
-    if action == "snapshot":
-        result = services.git_snapshot(input_data.get("path", ""))
-    elif action == "commit_plan":
-        result = services.prepare_commit_plan(
-            input_data.get("path", ""),
-            input_data.get("message", ""),
-            input_data.get("files"),
-        )
-    elif action == "request_commit":
-        result = services.create_git_change_request(
-            input_data.get("path", ""),
-            input_data.get("message", ""),
-            input_data.get("files"),
-            created_by=input_data.get("created_by", "agent"),
-        )
-    elif action == "approve":
-        result = services.approve_git_change_request(
-            input_data.get("request_id"),
-            approved_by=input_data.get("approved_by", "user"),
-        )
-    elif action == "rollback":
-        result = services.rollback_git_change_request(
-            input_data.get("request_id"),
-            actor_id=input_data.get("actor_id", "user"),
-        )
-    else:
-        result = {"error": f"unknown action: {action}"}
-    print(json.dumps({"git": result}, ensure_ascii=False))
-
-
-def tool_skill_governance():
-    from memoryos.memory_store import MemoryStore
-    from skills.skill_evolution import SkillEvolutionManager
-    manager = SkillEvolutionManager(MemoryStore(_memory_db_path()))
-    action = input_data.get("action", "manifest")
-    version_id = input_data.get("version_id")
-    if action == "manifest":
-        result = manager.dependency_manifest(version_id)
-    elif action == "sign":
-        result = manager.sign_version(
-            version_id,
-            signer=input_data.get("signer", "agent"),
-            secret=input_data.get("secret", "clawos-local-signing"),
-        )
-    elif action == "fresh_audit":
-        result = manager.fresh_agent_audit(
-            version_id,
-            suite_id=input_data.get("suite_id"),
-        )
-    elif action == "canary":
-        result = manager.start_canary(
-            version_id,
-            percent=input_data.get("percent", 10),
-            actor=input_data.get("actor", "agent"),
-        )
-    else:
-        result = {"error": f"unknown action: {action}"}
-    print(json.dumps({"skill_governance": result}, ensure_ascii=False))
-
-
-def tool_template_list():
-    rows = _workspace_services().list_templates()
-    print(json.dumps({"templates": rows, "count": len(rows)}, ensure_ascii=False))
-
-
-def tool_template_instantiate():
-    result = _workspace_services().instantiate_template(
-        input_data.get("name", ""),
-        input_data.get("target_path", ""),
-        input_data.get("parameters", {}),
-        input_data.get("version"),
-    )
-    print(json.dumps(result, ensure_ascii=False))
-
-
-
-
 handlers = {
     "weather": tool_weather, "time_now": tool_time_now, "calc": tool_calc,
     "todo_list": tool_todo_list, "note_save": tool_note_save,
@@ -1076,6 +841,11 @@ handlers = {
     "skill_register": tool_skill_register, "skill_list": tool_skill_list,
     "skill_execute": tool_skill_execute, "skill_delete": tool_skill_delete,
     "file_organize": tool_file_organize, "text_stats": tool_text_stats,
+    "meeting_action_items": _scenario_tool("meeting_action_items"),
+    "paper_deep_read": _scenario_tool("paper_deep_read"),
+    "exam_practice_builder": _scenario_tool("exam_practice_builder"),
+    "work_brief_builder": _scenario_tool("work_brief_builder"),
+    "research_experiment_plan": _scenario_tool("research_experiment_plan"),
     "batch_rename": tool_batch_rename, "project_init": tool_project_init,
     "timer": tool_timer, "meeting_template": tool_meeting_template,
     "ls": tool_ls, "cat": tool_cat, "find_files": tool_find_files,
@@ -1092,14 +862,14 @@ handlers = {
     "reflection_list": tool_reflection_list,
     "file_write": tool_file_write,
     "shell_exec": tool_shell_exec,
-    "meeting_workflow": tool_meeting_workflow,
-    "research_pdf": tool_research_pdf,
-    "learning_workspace": tool_learning_workspace,
-    "office_artifact": tool_office_artifact,
-    "git_workspace": tool_git_workspace,
-    "skill_governance": tool_skill_governance,
-    "template_list": tool_template_list,
-    "template_instantiate": tool_template_instantiate
+    "meeting_workflow": _scenario_tool("meeting_workflow"),
+    "research_pdf": _scenario_tool("research_pdf"),
+    "learning_workspace": _scenario_tool("learning_workspace"),
+    "office_artifact": _scenario_tool("office_artifact"),
+    "git_workspace": _scenario_tool("git_workspace"),
+    "skill_governance": _scenario_tool("skill_governance"),
+    "template_list": _scenario_tool("template_list"),
+    "template_instantiate": _scenario_tool("template_instantiate")
 }
 
 if __name__ == "__main__":

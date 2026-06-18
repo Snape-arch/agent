@@ -95,6 +95,41 @@ class ScenarioEndToEndTests(unittest.TestCase):
         self.assertEqual(stats["by_language"]["Python"]["files"], 1)
         self.assertEqual(todos["count"], 1)
 
+    def test_expanded_scenario_tools_cover_meeting_paper_exam_work_and_research(self):
+        from scripts import tool_runner
+
+        with tempfile.TemporaryDirectory() as td:
+            meeting = run_tool(tool_runner, "meeting_action_items", {
+                "title": "Launch Review",
+                "participants": ["Alice", "Bob"],
+                "transcript": "Alice decided to freeze the demo. Bob will finish tests tomorrow. Risk: API key setup may block rehearsal.",
+                "output_path": str(Path(td) / "meeting.md"),
+            })
+            paper = run_tool(tool_runner, "paper_deep_read", {
+                "title": "Agent Memory Study",
+                "text": "The method uses a memory retrieval module. Experiments on task continuity improve results. Limitation: small dataset.",
+            })
+            exam = run_tool(tool_runner, "exam_practice_builder", {
+                "topics": ["linear algebra", "probability"],
+                "count": 4,
+            })
+            brief = run_tool(tool_runner, "work_brief_builder", {
+                "title": "Weekly Brief",
+                "context": "Goal: finish frontend polish. Risk: testing time is short. Deliver a clean demo.",
+            })
+            experiment = run_tool(tool_runner, "research_experiment_plan", {
+                "question": "Does memory retrieval improve task completion?",
+                "datasets": ["frozen benchmark"],
+            })
+            saved_meeting_exists = Path(meeting["saved_to"]).exists()
+
+        self.assertTrue(saved_meeting_exists)
+        self.assertGreaterEqual(len(meeting["action_items"]), 1)
+        self.assertIn("method_evidence", paper)
+        self.assertEqual(len(exam["questions"]), 4)
+        self.assertIn("milestones", brief)
+        self.assertIn("results.json", experiment["artifacts"])
+
 
 if __name__ == "__main__":
     unittest.main()
