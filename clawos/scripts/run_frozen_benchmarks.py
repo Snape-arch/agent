@@ -150,15 +150,20 @@ def main() -> int:
         print(json.dumps(run, ensure_ascii=False, indent=2))
     else:
         metrics = run["metrics"]
+        failed_count = metrics["case_count"] - metrics["passed_count"]
         print(
             f"Frozen benchmark: passed={bool(run['passed'])} "
+            f"passed_count={metrics['passed_count']} "
+            f"failed_count={failed_count} "
             f"cases={metrics['passed_count']}/{metrics['case_count']} "
             f"pass_rate={metrics['pass_rate']} "
             f"p95_ms={metrics['p95_latency_ms']}"
         )
         for case in run["case_results"]:
             status = "PASS" if case["passed"] else "FAIL"
-            print(f"- {status} {case['scenario']}::{case['name']} {case['latency_ms']}ms")
+            reasons = ", ".join(case.get("reasons") or [])
+            reason_text = f" reason={reasons}" if reasons else ""
+            print(f"- {status} {case['scenario']}::{case['name']} {case['latency_ms']}ms{reason_text}")
 
     return 0 if run["passed"] else 1
 

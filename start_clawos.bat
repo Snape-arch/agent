@@ -16,6 +16,18 @@ echo   ClawOS + MTClaw Windows Launcher
 echo ============================================
 echo.
 
+call :check_port %MTCLAW_PORT% MTClaw
+if errorlevel 1 (
+    pause
+    exit /b 1
+)
+
+call :check_port %CLAWOS_PORT% ClawOS
+if errorlevel 1 (
+    pause
+    exit /b 1
+)
+
 if exist "%VENV_PYTHON%" (
     set "PYTHON=%VENV_PYTHON%"
 ) else (
@@ -57,6 +69,7 @@ if errorlevel 1 (
 
 if not exist "%CLAWOS_DIR%\.env" (
     echo [WARN] clawos\.env not found. Model calls may fail until local config is added.
+    echo        Mock/offline checks still work without a real API key.
 ) else (
     echo [INFO] Loading local environment from clawos\.env
     for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%CLAWOS_DIR%\.env") do (
@@ -122,3 +135,14 @@ echo      %MTCLAW_BASE_URL%
 echo.
 echo Close the MTClaw and ClawOS console windows to stop the services.
 pause
+
+exit /b 0
+
+:check_port
+powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort %1 -State Listen -ErrorAction SilentlyContinue) { exit 1 }"
+if not errorlevel 1 (
+    exit /b 0
+)
+echo [ERROR] Port %1 is already in use. %2 cannot start on its default port.
+echo         Close the existing process or change the port in start_clawos.bat.
+exit /b 1

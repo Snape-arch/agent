@@ -912,11 +912,31 @@ async def health():
         if g_mtclaw_adapter
         else {"enabled": False, "reachable": False, "status": "not_initialized"}
     )
+    database_state = {"configured": False, "reachable": False, "status": "not_initialized"}
+    if g_memory_store:
+        try:
+            with g_memory_store._conn() as conn:
+                conn.execute("SELECT 1").fetchone()
+            database_state = {
+                "configured": True,
+                "reachable": True,
+                "status": "ok",
+                "engine": "sqlite",
+            }
+        except Exception as exc:
+            database_state = {
+                "configured": True,
+                "reachable": False,
+                "status": "error",
+                "error": type(exc).__name__,
+                "engine": "sqlite",
+            }
     return {
         "status": "ok",
         "version": "1.0.0",
         "tools": len(tools_def),
         "memory": bool(g_memory_store),
+        "database": database_state,
         "reflection": bool(g_reflection_engine),
         "policy_optimizer": bool(g_policy_optimizer),
         "security_policy": bool(g_security_policy),

@@ -41,6 +41,34 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
         self.assertNotIn("api_key", result.stdout.lower())
         self.assertNotIn("sk-", result.stdout.lower())
 
+    def test_model_acceptance_text_output_includes_counts(self):
+        script = ROOT / "scripts" / "evaluate_model_acceptance.py"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--provider",
+                "mock",
+                "--mock-response",
+                "PASS: meeting tool evidence is sufficient.",
+                "--limit",
+                "2",
+            ],
+            cwd=str(ROOT.parent),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Model acceptance: ok=True", result.stdout)
+        self.assertIn("passed_count=2", result.stdout)
+        self.assertIn("failed_count=0", result.stdout)
+        self.assertNotIn("api_key", result.stdout.lower())
+        self.assertNotIn("sk-", result.stdout.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
