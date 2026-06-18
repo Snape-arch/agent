@@ -1957,6 +1957,49 @@ async def api_memory_items_search(
     return JSONResponse({"items": rows, "count": len(rows)})
 
 
+@app.get("/api/knowledge")
+async def api_knowledge_list(category: str = ""):
+    if not g_memory_store:
+        return JSONResponse({"items": [], "count": 0}, status_code=503)
+    rows = g_memory_store.list_knowledge(category)
+    return JSONResponse({"items": rows, "count": len(rows)})
+
+
+@app.post("/api/knowledge")
+async def api_knowledge_save(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    title = str(data.get("title", "")).strip()
+    content = str(data.get("content", "")).strip()
+    if not title or not content:
+        raise HTTPException(400, "title and content are required")
+    tags = data.get("tags", [])
+    if isinstance(tags, str):
+        tags = [item.strip() for item in tags.split(",") if item.strip()]
+    item = g_memory_store.add_knowledge(
+        title=title,
+        content=content,
+        category=str(data.get("category", "domain") or "domain").strip() or "domain",
+        source=str(data.get("source", "manual") or "manual").strip(),
+        tags=tags if isinstance(tags, list) else [],
+        confidence=float(data.get("confidence", 0.7) or 0.7),
+    )
+    if g_vector_store:
+        g_vector_store.refresh()
+    return JSONResponse({"item": item, "saved": True})
+
+
+@app.get("/api/knowledge/search")
+async def api_knowledge_search(q: str = "", category: str = "", limit: int = 10):
+    if not g_memory_store:
+        return JSONResponse({"items": [], "count": 0}, status_code=503)
+    if not q:
+        return JSONResponse({"items": [], "count": 0})
+    rows = g_memory_store.search_knowledge(q, category, max(1, min(int(limit or 10), 50)))
+    return JSONResponse({"items": rows, "count": len(rows)})
+
+
 @app.get("/api/memory/items/{memory_id}/versions")
 async def api_memory_versions(memory_id: int, limit: int = 100):
     if not g_memory_store or not g_memory_store.get_memory(memory_id):

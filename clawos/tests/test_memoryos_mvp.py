@@ -144,6 +144,38 @@ class MemoryOSMvpTests(unittest.TestCase):
         self.assertTrue(any(r["id"].startswith("mem_") for r in results))
         self.assertTrue(any("MTT AIBOOK" in m["content"] for m in messages if m["role"] == "system"))
 
+    def test_user_knowledge_library_can_be_saved_searched_and_listed(self):
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            item = store.add_knowledge(
+                "Agent 论文精读",
+                "这篇论文讨论工具调用评测和可复现实验。",
+                category="research",
+                source="unit_test",
+                tags=["paper", "agent"],
+                confidence=0.9,
+            )
+            listed = store.list_knowledge("research")
+            results = store.search_knowledge("工具调用", "research")
+
+        self.assertEqual(item["title"], "Agent 论文精读")
+        self.assertEqual(listed[0]["category"], "research")
+        self.assertEqual(results[0]["source"], "unit_test")
+
+    def test_sessions_have_compact_topic_and_tags(self):
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            store.add_message("s1", "user", "请分析当前项目的前端代码和测试风险")
+            store.add_message("s1", "assistant", "可以，建议先检查布局和单元测试。")
+            sessions = store.list_sessions()
+
+        self.assertEqual(sessions[0]["title"], "请分析当前项目的前端代码和测试风险")
+        self.assertIn("项目", sessions[0]["tags"])
+
     def test_task_runtime_persists_steps_events_and_status(self):
         from memoryos.memory_store import MemoryStore
 

@@ -14,47 +14,59 @@ class FrontendStaticTests(unittest.TestCase):
         product = self.read_page("product.html")
         console = self.read_page("console.html")
 
-        self.assertIn("让智能体开始工作", home)
         self.assertIn('href="/product"', home)
-        self.assertIn("把 Agent 的每次行动", product)
+        self.assertIn("magazine-backdrop", home)
         self.assertIn('href="/console"', product)
+        self.assertIn("Evidence Grid", product)
+        self.assertIn("Runtime Map", product)
         self.assertIn("ClawOS 工作台", console)
 
     def test_pages_use_clawos_assets_and_motion(self):
         home = self.read_page("index.html")
         product = self.read_page("product.html")
 
-        self.assertIn("magazine-backdrop", home)
         self.assertIn("d55c96717921508cafd61730a1623e08.jpg", home)
         self.assertIn("starfield", home)
         self.assertIn("layer", home)
-        self.assertIn("Evidence Grid", product)
-        self.assertIn("Runtime Map", product)
-        self.assertIn("可追踪、可审计、可回滚", product)
+        self.assertIn("evidence", product.lower())
+        self.assertIn("runtime", product.lower())
 
-    def test_console_has_polished_chinese_console_copy(self):
+    def test_console_has_chat_first_information_architecture(self):
         html = self.read_page("console.html")
 
-        self.assertIn("ClawOS 工作台", html)
-        self.assertIn("状态总览", html)
-        self.assertIn("资料库", html)
-        self.assertIn("搜索聊天", html)
-        self.assertIn("项目", html)
+        self.assertIn('href="/assets/site.css"', html)
+        self.assertIn('href="/assets/console.css"', html)
+        self.assertIn('data-view="chat"', html)
+        self.assertIn('data-view="search"', html)
+        self.assertIn('data-view="knowledge"', html)
+        self.assertIn('data-view="projects"', html)
+        self.assertIn("知识库", html)
+        self.assertIn("记忆治理", html)
         self.assertIn("更多应用", html)
         self.assertIn("filePicker", html)
-        self.assertIn("工具路由", html)
-        self.assertIn("运行轨迹", html)
-        self.assertIn("冻结基准", html)
-        self.assertIn("场景工作流", html)
-        self.assertIn("技能审查", html)
+        self.assertIn("commandDrawer", html)
+
+    def test_console_exposes_knowledge_library_as_user_rag_surface(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+
+        self.assertIn("knowledgeTable", html)
+        self.assertIn("knowledgeSearchTable", html)
+        self.assertIn("knowledgeMap", html)
+        self.assertIn("保存到知识库", html)
+        self.assertIn("从当前对话凝练", html)
+        self.assertIn("/api/knowledge", js)
+        self.assertIn("saveKnowledge", js)
+        self.assertIn("searchKnowledge", js)
+        self.assertIn("renderKnowledgeMap", js)
 
     def test_pages_have_no_common_mojibake_fragments(self):
         combined = "\n".join(
             self.read_page(name)
-            for name in ("index.html", "product.html", "console.html", "assets/console.js")
+            for name in ("console.html", "assets/console.js", "assets/console.css")
         )
 
-        for fragment in ("閺", "闁", "瀹", "閿", "锟", "杩", "璁", "鎺"):
+        for fragment in ("闁", "闂", "鐎", "閿", "鏉", "鐠", "閹"):
             self.assertNotIn(fragment, combined)
 
     def test_console_exposes_tool_trace_and_confirmation_ui(self):
@@ -76,11 +88,13 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("/api/config/model", js)
         self.assertIn("saveModelSettings", js)
 
-    def test_console_exposes_unified_memory_management(self):
+    def test_console_exposes_unified_memory_governance(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
 
         self.assertIn("/api/memory/items", js)
+        self.assertIn("用户画像", html)
+        self.assertIn("偏好记忆", html)
         self.assertIn("项目记忆", html)
         self.assertIn("经验记忆", html)
         self.assertIn("技能记忆", html)

@@ -119,3 +119,30 @@ $env:MODEL_API_KEY="<your-deepseek-key>"
 2. 若用户允许，手动运行 DeepSeek 验收命令并保存 `output\deepseek_acceptance_report.json`，不要提交报告。
 3. 若发现演示阻碍问题，只做最小修复。
 4. 确认 `git status` 只包含本轮应提交文件，且 `.env`、数据库、日志、缓存未进入 Git。
+
+### 2026-06-18 - Console CSS module and knowledge/RAG IA cleanup
+
+Completed:
+- Reviewed current teammate baseline: branch `master` is aligned with `origin/master`; latest commit is `e22b675 收束 ClawOS Windows MVP 验收闭环`.
+- Moved chat-first console override rules out of `clawos/static/assets/site.css` into dedicated `clawos/static/assets/console.css`; `console.html` now loads it after the shared stylesheet.
+- Reworked console IA so sidebar `库` is now user-owned `知识库` for RAG documents, notes, papers, blog drafts, and project material. System MemoryOS governance moved into the More drawer as `记忆治理`.
+- Added knowledge library UI with save/search, category tabs, conversation-to-document draft action, and a lightweight topology map.
+- Added `/api/knowledge`, `/api/knowledge/search`, and `POST /api/knowledge`, backed by existing MemoryOS `knowledge` storage and vector refresh.
+- Improved session history labels: `/api/sessions` now returns compact `title/topic/tags` derived from early turns, so history is not just arbitrary last-message text.
+
+Verification:
+```powershell
+python -m py_compile clawos\clawos_server.py clawos\memoryos\memory_store.py
+node --check clawos/static/assets/console.js
+python -m unittest clawos.tests.test_frontend_static clawos.tests.test_memoryos_mvp
+python -m unittest discover -s clawos\tests
+```
+
+Result:
+- Targeted tests: `20 tests OK`.
+- Full suite: `107 tests OK`.
+- Browser validation passed on `http://127.0.0.1:18790/console`: default chat, dedicated `console.css`, sidebar Knowledge, More drawer, Memory governance entry, file picker, and knowledge topology DOM all verified.
+
+Known notes:
+- The local `.venv` is absent on this machine. Browser verification used the bundled Codex Python runtime to start `clawos_server.py`.
+- Full tests mutate `dev_health_check` usage stats; the registry line was restored after validation so the working tree contains only intentional source/UI/test changes.

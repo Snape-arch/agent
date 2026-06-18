@@ -2457,13 +2457,38 @@ class MemoryStore:
             for row in rows:
                 sid = row["session_id"]
                 msgs = c.execute("""SELECT role, content, created_at FROM conversations WHERE session_id=? ORDER BY id DESC LIMIT 1""", (sid,)).fetchone()
+                first_msgs = c.execute(
+                    "SELECT role, content FROM conversations WHERE session_id=? AND role IN ('user','assistant') ORDER BY id ASC LIMIT 6",
+                    (sid,),
+                ).fetchall()
+                title, tags = self._summarize_session(first_msgs, sid)
                 result.append({
                     "session_id": sid,
+                    "title": title,
+                    "topic": title,
+                    "tags": tags,
                     "role": (str(dict(msgs).get("role", "")) if msgs else ""),
                     "last_message": (str(dict(msgs).get("content", ""))[:100] if msgs else ""),
                     "updated_at": (str(dict(msgs).get("created_at", "")) if msgs else ""),
                 })
             return result
+
+    def _summarize_session(self, rows, fallback: str) -> tuple[str, list[str]]:
+        text = " ".join(str(dict(r).get("content", "")) for r in rows)
+        first_user = next((str(dict(r).get("content", "")) for r in rows if dict(r).get("role") == "user"), "")
+        title = first_user.strip().replace("\n", " ") or fallback
+        title = title[:34] + ("..." if len(title) > 34 else "")
+        keywords = [
+            ("项目", ["项目", "代码", "repo", "git", "测试", "前端", "后端"]),
+            ("科研", ["论文", "科研", "实验", "文献", "paper", "research"]),
+            ("学习", ["学习", "课程", "考试", "题", "复习"]),
+            ("会议", ["会议", "纪要", "action", "待办"]),
+            ("知识库", ["知识库", "rag", "资料", "文档"]),
+            ("配置", ["模型", "api", "deepseek", "配置"]),
+        ]
+        lowered = text.lower()
+        tags = [label for label, keys in keywords if any(k.lower() in lowered for k in keys)]
+        return (title, tags[:4] or ["对话"])
 
     def get_stats(self) -> dict:
         with self._conn() as c:
@@ -2492,8 +2517,10 @@ class MemoryStore:
 
     def add_knowledge(self, title, content, category="domain", source="", tags=None, confidence=0.5):
         with self._conn() as c:
-            c.execute("INSERT INTO knowledge (category,title,content,source,tags,confidence) VALUES (?,?,?,?,?,?)",
-                      (category, title, content, source, json.dumps(tags or []), confidence))
+            cursor = c.execute("INSERT INTO knowledge (category,title,content,source,tags,confidence) VALUES (?,?,?,?,?,?)",
+                               (category, title, content, source, json.dumps(tags or []), confidence))
+            row = c.execute("SELECT * FROM knowledge WHERE id=?", (int(cursor.lastrowid),)).fetchone()
+            return dict(row)
 
     def search_knowledge(self, query, category="", limit=10):
         with self._conn() as c:
