@@ -5,6 +5,11 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timezone
+from pathlib import Path
+
+
+BENCHMARKS_DIR = Path(__file__).resolve().parent / "benchmarks"
+DEFAULT_SUITE_FILE = BENCHMARKS_DIR / "competition_frozen_v1.json"
 
 
 def _now_iso():
@@ -86,6 +91,30 @@ DEFAULT_SCENARIO_CASES = [
 ]
 
 
+def load_suite_file(path: str | Path = DEFAULT_SUITE_FILE) -> dict:
+    """Load a file-backed frozen benchmark suite."""
+
+    suite_path = Path(path)
+    data = json.loads(suite_path.read_text(encoding="utf-8"))
+    cases = data.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("benchmark suite file must contain non-empty cases")
+    for index, case in enumerate(cases):
+        if not case.get("name"):
+            raise ValueError(f"case {index} is missing name")
+        if not case.get("scenario"):
+            raise ValueError(f"case {index} is missing scenario")
+        if not case.get("tool"):
+            raise ValueError(f"case {index} is missing tool")
+    return {
+        "name": str(data.get("name") or suite_path.stem),
+        "description": str(data.get("description") or ""),
+        "cases": cases,
+        "thresholds": data.get("thresholds") or {},
+        "source_path": str(suite_path),
+    }
+
+
 class FrozenScenarioBenchmark:
     """Persist and run frozen scenario suites through the same tool envelope."""
 
@@ -126,6 +155,15 @@ class FrozenScenarioBenchmark:
             ).fetchone()
             if row:
                 return _row(row)
+            suite = (
+                load_suite_file(DEFAULT_SUITE_FILE)
+                if DEFAULT_SUITE_FILE.exists()
+                else {
+                    "name": "competition-frozen-v1",
+                    "description": "Frozen multi-scenario acceptance suite for meeting, learning, project, skill, and memory flows.",
+                    "cases": DEFAULT_SCENARIO_CASES,
+                }
+            )
             now = _now_iso()
             cursor = c.execute(
                 """
@@ -134,9 +172,9 @@ class FrozenScenarioBenchmark:
                 VALUES (?, ?, ?, 1, 'system', ?)
                 """,
                 (
-                    "competition-frozen-v1",
-                    "Frozen multi-scenario acceptance suite for meeting, learning, project, skill, and memory flows.",
-                    json.dumps(DEFAULT_SCENARIO_CASES, ensure_ascii=False),
+                    suite["name"],
+                    suite["description"],
+                    json.dumps(suite["cases"], ensure_ascii=False),
                     now,
                 ),
             )
@@ -145,6 +183,15 @@ class FrozenScenarioBenchmark:
                 (cursor.lastrowid,),
             ).fetchone()
             return _row(row)
+
+    def import_suite_file(self, path: str | Path, created_by="system"):
+        suite = load_suite_file(path)
+        return self.create_suite(
+            suite["name"],
+            suite["cases"],
+            description=suite["description"],
+            created_by=created_by,
+        )
 
     def create_suite(self, name, cases, description="", created_by="user"):
         if not isinstance(cases, list) or not cases:
@@ -270,6 +317,16 @@ class FrozenScenarioBenchmark:
             reasons.append("unexpected ok flag")
         if expected.get("status") and result.get("status") != expected["status"]:
             reasons.append("unexpected status")
+        if expected.get("tool") and result.get("tool") != expected["tool"]:
+            reasons.append("unexpected tool")
+        data = result.get("data") if isinstance(result.get("data"), dict) else {}
+        for path in expected.get("data_paths") or []:
+            if not FrozenScenarioBenchmark._has_path(data, path):
+                reasons.append(f"missing data path: {path}")
+        for text in expected.get("data_contains_text") or []:
+            haystack = json.dumps(data, ensure_ascii=False)
+            if str(text) not in haystack:
+                reasons.append(f"missing data text: {text}")
         max_latency = case.get("max_latency_ms")
         if max_latency is not None and float(latency_ms) > float(max_latency):
             reasons.append("case latency exceeded")
@@ -282,3 +339,15 @@ class FrozenScenarioBenchmark:
         ordered = sorted(values)
         index = max(0, min(len(ordered) - 1, int((len(ordered) - 1) * fraction)))
         return float(ordered[index])
+
+    @staticmethod
+    def _has_path(data, path):
+        current = data
+        for part in str(path).split("."):
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            elif isinstance(current, list) and part.isdigit() and int(part) < len(current):
+                current = current[int(part)]
+            else:
+                return False
+        return current is not None

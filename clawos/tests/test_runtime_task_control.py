@@ -116,6 +116,58 @@ class RuntimeTaskControlTests(unittest.TestCase):
         self.assertEqual(retry["retry_of"], task["id"])
         self.assertEqual(retry["status"], "pending_retry")
 
+    def test_task_queue_lists_and_claims_replay_tasks_with_audit(self):
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            original = store.start_task(
+                "s-queue",
+                "Interrupted queue task",
+                metadata={"user_text": "resume me"},
+                status="running",
+            )
+            recovered = store.recover_interrupted_tasks(
+                actor_id="startup",
+                create_retries=True,
+            )
+            queued = store.list_task_queue()
+            claimed = store.claim_next_task(worker_id="worker-a")
+            after_claim = store.list_task_queue()
+            detail = store.get_task(claimed["id"])
+
+        self.assertEqual(recovered["created_retry_count"], 1)
+        self.assertEqual(queued[0]["retry_of"], original["id"])
+        self.assertEqual(claimed["status"], "running")
+        self.assertEqual(claimed["resume_state"], "claimed")
+        self.assertEqual(claimed["metadata"]["claimed_by"], "worker-a")
+        self.assertEqual(after_claim, [])
+        self.assertTrue(any(event["event_type"] == "task_claimed" for event in detail["events"]))
+
+    def test_task_queue_api_lists_and_claims_next_task(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            try:
+                task = server.g_memory_store.start_task("s-api", "Queued API task", status="pending")
+                queue_response = asyncio.run(server.api_tasks_queue())
+                queue_payload = json.loads(queue_response.body.decode("utf-8"))
+                claim_response = asyncio.run(server.api_tasks_queue_claim(
+                    JsonRequest({"worker_id": "api-worker"})
+                ))
+                claim_payload = json.loads(claim_response.body.decode("utf-8"))
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertEqual(queue_payload["count"], 1)
+        self.assertEqual(queue_payload["tasks"][0]["id"], task["id"])
+        self.assertTrue(claim_payload["claimed"])
+        self.assertEqual(claim_payload["task"]["id"], task["id"])
+        self.assertEqual(claim_payload["task"]["metadata"]["claimed_by"], "api-worker")
+
     def test_task_event_retention_prunes_old_detail_events_but_keeps_audit_tail(self):
         from memoryos.memory_store import MemoryStore
 

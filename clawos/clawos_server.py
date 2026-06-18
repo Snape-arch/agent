@@ -627,6 +627,18 @@ def list_runtime_tasks(session_id: str = "", status: str = "", limit: int = 50) 
     return g_memory_store.list_tasks(session_id=session_id, status=status, limit=limit)
 
 
+def list_runtime_task_queue(statuses: list[str] | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    return g_memory_store.list_task_queue(statuses=statuses, limit=limit)
+
+
+def claim_runtime_task(worker_id: str = "worker", statuses: list[str] | None = None) -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    return g_memory_store.claim_next_task(worker_id=worker_id, statuses=statuses)
+
+
 def get_runtime_task(task_id: int) -> dict[str, Any]:
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
@@ -1921,6 +1933,28 @@ async def api_memory_evaluation_run(request: Request):
 async def api_tasks(session_id: str = "", status: str = "", limit: int = 50):
     rows = list_runtime_tasks(session_id=session_id, status=status, limit=limit)
     return JSONResponse({"tasks": rows, "count": len(rows)})
+
+
+@app.get("/api/tasks/queue")
+async def api_tasks_queue(status: str = "", limit: int = 50):
+    statuses = [item.strip() for item in status.split(",") if item.strip()] if status else None
+    rows = list_runtime_task_queue(statuses=statuses, limit=limit)
+    return JSONResponse({"tasks": rows, "count": len(rows)})
+
+
+@app.post("/api/tasks/queue/claim")
+async def api_tasks_queue_claim(request: Request):
+    data = await request.json()
+    statuses = data.get("statuses")
+    if isinstance(statuses, str):
+        statuses = [item.strip() for item in statuses.split(",") if item.strip()]
+    elif not isinstance(statuses, list):
+        statuses = None
+    task = claim_runtime_task(
+        worker_id=str(data.get("worker_id", "worker")),
+        statuses=statuses,
+    )
+    return JSONResponse({"task": task, "claimed": bool(task)})
 
 
 @app.post("/api/tasks/recover")

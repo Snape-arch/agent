@@ -1,16 +1,16 @@
-# ClawOS 企业级交付成熟度复盘
+# ClawOS 交付成熟度复盘
 
-评估日期：2026-06-15
+评估日期：2026-06-18
 
 ## 结论
 
-ClawOS 已从早期聊天型 Demo 进入“具备治理闭环的竞赛交付候选”阶段。MTClaw Adapter、
-MemoryOS 2.0、Reflection 2.0、Policy Optimizer、工具安全、五类工作场景和受控 Skill
-进化均已有代码与确定性测试，不再只是规划文档。
+ClawOS 已从早期聊天型 Demo 进入“Windows 本地可运行的个人 Agent OS 原型”阶段。
+MTClaw Adapter、模型 provider 抽象、MemoryOS、Reflection、工具安全、Task Runtime 基础、
+五类工作场景、文件化冻结验收任务和模型验收评分脚手架均已有代码与确定性测试。
 
-当前综合成熟度约为 **64/100**：
+当前综合成熟度约为 **75/100**：
 
-- 对比赛：功能覆盖和创新叙事基本成立，完成 MTT AIBOOK 本地模型实机证据后可形成低风险交付。
+- 对比赛：功能覆盖和验收脚手架基本成立，完成真实 DeepSeek/Qwen 对比和前端演示后可形成低风险交付。
 - 对单用户内测：可用，但仍需限制高风险写操作并保留人工审核。
 - 对企业生产：尚未达标，缺可靠任务运行时、真实身份与多租户、运维体系、负载基准和本地硬件验收。
 
@@ -21,7 +21,7 @@ MemoryOS 2.0、Reflection 2.0、Policy Optimizer、工具安全、五类工作�
 | 基于 MTClaw | 独立 Adapter、双服务调用、Tool History、持久化 Trace、兼容测试 | 基本满足，需实机演示包 |
 | 国产本地环境 | 已保留 OpenAI-compatible 本地模型接口 | 未闭环，缺 MTT AIBOOK + vLLM-MUSA/Qwen 实测 |
 | 快 | Skill 本地回放、工具直达、MTClaw 路由 | 有机制，缺统一 P50/P95 基准 |
-| 准 | Memory 检索、证据链、Review Inbox、Reflection 回归门禁 | 有机制，缺冻结真实任务集准确率 |
+| 准 | Memory 检索、证据链、Review Inbox、Reflection 回归门禁、30 条冻结验收任务 | 有机制，缺真实模型回答质量对比 |
 | 狠 | 会议、科研、学习、Git、模板等跨场景工具 | 覆盖已形成，深度和外部连接器仍有限 |
 | 懂用户/场景/效率 | 五类记忆、上下文策略、Skill 与 Policy 学习 | 后端闭环成立，长期线上样本不足 |
 
@@ -30,17 +30,34 @@ MemoryOS 2.0、Reflection 2.0、Policy Optimizer、工具安全、五类工作�
 | 模块 | 成熟度 | 已有能力 | 主要交付缺口 |
 |---|---:|---|---|
 | MTClaw 集成 | 72% | 真实 Adapter、Trace、fallback、兼容测试 | MTT 实机、故障注入、版本兼容矩阵 |
-| DeepSeek Provider | 62% | OpenAI-compatible 抽象、配置与健康检查 | 流式、限流、重试/熔断、成本与配额 |
-| 本地 Qwen | 20% | 配置接口预留 | 模型部署、显存数据、首字延迟、吞吐与质量 |
+| DeepSeek Provider | 70% | OpenAI-compatible 抽象、配置、健康检查、统一 envelope | 流式、限流、重试/熔断、成本与配额、真实验收报告 |
+| 本地 Qwen | 25% | OpenAI-compatible 配置接口预留，可纳入同一验收脚本 | 模型部署、显存数据、首字延迟、吞吐与质量 |
 | MemoryOS | 74% | 五类记忆、版本、冲突、证据、Review、ACL、检索评测 | 生命周期、字段加密、硬删除证明、真实身份隔离 |
 | Reflection | 72% | 完整卡片、反馈、状态机、回归验证、发布与回滚 | 去重聚类、冻结回归集、长期效果归因 |
 | Skill Evolution | 70% | 候选版本、隔离执行、冻结评测、质量门禁、晋升与回滚 | 自动候选质量、fresh-agent 审计、权限签名、补偿事务 |
 | Policy Optimizer | 66% | Contextual UCB、Reward、统计、晋升与回滚 | 长期真实样本、显著性检验、漂移监测 |
 | 工具安全 | 68% | 路径白名单、命令策略、Worker、确认、审计、密钥引用 | OS Keyring、资源配额、网络出口策略、容器隔离 |
-| 任务运行时 | 55% | Task/Step/Event、超时、等待确认 | 幂等键、取消、重试、断点恢复、队列与补偿 |
+| 任务运行时 | 68% | Task/Step/Event、幂等、取消、重试、恢复、队列领取、事件审计 | 后台 worker、补偿事务、故障注入、长任务资源控制 |
 | 场景工作台 | 58% | 五类场景后端闭环 | Whisper/OCR、日历邮件、Git 写操作审批、场景基准 |
-| 前端 | 48% | 多模块控制台 | SSE/WebSocket、任务图、上传、审计交互、可访问性 |
-| 测试与运维 | 58% | 67 个确定性测试 | 负载/E2E/安全测试、迁移、备份恢复、安装升级 |
+| 前端 | 62% | 多模块控制台、任务流、恢复队列、Trace/事件审计、确认弹窗、Memory/Reflection Review 操作基础 | 真实浏览器视觉验收、上传、长任务状态联动、可访问性 |
+| 测试与运维 | 70% | 97 个确定性测试、30 条冻结验收任务、模型验收评分脚本 | 负载/E2E/安全测试、迁移、备份恢复、安装升级 |
+
+## 当前验收证据
+
+| 验收项 | 命令 | 当前结果 |
+|---|---|---|
+| 冻结任务 | `.\clawos\.venv\Scripts\python.exe clawos\scripts\run_frozen_benchmarks.py` | `30/30 passed`，P95 约 `271.388ms` |
+| 模型验收评分脚手架 | `.\clawos\.venv\Scripts\python.exe clawos\scripts\evaluate_model_acceptance.py --provider mock` | `score=150/150 rate=1.0` |
+| Task Runtime 控制 | `.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_runtime_task_control` | `9 tests OK` |
+| 前端静态控制台 | `.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static` | `10 tests OK` |
+| 场景 benchmark 单测 | `.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_scenario_benchmarks` | `5 tests OK` |
+| 全量单测 | `.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests` | `97 tests OK` |
+
+真实公开数据样例已纳入冻结任务，但只是小规模验收夹具，不是大规模知识库：
+
+- NASA Apollo 11 Mission Overview
+- UCI Iris Dataset
+- Project Gutenberg eBook 11
 
 ## 本轮自进化 Skill 复盘
 
@@ -78,7 +95,7 @@ Inbox，发布权限必须与执行权限分离。
 4. 敏感数据加密、OS Keyring、日志脱敏、数据保留和删除证明可验证。
 5. 建立版本化数据库迁移、备份恢复、升级回退和故障诊断流程。
 6. 高风险工具具备网络/文件/命令三类隔离、资源限额和完整审计。
-7. 使用同一冻结任务集比较 DeepSeek 与本地模型，报告成功率、匹配准确率和 P95。
+7. 使用同一冻结任务集比较 DeepSeek 与本地模型，报告成功率、回答评分、工具命中率和 P95。
 8. 前端可实时查看任务、确认高风险动作、追踪证据、回滚改进并导出审计记录。
 
 ## 下一步方向
@@ -86,7 +103,7 @@ Inbox，发布权限必须与执行权限分离。
 ### P0：比赛低风险闭环
 
 1. 完成 MTT AIBOOK + Qwen/vLLM-MUSA 实机部署和一键启动。
-2. 固化 20-30 条覆盖五大场景的冻结验收任务，输出“快、准、狠”报告。
+2. 使用已固化的 30 条冻结验收任务跑 DeepSeek 真实 API 验收，并保存评分报告。
 3. 补 Task 幂等、取消、重试和恢复，确保现场演示可从失败中恢复。
 4. 打通前端实时任务流、确认弹窗、Trace 和 Skill Review Inbox。
 5. 形成离线演示包：模型、配置、样例数据、启动脚本、检查脚本和录屏备份。

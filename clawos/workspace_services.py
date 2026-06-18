@@ -1501,6 +1501,8 @@ class WorkspaceServices:
             ["git", "-C", str(repo), *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=20,
         )
         if proc.returncode != 0:
