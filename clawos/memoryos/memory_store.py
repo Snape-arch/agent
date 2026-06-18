@@ -953,6 +953,70 @@ class MemoryStore:
             ).fetchall()
             return [self._task_row_to_dict(row) for row in rows]
 
+    def list_task_queue(self, statuses=None, limit=50):
+        statuses = statuses or ["pending_retry", "pending"]
+        statuses = [str(status) for status in statuses if str(status or "").strip()]
+        if not statuses:
+            statuses = ["pending_retry", "pending"]
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 50), 200))
+            placeholders = ",".join("?" for _ in statuses)
+            rows = c.execute(
+                f"""
+                SELECT *
+                FROM tasks
+                WHERE status IN ({placeholders}) AND cancellation_requested=0
+                ORDER BY attempt ASC, id ASC
+                LIMIT ?
+                """,
+                [*statuses, limit],
+            ).fetchall()
+            return [self._task_row_to_dict(row) for row in rows]
+
+    def claim_next_task(self, worker_id="worker", statuses=None):
+        statuses = statuses or ["pending_retry", "pending"]
+        statuses = [str(status) for status in statuses if str(status or "").strip()]
+        if not statuses:
+            statuses = ["pending_retry", "pending"]
+        with self._conn() as c:
+            placeholders = ",".join("?" for _ in statuses)
+            row = c.execute(
+                f"""
+                SELECT *
+                FROM tasks
+                WHERE status IN ({placeholders}) AND cancellation_requested=0
+                ORDER BY attempt ASC, id ASC
+                LIMIT 1
+                """,
+                statuses,
+            ).fetchone()
+            if not row:
+                return {}
+            metadata = self._json_loads(row["metadata"], {})
+            metadata["claimed_by"] = str(worker_id or "worker")
+            metadata["claimed_at"] = datetime.now(timezone.utc).isoformat()
+            updated = c.execute(
+                """
+                UPDATE tasks
+                SET status='running', resume_state='claimed', metadata=?
+                WHERE id=? AND status=?
+                """,
+                (json.dumps(metadata, ensure_ascii=False), int(row["id"]), row["status"]),
+            )
+            if updated.rowcount != 1:
+                return {}
+            c.execute(
+                "INSERT INTO task_events (task_id, event_type, message, data) VALUES (?, ?, ?, ?)",
+                (
+                    int(row["id"]),
+                    "task_claimed",
+                    "Task claimed by queue worker",
+                    json.dumps({"worker_id": str(worker_id or "worker")}, ensure_ascii=False),
+                ),
+            )
+            claimed = c.execute("SELECT * FROM tasks WHERE id=?", (int(row["id"]),)).fetchone()
+            return self._task_row_to_dict(claimed)
+
     def get_task(self, task_id):
         with self._conn() as c:
             task = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()

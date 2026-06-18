@@ -72,6 +72,22 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("Skill", html)
         self.assertIn("toggleMemory", js)
         self.assertIn("memoryTable", html)
+        self.assertIn("memoryReviewTable", html)
+        self.assertIn("/api/memory/reviews", js)
+        self.assertIn("resolveMemoryReview", js)
+
+    def test_console_exposes_memory_and_reflection_review_actions(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+
+        self.assertIn("Memory Review Inbox", html)
+        self.assertIn("Reflection Review Inbox", html)
+        self.assertIn("reflectionReviewTable", html)
+        self.assertIn("/api/reflection/improvements", js)
+        self.assertIn("transitionReflection", js)
+        self.assertIn("validateReflection", js)
+        self.assertIn("publishReflection", js)
+        self.assertIn("rollbackReflection", js)
 
     def test_console_exposes_task_trace_panel(self):
         html = self.read_page("console.html")
@@ -80,9 +96,16 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("/api/tasks", js)
         self.assertIn("/api/tasks/stream", js)
         self.assertIn("/api/tasks/recover", js)
+        self.assertIn("/api/tasks/queue", js)
+        self.assertIn("/api/tasks/queue/claim", js)
         self.assertIn("/cancel", js)
         self.assertIn("/retry", js)
         self.assertIn("taskTable", html)
+        self.assertIn("taskQueueTable", html)
+        self.assertIn("taskStepTable", html)
+        self.assertIn("taskEventTable", html)
+        self.assertIn("claimTask", js)
+        self.assertIn("loadTaskQueue", js)
         self.assertIn("loadTasks", js)
         self.assertIn("task_id", js)
 

@@ -13,9 +13,9 @@
 
 - 当前分支：`codex/fix-routing-memory-ui`
 - 远程仓库：`https://github.com/Snape-arch/agent.git`
-- 最近本地提交：`232e402 修复MTclaw`
-- 当前成熟度估计：`72/100`
-- 定位：Windows 本地可演示竞赛原型，正在推进到准企业级 Agent 工作台。
+- 最近本地提交：`d94b128 修复了一些问题`
+- 当前成熟度估计：`75/100`
+- 定位：Windows 本地可运行的个人 Agent OS 原型，围绕 observe-plan-execute-reflect-memory-improve 闭环，重点实现模型可切换、工具可审计、危险操作可确认、记忆可管理、反思可沉淀。
 - Windows 双服务入口：根目录 `start_clawos.bat`
 
 ## 项目结构
@@ -38,20 +38,31 @@
 - Windows 下 MTClaw 可执行 `.cmd` 工具包装脚本，避免依赖未配置 WSL bash。
 - MemoryOS 五类记忆、检索、Review、ACL、评测基础。
 - Reflection 卡片、反馈、状态机、回归验证和回滚基础。
-- Task / Step / Event 持久化运行时 MVP。
-- 前端已有产品页、控制台、Memory、Reflection、Skills、Tools、Task Trace 视图。
-- 全量单测当前基线：`93 tests OK`。
-- 文件化冻结验收任务基础版：`clawos/benchmarks/competition_frozen_v1.json`，runner 为 `clawos/scripts/run_frozen_benchmarks.py`。
+- Task / Step / Event 持久化运行时，含幂等、取消、重试、恢复、队列领取和事件审计基础。
+- 前端已有产品页、控制台、Memory/Reflection Review 操作、Skills、Tools、Task Trace、恢复队列和事件审计视图。
+- 全量单测当前基线：`97 tests OK`。
+- 文件化冻结验收任务：`clawos/benchmarks/competition_frozen_v1.json`，runner 为 `clawos/scripts/run_frozen_benchmarks.py`，当前 `30/30 passed`。
+- 模型验收评分脚手架：`clawos/scripts/evaluate_model_acceptance.py`，mock 离线基线 `score=150/150 rate=1.0`。
 
 ## 当前主要缺口
 
 1. Windows 双服务一键启动已实现基础版，但仍需端口占用检测、优雅停止和用户手动试跑反馈。
 2. README/PROJECT_CONTEXT 已恢复可读，但其他历史文档可能仍有乱码，需逐步清理。
-3. 前端还不是企业级任务控制台，缺实时任务流、确认弹窗、Trace 可视化、Review 操作。
-4. Task Runtime 仍缺完整幂等、取消、重试、恢复、队列 worker 和补偿事务。
+3. 前端已有任务流、恢复队列、Trace/事件审计、确认弹窗、Memory/Reflection Review 操作基础，但仍缺视觉验收和长任务状态联动。
+4. Task Runtime 已有幂等、取消、重试、恢复、队列领取和事件审计基础，但仍缺完整后台 worker、补偿事务和长期故障注入。
 5. 本地离线 Qwen/vLLM-MUSA 尚未闭环，目前主要依赖 DeepSeek API。
-6. 已有 5 条文件化冻结验收任务，仍需扩展到 20-30 条并形成 DeepSeek/本地 Qwen 对比报告。
-7. 企业级身份、RBAC、多租户、Keyring、备份恢复、迁移、可观测性仍未达标。
+6. 已有 30 条文件化冻结验收任务和模型评分脚手架，仍需跑 DeepSeek/本地 Qwen 真实对比，并把真实模型路由命中率纳入验收。
+7. 身份、RBAC、多租户、Keyring、备份恢复、迁移、可观测性仍未达标。
+
+## 重要风险
+
+1. 不要泄露本地 `.env`。禁止右键压缩整个项目文件夹交付，因为会带上 `.env`、`.venv`、`memoryos.db`、logs、`__pycache__` 等本地内容。
+2. 干净打包只能使用 Git 已提交内容，例如：
+   ```powershell
+   git archive --format=zip --output ..\agent-clean.zip HEAD
+   ```
+3. 文档和演示话术必须克制。不要写“企业级”“全自动自进化”“完全本地离线”“95% 准确率”“生产级系统”，除非有当前验收证据。
+4. `clawos_server.py`、`memory_store.py`、`tool_runner.py` 偏大，长期维护有风险；但当前优先级是稳定演示、同步文档、形成验收脚本、保证别人能看懂，不急着大拆。
 
 ## 最近完成
 
@@ -120,9 +131,114 @@
 - 目前只有 5 条 seed 任务，用于建立格式和 runner；长期目标仍是扩展到 20-30 条，并输出模型/工具命中率/P50/P95 报告。
 - 冻结任务 runner 不写死仓库路径，运行时从脚本位置推导仓库根目录。
 
+### 2026-06-18 - 冻结验收任务扩展到 27 条
+
+已完成：
+- `clawos/benchmarks/competition_frozen_v1.json` 从 5 条扩展到 27 条，覆盖会议、科研、学习、Git、模板、Office artifact、项目脚手架和核心工具。
+- `clawos/scripts/run_frozen_benchmarks.py` 支持 `${tmpdir}`、`${repo_root}`、`${clawos_root}` 占位符和 `_benchmark_fixtures`，运行时使用临时数据库，避免污染本地 `.env` 或 `memoryos.db`。
+- 新增会议侧边 transcript/audio fixture、科研复现实验目录、学习复盘/错题/图谱/掌握度、Git snapshot/commit plan/change request、模板实例化、Office XLSX/PPTX、代码统计/TODO 扫描等验收面。
+- 测试门槛更新为默认 suite 至少 20 条，并校验 runner 输出 `cases=27/27`。
+
+验证：
+```powershell
+.\clawos\.venv\Scripts\python.exe clawos\scripts\run_frozen_benchmarks.py
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_scenario_benchmarks
+.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
+```
+
+结果：冻结任务 `27/27 passed`，P95 约 `261.268ms`；场景 benchmark 专项 `5 tests OK`；全量 `93 tests OK`。
+
+注意：
+- 本轮已按安全要求补充 README/PROJECT_CONTEXT：禁止右键压缩整个项目，干净打包使用 `git archive --format=zip --output ..\agent-clean.zip HEAD`。
+- 文档表述已降调为“Windows 本地个人 Agent OS 原型”，避免宣称企业级、全自动自进化、完全离线、95% 准确率或生产级系统。
+
+### 2026-06-18 - 冻结验收任务加入真实公开数据样例
+
+已完成：
+- `clawos/benchmarks/competition_frozen_v1.json` 从 27 条扩展到 30 条，仍保持在 20-30 条冻结验收任务范围内。
+- 新增 NASA Apollo 11、UCI Iris、Project Gutenberg Alice 三类公开来源样例，用于后续 DeepSeek/API Key 实测和自动评分。
+- 新增任务只保存来源 URL、少量结构化事实和小样例数据，不保存大段外部文本，也不依赖外部网络运行。
+- `clawos/tests/test_scenario_benchmarks.py` 的 runner 输出校验更新为 `cases=30/30`。
+
+真实数据来源：
+- NASA Apollo 11 Mission Overview: `https://www.nasa.gov/history/apollo-11-mission-overview/`
+- UCI Iris Dataset: `https://archive.ics.uci.edu/dataset/53/iris`
+- Project Gutenberg eBook 11: `https://www.gutenberg.org/ebooks/11`
+
+验证：
+```powershell
+.\clawos\.venv\Scripts\python.exe clawos\scripts\run_frozen_benchmarks.py
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_scenario_benchmarks
+.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
+```
+
+结果：冻结任务 `30/30 passed`，P95 约 `259.679ms`；场景 benchmark 专项 `5 tests OK`；全量 `93 tests OK`。
+
+### 2026-06-18 - 模型验收评分脚手架
+
+已完成：
+- 新增 `clawos/scripts/evaluate_model_acceptance.py`，复用 30 条冻结任务，先执行工具侧验收，再调用统一 ModelProvider 生成验收结论并打分。
+- 默认 provider 为 `mock`，不依赖真实 API Key；真实 DeepSeek/Qwen 运行时通过环境变量读取密钥，不在输出中暴露 Key。
+- 新增 `clawos/tests/test_model_acceptance.py`，覆盖 mock provider、截断 suite、JSON 输出和密钥不泄露检查。
+- 更新 `clawos/ENTERPRISE_READINESS.md`，加入当前验收证据、75/100 评分、差距和下一步。
+
+验证：
+```powershell
+.\clawos\.venv\Scripts\python.exe clawos\scripts\evaluate_model_acceptance.py --provider mock
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+```
+
+结果：模型验收 mock 基线 `score=150/150 rate=1.0`；模型验收与场景 benchmark 专项合计 `6 tests OK`；全量 `94 tests OK`；本轮冻结任务复测 P95 约 `277.739ms`。
+
+### 2026-06-18 - Task Runtime 队列领取与审计基础
+
+已完成：
+- `clawos/memoryos/memory_store.py` 新增 `list_task_queue` 和 `claim_next_task`，支持列出 `pending_retry/pending` 任务并由 worker 领取。
+- 领取任务会把状态更新为 `running`，`resume_state` 更新为 `claimed`，并在 metadata 中记录 `claimed_by/claimed_at`。
+- 新增 `task_claimed` 事件，保证队列领取动作可审计。
+- `clawos/clawos_server.py` 新增 `/api/tasks/queue` 和 `/api/tasks/queue/claim`，方便前端或后续 worker 使用。
+- `clawos/tests/test_runtime_task_control.py` 增加队列和 API 覆盖。
+
+验证：
+```powershell
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_runtime_task_control
+```
+
+结果：Task Runtime 专项 `9 tests OK`；全量 `96 tests OK`；本轮冻结任务复测 P95 约 `306.271ms`。
+
+### 2026-06-18 - 前端任务控制台队列与审计视图
+
+已完成：
+- `clawos/static/console.html` 的任务页新增“恢复队列”“步骤 Trace”“事件审计”三个区域。
+- `clawos/static/assets/console.js` 接入 `/api/tasks/queue` 和 `/api/tasks/queue/claim`，支持刷新队列和从控制台领取下一个可恢复任务。
+- 任务详情从混合表格拆成步骤 Trace 和事件审计，便于现场演示任务如何执行、如何被取消/重试/恢复。
+- `clawos/tests/test_frontend_static.py` 增加队列、领取、Trace 和审计视图静态覆盖。
+
+验证：
+```powershell
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+```
+
+结果：前端静态测试 `9 tests OK`；全量 `96 tests OK`；本轮冻结任务复测 P95 约 `277.057ms`。
+
+### 2026-06-18 - Memory/Reflection Review 操作接入控制台
+
+已完成：
+- `clawos/static/console.html` 新增 `Memory Review Inbox` 和 `Reflection Review Inbox`。
+- `clawos/static/assets/console.js` 接入 `/api/memory/reviews`、`/api/memory/reviews/{id}/resolve`，支持在控制台批准/拒绝记忆冲突。
+- `console.js` 接入 `/api/reflection/improvements` 及 transition/validate/publish/rollback API，支持反思改进从提议、批准、验证、发布到回滚的基本操作。
+- `clawos/tests/test_frontend_static.py` 增加 Memory/Reflection Review 操作静态覆盖。
+
+验证：
+```powershell
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+```
+
+结果：前端静态测试 `10 tests OK`；全量 `97 tests OK`；本轮冻结任务复测 P95 约 `271.388ms`。
+
 ## 推荐下一步
 
-1. 将冻结验收任务从 5 条扩展到 20-30 条，增加会议转写、科研 PDF、学习复盘、Git 审批、模板实例化等更深场景。
-2. 给 `start_clawos.bat` 增加端口占用检测和优雅停止说明。
-3. 前端优先补实时任务/Trace/确认弹窗，而不是继续做静态展示。
-4. Task Runtime 下一轮优先做幂等键和可恢复队列。
+1. 给 `start_clawos.bat` 增加端口占用检测和优雅停止说明。
+2. 用真实 DeepSeek API 跑 `evaluate_model_acceptance.py`，保存评分报告，并补充失败样例分析。
+3. 前端下一轮优先补真实浏览器截图验收和长任务状态联动。
+4. Task Runtime 下一轮优先做后台 worker、补偿事务和故障注入验收。

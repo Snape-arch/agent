@@ -1,9 +1,9 @@
 {
   "name": "competition-frozen-v1",
-  "description": "File-backed frozen acceptance suite covering meeting, research, learning, Git collaboration, and template/tool workflows.",
+  "description": "File-backed frozen acceptance suite covering meeting, research, learning, Git collaboration, templates, project scaffolding, office artifacts, and core tools.",
   "thresholds": {
     "min_pass_rate": 1.0,
-    "max_p95_latency_ms": 3000.0
+    "max_p95_latency_ms": 5000.0
   },
   "cases": [
     {
@@ -27,6 +27,29 @@
       "max_latency_ms": 3000
     },
     {
+      "name": "meeting_audio_transcript_import",
+      "scenario": "meeting",
+      "tool": "meeting_workflow",
+      "args": {
+        "action": "audio_import",
+        "audio_path": "${tmpdir}/meeting/frozen-sync.wav",
+        "transcript_path": "${tmpdir}/meeting/frozen-sync-transcript.txt",
+        "title": "Frozen transcript review",
+        "_benchmark_fixtures": [
+          {"path": "${tmpdir}/meeting/frozen-sync.wav", "bytes_hex": "524946460000000057415645"},
+          {"path": "${tmpdir}/meeting/frozen-sync-transcript.txt", "content": "Alice: We will ship the MTClaw Windows launcher. Bob: Risk is missing frozen benchmarks."}
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "meeting_workflow",
+        "data_paths": ["meeting.meeting.id", "meeting.audio_path", "meeting.transcript_status", "meeting.diarization"],
+        "data_contains_text": ["transcript_imported"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
       "name": "research_search_returns_evidence_shape",
       "scenario": "research",
       "tool": "research_pdf",
@@ -40,6 +63,59 @@
         "status": "success",
         "tool": "research_pdf",
         "data_paths": ["results", "count"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "research_citation_validator_empty_set",
+      "scenario": "research",
+      "tool": "research_pdf",
+      "args": {
+        "action": "validate_citations",
+        "citations": []
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "research_pdf",
+        "data_paths": ["valid", "results"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "research_compare_matrix_empty_corpus",
+      "scenario": "research",
+      "tool": "research_pdf",
+      "args": {
+        "action": "compare_matrix",
+        "query_terms": ["memory", "reflection"]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "research_pdf",
+        "data_paths": ["terms", "matrix"],
+        "data_contains_text": ["memory", "reflection"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "research_repro_workflow_scaffold",
+      "scenario": "research",
+      "tool": "research_pdf",
+      "args": {
+        "action": "repro_workflow",
+        "title": "Frozen reproducible experiment",
+        "question": "Can ClawOS replay acceptance tasks deterministically?",
+        "steps": ["Prepare fixture", "Run frozen suite", "Export metrics"],
+        "output_path": "${tmpdir}/research/repro-workflow"
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "research_pdf",
+        "data_paths": ["id", "manifest.title", "manifest.artifacts", "output_path"],
+        "data_contains_text": ["Frozen reproducible experiment"]
       },
       "max_latency_ms": 3000
     },
@@ -63,18 +139,130 @@
       "max_latency_ms": 3000
     },
     {
+      "name": "learning_review_updates_mastery",
+      "scenario": "learning",
+      "tool": "learning_workspace",
+      "args": {
+        "action": "review",
+        "item_id": 1,
+        "score": 0.85,
+        "evidence": "Solved the MemoryOS retrieval drill.",
+        "notes": "Good recall with trace evidence."
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "learning_workspace",
+        "data_paths": ["learning.id", "learning.mastery", "learning.evidence_count"],
+        "data_contains_text": ["MemoryOS"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "learning_mistake_records_evidence",
+      "scenario": "learning",
+      "tool": "learning_workspace",
+      "args": {
+        "action": "mistake",
+        "item_id": 2,
+        "prompt": "What validates a reflection?",
+        "wrong_answer": "Only a note.",
+        "correct_answer": "A frozen regression check plus evidence.",
+        "evidence": "Reflection release gate requires regression evidence."
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "learning_workspace",
+        "data_paths": ["learning.id", "learning.correct_answer", "learning.evidence"],
+        "data_contains_text": ["frozen regression"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "learning_graph_exposes_nodes",
+      "scenario": "learning",
+      "tool": "learning_workspace",
+      "args": {
+        "action": "graph",
+        "goal_id": 1
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "learning_workspace",
+        "data_paths": ["learning.goal", "learning.nodes", "learning.edges"],
+        "data_contains_text": ["MemoryOS", "Reflection"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "learning_assessment_reports_mastery",
+      "scenario": "learning",
+      "tool": "learning_workspace",
+      "args": {
+        "action": "assessment",
+        "goal_id": 1
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "learning_workspace",
+        "data_paths": ["learning.goal_id", "learning.mastery", "learning.items"],
+        "data_contains_text": ["mistake_count"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
       "name": "git_snapshot_reports_collaboration_state",
       "scenario": "git",
       "tool": "git_workspace",
       "args": {
         "action": "snapshot",
-        "path": "."
+        "path": "${repo_root}"
       },
       "expected": {
         "ok": true,
         "status": "success",
         "tool": "git_workspace",
         "data_paths": ["git.repo", "git.branch", "git.status", "git.recent_commits"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "git_commit_plan_is_dry_run",
+      "scenario": "git",
+      "tool": "git_workspace",
+      "args": {
+        "action": "commit_plan",
+        "path": "${repo_root}",
+        "message": "Frozen benchmark dry run"
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "git_workspace",
+        "data_paths": ["git.repo", "git.branch", "git.commands", "git.dry_run", "git.requires_confirmation"],
+        "data_contains_text": ["Frozen benchmark dry run"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "git_change_request_records_approval_gate",
+      "scenario": "git",
+      "tool": "git_workspace",
+      "args": {
+        "action": "request_commit",
+        "path": "${repo_root}",
+        "message": "Frozen benchmark change request",
+        "created_by": "frozen-runner"
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "git_workspace",
+        "data_paths": ["git.id", "git.repo_path", "git.status", "git.checkpoint_ref"],
+        "data_contains_text": ["pending"]
       },
       "max_latency_ms": 3000
     },
@@ -90,6 +278,301 @@
         "data_paths": ["templates", "count"]
       },
       "max_latency_ms": 2000
+    },
+    {
+      "name": "template_python_service_instantiates",
+      "scenario": "template",
+      "tool": "template_instantiate",
+      "args": {
+        "name": "python-service",
+        "target_path": "${tmpdir}/templates/python-service-demo",
+        "parameters": {
+          "project_name": "Frozen Python Service"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "template_instantiate",
+        "data_paths": ["template", "target_path", "created_files"],
+        "data_contains_text": ["python-service", "README.md"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "template_research_project_instantiates",
+      "scenario": "template",
+      "tool": "template_instantiate",
+      "args": {
+        "name": "research-project",
+        "target_path": "${tmpdir}/templates/research-project-demo",
+        "parameters": {
+          "project_name": "Frozen Research Project"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "template_instantiate",
+        "data_paths": ["template", "target_path", "created_files"],
+        "data_contains_text": ["research-project", "references/README.md"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "tool_catalog_lists_available_tools",
+      "scenario": "tool",
+      "tool": "tools_list",
+      "args": {},
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "tools_list",
+        "data_paths": ["tools", "count"],
+        "data_contains_text": ["time_now", "memory_stats"]
+      },
+      "max_latency_ms": 2000
+    },
+    {
+      "name": "skill_catalog_lists_solidified_skills",
+      "scenario": "tool",
+      "tool": "skill_list",
+      "args": {},
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "skill_list",
+        "data_paths": ["skills", "count"]
+      },
+      "max_latency_ms": 2000
+    },
+    {
+      "name": "memory_stats_reports_empty_temp_store",
+      "scenario": "tool",
+      "tool": "memory_stats",
+      "args": {},
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "memory_stats",
+        "data_paths": ["profiles", "preferences", "memories", "reflection_cards"]
+      },
+      "max_latency_ms": 2000
+    },
+    {
+      "name": "text_stats_detects_mixed_content",
+      "scenario": "tool",
+      "tool": "text_stats",
+      "args": {
+        "text": "ClawOS memory improves task continuity. 长期记忆提升智能体连续性。"
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "text_stats",
+        "data_paths": ["characters", "words", "language"]
+      },
+      "max_latency_ms": 2000
+    },
+    {
+      "name": "calc_returns_deterministic_result",
+      "scenario": "tool",
+      "tool": "calc",
+      "args": {
+        "expression": "21 * 2 + 8"
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "calc",
+        "data_paths": ["expression", "result"],
+        "data_contains_text": ["50"]
+      },
+      "max_latency_ms": 2000
+    },
+    {
+      "name": "project_init_python_scaffold",
+      "scenario": "template",
+      "tool": "project_init",
+      "args": {
+        "name": "frozen_python_project",
+        "type": "python",
+        "root": "${tmpdir}/projects"
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "project_init",
+        "data_paths": ["project", "type", "path", "created"],
+        "data_contains_text": ["README.md", ".gitignore"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "code_stats_reads_project_tree",
+      "scenario": "tool",
+      "tool": "code_stats",
+      "args": {
+        "path": "${repo_root}/clawos"
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "code_stats",
+        "data_paths": ["total_files", "total_lines", "by_language"],
+        "data_contains_text": ["Python"]
+      },
+      "max_latency_ms": 4000
+    },
+    {
+      "name": "find_todos_scans_project_tree",
+      "scenario": "tool",
+      "tool": "find_todos",
+      "args": {
+        "path": "${repo_root}/clawos"
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "find_todos",
+        "data_paths": ["todos", "count"]
+      },
+      "max_latency_ms": 4000
+    },
+    {
+      "name": "office_spreadsheet_artifact_create",
+      "scenario": "template",
+      "tool": "office_artifact",
+      "args": {
+        "action": "spreadsheet_create",
+        "output_path": "${tmpdir}/office/frozen-metrics.xlsx",
+        "title": "Frozen Metrics",
+        "sheets": [
+          {
+            "name": "Metrics",
+            "rows": [
+              ["metric", "value"],
+              ["pass_rate", "1.0"]
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "office_artifact",
+        "data_paths": ["artifact.id", "artifact.file_path", "artifact.artifact_type"],
+        "data_contains_text": ["spreadsheet"]
+      },
+      "max_latency_ms": 4000
+    },
+    {
+      "name": "office_presentation_artifact_create",
+      "scenario": "template",
+      "tool": "office_artifact",
+      "args": {
+        "action": "presentation_create",
+        "output_path": "${tmpdir}/office/frozen-demo.pptx",
+        "title": "Frozen Demo",
+        "slides": [
+          {
+            "title": "ClawOS",
+            "bullets": ["MTClaw route", "Memory trace", "Frozen benchmark"]
+          }
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "office_artifact",
+        "data_paths": ["artifact.id", "artifact.file_path", "artifact.artifact_type"],
+        "data_contains_text": ["presentation"]
+      },
+      "max_latency_ms": 4000
+    },
+    {
+      "name": "real_nasa_apollo11_evidence_workflow",
+      "scenario": "research",
+      "tool": "research_pdf",
+      "args": {
+        "action": "repro_workflow",
+        "output_path": "${tmpdir}/real-data/apollo11-evidence",
+        "title": "NASA Apollo 11 Evidence Pack",
+        "question": "Verify Apollo 11 launch date, crew, and landing site from NASA mission overview.",
+        "steps": [
+          "Source: https://www.nasa.gov/history/apollo-11-mission-overview/",
+          "Check launch date 1969-07-16.",
+          "Check crew: Neil Armstrong, Edwin E. Aldrin Jr., Michael Collins.",
+          "Check landing site: Sea of Tranquility."
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "research_pdf",
+        "data_paths": ["manifest.title", "manifest.steps", "output_path"],
+        "data_contains_text": ["Apollo 11", "nasa.gov"]
+      },
+      "max_latency_ms": 4000
+    },
+    {
+      "name": "real_uci_iris_spreadsheet_artifact",
+      "scenario": "template",
+      "tool": "office_artifact",
+      "args": {
+        "action": "spreadsheet_create",
+        "output_path": "${tmpdir}/real-data/uci-iris-sample.xlsx",
+        "title": "UCI Iris Sample",
+        "sheets": [
+          {
+            "name": "Iris",
+            "rows": [
+              ["source", "https://archive.ics.uci.edu/dataset/53/iris"],
+              ["sepal_length", "sepal_width", "petal_length", "petal_width", "species"],
+              ["5.1", "3.5", "1.4", "0.2", "Iris-setosa"],
+              ["4.9", "3.0", "1.4", "0.2", "Iris-setosa"],
+              ["7.0", "3.2", "4.7", "1.4", "Iris-versicolor"]
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "office_artifact",
+        "data_paths": ["artifact.id", "artifact.title", "artifact.file_path", "artifact.artifact_type"],
+        "data_contains_text": ["UCI Iris Sample", "spreadsheet"]
+      },
+      "max_latency_ms": 4000
+    },
+    {
+      "name": "real_gutenberg_alice_presentation_artifact",
+      "scenario": "template",
+      "tool": "office_artifact",
+      "args": {
+        "action": "presentation_create",
+        "output_path": "${tmpdir}/real-data/gutenberg-alice.pptx",
+        "title": "Project Gutenberg Alice Metadata",
+        "slides": [
+          {
+            "title": "Public-domain text source",
+            "bullets": [
+              "Source: https://www.gutenberg.org/ebooks/11",
+              "Work: Alice's Adventures in Wonderland",
+              "Author metadata: Lewis Carroll",
+              "Use case: frozen reading and citation workflow fixture"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "office_artifact",
+        "data_paths": ["artifact.id", "artifact.title", "artifact.file_path", "artifact.artifact_type"],
+        "data_contains_text": ["Project Gutenberg Alice Metadata", "presentation"]
+      },
+      "max_latency_ms": 4000
     }
   ]
 }

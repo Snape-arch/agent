@@ -17,7 +17,7 @@ class ScenarioBenchmarkTests(unittest.TestCase):
         scenarios = {case["scenario"] for case in suite["cases"]}
 
         self.assertEqual(suite["name"], "competition-frozen-v1")
-        self.assertGreaterEqual(len(suite["cases"]), 5)
+        self.assertGreaterEqual(len(suite["cases"]), 20)
         self.assertTrue({"meeting", "research", "learning", "git", "template"}.issubset(scenarios))
         self.assertEqual(suite["thresholds"]["min_pass_rate"], 1.0)
 
@@ -30,27 +30,100 @@ class ScenarioBenchmarkTests(unittest.TestCase):
             suites = benchmark.list_suites()
 
             def runner(tool, args):
-                return {
+                result = {
                     "ok": True,
                     "status": "success",
                     "tool": tool,
                     "arguments": args,
                     "data": {
-                        "meeting": {"id": 1, "title": "Frozen benchmark weekly sync", "agenda": []},
+                        "meeting": {
+                            "id": 1,
+                            "title": "Frozen benchmark weekly sync",
+                            "agenda": [],
+                            "audio_path": "fixture.wav",
+                            "transcript_status": "transcript_imported",
+                            "diarization": [],
+                        },
+                        "audio_path": "fixture.wav",
+                        "transcript_status": "transcript_imported",
+                        "diarization": [],
                         "results": [],
                         "count": 0,
+                        "valid": True,
+                        "terms": ["memory", "reflection"],
+                        "matrix": [],
+                        "id": 1,
+                        "manifest": {
+                            "title": "Frozen reproducible experiment NASA Apollo 11 Evidence Pack",
+                            "artifacts": ["README.md", "experiment_plan.json"],
+                            "steps": ["Apollo 11", "nasa.gov"],
+                        },
+                        "output_path": "out",
                         "learning": {"id": 1, "items": [], "title": "Frozen benchmark learning goal"},
-                        "git": {"repo": str(ROOT.parent), "branch": "test", "status": [], "recent_commits": []},
+                        "git": {
+                            "id": 1,
+                            "repo": str(ROOT.parent),
+                            "repo_path": str(ROOT.parent),
+                            "branch": "test",
+                            "status": "pending",
+                            "recent_commits": [],
+                            "commands": [],
+                            "dry_run": True,
+                            "requires_confirmation": True,
+                            "checkpoint_ref": "HEAD",
+                            "message": "Frozen benchmark dry run",
+                        },
                         "templates": [],
+                        "project": "demo",
+                        "type": "python",
+                        "path": "demo",
+                        "created": ["README.md", ".gitignore"],
+                        "tools": [{"name": "time_now"}, {"name": "memory_stats"}],
+                        "skills": [],
+                        "profiles": 0,
+                        "preferences": 0,
+                        "memories": 0,
+                        "reflection_cards": 0,
+                        "characters": 10,
+                        "words": 2,
+                        "language": "en",
+                        "expression": "21 * 2 + 8",
+                        "result": 50,
+                        "total_files": 1,
+                        "total_lines": 1,
+                        "by_language": {"Python": {"files": 1, "lines": 1}},
+                        "todos": [],
+                        "artifact": {
+                            "id": 1,
+                            "title": "UCI Iris Sample Project Gutenberg Alice Metadata",
+                            "file_path": "artifact",
+                            "artifact_type": "spreadsheet presentation",
+                        },
                     },
                     "duration_ms": 10,
                 }
+                result["data"]["meeting"]["meeting"] = {"id": 1}
+                result["data"]["learning"].update({
+                    "goal": {},
+                    "nodes": [],
+                    "edges": [],
+                    "goal_id": 1,
+                    "mastery": 0.5,
+                    "evidence_count": 1,
+                    "correct_answer": "A frozen regression check plus evidence.",
+                    "evidence": "MemoryOS and Reflection release gate requires frozen regression evidence.",
+                    "mistake_count": 1,
+                })
+                result["data"]["template"] = "python-service research-project"
+                result["data"]["target_path"] = "target"
+                result["data"]["created_files"] = ["README.md", "references/README.md"]
+                return result
 
             run = benchmark.run_suite(suites[0]["id"], runner)
             runs = benchmark.list_runs()
 
         self.assertTrue(suites[0]["frozen"])
-        self.assertGreaterEqual(len(suites[0]["cases"]), 5)
+        self.assertGreaterEqual(len(suites[0]["cases"]), 20)
         self.assertTrue(run["passed"])
         self.assertEqual(run["metrics"]["pass_rate"], 1.0)
         self.assertEqual(len(run["case_results"]), len(suites[0]["cases"]))
@@ -108,6 +181,7 @@ class ScenarioBenchmarkTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("Frozen benchmark: passed=True", result.stdout)
         self.assertIn("meeting::meeting_create_structured_record", result.stdout)
+        self.assertIn("cases=30/30", result.stdout)
 
     def test_benchmark_gate_fails_on_tool_error(self):
         from memoryos.memory_store import MemoryStore

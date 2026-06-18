@@ -23,9 +23,33 @@ from memoryos.memory_store import MemoryStore
 from scenario_benchmarks import DEFAULT_SUITE_FILE, FrozenScenarioBenchmark, load_suite_file
 
 
-def _run_tool(tool_name: str, args: dict) -> dict:
+def _materialize(value, variables: dict[str, str]):
+    if isinstance(value, str):
+        result = value
+        for key, replacement in variables.items():
+            result = result.replace("${" + key + "}", replacement)
+        return result
+    if isinstance(value, list):
+        return [_materialize(item, variables) for item in value]
+    if isinstance(value, dict):
+        return {key: _materialize(item, variables) for key, item in value.items()}
+    return value
+
+
+def _write_fixtures(fixtures: list[dict], variables: dict[str, str]) -> None:
+    for fixture in fixtures or []:
+        path = Path(_materialize(fixture.get("path", ""), variables))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if "bytes_hex" in fixture:
+            path.write_bytes(bytes.fromhex(str(fixture["bytes_hex"])))
+        else:
+            path.write_text(str(fixture.get("content", "")), encoding="utf-8")
+
+
+def _run_tool(tool_name: str, args: dict, variables: dict[str, str] | None = None) -> dict:
     from scripts import tool_runner
 
+    variables = variables or {}
     started = time.perf_counter()
     if tool_name not in tool_runner.handlers:
         return {
@@ -42,8 +66,12 @@ def _run_tool(tool_name: str, args: dict) -> dict:
     old_cwd = Path.cwd()
     output = io.StringIO()
     try:
+        raw_args = dict(args or {})
+        fixtures = raw_args.pop("_benchmark_fixtures", [])
+        _write_fixtures(fixtures, variables)
+        materialized_args = _materialize(raw_args, variables)
         os.chdir(REPO_ROOT)
-        tool_runner.input_data = args or {}
+        tool_runner.input_data = materialized_args
         with contextlib.redirect_stdout(output):
             tool_runner.handlers[tool_name]()
         raw = output.getvalue().strip()
@@ -53,7 +81,7 @@ def _run_tool(tool_name: str, args: dict) -> dict:
             "ok": ok,
             "status": "success" if ok else "error",
             "tool": tool_name,
-            "arguments": args,
+            "arguments": materialized_args,
             "data": data,
             "error": "" if ok else str(data.get("error", "tool error")),
             "duration_ms": round((time.perf_counter() - started) * 1000, 3),
@@ -81,11 +109,16 @@ def main() -> int:
     args = parser.parse_args()
 
     suite = load_suite_file(args.suite)
-    db_path = args.db
-    temp_dir = None
-    if not db_path:
-        temp_dir = tempfile.TemporaryDirectory()
-        db_path = str(Path(temp_dir.name) / "benchmark.db")
+    temp_dir = tempfile.TemporaryDirectory()
+    temp_path = Path(temp_dir.name)
+    db_path = args.db or str(temp_path / "benchmark.db")
+    variables = {
+        "tmpdir": str(temp_path),
+        "repo_root": str(REPO_ROOT),
+        "clawos_root": str(ROOT),
+    }
+    old_memory_db = os.environ.get("CLAWOS_MEMORY_DB")
+    os.environ["CLAWOS_MEMORY_DB"] = db_path
 
     try:
         benchmark = FrozenScenarioBenchmark(MemoryStore(db_path))
@@ -102,13 +135,16 @@ def main() -> int:
             )
         run = benchmark.run_suite(
             created["id"],
-            _run_tool,
+            lambda tool, tool_args: _run_tool(tool, tool_args, variables),
             thresholds=suite.get("thresholds") or {},
             created_by="frozen-runner",
         )
     finally:
-        if temp_dir is not None:
-            temp_dir.cleanup()
+        if old_memory_db is None:
+            os.environ.pop("CLAWOS_MEMORY_DB", None)
+        else:
+            os.environ["CLAWOS_MEMORY_DB"] = old_memory_db
+        temp_dir.cleanup()
 
     if args.json:
         print(json.dumps(run, ensure_ascii=False, indent=2))
