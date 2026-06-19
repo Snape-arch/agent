@@ -1,4 +1,4 @@
-import json
+﻿import json
 import subprocess
 import sys
 import tempfile
@@ -41,6 +41,21 @@ class SkillRuntimeTests(unittest.TestCase):
         self.assertEqual(result["failed_step"], 0)
         self.assertIn("$param.path", result["error"])
 
+    def test_skill_execute_api_contract_and_plan_runtime(self):
+        from skills.skill_registry import execute_skill_definition, get_skill
+
+        server_source = (ROOT / "clawos_server.py").read_text(encoding="utf-8")
+        self.assertIn('@app.post("/api/skills/execute")', server_source)
+        self.assertIn('plan_only = bool(data.get("plan_only", True))', server_source)
+        self.assertIn('execute_skill_definition(skill, params=params, plan_only=True)', server_source)
+
+        skill = get_skill("dev_health_check")
+        result = execute_skill_definition(skill, {"path": str(ROOT)}, plan_only=True)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mode"], "plan")
+        self.assertEqual(result["steps"], 3)
+        self.assertEqual(result["outputs"][0]["result"]["planned"], True)
     def test_generated_replay_script_uses_shared_runtime(self):
         from skills.skill_registry import get_skill
 
@@ -64,3 +79,5 @@ class SkillRuntimeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+

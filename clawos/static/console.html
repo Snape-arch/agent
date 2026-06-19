@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -174,7 +174,29 @@
 
     <section class="view" id="view-projects"><div class="panel-view glass-panel project-workspace"><div class="library-head"><div><h2>项目</h2><p class="hint">把本地项目、科研目录和交付任务作为上下文入口。</p></div><button class="primary" onclick="usePrompt('分析当前项目结构、风险和下一步开发计划');setView('chat')">分析当前项目</button></div><div class="project-grid"><button class="quick" onclick="usePrompt('列出当前项目结构并找出最重要的入口文件');setView('chat')">项目结构</button><button class="quick" onclick="usePrompt('对当前项目做一次代码健康检查，包含 TODO、风险和测试建议');setView('chat')">健康检查</button><button class="quick" onclick="usePrompt('为当前项目生成一份工作汇报和交付计划');setView('chat')">交付简报</button><button class="quick" onclick="usePrompt('设计一个可复现实验来评估当前 Agent 的工具命中率和任务完成率');setView('chat')">实验设计</button></div></div></section>
     <section class="view" id="view-reflection"><div class="panel-view glass-panel"><button class="secondary" onclick="triggerReflection()">触发反思</button><div class="section-block"><h2>反思卡片</h2><table class="table" id="reflectionTable"></table></div><div class="section-block"><h2>改进审查</h2><table class="table" id="reflectionReviewTable"></table></div><div class="section-block"><h2>经验记忆</h2><table class="table" id="experienceTable"></table></div></div></section>
-    <section class="view" id="view-skills"><div class="panel-view glass-panel"><div class="section-block"><h2>固化技能</h2><table class="table" id="skillsTable"></table></div><div class="section-block"><h2>技能审查</h2><p class="hint">候选技能必须通过冻结评测后才能发布；未达标版本可标记为需修改或拒绝。</p><table class="table" id="skillReviewTable"></table></div><div class="section-block"><h2>执行质量</h2><table class="table" id="skillStatsTable"></table></div></div></section>
+    <section class="view" id="view-skills">
+  <div class="panel-view glass-panel skills-workbench">
+    <div class="library-head">
+      <div><h2>固化技能</h2><p class="hint">筛选、预演和审查可复用工作流。默认只做计划预演，显式点击执行才会运行技能。</p></div>
+      <button class="secondary" onclick="loadSkills()">刷新技能</button>
+    </div>
+    <div class="skill-toolbar">
+      <input id="skillQuery" placeholder="搜索技能、标签、触发词" oninput="renderSkillsWorkbench()">
+      <select id="skillCategory" onchange="renderSkillsWorkbench()"><option value="">全部分类</option></select>
+      <select id="skillStatusFilter" onchange="renderSkillsWorkbench()"><option value="">全部状态</option><option value="active">已发布</option><option value="candidate">候选</option><option value="validated">已验证</option><option value="needs_changes">需修改</option><option value="rejected">已拒绝</option><option value="canary">灰度</option></select>
+    </div>
+    <div class="skill-grid">
+      <div class="section-block"><h2>技能目录</h2><div class="skill-card-list" id="skillsTable"></div></div>
+      <div class="section-block skill-detail"><h2>技能详情</h2><div id="skillDetail" class="skill-detail-box"></div><label>参数 JSON<textarea id="skillParams" spellcheck="false" placeholder='{"path":"D:/Projects/agent"}'></textarea></label><div class="action-row"><button class="secondary" onclick="runSelectedSkill(true)">预演计划</button><button class="primary" onclick="runSelectedSkill(false)">执行技能</button></div><pre id="skillRunResult" class="result-box">选择一个技能查看详情。</pre></div>
+    </div>
+    <div class="section-block"><h2>技能审查</h2><p class="hint">候选技能必须通过冻结评测后才能发布；未达标版本可标记为需修改或拒绝。</p><table class="table" id="skillReviewTable"></table></div>
+    <div class="skill-grid lower">
+      <div class="section-block"><h2>版本记录</h2><table class="table" id="skillVersionTable"></table></div>
+      <div class="section-block"><h2>评测运行</h2><table class="table" id="skillRunTable"></table></div>
+    </div>
+    <div class="section-block"><h2>执行质量</h2><table class="table" id="skillStatsTable"></table></div>
+  </div>
+</section>
     <section class="view" id="view-tools"><div class="panel-view glass-panel"><div class="searchbar"><input id="toolQuery" placeholder="筛选工具" oninput="renderTools()"><button class="secondary" onclick="renderTools()">筛选</button></div><table class="table" id="toolsTable"></table><div class="section-block"><h2>工具运行轨迹</h2><table class="table" id="toolExecTable"></table></div></div></section>
     <section class="view" id="view-tasks"><div class="panel-view glass-panel"><div class="action-row"><button class="secondary" onclick="recoverTasks()">恢复中断任务</button><button class="secondary" onclick="loadTaskQueue()">刷新队列</button><button class="primary" onclick="claimTask()">领取下一个任务</button><span class="hint" id="liveTaskState">实时事件：连接中</span></div><div class="section-block"><h2>恢复队列</h2><table class="table" id="taskQueueTable"></table></div><div class="section-block"><h2>任务运行轨迹</h2><table class="table" id="taskTable"></table></div><div class="section-block"><h2>步骤 Trace</h2><table class="table" id="taskStepTable"></table></div><div class="section-block"><h2>事件审计</h2><table class="table" id="taskEventTable"></table></div></div></section>
     <section class="view" id="view-benchmarks"><div class="panel-view glass-panel"><div class="action-row"><button class="primary" onclick="runScenarioBenchmark()">运行默认冻结基准</button><button class="secondary" onclick="loadBenchmarks()">刷新结果</button><span class="hint">覆盖会议、学习、项目模板、技能和记忆五类低风险场景。</span></div><div class="section-block"><h2>冻结场景套件</h2><table class="table" id="benchmarkSuiteTable"></table></div><div class="section-block"><h2>最近验收结果</h2><table class="table" id="benchmarkRunTable"></table></div></div></section>
@@ -234,3 +256,4 @@
   <script src="/assets/console.js"></script>
 </body>
 </html>
+
