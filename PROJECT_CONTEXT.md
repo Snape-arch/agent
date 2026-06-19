@@ -251,3 +251,31 @@ Verification:
 Known notes:
 - In the normal sandbox, outbound socket access is blocked, so web tools need a runtime/network policy that permits outbound HTTP(S).
 - `web_search` should be upgraded to a provider abstraction with at least two search backends, source URLs, snippets, rank, error classification, and tests with mocked HTML/API responses.
+
+### 2026-06-19 - Skills workbench completion pass
+
+Completed:
+- Expanded the console Skills view from three passive tables into a usable workbench with search, category/status filters, selectable skill cards, skill detail, required parameter hints, step preview, version history, evaluation runs, review inbox, and execution quality.
+- Added `POST /api/skills/execute` with `plan_only=true` by default. The console uses this for safe skill preview before explicit execution.
+- Added frontend/static and runtime tests for the new Skills workbench controls and plan-mode execution contract.
+- Added `python-multipart>=0.0.9` to `clawos/requirements.txt`; current document upload routes require it.
+
+Verification:
+```powershell
+node --check clawos\static\assets\console.js
+.\clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py
+.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static clawos.tests.test_skill_runtime
+```
+
+Result:
+- JS syntax check passed.
+- Python compile passed.
+- Targeted tests: `19 tests OK`.
+
+Known notes:
+- Full suite currently stops during `clawos_server.py` import because the local `.venv` does not have `python-multipart` installed. Install/update dependencies first:
+  ```powershell
+  .\clawos\.venv\Scripts\python.exe -m pip install -r clawos\requirements.txt
+  .\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
+  ```
+- `skill_registry.jsonl` is a runtime registry and tests can bump `dev_health_check` usage counters; restore that file before committing if it changes.
