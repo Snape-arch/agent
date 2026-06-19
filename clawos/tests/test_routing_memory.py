@@ -109,6 +109,57 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertIn("duration_ms", result)
         self.assertFalse(result["requires_confirmation"])
 
+    def test_chat_attachments_become_hidden_context(self):
+        server = importlib.import_module("clawos_server")
+        context, meta = server._build_attachment_context([
+            {
+                "name": "notes.md",
+                "type": "text/markdown",
+                "size": 18,
+                "content": "Agent should read this as context.",
+            }
+        ])
+
+        self.assertIn("hidden attachment context", context)
+        self.assertIn("notes.md", context)
+        self.assertIn("Agent should read this as context.", context)
+        self.assertEqual(meta[0]["name"], "notes.md")
+        self.assertEqual(meta[0]["type"], "text/markdown")
+
+    def test_uploaded_document_attachment_uses_indexed_chunks(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            server.g_memory_store = store
+            try:
+                doc = store.add_document(
+                    title="Indexed Notes",
+                    filename="notes.md",
+                    file_hash="abc",
+                    category="research",
+                    metadata={"extractor": "text"},
+                )
+                store.add_document_chunk(
+                    doc["id"],
+                    1,
+                    "Indexed retrieval chunk about agent document upload.",
+                    f"doc:{doc['id']}#chunk=1",
+                )
+                context, meta = server._build_uploaded_document_context(
+                    [{"document_id": doc["id"], "name": "notes.md"}],
+                    "document upload",
+                )
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertIn("hidden uploaded document context", context)
+        self.assertIn("doc:", context)
+        self.assertIn("Indexed retrieval chunk", context)
+        self.assertEqual(meta[0]["document_id"], doc["id"])
+
     def test_dangerous_tool_requires_confirmation_before_execution(self):
         server = importlib.import_module("clawos_server")
         old_execute = server.execute_python_tool

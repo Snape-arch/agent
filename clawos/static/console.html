@@ -91,9 +91,10 @@
             <button class="secondary" onclick="cancelPending()">取消</button>
             <button class="primary" onclick="confirmPending()">确认执行</button>
           </div>
+          <div class="attachment-tray" id="attachmentTray" aria-live="polite"></div>
           <div class="compose-inner">
             <button class="attach-button" onclick="chooseLocalFile()" title="添加本地文件">+</button>
-            <textarea id="prompt" placeholder="有问题，尽管问。也可以点 + 读取本地文本文件作为上下文。" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+            <textarea id="prompt" placeholder="有问题，尽管问。点 + 添加文件，Agent 会作为上下文自动阅读。" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
             <button class="primary" id="send" onclick="sendMessage()">发送</button>
             <input id="filePicker" type="file" multiple hidden onchange="handlePickedFiles(event)">
           </div>
@@ -120,10 +121,21 @@
           </div>
           <div class="library-tabs">
             <button class="on" data-knowledge="all" onclick="setKnowledgeCategory('')">全部</button>
-            <button data-knowledge="research" onclick="setKnowledgeCategory('research')">科研</button>
-            <button data-knowledge="learning" onclick="setKnowledgeCategory('learning')">学习</button>
-            <button data-knowledge="writing" onclick="setKnowledgeCategory('writing')">写作</button>
-            <button data-knowledge="project" onclick="setKnowledgeCategory('project')">项目</button>
+            <button data-knowledge="research" onclick="setKnowledgeCategory('research')">科研库</button>
+            <button data-knowledge="learning" onclick="setKnowledgeCategory('learning')">学习库</button>
+            <button data-knowledge="writing" onclick="setKnowledgeCategory('writing')">写作库</button>
+            <button data-knowledge="project" onclick="setKnowledgeCategory('project')">项目库</button>
+          </div>
+        </div>
+        <div class="knowledge-toolbar">
+          <label class="import-drop" for="knowledgeFilePicker">
+            <input id="knowledgeFilePicker" type="file" multiple hidden onchange="handleKnowledgeFiles(event)">
+            <b>上传文件到当前库</b>
+            <span>支持 txt、md、csv、json、html 等文本资料；导入后会进入检索和拓扑。</span>
+          </label>
+          <div class="session-import">
+            <label>从历史会话沉淀<select id="knowledgeSessionSelect"></select></label>
+            <button class="secondary" onclick="draftKnowledgeFromSelectedSession()">生成文档草稿</button>
           </div>
         </div>
         <div class="knowledge-layout">
@@ -132,7 +144,7 @@
             <label>分类<select id="knowledgeCategory"><option value="research">科研</option><option value="learning">学习</option><option value="writing">写作/博客</option><option value="project">项目资料</option><option value="domain">通用知识</option></select></label>
             <label>来源<input id="knowledgeSource" placeholder="paper / note / chat / manual"></label>
             <label class="wide">内容<textarea id="knowledgeContent" placeholder="粘贴文献摘要、学习笔记，或让 Agent 凝练对话后存入这里。"></textarea></label>
-            <div class="action-row"><button class="primary" onclick="saveKnowledge()">保存到知识库</button><button class="secondary" onclick="draftKnowledgeFromChat()">从当前对话凝练</button></div>
+            <div class="action-row"><button class="primary" onclick="saveKnowledge()">保存到知识库</button><button class="secondary" onclick="clearKnowledgeEditor()">清空草稿</button><span class="hint" id="knowledgeStatus">等待导入或编辑</span></div>
           </section>
           <section class="knowledge-map">
             <div class="map-title"><b>知识拓扑</b><span id="knowledgeMapHint">按分类和访问热度动态排列</span></div>

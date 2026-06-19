@@ -157,12 +157,56 @@ class MemoryOSMvpTests(unittest.TestCase):
                 tags=["paper", "agent"],
                 confidence=0.9,
             )
+            updated = store.update_knowledge(
+                item["id"],
+                "Agent 论文精读更新",
+                "这篇论文讨论工具调用评测、可复现实验和知识库管理。",
+                category="research",
+                source="unit_test_edit",
+                tags=["paper", "agent", "rag"],
+                confidence=0.95,
+            )
             listed = store.list_knowledge("research")
-            results = store.search_knowledge("工具调用", "research")
+            results = store.search_knowledge("知识库管理", "research")
+            deleted = store.delete_knowledge(item["id"])
+            after_delete = store.list_knowledge("research")
 
         self.assertEqual(item["title"], "Agent 论文精读")
+        self.assertEqual(updated["title"], "Agent 论文精读更新")
         self.assertEqual(listed[0]["category"], "research")
-        self.assertEqual(results[0]["source"], "unit_test")
+        self.assertEqual(results[0]["source"], "unit_test_edit")
+        self.assertTrue(deleted)
+        self.assertEqual(after_delete, [])
+
+    def test_document_ingestion_chunks_indexes_and_deduplicates_uploaded_files(self):
+        from memoryos.document_ingestion import ingest_file
+        from memoryos.memory_store import MemoryStore
+        from memoryos.services.vector_store import MemoryVectorStore
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            db_path = root / "memory.db"
+            source = root / "rag_notes.md"
+            source.write_text(
+                "RAG upload pipeline should parse files, chunk evidence, and cite sources.\n" * 80,
+                encoding="utf-8",
+            )
+            store = MemoryStore(str(db_path))
+            first = ingest_file(store, root / "uploads", source, title="RAG Notes", category="research")
+            second = ingest_file(store, root / "uploads", source, title="RAG Notes", category="research")
+
+            docs = store.list_documents("research")
+            chunks = store.get_document_chunks(second["id"], limit=20)
+            knowledge = store.search_knowledge("upload pipeline", "research", limit=20)
+            vectors = MemoryVectorStore(str(db_path))
+            vector_hits = vectors.search_knowledge("chunk evidence cite sources", top_k=5)
+
+        self.assertEqual(first["id"], second["id"])
+        self.assertGreaterEqual(second["chunk_count"], 2)
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(len(chunks), second["chunk_count"])
+        self.assertTrue(all(str(row["source"]).startswith(f"doc:{second['id']}#") for row in knowledge))
+        self.assertTrue(vector_hits)
 
     def test_sessions_have_compact_topic_and_tags(self):
         from memoryos.memory_store import MemoryStore

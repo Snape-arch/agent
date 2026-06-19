@@ -180,6 +180,58 @@ def tool_web_search():
         print(json.dumps({"error": f"Search failed: {str(e)}"})); sys.exit(1)
 
 
+def tool_web_fetch():
+    url = str(input_data.get("url", "")).strip()
+    max_chars = int(input_data.get("max_chars", 4000) or 4000)
+    if not url:
+        print(json.dumps({"error": "missing url"})); sys.exit(1)
+    if not re.match(r"^https?://", url, re.I):
+        print(json.dumps({"error": "only http(s) URLs are supported"})); sys.exit(1)
+    try:
+        import urllib.request
+        import urllib.parse
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ClawOS/1.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read(2_000_000)
+            final_url = resp.geturl()
+            status = getattr(resp, "status", 200)
+            content_type = resp.headers.get("content-type", "")
+        charset_match = re.search(r"charset=([\w.-]+)", content_type, re.I)
+        charset = charset_match.group(1) if charset_match else "utf-8"
+        html_text = raw.decode(charset, errors="replace")
+        title_match = re.search(r"<title[^>]*>(.*?)</title>", html_text, re.I | re.S)
+        title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", title_match.group(1))).strip() if title_match else ""
+        links = []
+        for href, label in re.findall(r"<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", html_text, re.I | re.S)[:80]:
+            clean_label = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", label)).strip()
+            abs_url = urllib.parse.urljoin(final_url, href)
+            if clean_label and abs_url.startswith(("http://", "https://")):
+                links.append({"text": clean_label[:120], "url": abs_url})
+            if len(links) >= 20:
+                break
+        text = re.sub(r"<(script|style|noscript|svg|canvas)[\s\S]*?</\1>", " ", html_text, flags=re.I)
+        text = re.sub(r"<[^>]+>", " ", text)
+        import html as html_lib
+        text = html_lib.unescape(text)
+        text = re.sub(r"\s+", " ", text).strip()
+        print(json.dumps({
+            "url": url,
+            "final_url": final_url,
+            "status": status,
+            "content_type": content_type,
+            "title": title,
+            "text": text[:max(500, min(max_chars, 12000))],
+            "text_length": len(text),
+            "links": links,
+            "truncated": len(text) > max_chars,
+        }, ensure_ascii=False))
+    except Exception as e:
+        print(json.dumps({"error": f"Fetch failed: {str(e)}"})); sys.exit(1)
+
+
 
 
 # ---- SKILL MANAGEMENT TOOLS ----
@@ -837,7 +889,7 @@ handlers = {
     "weather": tool_weather, "time_now": tool_time_now, "calc": tool_calc,
     "todo_list": tool_todo_list, "note_save": tool_note_save,
     "note_read": tool_note_read, "note_list": tool_note_list,
-    "web_search": tool_web_search, "tools_list": tool_tools_list,
+    "web_search": tool_web_search, "web_fetch": tool_web_fetch, "tools_list": tool_tools_list,
     "skill_register": tool_skill_register, "skill_list": tool_skill_list,
     "skill_execute": tool_skill_execute, "skill_delete": tool_skill_delete,
     "file_organize": tool_file_organize, "text_stats": tool_text_stats,

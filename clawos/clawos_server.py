@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from providers import create_model_provider
@@ -20,6 +20,7 @@ CONFIG_PATH = BASE_DIR / "config.json"
 SCRIPTS_DIR = BASE_DIR / "scripts"
 NOTES_DIR = BASE_DIR / "notes"
 TODO_FILE = BASE_DIR / "clawos_todo.json"
+UPLOAD_DIR = BASE_DIR / "uploads"
 
 
 def load_local_env(env_path: Path) -> None:
@@ -969,6 +970,93 @@ async def list_models():
     provider_state = model_provider_status(config) if config else {"model": "clawos-agent", "provider": "clawos"}
     return JSONResponse({"object":"list","data":[{"id":provider_state["model"],"object":"model","owned_by":provider_state["provider"]}]})
 
+def _build_attachment_context(raw_attachments: Any) -> tuple[str, list[dict[str, Any]]]:
+    if not isinstance(raw_attachments, list):
+        return "", []
+    normalized: list[dict[str, Any]] = []
+    blocks: list[str] = []
+    total_chars = 0
+    for idx, item in enumerate(raw_attachments[:8], start=1):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or f"attachment-{idx}")[:180]
+        content = str(item.get("content") or "")
+        if not content.strip():
+            continue
+        remaining = max(0, 60000 - total_chars)
+        if remaining <= 0:
+            break
+        clipped = content[: min(30000, remaining)]
+        total_chars += len(clipped)
+        meta = {
+            "name": name,
+            "type": str(item.get("type") or "")[:80],
+            "size": int(item.get("size") or 0) if str(item.get("size") or "").isdigit() else item.get("size", 0),
+            "chars": len(clipped),
+        }
+        normalized.append(meta)
+        blocks.append(
+            f"[Attachment {idx}: {name}]\n"
+            f"type={meta['type'] or 'unknown'} size={meta['size']}\n"
+            f"{clipped}"
+        )
+    if not blocks:
+        return "", normalized
+    context = (
+        "\n\n[ClawOS hidden attachment context]\n"
+        "The user attached the following local files. Treat them as task context. "
+        "Do not claim the user pasted this text, and only quote from it when useful.\n\n"
+        + "\n\n---\n\n".join(blocks)
+    )
+    return context, normalized
+
+
+def _build_uploaded_document_context(raw_attachments: Any, query: str) -> tuple[str, list[dict[str, Any]]]:
+    if not isinstance(raw_attachments, list) or not g_memory_store:
+        return _build_attachment_context(raw_attachments)
+    normalized: list[dict[str, Any]] = []
+    blocks: list[str] = []
+    fallback_attachments: list[dict[str, Any]] = []
+    for item in raw_attachments[:8]:
+        if not isinstance(item, dict):
+            continue
+        doc_id = item.get("document_id") or item.get("id")
+        if not doc_id:
+            fallback_attachments.append(item)
+            continue
+        document = g_memory_store.get_document(int(doc_id))
+        if not document:
+            continue
+        chunks = g_memory_store.search_document_chunks(query or document.get("title", ""), document.get("category", ""), 8)
+        chunks = [c for c in chunks if int(c.get("document_id") or 0) == int(doc_id)]
+        if not chunks:
+            chunks = g_memory_store.get_document_chunks(int(doc_id), 8)
+        meta = {
+            "document_id": int(doc_id),
+            "name": document.get("filename") or document.get("title"),
+            "title": document.get("title"),
+            "category": document.get("category"),
+            "chunk_count": len(chunks),
+        }
+        normalized.append(meta)
+        excerpt_parts = []
+        for chunk in chunks[:6]:
+            citation = chunk.get("citation") or f"doc:{doc_id}#chunk={chunk.get('chunk_index')}"
+            excerpt_parts.append(f"[{citation}]\n{chunk.get('content', '')[:1800]}")
+        excerpt = "\n\n".join(excerpt_parts)
+        blocks.append(f"[Document: {meta['title']}]\n{excerpt}")
+    fallback_context, fallback_meta = _build_attachment_context(fallback_attachments)
+    normalized.extend(fallback_meta)
+    if not blocks:
+        return fallback_context, normalized
+    context = (
+        "\n\n[ClawOS hidden uploaded document context]\n"
+        "The user attached indexed documents. Use these retrieved chunks as RAG context. "
+        "When referring to evidence, cite doc:N#chunk=M where available.\n\n"
+        + "\n\n---\n\n".join(blocks)
+    )
+    return context + fallback_context, normalized
+
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     try:
@@ -990,6 +1078,8 @@ async def chat_completions(request: Request):
             user_text = str(m["content"])
             break
 
+    attachment_context, attachment_meta = _build_uploaded_document_context(req_data.get("clawos_attachments", []), user_text)
+    effective_user_text = user_text + attachment_context
     stream = req_data.get("stream", False)
 
     if not user_text:
@@ -1007,6 +1097,7 @@ async def chat_completions(request: Request):
             metadata={
                 "stream": bool(stream),
                 "user_text": user_text,
+                "attachments": attachment_meta,
                 "idempotency_key": str(
                     req_data.get("clawos_idempotency_key")
                     or request_headers.get("Idempotency-Key", "")
@@ -1027,9 +1118,9 @@ async def chat_completions(request: Request):
 
     if g_mtclaw_adapter and g_mtclaw_adapter.enabled and not stream:
         mtclaw_messages = (
-            g_context_builder.build_messages(session_id, user_text)
+            g_context_builder.build_messages(session_id, effective_user_text)
             if g_context_builder
-            else messages
+            else [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": effective_user_text}]
         )
         mtclaw_result = await g_mtclaw_adapter.route(
             mtclaw_messages,
@@ -1060,6 +1151,7 @@ async def chat_completions(request: Request):
                     "trace": trace,
                 },
                 "task_id": task_id,
+                "attachments": attachment_meta,
                 "used_tools": bool(trace),
                 "tool_calls": [
                     {
@@ -1084,7 +1176,7 @@ async def chat_completions(request: Request):
         finish_runtime_task(task_id, "canceled", "Canceled before tool loop", result_payload=body)
         return JSONResponse(body)
 
-    tool_result = await run_tool_loop(user_text, session_id, confirmed_tools, task_id=task_id)
+    tool_result = await run_tool_loop(effective_user_text, session_id, confirmed_tools, task_id=task_id)
     confirmation_calls = [
         tc for tc in tool_result.get("tool_calls", [])
         if isinstance(tc.get("result"), dict) and tc["result"].get("status") == "needs_confirmation"
@@ -1098,6 +1190,7 @@ async def chat_completions(request: Request):
             "needs_confirmation": True,
             "routing_rounds": tool_result.get("routing_rounds", 0),
             "matched_skill": tool_result.get("matched_skill", ""),
+            "attachments": attachment_meta,
             "task_id": task_id,
         }
         if g_memory_store:
@@ -1112,7 +1205,7 @@ async def chat_completions(request: Request):
     if tool_result["used_tools"] and g_reflection_engine:
         try:
             trigger = g_reflection_engine.should_reflect(
-                tool_result["tool_calls"], user_text)
+                tool_result["tool_calls"], effective_user_text)
             if trigger:
                 reflection_result = g_reflection_engine.reflect(
                     trigger, session_id,
@@ -1130,7 +1223,7 @@ async def chat_completions(request: Request):
 
         upstream_msgs = [
             {"role": "system", "content": g_context_builder.build_system_prompt(session_id) if g_context_builder else SYSTEM_PROMPT},
-            {"role": "user", "content": user_text},
+            {"role": "user", "content": effective_user_text},
             {"role": "assistant", "content": f"I executed these tools based on your request:\n{tc_lines}\n\nBased strictly on the tool results above and the conversation context, provide a concise and helpful answer. Address the user's original request directly."}
         ]
         # Store tool-call context in memory before returning
@@ -1177,6 +1270,7 @@ async def chat_completions(request: Request):
         "used_tools": False,
         "tool_calls": [],
         "routing_rounds": tool_result.get("routing_rounds", 0),
+        "attachments": attachment_meta,
         "task_id": task_id,
     })
     if g_memory_store and final_text:
@@ -1990,6 +2084,46 @@ async def api_knowledge_save(request: Request):
     return JSONResponse({"item": item, "saved": True})
 
 
+@app.put("/api/knowledge/{knowledge_id}")
+async def api_knowledge_update(knowledge_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    title = str(data.get("title", "")).strip()
+    content = str(data.get("content", "")).strip()
+    if not title or not content:
+        raise HTTPException(400, "title and content are required")
+    tags = data.get("tags", [])
+    if isinstance(tags, str):
+        tags = [item.strip() for item in tags.split(",") if item.strip()]
+    item = g_memory_store.update_knowledge(
+        knowledge_id,
+        title=title,
+        content=content,
+        category=str(data.get("category", "domain") or "domain").strip() or "domain",
+        source=str(data.get("source", "manual") or "manual").strip(),
+        tags=tags if isinstance(tags, list) else [],
+        confidence=float(data.get("confidence", 0.7) or 0.7),
+    )
+    if not item:
+        raise HTTPException(404, "Knowledge item not found")
+    if g_vector_store:
+        g_vector_store.refresh()
+    return JSONResponse({"item": item, "updated": True})
+
+
+@app.delete("/api/knowledge/{knowledge_id}")
+async def api_knowledge_delete(knowledge_id: int):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    deleted = g_memory_store.delete_knowledge(knowledge_id)
+    if not deleted:
+        raise HTTPException(404, "Knowledge item not found")
+    if g_vector_store:
+        g_vector_store.refresh()
+    return JSONResponse({"deleted": True, "id": knowledge_id})
+
+
 @app.get("/api/knowledge/search")
 async def api_knowledge_search(q: str = "", category: str = "", limit: int = 10):
     if not g_memory_store:
@@ -1998,6 +2132,73 @@ async def api_knowledge_search(q: str = "", category: str = "", limit: int = 10)
         return JSONResponse({"items": [], "count": 0})
     rows = g_memory_store.search_knowledge(q, category, max(1, min(int(limit or 10), 50)))
     return JSONResponse({"items": rows, "count": len(rows)})
+
+
+@app.post("/api/documents/upload")
+async def api_document_upload(
+    files: list[UploadFile] = File(...),
+    category: str = Form("domain"),
+):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from memoryos.document_ingestion import ingest_file, safe_filename
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    documents = []
+    errors = []
+    for file in files[:12]:
+        raw = await file.read()
+        if not raw:
+            errors.append({"filename": file.filename, "error": "empty file"})
+            continue
+        if len(raw) > 50 * 1024 * 1024:
+            errors.append({"filename": file.filename, "error": "file too large; max 50MB"})
+            continue
+        target = UPLOAD_DIR / f"{int(time.time() * 1000)}_{safe_filename(file.filename or 'upload')}"
+        target.write_bytes(raw)
+        try:
+            doc = ingest_file(
+                g_memory_store,
+                UPLOAD_DIR,
+                target,
+                title=Path(file.filename or target.name).stem,
+                category=str(category or "domain"),
+            )
+            documents.append(doc)
+        except Exception as exc:
+            errors.append({"filename": file.filename, "error": str(exc)})
+    if g_vector_store:
+        g_vector_store.refresh()
+    return JSONResponse({"documents": documents, "errors": errors, "count": len(documents)})
+
+
+@app.get("/api/documents")
+async def api_documents(category: str = ""):
+    if not g_memory_store:
+        return JSONResponse({"documents": [], "count": 0}, status_code=503)
+    docs = g_memory_store.list_documents(category)
+    return JSONResponse({"documents": docs, "count": len(docs)})
+
+
+@app.get("/api/documents/{document_id}/chunks")
+async def api_document_chunks(document_id: int, limit: int = 20):
+    if not g_memory_store:
+        return JSONResponse({"chunks": [], "count": 0}, status_code=503)
+    document = g_memory_store.get_document(document_id)
+    if not document:
+        raise HTTPException(404, "Document not found")
+    chunks = g_memory_store.get_document_chunks(document_id, max(1, min(int(limit or 20), 100)))
+    return JSONResponse({"document": document, "chunks": chunks, "count": len(chunks)})
+
+
+@app.get("/api/documents/search")
+async def api_document_search(q: str = "", category: str = "", limit: int = 10):
+    if not g_memory_store:
+        return JSONResponse({"chunks": [], "count": 0}, status_code=503)
+    if not q:
+        return JSONResponse({"chunks": [], "count": 0})
+    chunks = g_memory_store.search_document_chunks(q, category, max(1, min(int(limit or 10), 50)))
+    return JSONResponse({"chunks": chunks, "count": len(chunks)})
 
 
 @app.get("/api/memory/items/{memory_id}/versions")

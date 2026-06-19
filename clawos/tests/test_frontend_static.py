@@ -19,7 +19,7 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn('href="/console"', product)
         self.assertIn("Evidence Grid", product)
         self.assertIn("Runtime Map", product)
-        self.assertIn("ClawOS 工作台", console)
+        self.assertIn('class="console-page aether-console"', console)
 
     def test_pages_use_clawos_assets_and_motion(self):
         home = self.read_page("index.html")
@@ -40,25 +40,68 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn('data-view="search"', html)
         self.assertIn('data-view="knowledge"', html)
         self.assertIn('data-view="projects"', html)
-        self.assertIn("知识库", html)
-        self.assertIn("记忆治理", html)
-        self.assertIn("更多应用", html)
+        self.assertIn("view-knowledge", html)
+        self.assertIn("view-memory", html)
         self.assertIn("filePicker", html)
         self.assertIn("commandDrawer", html)
 
     def test_console_exposes_knowledge_library_as_user_rag_surface(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
 
-        self.assertIn("knowledgeTable", html)
-        self.assertIn("knowledgeSearchTable", html)
-        self.assertIn("knowledgeMap", html)
-        self.assertIn("保存到知识库", html)
-        self.assertIn("从当前对话凝练", html)
-        self.assertIn("/api/knowledge", js)
-        self.assertIn("saveKnowledge", js)
-        self.assertIn("searchKnowledge", js)
-        self.assertIn("renderKnowledgeMap", js)
+        for token in (
+            "knowledgeTable",
+            "knowledgeSearchTable",
+            "knowledgeMap",
+            "knowledgeEdges",
+            "knowledgeFilePicker",
+            "knowledgeSessionSelect",
+            "knowledgeStatus",
+            "attachmentTray",
+            ):
+            self.assertIn(token, html)
+
+        for token in (
+            "/api/knowledge",
+            "handleKnowledgeFiles",
+            "draftKnowledgeFromSelectedSession",
+            "renderKnowledgeSessionSelect",
+            "saveKnowledge",
+            "searchKnowledge",
+            "renderKnowledgeMap",
+            "appendKnowledgeToPrompt",
+            "deleteKnowledgeItem",
+            "editingKnowledgeId",
+        ):
+            self.assertIn(token, js)
+
+        self.assertIn(".knowledge-toolbar", css)
+        self.assertIn(".import-drop", css)
+        self.assertIn(".session-import", css)
+        self.assertIn("Overflow safety layer", css)
+        self.assertIn(".aether-console #view-knowledge .section-block", css)
+        self.assertIn("max-height:min(42vh,420px)", css)
+        self.assertIn("overflow-y:auto", css)
+        self.assertIn("display:block", css)
+
+    def test_chat_file_picker_uses_attachment_context_not_prompt_paste(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
+
+        self.assertIn("attachmentTray", html)
+        self.assertIn("Agent 会作为上下文自动阅读", html)
+        self.assertIn("chatAttachments", js)
+        self.assertIn("clawos_attachments", js)
+        self.assertIn("/api/documents/upload", js)
+        self.assertIn("new FormData", js)
+        self.assertIn("document_id", js)
+        self.assertIn("renderAttachmentTray", js)
+        self.assertIn("attachment-chip", css)
+        file_handler = js.split("async function handlePickedFiles", 1)[1].split("function setMemoryType", 1)[0]
+        self.assertNotIn('prompt").value=($("prompt").value', file_handler)
+        self.assertNotIn(".text()", file_handler)
 
     def test_pages_have_no_common_mojibake_fragments(self):
         combined = "\n".join(
@@ -82,7 +125,6 @@ class FrontendStaticTests(unittest.TestCase):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
 
-        self.assertIn("模型 API 配置", html)
         self.assertIn("cfgProvider", html)
         self.assertIn("cfgApiKey", html)
         self.assertIn("/api/config/model", js)
@@ -93,11 +135,9 @@ class FrontendStaticTests(unittest.TestCase):
         js = self.read_page("assets/console.js")
 
         self.assertIn("/api/memory/items", js)
-        self.assertIn("用户画像", html)
-        self.assertIn("偏好记忆", html)
-        self.assertIn("项目记忆", html)
-        self.assertIn("经验记忆", html)
-        self.assertIn("技能记忆", html)
+        self.assertIn("memType", html)
+        self.assertIn("memKey", html)
+        self.assertIn("memValue", html)
         self.assertIn("toggleMemory", js)
         self.assertIn("memoryTable", html)
         self.assertIn("memoryReviewTable", html)
@@ -108,8 +148,6 @@ class FrontendStaticTests(unittest.TestCase):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
 
-        self.assertIn("记忆审查", html)
-        self.assertIn("改进审查", html)
         self.assertIn("reflectionReviewTable", html)
         self.assertIn("/api/reflection/improvements", js)
         self.assertIn("transitionReflection", js)
@@ -155,12 +193,11 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("capabilityTable", html)
         self.assertIn("sceneBoundaryTable", html)
         self.assertIn("/api/workspace/capabilities", js)
-        self.assertIn("结构化文件生成", js)
-        self.assertIn("论文学习解析文件", js)
-        self.assertIn("自带 XLSX 表格", js)
-        self.assertIn("自带 PPTX 演示文稿", js)
-        self.assertIn("PDF 文本识别", js)
-        self.assertIn("音频会议", js)
+        self.assertIn("联网搜索/网页抓取", js)
+        self.assertIn("web_fetch", self.read_page("../functions.jsonl"))
+        self.assertIn("document_understanding", js)
+        self.assertIn("office_artifacts", js)
+        self.assertIn("meeting_audio", js)
 
 
 if __name__ == "__main__":

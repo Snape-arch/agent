@@ -107,6 +107,30 @@ class MemoryStore:
                     created_at TEXT DEFAULT (datetime('now')),
                     updated_at TEXT DEFAULT (datetime('now'))
                 );
+                CREATE TABLE IF NOT EXISTS documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    filename TEXT DEFAULT '',
+                    file_path TEXT DEFAULT '',
+                    file_hash TEXT DEFAULT '',
+                    mime_type TEXT DEFAULT '',
+                    category TEXT NOT NULL DEFAULT 'domain',
+                    extractor TEXT DEFAULT '',
+                    status TEXT DEFAULT 'ready',
+                    metadata TEXT DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS document_chunks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    document_id INTEGER NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    citation TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_document_chunks_doc ON document_chunks(document_id, chunk_index);
                 CREATE TABLE IF NOT EXISTS context_snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT NOT NULL,
@@ -2540,6 +2564,29 @@ class MemoryStore:
             if row: c.execute("UPDATE knowledge SET access_count=access_count+1 WHERE id=?", (kid,))
             return dict(row) if row else None
 
+    def update_knowledge(self, kid, title, content, category="domain", source="", tags=None, confidence=0.5):
+        with self._conn() as c:
+            c.execute(
+                """
+                UPDATE knowledge
+                SET title=?, content=?, category=?, source=?, tags=?, confidence=?, updated_at=datetime('now')
+                WHERE id=?
+                """,
+                (title, content, category, source, json.dumps(tags or []), confidence, int(kid)),
+            )
+            row = c.execute("SELECT * FROM knowledge WHERE id=?", (int(kid),)).fetchone()
+            return dict(row) if row else None
+
+    def delete_knowledge(self, kid):
+        with self._conn() as c:
+            cursor = c.execute("DELETE FROM knowledge WHERE id=?", (int(kid),))
+            return cursor.rowcount > 0
+
+    def delete_knowledge_by_source_prefix(self, prefix):
+        with self._conn() as c:
+            cursor = c.execute("DELETE FROM knowledge WHERE source LIKE ?", (f"{prefix}%",))
+            return cursor.rowcount
+
     def list_knowledge(self, category=""):
         with self._conn() as c:
             sql = "SELECT * FROM knowledge" + (" WHERE category=?" if category else "") + " ORDER BY access_count DESC"
@@ -2547,6 +2594,106 @@ class MemoryStore:
             return [dict(r) for r in rows]
 
     # ── CONTEXT SNAPSHOTS ──
+
+    def add_document(self, title, filename="", file_path="", file_hash="", mime_type="", category="domain", extractor="", status="ready", metadata=None):
+        with self._conn() as c:
+            existing = c.execute("SELECT id FROM documents WHERE file_hash=? AND file_hash<>''", (file_hash,)).fetchone()
+            meta = json.dumps(metadata or {}, ensure_ascii=False)
+            if existing:
+                doc_id = int(existing["id"])
+                c.execute("DELETE FROM document_chunks WHERE document_id=?", (doc_id,))
+                c.execute(
+                    """
+                    UPDATE documents
+                    SET title=?, filename=?, file_path=?, mime_type=?, category=?, extractor=?, status=?, metadata=?, updated_at=datetime('now')
+                    WHERE id=?
+                    """,
+                    (title, filename, file_path, mime_type, category, extractor, status, meta, doc_id),
+                )
+            else:
+                cursor = c.execute(
+                    """
+                    INSERT INTO documents
+                        (title, filename, file_path, file_hash, mime_type, category, extractor, status, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (title, filename, file_path, file_hash, mime_type, category, extractor, status, meta),
+                )
+                doc_id = int(cursor.lastrowid)
+            row = c.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+            result = dict(row)
+            try:
+                result["metadata"] = json.loads(result.get("metadata") or "{}")
+            except json.JSONDecodeError:
+                result["metadata"] = {}
+            return result
+
+    def add_document_chunk(self, document_id, chunk_index, content, citation=""):
+        with self._conn() as c:
+            cursor = c.execute(
+                "INSERT INTO document_chunks (document_id, chunk_index, content, citation) VALUES (?, ?, ?, ?)",
+                (int(document_id), int(chunk_index), content, citation),
+            )
+            row = c.execute("SELECT * FROM document_chunks WHERE id=?", (int(cursor.lastrowid),)).fetchone()
+            return dict(row)
+
+    def list_documents(self, category=""):
+        with self._conn() as c:
+            sql = """
+                SELECT d.*,
+                       (SELECT COUNT(*) FROM document_chunks dc WHERE dc.document_id=d.id) AS chunk_count
+                FROM documents d
+            """ + (" WHERE d.category=?" if category else "") + " ORDER BY d.updated_at DESC, d.id DESC"
+            rows = c.execute(sql, (category,) if category else ()).fetchall()
+            items = []
+            for row in rows:
+                item = dict(row)
+                try:
+                    item["metadata"] = json.loads(item.get("metadata") or "{}")
+                except json.JSONDecodeError:
+                    item["metadata"] = {}
+                items.append(item)
+            return items
+
+    def get_document(self, document_id):
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM documents WHERE id=?", (int(document_id),)).fetchone()
+            if not row:
+                return None
+            item = dict(row)
+            try:
+                item["metadata"] = json.loads(item.get("metadata") or "{}")
+            except json.JSONDecodeError:
+                item["metadata"] = {}
+            return item
+
+    def get_document_chunks(self, document_id, limit=20):
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT * FROM document_chunks WHERE document_id=? ORDER BY chunk_index LIMIT ?",
+                (int(document_id), int(limit)),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def search_document_chunks(self, query, category="", limit=10):
+        with self._conn() as c:
+            params = [f"%{query}%", f"%{query}%"]
+            where = "(d.title LIKE ? OR dc.content LIKE ?)"
+            if category:
+                where = "d.category=? AND " + where
+                params.insert(0, category)
+            rows = c.execute(
+                f"""
+                SELECT dc.*, d.title, d.filename, d.category
+                FROM document_chunks dc
+                JOIN documents d ON d.id=dc.document_id
+                WHERE {where}
+                ORDER BY d.updated_at DESC, dc.chunk_index
+                LIMIT ?
+                """,
+                (*params, int(limit)),
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def save_context_snapshot(self, session_id, task="", active_tools=None, environment="", user_intent=""):
         with self._conn() as c:

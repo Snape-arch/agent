@@ -146,3 +146,108 @@ Result:
 Known notes:
 - The local `.venv` is absent on this machine. Browser verification used the bundled Codex Python runtime to start `clawos_server.py`.
 - Full tests mutate `dev_health_check` usage stats; the registry line was restored after validation so the working tree contains only intentional source/UI/test changes.
+
+### 2026-06-19 - Knowledge library management and console liveliness pass
+
+Completed:
+- Upgraded the user knowledge library from a surface-level RAG tab into managed modules: research, learning, writing, and project libraries now filter and store real categorized knowledge items.
+- Added a dedicated upload area in the knowledge view. Text-like local files can be imported into the active library and then searched, edited, deleted, sent back into chat, and reflected in the topology map.
+- Replaced the vague "current conversation" document action with an explicit history-session picker. Users choose a past session, generate a document draft, edit it, and save it into the selected knowledge module.
+- Added knowledge CRUD backend support with `PUT /api/knowledge/{knowledge_id}` and `DELETE /api/knowledge/{knowledge_id}`, plus MemoryOS update/delete methods and vector-store refresh.
+- Made the knowledge topology module-aware: the active library is the center node and imported/saved items become per-module map nodes instead of a decorative static graph.
+- Loosened overly fixed console layout rules: main content now scrolls, panel views can grow naturally, and knowledge toolbar/drop zones have responsive layout so content is less likely to overflow fixed boxes.
+- Updated frontend/static and MemoryOS tests to cover upload/session-picker DOM, knowledge editor state, CRUD lifecycle, and knowledge topology wiring.
+
+Verification:
+```powershell
+node --check clawos/static/assets/console.js
+python -m py_compile clawos\clawos_server.py clawos\memoryos\memory_store.py
+python -m unittest clawos.tests.test_frontend_static clawos.tests.test_memoryos_mvp
+python -m unittest discover -s clawos\tests
+```
+
+Result:
+- Targeted tests: `20 tests OK`.
+- Full suite: `107 tests OK`.
+- Browser validation passed on `http://127.0.0.1:18790/console`: knowledge upload picker, session picker, active category switching, scrollable layout rules, and topology nodes were verified in the in-app browser.
+- API CRUD smoke test passed: create, update, search, and delete worked against the running local server.
+
+Known notes:
+- Keep using `http://127.0.0.1:18790/console` for API-backed console testing. Opening `static/console.html` through `file://` can show layout but cannot fully exercise server APIs.
+- The local `.venv` is still absent on this machine; validation used the available `python` runtime that had the required dependencies.
+- FastAPI emits non-blocking `on_event` deprecation warnings during the full test suite.
+
+Recommended next step:
+- Connect imported knowledge items to real document parsing/chunking for PDF/DOCX and add persisted graph edges based on extracted entities/citations, so the topology becomes analytical rather than only item-level.
+
+### 2026-06-19 - Console overflow safety fix
+
+Completed:
+- Added an overflow safety layer to `clawos/static/assets/console.css` so dense console surfaces remain reachable when content exceeds the visible area.
+- Knowledge library panels, knowledge item sections, tables, topology area, settings modal, and more drawer now use auto scrolling instead of clipping content below the fold.
+- Added thin scrollbar styling and regression assertions in `clawos/tests/test_frontend_static.py`.
+
+Verification:
+- `python -m unittest clawos.tests.test_frontend_static`: `12 tests OK`.
+
+Known note:
+- Local Node Playwright could not launch because the Chromium binary is missing in `C:\Users\34712\AppData\Local\ms-playwright`; use the in-app browser/manual visual check or install Playwright browsers for screenshot QA.
+
+### 2026-06-19 - Chat attachment context behavior
+
+Completed:
+- Changed chat file upload from "paste file text into the prompt box" to an attachment tray model.
+- The `+` button now shows loading/ready file chips with a spinner and remove action; the prompt remains clean.
+- Frontend sends files as `clawos_attachments` with the chat request. The user-visible chat bubble only shows the message plus attachment names.
+- Backend converts attachments into hidden context for routing/model/tool use, while MemoryOS stores only the user's original message, not the full uploaded file text.
+- Confirmation retries preserve the attachment context.
+
+Verification:
+- Bundled Node syntax check: `node.exe --check clawos\static\assets\console.js` passed.
+- `python -m py_compile clawos\clawos_server.py` passed.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_routing_memory`: `27 tests OK`.
+
+Known note:
+- Current attachment reading is text-based in the browser. Binary/PDF/DOCX should be routed through a real upload/parsing endpoint next, so large or non-text files can be chunked, indexed, and cited instead of loaded client-side.
+
+### 2026-06-19 - Real document upload, parsing, chunking, and RAG closure
+
+Completed:
+- Added `clawos/memoryos/document_ingestion.py` as the unified document ingestion service.
+- Added server-side upload parsing for txt/md/csv/json/html, PDF via `pdftotext` or `pypdf`, and DOCX via OpenXML extraction.
+- Added MemoryOS `documents` and `document_chunks` tables plus document list/chunk/search methods.
+- Added `/api/documents/upload`, `/api/documents`, `/api/documents/{id}/chunks`, and `/api/documents/search`.
+- Upload now stores original files under `clawos/uploads`, extracts text, chunks content, persists citations like `doc:N#chunk=M`, creates knowledge entries for each chunk, and refreshes the vector index.
+- Chat attachments now upload via `FormData` and keep only `document_id` metadata on the frontend. The chat request asks the backend to retrieve relevant chunks as hidden RAG context instead of sending raw file text from the browser.
+- Knowledge library upload now uses the same backend ingestion path, so files become managed documents, indexed chunks, knowledge entries, and topology/search inputs.
+- Duplicate uploads by file hash reuse the same document id and clear old chunk-derived knowledge before re-indexing.
+
+Verification:
+- `python -m py_compile clawos\clawos_server.py clawos\memoryos\memory_store.py clawos\memoryos\document_ingestion.py` passed.
+- Bundled Node syntax check: `node.exe --check clawos\static\assets\console.js` passed.
+- Targeted tests: `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_memoryos_mvp clawos.tests.test_routing_memory`: `37 tests OK`.
+- Full suite: `python -m unittest discover -s clawos\tests`: `111 tests OK`.
+- API smoke with FastAPI TestClient passed: multipart upload to `/api/documents/upload` returned one document and `/api/documents/{id}/chunks` returned four chunks.
+
+Known notes:
+- PDF text extraction depends on local `pdftotext` or Python `pypdf`. OCR-only scanned PDFs are detected as low/empty text and should later route to an OCR worker.
+- Current vector search is the existing lightweight in-memory hash embedding. It is closed-loop and offline, but a competition final could swap it for stronger embeddings while keeping the same document/chunk API.
+
+### 2026-06-19 - Web fetch capability verification
+
+Completed:
+- Confirmed existing `web_search` is registered and implemented through DuckDuckGo HTML, but it is not yet robust enough to call enterprise-grade because parser/source reliability is weak.
+- Added `web_fetch` tool to `functions.jsonl` and `tool_runner.py`.
+- `web_fetch` accepts a public http(s) URL, performs a real GET, follows redirects, strips HTML, returns title, cleaned text excerpt, links, status code, content type, and final URL.
+- Console capability panel now displays `联网搜索/网页抓取`.
+
+Verification:
+- `python -m py_compile clawos\scripts\tool_runner.py` passed.
+- Bundled Node syntax check: `node.exe --check clawos\static\assets\console.js` passed.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_routing_memory`: `28 tests OK`.
+- Full suite: `python -m unittest discover -s clawos\tests`: `111 tests OK`.
+- Real network smoke with elevated network permission: `web_fetch https://example.com` succeeded with title `Example Domain` and non-empty cleaned text.
+
+Known notes:
+- In the normal sandbox, outbound socket access is blocked, so web tools need a runtime/network policy that permits outbound HTTP(S).
+- `web_search` should be upgraded to a provider abstraction with at least two search backends, source URLs, snippets, rank, error classification, and tests with mocked HTML/API responses.
