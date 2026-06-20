@@ -22,10 +22,11 @@
 ## 接手顺序
 
 1. 读 `PROJECT_CONTEXT.md`。
-2. 读根目录 `README.md` 的启动、验收和交付章节。
-3. 需要看 MTClaw 时读 `clawos/MTCLAW_INTEGRATION.md`。
-4. 需要改前端时读 `clawos/static/console.html`、`clawos/static/assets/console.js`、`clawos/static/assets/site.css`。
-5. 需要改后端时优先定位 `clawos/clawos_server.py`、`clawos/memoryos/`、`clawos/scripts/` 中对应模块。
+2. 读 `PROJECT_ROADMAP.md`，确认产品定位、主场景和优先级。
+3. 读根目录 `README.md` 的启动、验收和交付章节。
+4. 需要看 MTClaw 时读 `clawos/MTCLAW_INTEGRATION.md`。
+5. 需要改前端时读 `clawos/static/console.html`、`clawos/static/assets/console.js`、`clawos/static/assets/site.css`。
+6. 需要改后端时优先定位 `clawos/clawos_server.py`、`clawos/memoryos/`、`clawos/scripts/` 中对应模块。
 
 ## 项目结构
 
