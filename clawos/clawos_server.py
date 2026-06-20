@@ -512,12 +512,21 @@ def has_api_key(section: str = "routing") -> bool:
 
 
 SCENARIO_ROUTING_POLICY = {
-    "research": {"tools": ["web_search", "web_fetch", "research_pdf"], "risk": "medium", "description": "科研检索、网页抓取、论文解析和可引用 RAG"},
-    "learning": {"tools": ["learning_workspace", "web_fetch", "exam_practice_builder"], "risk": "medium", "description": "学习目标、资料入库、练习题和掌握度"},
-    "office": {"tools": ["meeting_workflow", "office_artifact", "work_brief_builder"], "risk": "medium", "description": "会议、简报、表格和演示文稿产物"},
-    "project": {"tools": ["ls", "grep_text", "code_stats", "git_workspace"], "risk": "high", "description": "项目分析、代码检索和审批式 Git 操作"},
-    "web": {"tools": ["web_search", "web_fetch"], "risk": "medium", "description": "联网搜索和网页正文抓取"},
-    "general": {"tools": ["memory_history", "tools_list", "note_save"], "risk": "low", "description": "通用对话、记忆和轻量记录"},
+    "research": {"tools": ["web_search", "web_fetch", "research_pdf"], "risk": "medium", "model_profile": "deep_reasoning", "retrieval": "citations_required", "requires_confirmation": ["web_fetch"], "description": "科研检索、网页抓取、论文解析和可引用 RAG"},
+    "learning": {"tools": ["learning_workspace", "web_fetch", "exam_practice_builder"], "risk": "medium", "model_profile": "tutor", "retrieval": "knowledge_first", "requires_confirmation": ["web_fetch"], "description": "学习目标、资料入库、练习题和掌握度"},
+    "office": {"tools": ["meeting_workflow", "office_artifact", "work_brief_builder"], "risk": "medium", "model_profile": "structured_output", "retrieval": "workspace_context", "requires_confirmation": ["office_artifact"], "description": "会议、简报、表格和演示文稿产物"},
+    "project": {"tools": ["ls", "grep_text", "code_stats", "git_workspace"], "risk": "high", "model_profile": "code_agent", "retrieval": "repo_context", "requires_confirmation": ["git_workspace"], "description": "项目分析、代码检索和审批式 Git 操作"},
+    "web": {"tools": ["web_search", "web_fetch"], "risk": "medium", "model_profile": "fresh_context", "retrieval": "web_then_rag", "requires_confirmation": ["web_fetch"], "description": "联网搜索和网页正文抓取"},
+    "general": {"tools": ["memory_history", "tools_list", "note_save"], "risk": "low", "model_profile": "balanced", "retrieval": "memory_optional", "requires_confirmation": [], "description": "通用对话、记忆和轻量记录"},
+}
+
+
+SCENARIO_ROUTING_KEYWORDS = {
+    "research": ["论文", "科研", "文献", "引用", "citation", "paper", "research", "zotero", "实验", "复现"],
+    "learning": ["学习", "考试", "复习", "课程", "题目", "掌握", "exam", "learn", "quiz"],
+    "office": ["会议", "纪要", "汇报", "ppt", "excel", "brief", "meeting", "邮件", "表格"],
+    "project": ["代码", "项目", "git", "repo", "bug", "测试", "commit", "重构", "架构"],
+    "web": ["搜索", "联网", "网页", "爬取", "url", "http", "search", "crawl", "fetch"],
 }
 
 
@@ -534,6 +543,43 @@ def classify_scenario(text: str) -> str:
         if any(k in low for k in keys):
             return scenario
     return "general"
+
+
+def score_scenarios(text: str) -> list[dict[str, Any]]:
+    low = str(text or "").lower()
+    rows: list[dict[str, Any]] = []
+    for scenario, policy in SCENARIO_ROUTING_POLICY.items():
+        keys = SCENARIO_ROUTING_KEYWORDS.get(scenario, [])
+        hits = [key for key in keys if key.lower() in low]
+        score = 0.18 if scenario == "general" else 0.0
+        score += min(0.62, 0.16 * len(hits))
+        if scenario == "research" and any(k in low for k in ["pdf", "docx", "rag", "chunk", "引用", "文献"]):
+            score += 0.16
+        if scenario == "web" and any(k in low for k in ["http://", "https://", "url", "网页"]):
+            score += 0.18
+        if scenario == "project" and any(k in low for k in ["写入", "commit", "git", "文件", "shell"]):
+            score += 0.12
+        if scenario == "office" and any(k in low for k in ["xlsx", "pptx", "docx", "表格", "演示"]):
+            score += 0.12
+        if not low.strip() and scenario == "general":
+            score = 0.52
+        rows.append({
+            "scenario": scenario,
+            "score": round(min(score, 0.98), 4),
+            "matched_keywords": hits[:8],
+            "risk": policy.get("risk", "low"),
+            "tools": policy.get("tools", []),
+            "model_profile": policy.get("model_profile", "balanced"),
+            "retrieval": policy.get("retrieval", "memory_optional"),
+            "requires_confirmation": policy.get("requires_confirmation", []),
+            "reason": "keyword_match" if hits else ("default_low_risk" if scenario == "general" else "available_capability"),
+        })
+    rows.sort(key=lambda item: (item["score"], -len(item.get("requires_confirmation", []))), reverse=True)
+    if rows and rows[0]["score"] <= 0:
+        rows = sorted(rows, key=lambda item: item["scenario"] != "general")
+        rows[0]["score"] = 0.52
+        rows[0]["reason"] = "default_low_risk"
+    return rows
 
 
 def rule_based_tool(user_text: str) -> tuple[str, dict[str, Any]] | None:
@@ -2292,6 +2338,23 @@ async def api_documents(category: str = ""):
     return JSONResponse({"documents": docs, "count": len(docs)})
 
 
+@app.get("/api/documents/ocr-queue")
+async def api_documents_ocr_queue(category: str = ""):
+    if not g_memory_store:
+        return JSONResponse({"documents": [], "count": 0}, status_code=503)
+    docs = g_memory_store.list_documents(category)
+    pending = []
+    for doc in docs:
+        meta = doc.get("metadata") or {}
+        if meta.get("ocr_required") or str(doc.get("status") or "").lower() in {"ocr_required", "needs_ocr"}:
+            pending.append({
+                **doc,
+                "ocr_pages": meta.get("ocr_pages", []),
+                "ocr_reason": meta.get("ocr_reason") or "low_extractable_text",
+            })
+    return JSONResponse({"documents": pending, "count": len(pending)})
+
+
 @app.get("/api/documents/{document_id}/chunks")
 async def api_document_chunks(document_id: int, limit: int = 20):
     if not g_memory_store:
@@ -2311,6 +2374,81 @@ async def api_document_search(q: str = "", category: str = "", limit: int = 10):
         return JSONResponse({"chunks": [], "count": 0})
     chunks = g_memory_store.search_document_chunks(q, category, max(1, min(int(limit or 10), 50)))
     return JSONResponse({"chunks": chunks, "count": len(chunks)})
+
+
+@app.get("/api/documents/citation-answer")
+async def api_document_citation_answer(q: str = "", category: str = "", document_id: int = 0, limit: int = 5):
+    if not g_memory_store:
+        return JSONResponse({"answer": "", "citations": [], "count": 0}, status_code=503)
+    top_k = max(1, min(int(limit or 5), 12))
+    if document_id:
+        document = g_memory_store.get_document(document_id)
+        if not document:
+            raise HTTPException(404, "Document not found")
+        chunks = g_memory_store.get_document_chunks(document_id, top_k)
+        for chunk in chunks:
+            chunk.setdefault("title", document.get("title", ""))
+            chunk.setdefault("filename", document.get("filename", ""))
+            chunk.setdefault("category", document.get("category", ""))
+    elif q:
+        chunks = g_memory_store.search_document_chunks(q, category, top_k)
+    else:
+        chunks = []
+    citations = []
+    lines = []
+    for index, chunk in enumerate(chunks, 1):
+        content = str(chunk.get("content") or "").strip()
+        citation = chunk.get("citation") or f"doc:{chunk.get('document_id')}#chunk={chunk.get('chunk_index')}"
+        citations.append({
+            "rank": index,
+            "citation": citation,
+            "document_id": chunk.get("document_id"),
+            "chunk_id": chunk.get("id"),
+            "title": chunk.get("title") or chunk.get("filename") or "",
+            "snippet": content[:360],
+        })
+        if content:
+            lines.append(f"[{index}] {content[:420]}")
+    answer = "No indexed evidence matched the query."
+    if lines:
+        answer = "基于已入库资料的可引用答案草稿：\n" + "\n\n".join(lines)
+    return JSONResponse({"answer": answer, "citations": citations, "count": len(citations), "query": q, "category": category})
+
+
+@app.get("/api/knowledge/graph")
+async def api_knowledge_graph(category: str = "", limit: int = 80):
+    if not g_memory_store:
+        return JSONResponse({"nodes": [], "edges": [], "count": 0}, status_code=503)
+    max_nodes = max(12, min(int(limit or 80), 160))
+    docs = g_memory_store.list_documents(category)
+    knowledge = g_memory_store.list_knowledge(category)
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: list[dict[str, Any]] = []
+
+    def add_node(node_id: str, label: str, node_type: str, weight: int = 1, meta: dict[str, Any] | None = None):
+        if node_id not in nodes:
+            nodes[node_id] = {"id": node_id, "label": label, "type": node_type, "weight": weight, "meta": meta or {}}
+        else:
+            nodes[node_id]["weight"] = max(int(nodes[node_id].get("weight") or 1), int(weight or 1))
+
+    root = f"category:{category or 'all'}"
+    add_node(root, category or "all", "category", max(len(docs) + len(knowledge), 1))
+    for doc in docs[: max_nodes // 2]:
+        doc_id = f"doc:{doc.get('id')}"
+        add_node(doc_id, doc.get("title") or doc.get("filename") or doc_id, "document", int(doc.get("chunk_count") or 1), {"status": doc.get("status"), "ocr_required": bool((doc.get("metadata") or {}).get("ocr_required"))})
+        edges.append({"source": root, "target": doc_id, "type": "contains"})
+        for chunk in g_memory_store.get_document_chunks(int(doc.get("id")), 3):
+            chunk_id = f"chunk:{chunk.get('id')}"
+            add_node(chunk_id, f"chunk {chunk.get('chunk_index')}", "chunk", 1, {"citation": chunk.get("citation", "")})
+            edges.append({"source": doc_id, "target": chunk_id, "type": "cites"})
+    for item in knowledge[: max_nodes // 2]:
+        item_id = f"knowledge:{item.get('id')}"
+        add_node(item_id, item.get("title") or item_id, "knowledge", int(item.get("access_count") or 1), {"source": item.get("source", ""), "tags": item.get("tags", "")})
+        edges.append({"source": root, "target": item_id, "type": "contains"})
+    limited_nodes = list(nodes.values())[:max_nodes]
+    allowed = {node["id"] for node in limited_nodes}
+    limited_edges = [edge for edge in edges if edge["source"] in allowed and edge["target"] in allowed][: max_nodes * 2]
+    return JSONResponse({"nodes": limited_nodes, "edges": limited_edges, "count": len(limited_nodes), "category": category or "all"})
 
 
 @app.get("/api/memory/items/{memory_id}/versions")
@@ -2862,10 +3000,21 @@ async def api_tools_accuracy(session_id: str = "", limit: int = 200):
 
 @app.get("/api/routing/policy")
 async def api_routing_policy(q: str = ""):
-    scenario = classify_scenario(q)
+    candidates = score_scenarios(q)
+    scenario = candidates[0]["scenario"] if candidates else classify_scenario(q)
+    selected = SCENARIO_ROUTING_POLICY[scenario]
     return JSONResponse({
         "scenario": scenario,
-        "selected": SCENARIO_ROUTING_POLICY[scenario],
+        "selected": selected,
+        "candidates": candidates,
+        "strategy": {
+            "mode": "scored_policy_routing",
+            "model_profile": selected.get("model_profile", "balanced"),
+            "retrieval": selected.get("retrieval", "memory_optional"),
+            "tools": selected.get("tools", []),
+            "risk": selected.get("risk", "low"),
+            "requires_confirmation": selected.get("requires_confirmation", []),
+        },
         "policies": SCENARIO_ROUTING_POLICY,
     })
 

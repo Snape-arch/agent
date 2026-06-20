@@ -239,6 +239,50 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertEqual(payload["tools"][0]["calls"], 2)
         self.assertEqual(payload["tools"][0]["success_rate"], 0.5)
 
+    def test_routing_policy_returns_scored_strategy(self):
+        import clawos_server as server
+
+        resp = asyncio.run(server.api_routing_policy(q="请联网搜索一篇科研论文并入库生成引用回答"))
+        payload = json.loads(resp.body)
+
+        self.assertEqual(payload["scenario"], "research")
+        self.assertIn("candidates", payload)
+        self.assertGreater(payload["candidates"][0]["score"], 0)
+        self.assertEqual(payload["strategy"]["mode"], "scored_policy_routing")
+        self.assertEqual(payload["strategy"]["retrieval"], "citations_required")
+
+    def test_document_ocr_citation_and_graph_endpoints(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            server.g_memory_store = store
+            try:
+                doc = store.add_document(
+                    "Web RAG Note",
+                    filename="web.html",
+                    category="research",
+                    extractor="html",
+                    metadata={"ocr_required": True, "ocr_pages": [1], "source_url": "https://example.com"},
+                )
+                chunk = store.add_document_chunk(doc["id"], 1, "Web ingestion supports chunk citations and RAG answers.", f"doc:{doc['id']}#chunk=1")
+                store.add_knowledge("RAG summary", "Citation aware answers use indexed chunks.", "research", "doc")
+
+                ocr_payload = json.loads(asyncio.run(server.api_documents_ocr_queue(category="research")).body)
+                answer_payload = json.loads(asyncio.run(server.api_document_citation_answer(q="chunk citations", category="research")).body)
+                graph_payload = json.loads(asyncio.run(server.api_knowledge_graph(category="research")).body)
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertEqual(ocr_payload["count"], 1)
+        self.assertEqual(ocr_payload["documents"][0]["ocr_pages"], [1])
+        self.assertEqual(answer_payload["citations"][0]["chunk_id"], chunk["id"])
+        self.assertIn("chunk citations", answer_payload["answer"])
+        self.assertTrue(any(node["type"] == "document" for node in graph_payload["nodes"]))
+        self.assertTrue(any(edge["type"] == "cites" for edge in graph_payload["edges"]))
+
     def test_run_tool_loop_records_task_step_for_rule_based_tool(self):
         from memoryos.memory_store import MemoryStore
 

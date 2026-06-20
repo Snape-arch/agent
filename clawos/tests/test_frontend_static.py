@@ -205,6 +205,26 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("office_artifacts", js)
         self.assertIn("meeting_audio", js)
 
+    def test_console_exposes_permission_center_and_graph_backplane(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+
+        self.assertIn("view-security", html)
+        self.assertIn("securityPolicyTable", html)
+        self.assertIn("securityBoundaryTable", html)
+        self.assertIn("securityAuditTable", html)
+        self.assertIn("loadSecurityCenter", js)
+        self.assertIn("/api/security/policy/check", js)
+        self.assertIn("/api/security/audit", js)
+        self.assertIn("/api/knowledge/graph", js)
+        self.assertIn("loadKnowledgeGraph", js)
+        self.assertIn("ocrQueueTable", html)
+        self.assertIn("citationAnswerTable", html)
+        self.assertIn("/api/documents/ocr-queue", js)
+        self.assertIn("/api/documents/citation-answer", js)
+        self.assertIn("loadRoutingStrategy", js)
+        self.assertIn("scored_policy_routing", self.read_page("../clawos_server.py"))
+
 
 if __name__ == "__main__":
     unittest.main()

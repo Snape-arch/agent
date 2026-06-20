@@ -176,6 +176,51 @@
 @keyframes attachmentSpin{
   to{transform:rotate(360deg)}
 }
+.panel-view,
+.workspace,
+.search-workspace,
+.project-workspace,
+.knowledge-workspace,
+.security-workspace{
+  min-height:0;
+  overflow:auto;
+  scrollbar-gutter:stable;
+}
+.security-workspace{
+  max-width:1080px;
+  margin:0 auto;
+}
+.security-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:16px;
+}
+.section-block{
+  min-width:0;
+}
+.table{
+  table-layout:fixed;
+  width:100%;
+}
+.table td,
+.table th{
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+.chat-inner{
+  min-width:0;
+}
+.bubble,
+.mc,
+.msg{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+@media (max-width: 900px){
+  .security-grid{
+    grid-template-columns:1fr;
+  }
+}
 .compose-inner{
   max-width:920px;
   margin:0 auto;

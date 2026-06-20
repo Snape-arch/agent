@@ -156,6 +156,8 @@
           </section>
         </div>
         <div class="searchbar"><input id="knowledgeQuery" placeholder="搜索知识库、论文摘录、学习笔记" onkeydown="if(event.key==='Enter')searchKnowledge()"><button class="secondary" onclick="searchKnowledge()">检索</button></div>
+        <div class="section-block"><h2>OCR 队列</h2><table class="table" id="ocrQueueTable"></table></div>
+        <div class="section-block"><h2>引用问答</h2><div class="searchbar"><input id="citationQuery" placeholder="输入问题，基于已入库文档 chunk 返回带引用的回答" onkeydown="if(event.key==='Enter')askCitationAnswer()"><button class="secondary" onclick="askCitationAnswer()">引用回答</button></div><table class="table" id="citationAnswerTable"></table></div>
         <div class="section-block"><h2>知识条目</h2><table class="table" id="knowledgeTable"></table></div>
         <div class="section-block"><h2>检索结果</h2><table class="table" id="knowledgeSearchTable"></table></div>
       </div>
@@ -182,6 +184,7 @@
     <section class="view" id="view-tasks"><div class="panel-view glass-panel"><div class="action-row"><button class="secondary" onclick="recoverTasks()">恢复中断任务</button><button class="secondary" onclick="loadTaskQueue()">刷新队列</button><button class="primary" onclick="claimTask()">领取下一个任务</button><span class="hint" id="liveTaskState">实时事件：连接中</span></div><div class="section-block"><h2>恢复队列</h2><table class="table" id="taskQueueTable"></table></div><div class="section-block"><h2>任务运行轨迹</h2><table class="table" id="taskTable"></table></div><div class="section-block"><h2>步骤 Trace</h2><table class="table" id="taskStepTable"></table></div><div class="section-block"><h2>事件审计</h2><table class="table" id="taskEventTable"></table></div></div></section>
     <section class="view" id="view-benchmarks"><div class="panel-view glass-panel"><div class="action-row"><button class="primary" onclick="runScenarioBenchmark()">运行默认冻结基准</button><button class="secondary" onclick="loadBenchmarks()">刷新结果</button><span class="hint">覆盖会议、学习、项目模板、技能和记忆五类低风险场景。</span></div><div class="section-block"><h2>冻结场景套件</h2><table class="table" id="benchmarkSuiteTable"></table></div><div class="section-block"><h2>最近验收结果</h2><table class="table" id="benchmarkRunTable"></table></div></div></section>
     <section class="view" id="view-scenes"><div class="panel-view glass-panel"><div class="section-block"><h2>本地能力体检</h2><table class="table" id="capabilityTable"></table></div><div class="section-block"><h2>场景交付边界</h2><table class="table" id="sceneBoundaryTable"></table></div></div></section>
+    <section class="view" id="view-security"><div class="panel-view glass-panel security-workspace"><div class="library-head"><div><h2>权限中心</h2><p class="hint">统一查看联网、Shell、文件写入、Git、外部 API 的风险分级、审批状态和审计记录。</p></div><button class="secondary" onclick="loadSecurityCenter()">刷新</button></div><div class="security-grid"><div class="section-block"><h2>策略矩阵</h2><table class="table" id="securityPolicyTable"></table></div><div class="section-block"><h2>允许边界</h2><table class="table" id="securityBoundaryTable"></table></div></div><div class="section-block"><h2>审计事件</h2><table class="table" id="securityAuditTable"></table></div></div></section>
   </main>
 
   <div class="floating-actions">
@@ -205,6 +208,7 @@
         <button onclick="openDrawerView('skills')"><b>固化技能</b><span>Skill 发布与质量</span></button>
         <button onclick="openDrawerView('benchmarks')"><b>冻结基准</b><span>比赛验收和 P95</span></button>
         <button onclick="openDrawerView('scenes')"><b>场景工作流</b><span>会议、科研、办公、学习</span></button>
+        <button onclick="openDrawerView('security')"><b>权限中心</b><span>联网、Shell、文件、Git 和外部 API 审批</span></button>
         <button onclick="openModelSettings()"><b>模型配置</b><span>DeepSeek/API/本地模型</span></button>
       </div>
     </section>
