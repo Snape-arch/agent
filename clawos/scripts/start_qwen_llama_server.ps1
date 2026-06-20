@@ -4,7 +4,8 @@ param(
     [int]$Port = 8000,
     [int]$ContextSize = 8192,
     [int]$GpuLayers = 99,
-    [string]$ServerPath = ""
+    [string]$ServerPath = "",
+    [switch]$NoDownload
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +14,13 @@ if (-not [System.IO.Path]::IsPathRooted($ModelPath)) {
     $ModelPath = Join-Path $repoRoot $ModelPath
 }
 if (-not (Test-Path -LiteralPath $ModelPath)) {
-    throw "Qwen GGUF model not found: $ModelPath"
+    if ($NoDownload) {
+        throw "Qwen GGUF model not found: $ModelPath"
+    }
+    & (Join-Path $PSScriptRoot "download_qwen_model.ps1")
+}
+if (-not (Test-Path -LiteralPath $ModelPath)) {
+    throw "Qwen GGUF model not found after download: $ModelPath"
 }
 
 $candidates = @()
@@ -35,7 +42,18 @@ foreach ($candidate in $candidates) {
     }
 }
 if (-not $server) {
-    throw "llama-server.exe not found. Put llama.cpp server at tools\llama.cpp\llama-server.exe or pass -ServerPath."
+    $runtimeRoot = Join-Path $repoRoot "tools\llama.cpp"
+    $found = Get-ChildItem -LiteralPath $runtimeRoot -Recurse -Filter llama-server.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { $server = $found.FullName }
+}
+if (-not $server -and -not $NoDownload) {
+    & (Join-Path $PSScriptRoot "download_llama_cpp.ps1")
+    $runtimeRoot = Join-Path $repoRoot "tools\llama.cpp"
+    $found = Get-ChildItem -LiteralPath $runtimeRoot -Recurse -Filter llama-server.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { $server = $found.FullName }
+}
+if (-not $server) {
+    throw "llama-server.exe not found. Put llama.cpp server under tools\llama.cpp, install it on PATH, or pass -ServerPath."
 }
 
 Write-Host "Starting Qwen local OpenAI-compatible server"

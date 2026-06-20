@@ -132,6 +132,32 @@ class ModelProviderTests(unittest.TestCase):
         self.assertNotIn("api_key", status)
         self.assertNotIn("secret", str(status))
 
+
+
+    def test_default_config_declares_qwen_as_local_fallback(self):
+        config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        fallback = config["model_fallbacks"][0]
+
+        self.assertEqual(fallback["provider"], "qwen")
+        self.assertEqual(fallback["base_url"], "${QWEN_BASE_URL:-http://127.0.0.1:8000/v1}")
+        self.assertEqual(fallback["model"], "${QWEN_MODEL:-Qwen3.5-9B-Q4_K_M}")
+        self.assertFalse(fallback["requires_api_key"])
+
+    def test_qwen_model_manifest_matches_provider_default(self):
+        manifest_path = ROOT / "models" / "qwen3_5_9b_q4_k_m.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["provider"], "qwen")
+        self.assertEqual(manifest["repo_id"], "unsloth/Qwen3.5-9B-GGUF")
+        self.assertEqual(manifest["filename"], "Qwen3.5-9B-Q4_K_M.gguf")
+        self.assertEqual(manifest["model_name"], "Qwen3.5-9B-Q4_K_M")
+        self.assertEqual(manifest["base_url"], "http://127.0.0.1:8000/v1")
+        self.assertEqual(manifest["size_bytes"], 5680522464)
+        self.assertEqual(
+            manifest["sha256"],
+            "03B74727A860A56338E042C4420BB3F04B2FEC5734175F4CB9FA853DAF52B7E8",
+        )
+
     def test_server_normalizes_qwen_defaults_for_local_endpoint(self):
         import os
         import clawos_server as server

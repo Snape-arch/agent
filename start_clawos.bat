@@ -9,7 +9,9 @@ set "PYTHON="
 set "MTCLAW_DIR="
 set "MTCLAW_PORT=18791"
 set "CLAWOS_PORT=18790"
+set "QWEN_PORT=8000"
 set "MTCLAW_BASE_URL=http://127.0.0.1:%MTCLAW_PORT%"
+set "QWEN_BASE_URL=http://127.0.0.1:%QWEN_PORT%/v1"
 
 echo ============================================
 echo   ClawOS + MTClaw Windows Launcher
@@ -79,6 +81,31 @@ if not exist "%CLAWOS_DIR%\.env" (
 
 if not defined MODEL_API_KEY if defined DEEPSEEK_API_KEY (
     set "MODEL_API_KEY=%DEEPSEEK_API_KEY%"
+)
+
+
+if not defined MODEL_API_KEY (
+    echo.
+    echo [INFO] MODEL_API_KEY not found. Starting local Qwen fallback on %QWEN_BASE_URL% ...
+    set "MODEL_PROVIDER=qwen"
+    set "MODEL_BASE_URL=%QWEN_BASE_URL%"
+    set "MODEL_NAME=Qwen3.5-9B-Q4_K_M"
+    set "MODEL_REQUIRES_API_KEY=false"
+    powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort %QWEN_PORT% -State Listen -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"
+    if errorlevel 1 (
+        start "Qwen Local Model" /D "%ROOT%" powershell -NoProfile -ExecutionPolicy Bypass -File "%CLAWOS_DIR%\scripts\start_qwen_llama_server.ps1"
+    ) else (
+        echo [INFO] Qwen port %QWEN_PORT% is already listening; using existing local model server.
+    )
+    echo [INFO] Waiting for Qwen local model endpoint...
+    "%PYTHON%" "%CLAWOS_DIR%\scripts\windows_health_check.py" --url "%QWEN_BASE_URL%/models" --name Qwen --timeout 600
+    if errorlevel 1 (
+        echo [ERROR] Qwen local model did not become healthy. Check the Qwen Local Model window.
+        pause
+        exit /b 1
+    )
+) else (
+    echo [INFO] MODEL_API_KEY found. API provider remains primary.
 )
 
 for /d %%D in ("%ROOT%MTClaw-*") do (
