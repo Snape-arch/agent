@@ -2778,6 +2778,31 @@ async def skills_list():
     except Exception as e:
         return JSONResponse({"skills": [], "count": 0, "error": str(e)})
 
+@app.post("/api/skills/execute")
+async def skills_execute(request: Request):
+    try:
+        from skills.skill_registry import execute_skill, execute_skill_definition, get_skill
+
+        data = await request.json()
+        name = str(data.get("name") or "").strip()
+        params = data.get("params") or {}
+        plan_only = bool(data.get("plan_only", True))
+        if not name:
+            raise HTTPException(400, "skill name is required")
+        if not isinstance(params, dict):
+            raise HTTPException(400, "params must be an object")
+        if plan_only:
+            skill = get_skill(name)
+            if not skill:
+                raise HTTPException(404, f"skill not found: {name}")
+            result = execute_skill_definition(skill, params=params, plan_only=True)
+        else:
+            result = execute_skill(name, params)
+        return JSONResponse({"mode": "plan" if plan_only else "execute", "result": result})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"skill execution failed: {e}")
 @app.get("/api/skills/stats")
 async def skills_stats():
     if not g_memory_store:
@@ -3084,4 +3109,5 @@ def main():
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 if __name__ == "__main__":
     main()
+
 

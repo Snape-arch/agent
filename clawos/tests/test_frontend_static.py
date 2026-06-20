@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 import unittest
 
 
@@ -175,6 +175,37 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("loadTasks", js)
         self.assertIn("task_id", js)
 
+    def test_console_exposes_skill_workbench_controls(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
+
+        for token in (
+            "skillQuery",
+            "skillCategory",
+            "skillStatusFilter",
+            "skillDetail",
+            "skillParams",
+            "skillRunResult",
+            "skillVersionTable",
+            "skillRunTable",
+        ):
+            self.assertIn(token, html)
+
+        for token in (
+            "/api/skills/execute",
+            "/api/skills/evolution/versions",
+            "/api/skills/evolution/runs",
+            "runSelectedSkill",
+            "renderSkillsWorkbench",
+            "selectSkill",
+            "renderSkillVersionTables",
+        ):
+            self.assertIn(token, js)
+
+        self.assertIn("Skills workbench", css)
+        self.assertIn(".skill-card-list", css)
+        self.assertIn(".skill-grid", css)
     def test_console_exposes_benchmark_and_skill_review_inbox(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
@@ -228,3 +259,4 @@ class FrontendStaticTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
