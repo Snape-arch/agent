@@ -1,0 +1,13 @@
+{
+  "id": "qwen3.5-9b-q4-k-m",
+  "provider": "qwen",
+  "repo_id": "unsloth/Qwen3.5-9B-GGUF",
+  "filename": "Qwen3.5-9B-Q4_K_M.gguf",
+  "local_path": "tools/models/qwen3.5-9b-gguf/Qwen3.5-9B-Q4_K_M.gguf",
+  "model_name": "Qwen3.5-9B-Q4_K_M",
+  "base_url": "http://127.0.0.1:8000/v1",
+  "size_bytes": 5680522464,
+  "sha256": "03B74727A860A56338E042C4420BB3F04B2FEC5734175F4CB9FA853DAF52B7E8",
+  "source_url": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF",
+  "license": "apache-2.0"
+}
