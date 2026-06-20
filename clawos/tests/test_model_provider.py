@@ -50,6 +50,36 @@ class ModelProviderTests(unittest.TestCase):
         self.assertIn("duration_ms", result)
         self.assertEqual(result["error"], "")
 
+    def test_qwen_provider_defaults_to_local_openai_endpoint_without_key(self):
+        from providers import create_model_provider
+
+        provider = create_model_provider({"provider": "qwen"})
+        self.assertEqual(provider.name, "qwen")
+        self.assertEqual(provider.base_url, "http://127.0.0.1:8000/v1")
+        self.assertEqual(provider.model, "Qwen3.5-9B-Q4_K_M")
+        self.assertFalse(provider.requires_api_key)
+        self.assertTrue(provider.is_configured())
+
+    def test_qwen_provider_does_not_send_empty_authorization_header(self):
+        from providers import create_model_provider
+
+        response = FakeResponse({
+            "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+            "usage": {"total_tokens": 1},
+        })
+        client = FakeHttpClient(response)
+        provider = create_model_provider({
+            "provider": "qwen",
+            "base_url": "http://127.0.0.1:8000/v1",
+            "model": "Qwen3.5-9B-Q4_K_M",
+        })
+
+        result = asyncio.run(provider.complete([{"role": "user", "content": "hi"}], http_client=client))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(client.calls[0]["url"], "http://127.0.0.1:8000/v1/chat/completions")
+        self.assertNotIn("Authorization", client.calls[0]["headers"])
+
     def test_openai_compatible_missing_api_key_is_classified(self):
         from providers import create_model_provider
 
@@ -101,6 +131,29 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(status["model"], "mock-model")
         self.assertNotIn("api_key", status)
         self.assertNotIn("secret", str(status))
+
+    def test_server_normalizes_qwen_defaults_for_local_endpoint(self):
+        import os
+        import clawos_server as server
+
+        old_base = os.environ.pop("QWEN_BASE_URL", None)
+        old_model = os.environ.pop("QWEN_MODEL", None)
+        old_requires = os.environ.pop("MODEL_REQUIRES_API_KEY", None)
+        try:
+            cfg = server.normalize_config({"model_provider": {"provider": "qwen"}})
+        finally:
+            if old_base is not None:
+                os.environ["QWEN_BASE_URL"] = old_base
+            if old_model is not None:
+                os.environ["QWEN_MODEL"] = old_model
+            if old_requires is not None:
+                os.environ["MODEL_REQUIRES_API_KEY"] = old_requires
+
+        self.assertEqual(cfg["model_provider"]["base_url"], "http://127.0.0.1:8000/v1")
+        self.assertEqual(cfg["model_provider"]["model"], "Qwen3.5-9B-Q4_K_M")
+        self.assertFalse(cfg["model_provider"]["requires_api_key"])
+        self.assertEqual(cfg["routing"]["provider"], "qwen")
+        self.assertEqual(cfg["upstream"]["provider"], "qwen")
 
     def test_health_reports_model_mtclaw_and_database_state(self):
         import tempfile

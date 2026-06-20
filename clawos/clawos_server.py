@@ -104,7 +104,15 @@ def normalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
     provider_cfg.setdefault("model", "deepseek-chat")
     provider_cfg.setdefault("base_url", "https://api.deepseek.com/v1")
     provider_cfg.setdefault("api_key", "")
-    if provider_cfg.get("provider") == "deepseek":
+    provider_name = str(provider_cfg.get("provider") or "deepseek").lower()
+    if provider_name == "qwen":
+        if not provider_cfg.get("base_url") or provider_cfg.get("base_url") == "https://api.deepseek.com/v1":
+            provider_cfg["base_url"] = os.environ.get("QWEN_BASE_URL", "http://127.0.0.1:8000/v1")
+        if not provider_cfg.get("model") or provider_cfg.get("model") == "deepseek-chat":
+            provider_cfg["model"] = os.environ.get("QWEN_MODEL", "Qwen3.5-9B-Q4_K_M")
+        if "MODEL_REQUIRES_API_KEY" not in os.environ:
+            provider_cfg["requires_api_key"] = False
+    if provider_name == "deepseek":
         if not provider_cfg.get("api_key"):
             provider_cfg["api_key"] = os.environ.get("DEEPSEEK_API_KEY", "")
         if provider_cfg.get("model") == "deepseek-chat" and os.environ.get("DEEPSEEK_MODEL"):
@@ -118,6 +126,14 @@ def normalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
     cfg["routing"] = routing_cfg
     cfg["upstream"] = upstream_cfg
     return cfg
+
+
+def _config_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in {"0", "false", "no", "off", ""}
 
 
 def model_provider_status(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -136,6 +152,7 @@ MODEL_ENV_KEYS = {
     "base_url": "MODEL_BASE_URL",
     "model": "MODEL_NAME",
     "api_key": "MODEL_API_KEY",
+    "requires_api_key": "MODEL_REQUIRES_API_KEY",
 }
 
 
@@ -158,6 +175,7 @@ def model_config_payload(cfg: dict[str, Any]) -> dict[str, Any]:
         "configured": bool(status.get("configured")),
         "api_key_present": bool(api_key and "${" not in api_key),
         "api_key_hint": _mask_secret(api_key),
+        "requires_api_key": _config_bool(provider_cfg.get("requires_api_key"), True),
     }
 
 
@@ -183,7 +201,7 @@ def write_model_env(env_path: Path, updates: dict[str, str]) -> None:
 
 
 def apply_model_config_updates(payload: dict[str, Any]) -> dict[str, Any]:
-    allowed = {"deepseek", "openai_compatible", "openai-compatible", "local_openai", "mock"}
+    allowed = {"deepseek", "openai_compatible", "openai-compatible", "local_openai", "qwen", "mock"}
     provider = str(payload.get("provider") or "deepseek").strip()
     if provider not in allowed:
         raise ValueError(f"Unsupported model provider: {provider}")
@@ -193,6 +211,8 @@ def apply_model_config_updates(payload: dict[str, Any]) -> dict[str, Any]:
         "MODEL_BASE_URL": str(payload.get("base_url") or "").strip(),
         "MODEL_NAME": str(payload.get("model") or "").strip(),
     }
+    if "requires_api_key" in payload:
+        updates["MODEL_REQUIRES_API_KEY"] = "true" if payload.get("requires_api_key") else "false"
     if "api_key" in payload:
         updates["MODEL_API_KEY"] = str(payload.get("api_key") or "").strip()
 

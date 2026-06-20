@@ -1,0 +1,44 @@
+param(
+    [string]$ModelPath = "tools\models\qwen3.5-9b-gguf\Qwen3.5-9B-Q4_K_M.gguf",
+    [string]$HostName = "127.0.0.1",
+    [int]$Port = 8000,
+    [int]$ContextSize = 8192,
+    [int]$GpuLayers = 99,
+    [string]$ServerPath = ""
+)
+
+$ErrorActionPreference = "Stop"
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+if (-not [System.IO.Path]::IsPathRooted($ModelPath)) {
+    $ModelPath = Join-Path $repoRoot $ModelPath
+}
+if (-not (Test-Path -LiteralPath $ModelPath)) {
+    throw "Qwen GGUF model not found: $ModelPath"
+}
+
+$candidates = @()
+if ($ServerPath) { $candidates += $ServerPath }
+$candidates += @(
+    (Join-Path $repoRoot "tools\llama.cpp\llama-server.exe"),
+    (Join-Path $repoRoot "tools\llama.cpp\build\bin\Release\llama-server.exe"),
+    "llama-server.exe"
+)
+
+$server = $null
+foreach ($candidate in $candidates) {
+    if ($candidate -eq "llama-server.exe") {
+        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($cmd) { $server = $cmd.Source; break }
+    } elseif (Test-Path -LiteralPath $candidate) {
+        $server = (Resolve-Path -LiteralPath $candidate).Path
+        break
+    }
+}
+if (-not $server) {
+    throw "llama-server.exe not found. Put llama.cpp server at tools\llama.cpp\llama-server.exe or pass -ServerPath."
+}
+
+Write-Host "Starting Qwen local OpenAI-compatible server"
+Write-Host "Model: $ModelPath"
+Write-Host "URL:   http://$HostName`:$Port/v1"
+& $server -m $ModelPath --host $HostName --port $Port -c $ContextSize -ngl $GpuLayers

@@ -18,9 +18,12 @@ class OpenAICompatibleProvider:
         self.model = str(cfg.get("model") or "")
         self.api_key = str(cfg.get("api_key") or "")
         self.timeout_s = float(cfg.get("timeout_s", 120.0) or 120.0)
+        self.requires_api_key = _as_bool(cfg.get("requires_api_key", True))
 
     def is_configured(self) -> bool:
-        return bool(self.base_url and self.model and self.api_key and "${" not in self.api_key)
+        has_endpoint = bool(self.base_url and self.model)
+        has_key = bool(self.api_key and "${" not in self.api_key)
+        return has_endpoint and (has_key or not self.requires_api_key)
 
     async def complete(
         self,
@@ -51,10 +54,9 @@ class OpenAICompatibleProvider:
         if options.get("tool_choice") is not None:
             payload["tool_choice"] = options["tool_choice"]
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
         client = http_client or httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_s))
         close_client = http_client is None
         try:
@@ -98,3 +100,9 @@ class OpenAICompatibleProvider:
         finally:
             if close_client:
                 await client.aclose()
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in {"0", "false", "no", "off", ""}
