@@ -158,31 +158,154 @@ def tool_tools_list():
     except Exception as e:
         print(json.dumps({"error": str(e)})); sys.exit(1)
 
+def _http_json(url, headers=None, timeout=12):
+    import urllib.request
+    req = urllib.request.Request(url, headers=headers or {"User-Agent": "ClawOS/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8", errors="replace"))
+
+
+def _clean_html_text(value):
+    import html as html_lib
+    value = re.sub(r"<[^>]+>", " ", str(value or ""))
+    value = html_lib.unescape(value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _search_tavily(query, limit):
+    import urllib.request
+    key = os.environ.get("TAVILY_API_KEY", "")
+    if not key:
+        return [], "missing_key"
+    payload = json.dumps({"query": query, "max_results": limit, "include_answer": False}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.tavily.com/search",
+        data=payload,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read().decode("utf-8", errors="replace"))
+    rows = []
+    for rank, item in enumerate(data.get("results") or [], 1):
+        rows.append({
+            "title": item.get("title", ""),
+            "url": item.get("url", ""),
+            "snippet": item.get("content", ""),
+            "source": "tavily",
+            "published_at": item.get("published_date", ""),
+            "rank": rank,
+            "error_type": "",
+        })
+    return rows, ""
+
+
+def _search_serpapi(query, limit):
+    import urllib.parse
+    key = os.environ.get("SERPAPI_API_KEY", "")
+    if not key:
+        return [], "missing_key"
+    url = "https://serpapi.com/search.json?" + urllib.parse.urlencode({
+        "q": query, "engine": "google", "api_key": key, "num": limit
+    })
+    data = _http_json(url, timeout=15)
+    rows = []
+    for rank, item in enumerate(data.get("organic_results") or [], 1):
+        rows.append({
+            "title": item.get("title", ""),
+            "url": item.get("link", ""),
+            "snippet": item.get("snippet", ""),
+            "source": "serpapi",
+            "published_at": item.get("date", ""),
+            "rank": rank,
+            "error_type": "",
+        })
+    return rows, ""
+
+
+def _search_bing(query, limit):
+    import urllib.parse
+    key = os.environ.get("BING_SEARCH_API_KEY", "")
+    if not key:
+        return [], "missing_key"
+    endpoint = os.environ.get("BING_SEARCH_ENDPOINT", "https://api.bing.microsoft.com/v7.0/search")
+    url = endpoint + "?" + urllib.parse.urlencode({"q": query, "count": limit, "responseFilter": "Webpages"})
+    data = _http_json(url, headers={"Ocp-Apim-Subscription-Key": key, "User-Agent": "ClawOS/1.0"}, timeout=15)
+    rows = []
+    for rank, item in enumerate((data.get("webPages") or {}).get("value") or [], 1):
+        rows.append({
+            "title": item.get("name", ""),
+            "url": item.get("url", ""),
+            "snippet": item.get("snippet", ""),
+            "source": "bing",
+            "published_at": item.get("dateLastCrawled", ""),
+            "rank": rank,
+            "error_type": "",
+        })
+    return rows, ""
+
+
+def _search_duckduckgo(query, limit):
+    import urllib.request, urllib.parse
+    url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ClawOS/1.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        page = resp.read().decode("utf-8", errors="replace")
+    blocks = re.findall(r'<div class="result[^"]*"[\s\S]*?</div>\s*</div>', page)
+    rows = []
+    for rank, block in enumerate(blocks[:limit], 1):
+        title_match = re.search(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', block, re.S)
+        snippet_match = re.search(r'class="result__snippet"[^>]*>(.*?)</a>|class="result__snippet"[^>]*>(.*?)</div>', block, re.S)
+        if not title_match:
+            continue
+        raw_url = title_match.group(1)
+        parsed = urllib.parse.urlparse(raw_url)
+        params = urllib.parse.parse_qs(parsed.query)
+        result_url = (params.get("uddg") or [raw_url])[0]
+        snippet = snippet_match.group(1) or snippet_match.group(2) if snippet_match else ""
+        rows.append({
+            "title": _clean_html_text(title_match.group(2)),
+            "url": urllib.parse.unquote(result_url),
+            "snippet": _clean_html_text(snippet)[:400],
+            "source": "duckduckgo",
+            "published_at": "",
+            "rank": rank,
+            "error_type": "",
+        })
+    return rows, "" if rows else "empty_results"
+
+
 def tool_web_search():
-    query = input_data.get("query", "")
+    query = str(input_data.get("query", "")).strip()
     if not query: print(json.dumps({"error": "missing query"})); sys.exit(1)
-    try:
-        import urllib.request, urllib.parse, re
-        url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ClawOS/1.0"})
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
-            snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</', html, re.DOTALL)
-            titles = re.findall(r'class="result__a"[^>]*>(.*?)</a>', html, re.DOTALL)
-            results = []
-            for i in range(min(len(titles), len(snippets), 5)):
-                t = re.sub(r'<[^>]+>', '', titles[i]).strip()
-                s = re.sub(r'<[^>]+>', '', snippets[i]).strip()
-                if t and s: results.append({"title": t, "snippet": s[:200]})
-            if not results: results = [{"title": "No results", "snippet": "Try a different query or check your network."}]
-            print(json.dumps({"query": query, "results": results}, ensure_ascii=False))
-    except Exception as e:
-        print(json.dumps({"error": f"Search failed: {str(e)}"})); sys.exit(1)
+    limit = max(1, min(int(input_data.get("limit", 5) or 5), 10))
+    providers = input_data.get("providers") or ["tavily", "serpapi", "bing", "duckduckgo"]
+    attempts = []
+    for provider in providers:
+        try:
+            fn = {
+                "tavily": _search_tavily,
+                "serpapi": _search_serpapi,
+                "bing": _search_bing,
+                "duckduckgo": _search_duckduckgo,
+            }.get(str(provider).lower())
+            if not fn:
+                continue
+            rows, error_type = fn(query, limit)
+            attempts.append({"provider": provider, "ok": bool(rows), "error_type": error_type})
+            if rows:
+                print(json.dumps({"query": query, "provider": provider, "results": rows[:limit], "attempts": attempts}, ensure_ascii=False))
+                return
+        except Exception as e:
+            attempts.append({"provider": provider, "ok": False, "error_type": type(e).__name__, "message": str(e)[:200]})
+    print(json.dumps({"error": "Search failed across providers", "error_type": "all_providers_failed", "query": query, "results": [], "attempts": attempts}, ensure_ascii=False)); sys.exit(1)
 
 
 def tool_web_fetch():
     url = str(input_data.get("url", "")).strip()
     max_chars = int(input_data.get("max_chars", 4000) or 4000)
+    ingest = bool(input_data.get("ingest", False))
+    category = str(input_data.get("category", "web") or "web")
     if not url:
         print(json.dumps({"error": "missing url"})); sys.exit(1)
     if not re.match(r"^https?://", url, re.I):
@@ -217,7 +340,7 @@ def tool_web_fetch():
         import html as html_lib
         text = html_lib.unescape(text)
         text = re.sub(r"\s+", " ", text).strip()
-        print(json.dumps({
+        result = {
             "url": url,
             "final_url": final_url,
             "status": status,
@@ -227,7 +350,30 @@ def tool_web_fetch():
             "text_length": len(text),
             "links": links,
             "truncated": len(text) > max_chars,
-        }, ensure_ascii=False))
+        }
+        if ingest:
+            from pathlib import Path
+            import hashlib
+            from memoryos.memory_store import MemoryStore
+            from memoryos.document_ingestion import ingest_file, safe_filename
+            digest = hashlib.sha256(final_url.encode("utf-8")).hexdigest()[:12]
+            upload_dir = Path(BASE_DIR) / "uploads" / "web"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            name = safe_filename((title or "web_page") + ".html")
+            page_path = upload_dir / f"{digest}_{name}"
+            page_path.write_text(html_text, encoding="utf-8", errors="replace")
+            store = MemoryStore(_memory_db_path())
+            doc = ingest_file(store, upload_dir, page_path, title=title or final_url, category=category)
+            result["document"] = {
+                "id": doc.get("id"),
+                "title": doc.get("title"),
+                "chunk_count": doc.get("chunk_count", 0),
+                "citation_prefix": f"doc:{doc.get('id')}#",
+            }
+            result["ingested"] = True
+        else:
+            result["ingested"] = False
+        print(json.dumps(result, ensure_ascii=False))
     except Exception as e:
         print(json.dumps({"error": f"Fetch failed: {str(e)}"})); sys.exit(1)
 

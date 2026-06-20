@@ -1,4 +1,5 @@
 import asyncio
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -136,6 +137,34 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(payload["database"]["engine"], "sqlite")
         self.assertTrue(payload["database"]["configured"])
         self.assertTrue(payload["database"]["reachable"])
+
+    def test_model_health_reports_fallback_strategy(self):
+        import clawos_server as server
+        from providers import create_model_provider
+
+        old_config = server.config
+        old_routing = server.g_routing_provider
+        old_upstream = server.g_upstream_provider
+        old_http = server.http_client
+        try:
+            server.config = {
+                "routing": {"provider": "mock", "model": "router", "mock_response": "ok"},
+                "upstream": {"provider": "mock", "model": "chat", "mock_response": "ok"},
+                "routing_fallbacks": [{"provider": "mock", "model": "router-fallback", "mock_response": "ok"}],
+            }
+            server.g_routing_provider = create_model_provider(server.config["routing"])
+            server.g_upstream_provider = create_model_provider(server.config["upstream"])
+            server.http_client = None
+            payload = json.loads(asyncio.run(server.api_model_health()).body)
+        finally:
+            server.config = old_config
+            server.g_routing_provider = old_routing
+            server.g_upstream_provider = old_upstream
+            server.http_client = old_http
+
+        self.assertEqual(payload["routing"]["primary"]["model"], "router")
+        self.assertEqual(payload["routing"]["fallbacks"][0]["model"], "router-fallback")
+        self.assertEqual(payload["routing"]["fallback_strategy"], "ordered_provider_fallback")
 
     def test_model_config_payload_masks_secret(self):
         import clawos_server as server

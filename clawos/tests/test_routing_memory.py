@@ -175,6 +175,29 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertEqual(result["status"], "needs_confirmation")
         self.assertEqual(called, [])
 
+    def test_network_fetch_requires_confirmation_and_reports_risk(self):
+        import clawos_server as server
+        from security.policy import ToolSecurityPolicy
+
+        old_policy = server.g_security_policy
+        old_execute = server.execute_python_tool
+        called = []
+        server.g_security_policy = ToolSecurityPolicy([Path.cwd()])
+        server.execute_python_tool = lambda name, args: called.append((name, args)) or {"ran": True}
+        try:
+            result = server.execute_tool_call("web_fetch", json.dumps({"url": "https://example.com"}), "s1")
+            allowed = server.g_security_policy.evaluate("web_fetch", {"url": "https://example.com"})
+            denied = server.g_security_policy.evaluate("web_fetch", {"url": "http://127.0.0.1:8000"})
+        finally:
+            server.g_security_policy = old_policy
+            server.execute_python_tool = old_execute
+
+        self.assertEqual(result["status"], "needs_confirmation")
+        self.assertEqual(result["risk_level"], "medium")
+        self.assertEqual(called, [])
+        self.assertEqual(allowed["decision"], "confirm")
+        self.assertFalse(denied["allowed"])
+
     def test_memory_store_records_tool_execution_log(self):
         from memoryos.memory_store import MemoryStore
 
@@ -196,6 +219,25 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertEqual(rows[0]["status"], "success")
         self.assertEqual(rows[0]["arguments"]["x"], 1)
         self.assertTrue(rows[0]["result"]["ok"])
+
+    def test_tool_accuracy_endpoint_summarizes_execution_quality(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            try:
+                server.g_memory_store.record_tool_execution("s1", "web_fetch", status="success", duration_ms=20, requires_confirmation=True)
+                server.g_memory_store.record_tool_execution("s1", "web_fetch", status="error", duration_ms=10, requires_confirmation=True)
+                resp = asyncio.run(server.api_tools_accuracy(session_id="s1"))
+                payload = json.loads(resp.body)
+            finally:
+                server.g_memory_store = old_store
+
+        self.assertEqual(payload["tools"][0]["tool"], "web_fetch")
+        self.assertEqual(payload["tools"][0]["calls"], 2)
+        self.assertEqual(payload["tools"][0]["success_rate"], 0.5)
 
     def test_run_tool_loop_records_task_step_for_rule_based_tool(self):
         from memoryos.memory_store import MemoryStore

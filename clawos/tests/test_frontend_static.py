@@ -192,7 +192,13 @@ class FrontendStaticTests(unittest.TestCase):
 
         self.assertIn("capabilityTable", html)
         self.assertIn("sceneBoundaryTable", html)
+        self.assertIn("modelHealthTable", html)
+        self.assertIn("toolAccuracyTable", html)
+        self.assertIn("routingPolicyTable", html)
         self.assertIn("/api/workspace/capabilities", js)
+        self.assertIn("/api/model/health", js)
+        self.assertIn("/api/tools/accuracy", js)
+        self.assertIn("/api/routing/policy", js)
         self.assertIn("联网搜索/网页抓取", js)
         self.assertIn("web_fetch", self.read_page("../functions.jsonl"))
         self.assertIn("document_understanding", js)

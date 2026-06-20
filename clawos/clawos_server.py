@@ -250,6 +250,7 @@ def execute_python_tool(name: str, args_str: str) -> dict[str, Any]:
             "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC",
             "USERPROFILE", "HOME", "TEMP", "TMP", "CLAWOS_MEMORY_DB",
             "CLAWOS_ALLOWED_ROOTS", "PYTHONPATH",
+            "BING_SEARCH_API_KEY", "BING_SEARCH_ENDPOINT", "SERPAPI_API_KEY", "TAVILY_API_KEY",
         }
     }
     command = [sys.executable, str(SCRIPTS_DIR / "tool_worker.py"), name]
@@ -332,6 +333,7 @@ def execute_tool_call(
             "error": "Task cancellation requested before tool execution.",
             "duration_ms": 0,
             "requires_confirmation": False,
+            "risk_level": "low",
         }
         _record_tool_execution(session_id, envelope)
         return envelope
@@ -341,6 +343,7 @@ def execute_tool_call(
         "decision": "allow",
         "reason": "security policy not initialized",
         "normalized_arguments": args_obj,
+        "risk_level": "low",
     }
     if g_security_policy:
         policy_result = g_security_policy.evaluate(name, args_obj)
@@ -367,10 +370,11 @@ def execute_tool_call(
             "error": policy_result.get("reason", "Denied by security policy"),
             "duration_ms": 0,
             "requires_confirmation": False,
+            "risk_level": policy_result.get("risk_level", "low"),
         }
         _record_tool_execution(session_id, envelope)
         return envelope
-    requires_confirmation = name in TOOLS_REQUIRING_CONFIRMATION
+    requires_confirmation = name in TOOLS_REQUIRING_CONFIRMATION or policy_result.get("decision") == "confirm"
     started = time.perf_counter()
     task_step = None
     if task_id and g_memory_store:
@@ -390,6 +394,7 @@ def execute_tool_call(
             "error": f"Tool '{name}' requires explicit confirmation before execution.",
             "duration_ms": 0,
             "requires_confirmation": True,
+            "risk_level": policy_result.get("risk_level", "medium"),
         }
         _record_tool_execution(session_id, envelope)
         if task_step and g_memory_store:
@@ -404,6 +409,8 @@ def execute_tool_call(
     raw = execute_python_tool(name, args_str)
     duration_ms = round((time.perf_counter() - started) * 1000, 2)
     ok = not (isinstance(raw, dict) and raw.get("error"))
+    if ok and name == "web_fetch" and isinstance(raw, dict) and raw.get("ingested") and g_vector_store:
+        g_vector_store.refresh()
     envelope = {
         "ok": ok,
         "status": "success" if ok else "error",
@@ -413,6 +420,7 @@ def execute_tool_call(
         "error": "" if ok else str(raw.get("error", raw)),
         "duration_ms": duration_ms,
         "requires_confirmation": requires_confirmation,
+        "risk_level": policy_result.get("risk_level", "low"),
     }
     _record_tool_execution(session_id, envelope)
     if g_memory_store:
@@ -427,6 +435,7 @@ def execute_tool_call(
             details={
                 "duration_ms": duration_ms,
                 "requires_confirmation": requires_confirmation,
+                "risk_level": envelope["risk_level"],
                 "arguments": args_obj,
             },
         )
@@ -440,15 +449,54 @@ def execute_tool_call(
     return envelope
 
 # ---- LLM ROUTING ----
+def _provider_candidates(section: str) -> list[Any]:
+    primary = g_routing_provider if section == "routing" else g_upstream_provider
+    configs = config.get(f"{section}_fallbacks", []) or config.get("model_fallbacks", [])
+    candidates = [primary] if primary else []
+    for cfg in configs:
+        if isinstance(cfg, dict):
+            candidates.append(create_model_provider(cfg))
+    return candidates
+
+
+async def call_model_with_fallback(section: str, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
+    attempts = []
+    for provider in _provider_candidates(section):
+        if not provider:
+            continue
+        result = await provider.complete(messages, options, http_client=http_client)
+        attempts.append({
+            "provider": result.get("provider", getattr(provider, "name", "")),
+            "model": result.get("model", getattr(provider, "model", "")),
+            "ok": bool(result.get("ok")),
+            "error": result.get("error", ""),
+            "duration_ms": result.get("duration_ms", 0),
+        })
+        if result.get("ok"):
+            result["fallback_attempts"] = attempts
+            return result
+    return {
+        "ok": False,
+        "provider": section,
+        "model": "",
+        "content": "",
+        "raw": {},
+        "usage": {},
+        "duration_ms": 0,
+        "error": attempts[-1]["error"] if attempts else "no_provider",
+        "fallback_attempts": attempts,
+    }
+
+
 async def call_routing_llm(messages: list[dict[str, Any]]) -> dict[str, Any]:
     """Call configured model provider for tool detection."""
-    result = await g_routing_provider.complete(
+    result = await call_model_with_fallback(
+        "routing",
         messages,
         {
         "tools": tools_def,
         "temperature": 0.0,
-        },
-        http_client=http_client,
+        }
     )
     if not result["ok"]:
         raise RuntimeError(result["error"])
@@ -461,6 +509,31 @@ def has_api_key(section: str = "routing") -> bool:
         return bool(provider.is_configured())
     key = str(config.get(section, {}).get("api_key", "") or "")
     return bool(key and "${" not in key and key != "YOUR_DEEPSEEK_API_KEY")
+
+
+SCENARIO_ROUTING_POLICY = {
+    "research": {"tools": ["web_search", "web_fetch", "research_pdf"], "risk": "medium", "description": "科研检索、网页抓取、论文解析和可引用 RAG"},
+    "learning": {"tools": ["learning_workspace", "web_fetch", "exam_practice_builder"], "risk": "medium", "description": "学习目标、资料入库、练习题和掌握度"},
+    "office": {"tools": ["meeting_workflow", "office_artifact", "work_brief_builder"], "risk": "medium", "description": "会议、简报、表格和演示文稿产物"},
+    "project": {"tools": ["ls", "grep_text", "code_stats", "git_workspace"], "risk": "high", "description": "项目分析、代码检索和审批式 Git 操作"},
+    "web": {"tools": ["web_search", "web_fetch"], "risk": "medium", "description": "联网搜索和网页正文抓取"},
+    "general": {"tools": ["memory_history", "tools_list", "note_save"], "risk": "low", "description": "通用对话、记忆和轻量记录"},
+}
+
+
+def classify_scenario(text: str) -> str:
+    low = str(text or "").lower()
+    mapping = [
+        ("research", ["论文", "科研", "文献", "paper", "research", "citation"]),
+        ("learning", ["学习", "考试", "复习", "课程", "exam", "learn"]),
+        ("office", ["会议", "纪要", "汇报", "ppt", "excel", "meeting", "brief"]),
+        ("project", ["代码", "项目", "git", "repo", "bug", "测试", "commit"]),
+        ("web", ["搜索", "联网", "网页", "url", "http", "search", "crawl"]),
+    ]
+    for scenario, keys in mapping:
+        if any(k in low for k in keys):
+            return scenario
+    return "general"
 
 
 def rule_based_tool(user_text: str) -> tuple[str, dict[str, Any]] | None:
@@ -769,13 +842,13 @@ async def proxy_upstream(req_data: dict, stream: bool, tool_context: str = "") -
     if stream:
         raise HTTPException(400, "Streaming is not implemented for ModelProvider yet")
     messages = req_data.get("messages", [])
-    result = await g_upstream_provider.complete(
+    result = await call_model_with_fallback(
+        "upstream",
         messages,
         {
             "temperature": req_data.get("temperature", 0.7),
             "model": req_data.get("model") or config.get("upstream", {}).get("model"),
-        },
-        http_client=http_client,
+        }
     )
     if not result["ok"]:
         return JSONResponse(build_openai_response(
@@ -953,6 +1026,45 @@ async def health():
 @app.get("/api/config/model")
 async def get_model_config():
     return model_config_payload(config)
+
+
+@app.get("/api/model/health")
+async def api_model_health(probe: bool = False):
+    sections = {}
+    for section in ("routing", "upstream"):
+        attempts = []
+        for provider in _provider_candidates(section):
+            if not provider:
+                continue
+            configured = provider.is_configured() if hasattr(provider, "is_configured") else True
+            item = {
+                "provider": getattr(provider, "name", ""),
+                "model": getattr(provider, "model", ""),
+                "configured": bool(configured),
+                "reachable": None,
+                "error": "",
+                "duration_ms": 0,
+            }
+            if probe and configured:
+                result = await provider.complete(
+                    [{"role": "user", "content": "health check: reply ok"}],
+                    {"temperature": 0.0},
+                    http_client=http_client,
+                )
+                item.update({
+                    "reachable": bool(result.get("ok")),
+                    "error": result.get("error", ""),
+                    "duration_ms": result.get("duration_ms", 0),
+                })
+            attempts.append(item)
+        sections[section] = {
+            "primary": attempts[0] if attempts else {},
+            "fallbacks": attempts[1:],
+            "configured": any(a.get("configured") for a in attempts),
+            "reachable": any(a.get("reachable") for a in attempts) if probe else None,
+            "fallback_strategy": "ordered_provider_fallback",
+        }
+    return JSONResponse(sections)
 
 @app.post("/api/config/model")
 async def update_model_config(request: Request):
@@ -2713,6 +2825,49 @@ async def api_tool_executions(session_id: str = "", limit: int = 50):
         return JSONResponse({"executions": [], "count": 0}, status_code=503)
     rows = g_memory_store.list_tool_executions(session_id, limit)
     return JSONResponse({"executions": rows, "count": len(rows)})
+
+
+@app.get("/api/tools/accuracy")
+async def api_tools_accuracy(session_id: str = "", limit: int = 200):
+    if not g_memory_store:
+        return JSONResponse({"tools": [], "count": 0}, status_code=503)
+    rows = g_memory_store.list_tool_executions(session_id, limit)
+    stats: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        name = row.get("tool_name") or "unknown"
+        item = stats.setdefault(name, {"tool": name, "calls": 0, "success": 0, "errors": 0, "confirmations": 0, "duration_total": 0.0})
+        item["calls"] += 1
+        item["duration_total"] += float(row.get("duration_ms") or 0)
+        if row.get("status") == "success":
+            item["success"] += 1
+        else:
+            item["errors"] += 1
+        if row.get("requires_confirmation"):
+            item["confirmations"] += 1
+    tools = []
+    for item in stats.values():
+        calls = max(1, int(item["calls"]))
+        tools.append({
+            "tool": item["tool"],
+            "calls": item["calls"],
+            "success": item["success"],
+            "errors": item["errors"],
+            "success_rate": round(item["success"] / calls, 4),
+            "confirmation_rate": round(item["confirmations"] / calls, 4),
+            "avg_duration_ms": round(item["duration_total"] / calls, 2),
+        })
+    tools.sort(key=lambda x: (-x["calls"], x["tool"]))
+    return JSONResponse({"tools": tools, "count": len(tools)})
+
+
+@app.get("/api/routing/policy")
+async def api_routing_policy(q: str = ""):
+    scenario = classify_scenario(q)
+    return JSONResponse({
+        "scenario": scenario,
+        "selected": SCENARIO_ROUTING_POLICY[scenario],
+        "policies": SCENARIO_ROUTING_POLICY,
+    })
 
 @app.get("/api/mtclaw/traces")
 async def api_mtclaw_traces(session_id: str = "", limit: int = 50):
