@@ -34,7 +34,16 @@ if (-not $asset) {
 
 $zipPath = Join-Path $InstallDir $asset.name
 Write-Host "Downloading llama.cpp runtime: $($asset.name)"
-Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
+try {
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
+} catch {
+    Write-Warning "Invoke-WebRequest failed: $($_.Exception.Message)"
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if (-not $curl) { throw }
+    Write-Host "Retrying with curl.exe..."
+    & $curl.Source -L -C - --retry 8 --retry-delay 5 --connect-timeout 30 -o $zipPath $asset.browser_download_url
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 $extractDir = Join-Path $InstallDir "runtime"
 if (Test-Path -LiteralPath $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $extractDir | Out-Null

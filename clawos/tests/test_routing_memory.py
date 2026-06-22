@@ -22,6 +22,9 @@ class FakeRequest:
     async def body(self):
         return json.dumps(self._payload).encode("utf-8")
 
+    async def json(self):
+        return self._payload
+
 
 class MemoryAndRoutingTests(unittest.TestCase):
     def test_chinese_memory_ingestion_extracts_profile_and_preference(self):
@@ -257,12 +260,15 @@ class MemoryAndRoutingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             old_store = server.g_memory_store
+            old_service = server.g_knowledge_service
             store = MemoryStore(str(Path(td) / "memory.db"))
             server.g_memory_store = store
+            server.g_knowledge_service = None
             try:
                 doc = store.add_document(
                     "Web RAG Note",
                     filename="web.html",
+                    file_hash="web-rag-note",
                     category="research",
                     extractor="html",
                     metadata={"ocr_required": True, "ocr_pages": [1], "source_url": "https://example.com"},
@@ -271,15 +277,22 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 store.add_knowledge("RAG summary", "Citation aware answers use indexed chunks.", "research", "doc")
 
                 ocr_payload = json.loads(asyncio.run(server.api_documents_ocr_queue(category="research")).body)
-                answer_payload = json.loads(asyncio.run(server.api_document_citation_answer(q="chunk citations", category="research")).body)
+                run_payload = json.loads(asyncio.run(server.api_document_run_ocr(
+                    doc["id"],
+                    FakeRequest({"sidecar_text": "Scanned PDF OCR text now supports citation chunks.", "force": True}),
+                )).body)
+                answer_payload = json.loads(asyncio.run(server.api_document_citation_answer(q="citation chunks", category="research")).body)
                 graph_payload = json.loads(asyncio.run(server.api_knowledge_graph(category="research")).body)
             finally:
                 server.g_memory_store = old_store
+                server.g_knowledge_service = old_service
 
         self.assertEqual(ocr_payload["count"], 1)
         self.assertEqual(ocr_payload["documents"][0]["ocr_pages"], [1])
-        self.assertEqual(answer_payload["citations"][0]["chunk_id"], chunk["id"])
-        self.assertIn("chunk citations", answer_payload["answer"])
+        self.assertTrue(run_payload["ok"])
+        self.assertEqual(run_payload["chunk_count"], 1)
+        self.assertNotEqual(answer_payload["citations"][0]["chunk_id"], chunk["id"])
+        self.assertIn("citation chunks", answer_payload["answer"])
         self.assertTrue(any(node["type"] == "document" for node in graph_payload["nodes"]))
         self.assertTrue(any(edge["type"] == "cites" for edge in graph_payload["edges"]))
 

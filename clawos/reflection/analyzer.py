@@ -1,6 +1,19 @@
 """ReflectionAnalyzer - root cause analysis and insight extraction."""
 import json
 import re
+from .json_repair import loads_repaired_json
+
+
+JSON_OBJECT_GRAMMAR = r'''
+root ::= object
+object ::= "{" ws pair (ws "," ws pair)* ws "}"
+pair ::= string ws ":" ws value
+value ::= object | array | string | number | "true" | "false" | "null"
+array ::= "[" ws (value (ws "," ws value)*)? ws "]"
+string ::= "\"" ([^"\\] | "\\" ["\\/bfnrt] | "\\u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F])* "\""
+number ::= "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
+ws ::= [ \t\n\r]*
+'''
 
 class ReflectionAnalyzer:
     """Analyzes task outcomes to extract root causes, insights, and improvements."""
@@ -29,28 +42,53 @@ class ReflectionAnalyzer:
 
         prompt = self._build_analysis_prompt(trajectory, outcome, task_description)
         try:
+            is_local_qwen = str(self._config.get("provider") or "").lower() == "qwen"
+            if is_local_qwen:
+                system_prompt = (
+                    "Output one JSON object only. Keys: root_cause, failure_category, "
+                    "insights, improvements, patterns. Values for insights/improvements/"
+                    "patterns are arrays of short strings. No markdown. No thinking."
+                )
+                prompt = self._build_qwen_json_prompt(trajectory, outcome, task_description)
+                temperature = 0.0
+                max_tokens = 320
+                timeout_s = 120.0
+            else:
+                system_prompt = (
+                    "You are a task analysis expert. Analyze the execution trajectory and "
+                    "provide root cause analysis, actionable insights, and improvement "
+                    "suggestions. Reply in JSON format with keys: root_cause, insights "
+                    "(array), improvements (array), patterns (array)."
+                )
+                temperature = 0.3
+                max_tokens = 500
+                timeout_s = 15.0
             payload = {
                 "model": self._config.get("model", "deepseek-chat"),
                 "messages": [
-                    {"role": "system", "content": "You are a task analysis expert. Analyze the execution trajectory and provide root cause analysis, actionable insights, and improvement suggestions. Reply in JSON format with keys: root_cause, insights (array), improvements (array), patterns (array)."},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                "stream": False, "temperature": 0.3, "max_tokens": 500
+                "stream": False,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "response_format": {"type": "json_object"},
             }
+            if is_local_qwen:
+                payload["grammar"] = JSON_OBJECT_GRAMMAR
+                payload["stop"] = ["</s>", "<|im_end|>"]
             headers = {
-                "Authorization": f"Bearer {self._config.get('api_key', '')}",
                 "Content-Type": "application/json"
             }
+            if self._config.get("api_key"):
+                headers["Authorization"] = f"Bearer {self._config.get('api_key', '')}"
             url = f"{self._config['base_url'].rstrip('/')}/chat/completions"
-            resp = await self._http.post(url, json=payload, headers=headers, timeout=15.0)
+            resp = await self._http.post(url, json=payload, headers=headers, timeout=timeout_s)
             resp.raise_for_status()
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
             try:
-                cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)
-                parsed = json.loads(cleaned)
-                if not isinstance(parsed, dict):
-                    raise json.JSONDecodeError("Expected object", cleaned, 0)
+                parsed = loads_repaired_json(content)
                 return {
                     "root_cause": str(parsed.get("root_cause", "")),
                     "failure_category": str(
@@ -85,6 +123,26 @@ Errors: {outcome.get("errors", [])}
 Tool calls: {tools_str}
 Key events: {json.dumps(trajectory.get("key_events", []), ensure_ascii=False)}
 Please analyze the root cause and provide insights."""
+
+    def _build_qwen_json_prompt(self, trajectory, outcome, task_description):
+        errors = outcome.get("errors", [])
+        tools = [{
+            "name": tc.get("name", ""),
+            "error": str(tc.get("result", ""))[:120],
+        } for tc in trajectory.get("tool_calls", [])[:4]]
+        compact = {
+            "task": task_description or "unknown",
+            "outcome": outcome.get("outcome", "unknown"),
+            "reason": outcome.get("reason", ""),
+            "errors": errors[:3],
+            "tools": tools,
+        }
+        return (
+            "Return JSON only for this task reflection. "
+            "Schema: {\"root_cause\":\"...\",\"failure_category\":\"...\","
+            "\"insights\":[\"...\"],\"improvements\":[\"...\"],\"patterns\":[\"...\"]}\n"
+            f"Data: {json.dumps(compact, ensure_ascii=False)}"
+        )
 
     def _find_root_cause(self, trajectory, outcome):
         errors = outcome.get("errors", [])

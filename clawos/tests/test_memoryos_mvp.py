@@ -208,6 +208,27 @@ class MemoryOSMvpTests(unittest.TestCase):
         self.assertTrue(all(str(row["source"]).startswith(f"doc:{second['id']}#") for row in knowledge))
         self.assertTrue(vector_hits)
 
+    def test_scanned_pdf_ingestion_enters_ocr_queue_instead_of_failing(self):
+        import memoryos.document_ingestion as ingestion
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "scan.pdf"
+            source.write_bytes(b"%PDF-1.4\n% scanned placeholder")
+            store = MemoryStore(str(root / "memory.db"))
+            old_extract = ingestion.extract_text
+            ingestion.extract_text = lambda path: ("", {"extractor": "test-pdf", "ocr_required": True, "ocr_pages": [1]})
+            try:
+                doc = ingestion.ingest_file(store, root / "uploads", source, title="Scanned", category="research")
+                docs = store.list_documents("research")
+            finally:
+                ingestion.extract_text = old_extract
+
+        self.assertEqual(doc["status"], "needs_ocr")
+        self.assertEqual(doc["chunk_count"], 0)
+        self.assertTrue(docs[0]["metadata"]["ocr_required"])
+
     def test_sessions_have_compact_topic_and_tags(self):
         from memoryos.memory_store import MemoryStore
 

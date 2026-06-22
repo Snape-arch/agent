@@ -50,6 +50,10 @@
     <div class="header-orbit" aria-hidden="true">
       <span></span><span></span><span></span><span></span>
     </div>
+    <div class="model-mode-panel" id="modelModePanel">
+      <b id="modelModeLabel">模型模式检测中</b>
+      <span id="modelModeDetail">DeepSeek API / Local Qwen / Mock offline</span>
+    </div>
     <div class="head-actions">
       <span class="badge" id="modelBadge">模型：--</span>
       <span class="badge" id="toolBadge">工具：--</span>
@@ -206,7 +210,7 @@
     <section class="view" id="view-tasks"><div class="panel-view glass-panel"><div class="action-row"><button class="secondary" onclick="recoverTasks()">恢复中断任务</button><button class="secondary" onclick="loadTaskQueue()">刷新队列</button><button class="primary" onclick="claimTask()">领取下一个任务</button><span class="hint" id="liveTaskState">实时事件：连接中</span></div><div class="section-block"><h2>恢复队列</h2><table class="table" id="taskQueueTable"></table></div><div class="section-block"><h2>任务运行轨迹</h2><table class="table" id="taskTable"></table></div><div class="section-block"><h2>步骤 Trace</h2><table class="table" id="taskStepTable"></table></div><div class="section-block"><h2>事件审计</h2><table class="table" id="taskEventTable"></table></div></div></section>
     <section class="view" id="view-benchmarks"><div class="panel-view glass-panel"><div class="action-row"><button class="primary" onclick="runScenarioBenchmark()">运行默认冻结基准</button><button class="secondary" onclick="loadBenchmarks()">刷新结果</button><span class="hint">覆盖会议、学习、项目模板、技能和记忆五类低风险场景。</span></div><div class="section-block"><h2>冻结场景套件</h2><table class="table" id="benchmarkSuiteTable"></table></div><div class="section-block"><h2>最近验收结果</h2><table class="table" id="benchmarkRunTable"></table></div></div></section>
     <section class="view" id="view-scenes"><div class="panel-view glass-panel"><div class="section-block"><h2>本地能力体检</h2><table class="table" id="capabilityTable"></table></div><div class="section-block"><h2>场景交付边界</h2><table class="table" id="sceneBoundaryTable"></table></div></div></section>
-    <section class="view" id="view-security"><div class="panel-view glass-panel security-workspace"><div class="library-head"><div><h2>权限中心</h2><p class="hint">统一查看联网、Shell、文件写入、Git、外部 API 的风险分级、审批状态和审计记录。</p></div><button class="secondary" onclick="loadSecurityCenter()">刷新</button></div><div class="security-grid"><div class="section-block"><h2>策略矩阵</h2><table class="table" id="securityPolicyTable"></table></div><div class="section-block"><h2>允许边界</h2><table class="table" id="securityBoundaryTable"></table></div></div><div class="section-block"><h2>审计事件</h2><table class="table" id="securityAuditTable"></table></div></div></section>
+    <section class="view" id="view-security"><div class="panel-view glass-panel security-workspace"><div class="library-head"><div><h2>权限中心</h2><p class="hint">统一查看联网、Shell、文件写入、Git、外部 API 的风险分级、审批状态和审计记录。</p></div><button class="secondary" onclick="loadSecurityCenter()">刷新</button></div><div class="security-grid"><div class="section-block"><h2>策略矩阵</h2><table class="table" id="securityPolicyTable"></table></div><div class="section-block"><h2>允许边界</h2><table class="table" id="securityBoundaryTable"></table></div></div><div class="section-block"><h2>细粒度授权</h2><div class="permission-editor"><select id="securityGrantTool"><option value="web_fetch">web_fetch</option><option value="web_search">web_search</option><option value="file_write">file_write</option><option value="shell_exec">shell_exec</option><option value="git_workspace">git_workspace</option><option value="*">全部工具</option></select><select id="securityGrantDecision"><option value="allow">允许</option><option value="confirm">确认</option><option value="deny">拒绝</option></select><select id="securityGrantScopeType"><option value="tool">工具</option><option value="url_host">URL 域名</option><option value="path_prefix">路径前缀</option><option value="command">命令前缀</option></select><input id="securityGrantScopeValue" placeholder="example.com / C:\Users\34712\Desktop / git status"><input id="securityGrantMinutes" type="number" min="1" placeholder="有效分钟"><input id="securityGrantReason" placeholder="授权原因"><button class="primary" onclick="saveSecurityGrant()">保存授权</button></div><table class="table" id="securityGrantTable"></table></div><div class="section-block"><h2>审计事件</h2><table class="table" id="securityAuditTable"></table></div></div></section>
   </main>
 
   <div class="floating-actions">
@@ -247,7 +251,7 @@
         <button class="icon-button" onclick="closeModelSettings()" aria-label="关闭">×</button>
       </div>
       <div class="settings-grid">
-        <label>供应商<select id="cfgProvider"><option value="deepseek">DeepSeek</option><option value="openai_compatible">OpenAI Compatible</option><option value="local_openai">Local OpenAI</option><option value="mock">Mock</option></select></label>
+        <label>供应商<select id="cfgProvider"><option value="deepseek">DeepSeek API</option><option value="qwen">Local Qwen</option><option value="qwen_api">Qwen API / DashScope</option><option value="glm">GLM / Zhipu API</option><option value="openai_compatible">OpenAI Compatible</option><option value="local_openai">Local OpenAI</option><option value="mock">Mock / Offline Test</option></select></label>
         <label>模型<input id="cfgModel" placeholder="deepseek-chat"></label>
         <label class="wide">Base URL<input id="cfgBaseUrl" placeholder="https://api.deepseek.com/v1"></label>
         <label class="wide">API Key<input id="cfgApiKey" type="password" autocomplete="off" placeholder="留空则保持当前密钥"></label>

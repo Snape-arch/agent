@@ -6,7 +6,125 @@ import os
 import re
 import shlex
 import tempfile
+import json
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlparse
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+class SecurityGrantStore:
+    """Persistent, expiring allow/deny grants used by the Permission Center."""
+
+    VALID_DECISIONS = {"allow", "confirm", "deny"}
+    VALID_SCOPES = {"tool", "url_host", "path_prefix", "command"}
+
+    def __init__(self, path: str | Path):
+        self.path = Path(path)
+
+    def list(self, include_expired: bool = False) -> list[dict]:
+        payload = self._read()
+        grants = payload.get("grants", [])
+        if include_expired:
+            return grants
+        return [grant for grant in grants if not self.is_expired(grant)]
+
+    def add(self, grant: dict) -> dict:
+        item = self._normalize(grant)
+        payload = self._read()
+        grants = [existing for existing in payload.get("grants", []) if existing.get("id") != item["id"]]
+        grants.append(item)
+        self._write({"grants": grants})
+        return item
+
+    def revoke(self, grant_id: str) -> bool:
+        payload = self._read()
+        grants = payload.get("grants", [])
+        remaining = [grant for grant in grants if str(grant.get("id")) != str(grant_id)]
+        self._write({"grants": remaining})
+        return len(remaining) != len(grants)
+
+    def match(self, tool_name: str, arguments: dict, risk_level: str) -> dict | None:
+        for grant in self.list(include_expired=False):
+            if self._matches(grant, tool_name, arguments or {}, risk_level):
+                return grant
+        return None
+
+    @staticmethod
+    def is_expired(grant: dict) -> bool:
+        expires_at = _parse_time(grant.get("expires_at"))
+        return bool(expires_at and expires_at <= _utc_now())
+
+    def _normalize(self, grant: dict) -> dict:
+        decision = str(grant.get("decision") or "confirm").lower()
+        scope_type = str(grant.get("scope_type") or "tool").lower()
+        if decision not in self.VALID_DECISIONS:
+            raise ValueError(f"invalid decision: {decision}")
+        if scope_type not in self.VALID_SCOPES:
+            raise ValueError(f"invalid scope_type: {scope_type}")
+        expires_at = str(grant.get("expires_at") or "").strip()
+        minutes = grant.get("expires_in_minutes")
+        if not expires_at and minutes not in (None, ""):
+            expires_at = (_utc_now() + timedelta(minutes=max(1, int(minutes)))).isoformat()
+        return {
+            "id": str(grant.get("id") or uuid.uuid4().hex[:12]),
+            "tool": str(grant.get("tool") or "*").strip() or "*",
+            "decision": decision,
+            "risk_level": str(grant.get("risk_level") or "").lower(),
+            "scope_type": scope_type,
+            "scope_value": str(grant.get("scope_value") or "").strip(),
+            "reason": str(grant.get("reason") or "manual permission grant").strip(),
+            "created_by": str(grant.get("created_by") or "system").strip(),
+            "created_at": str(grant.get("created_at") or _utc_now().isoformat()),
+            "expires_at": expires_at,
+        }
+
+    def _matches(self, grant: dict, tool_name: str, arguments: dict, risk_level: str) -> bool:
+        tool = str(grant.get("tool") or "*")
+        if tool not in {"*", tool_name}:
+            return False
+        grant_risk = str(grant.get("risk_level") or "")
+        if grant_risk and grant_risk != str(risk_level or ""):
+            return False
+        scope_type = str(grant.get("scope_type") or "tool")
+        scope_value = str(grant.get("scope_value") or "").strip()
+        if scope_type == "tool":
+            return True
+        if scope_type == "url_host":
+            url = str(arguments.get("url") or "")
+            return bool(scope_value and urlparse(url).hostname == scope_value)
+        if scope_type == "path_prefix":
+            values = [str(v) for v in arguments.values() if isinstance(v, (str, os.PathLike))]
+            return any(str(value).lower().startswith(scope_value.lower()) for value in values if scope_value)
+        if scope_type == "command":
+            command = str(arguments.get("command") or "").strip().lower()
+            return bool(scope_value and command.startswith(scope_value.lower()))
+        return False
+
+    def _read(self) -> dict:
+        if not self.path.exists():
+            return {"grants": []}
+        try:
+            return json.loads(self.path.read_text(encoding="utf-8-sig") or "{}")
+        except json.JSONDecodeError:
+            return {"grants": []}
+
+    def _write(self, payload: dict) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 class ToolSecurityPolicy:
@@ -48,8 +166,9 @@ class ToolSecurityPolicy:
     GIT_SUBCOMMANDS = {"status", "diff", "log", "show", "branch", "rev-parse", "ls-files"}
     BLOCKED_TOKENS = re.compile(r"(?:[;&|><`]|\r|\n|\$\(|\b(?:rm|del|erase|format|shutdown|reboot)\b)", re.I)
 
-    def __init__(self, allowed_roots=None):
+    def __init__(self, allowed_roots=None, grant_store: SecurityGrantStore | None = None):
         self.allowed_roots = self._build_roots(allowed_roots)
+        self.grant_store = grant_store
 
     def evaluate(self, tool_name, arguments):
         args = dict(arguments or {})
@@ -75,6 +194,10 @@ class ToolSecurityPolicy:
                 command_result["normalized_arguments"] = args
                 command_result["risk_level"] = "high"
                 return command_result
+            grant_result = self.apply_grant(tool_name, args, "high")
+            if grant_result:
+                grant_result["normalized_arguments"] = args
+                return grant_result
             command_result["risk_level"] = "high"
             command_result["normalized_arguments"] = args
             return command_result
@@ -84,6 +207,10 @@ class ToolSecurityPolicy:
                 url_check["normalized_arguments"] = args
                 url_check["risk_level"] = risk_level
                 return url_check
+        grant_result = self.apply_grant(tool_name, args, risk_level)
+        if grant_result:
+            grant_result["normalized_arguments"] = args
+            return grant_result
         decision = "allow"
         reason = "policy checks passed"
         if tool_name in self.WRITE_TOOLS or tool_name in self.NETWORK_TOOLS:
@@ -96,6 +223,32 @@ class ToolSecurityPolicy:
             "normalized_arguments": args,
             "risk_level": risk_level,
         }
+
+    def apply_grant(self, tool_name: str, arguments: dict, risk_level: str) -> dict | None:
+        if not self.grant_store:
+            return None
+        grant = self.grant_store.match(tool_name, arguments, risk_level)
+        if not grant:
+            return None
+        decision = grant.get("decision", "confirm")
+        return {
+            "allowed": decision != "deny",
+            "decision": decision,
+            "reason": grant.get("reason") or f"permission grant matched: {grant.get('id')}",
+            "risk_level": risk_level,
+            "grant_id": grant.get("id"),
+        }
+
+    def list_grants(self, include_expired: bool = False):
+        return self.grant_store.list(include_expired) if self.grant_store else []
+
+    def add_grant(self, grant: dict):
+        if not self.grant_store:
+            raise ValueError("grant store is not configured")
+        return self.grant_store.add(grant)
+
+    def revoke_grant(self, grant_id: str):
+        return self.grant_store.revoke(grant_id) if self.grant_store else False
 
     def risk_level(self, tool_name, arguments=None):
         arguments = arguments or {}

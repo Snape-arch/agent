@@ -121,6 +121,21 @@ def ingest_file(store, upload_dir: Path, source_path: Path, *, title: str = "", 
     text, metadata = extract_text(stored_path)
     chunks = chunk_text(text)
     if not chunks:
+        if metadata.get("ocr_required"):
+            document = store.add_document(
+                title=title or source_path.stem,
+                filename=source_path.name,
+                file_path=str(stored_path),
+                file_hash=digest,
+                mime_type=metadata.get("mime_type", ""),
+                category=category or "domain",
+                extractor=metadata.get("extractor", ""),
+                status="needs_ocr",
+                metadata={**metadata, "ocr_reason": metadata.get("ocr_reason") or "no_extractable_text"},
+            )
+            document["chunk_count"] = 0
+            document["knowledge_ids"] = []
+            return document
         raise ValueError("No extractable text found; OCR may be required")
     document = store.add_document(
         title=title or source_path.stem,

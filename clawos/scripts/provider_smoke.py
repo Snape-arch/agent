@@ -15,6 +15,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from providers import create_model_provider
+from reflection.analyzer import JSON_OBJECT_GRAMMAR
+from reflection.json_repair import loads_repaired_json
 
 
 def provider_config():
@@ -30,12 +32,13 @@ def provider_config():
 async def run():
     cfg = provider_config()
     provider = create_model_provider(cfg)
+    configured = provider.is_configured() if hasattr(provider, "is_configured") else bool(cfg.get("api_key"))
     checks = []
 
     direct = await provider.complete([
         {"role": "system", "content": "Reply with exactly CLAWOS_PROVIDER_OK."},
         {"role": "user", "content": "Run the provider connectivity check."},
-    ], {"temperature": 0})
+    ], {"temperature": 0, "max_tokens": 512})
     checks.append({
         "name": "direct_completion",
         "ok": direct["ok"] and "CLAWOS_PROVIDER_OK" in direct["content"],
@@ -49,6 +52,7 @@ async def run():
         {"role": "user", "content": "What time is it?"},
     ], {
         "temperature": 0,
+        "max_tokens": 128,
         "tools": [{
             "type": "function",
             "function": {
@@ -74,16 +78,23 @@ async def run():
         {
             "role": "system",
             "content": (
-                "Return JSON only with keys root_cause, insights, improvements, patterns. "
+                "Return one compact JSON object only with keys root_cause, insights, improvements, patterns. "
+                "No markdown, no explanation, no hidden reasoning. "
                 "The last tool failed because the path did not exist."
             ),
         },
         {"role": "user", "content": "Reflect on the failed file task."},
-    ], {"temperature": 0})
+    ], {
+        "temperature": 0,
+        "max_tokens": 512,
+        "response_format": {"type": "json_object"},
+        "grammar": JSON_OBJECT_GRAMMAR,
+        "stop": ["</s>", "<|im_end|>"],
+    })
     parsed = None
     if reflection["ok"]:
         try:
-            parsed = json.loads(reflection["content"].strip().strip("`").removeprefix("json").strip())
+            parsed = loads_repaired_json(reflection["content"])
         except json.JSONDecodeError:
             parsed = None
     checks.append({
@@ -97,7 +108,7 @@ async def run():
         "provider": cfg["provider"],
         "model": cfg["model"],
         "base_url": cfg["base_url"],
-        "configured": bool(cfg["api_key"]),
+        "configured": bool(configured),
         "checks": checks,
         "passed": all(item["ok"] for item in checks),
     }

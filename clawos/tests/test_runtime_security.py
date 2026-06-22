@@ -45,6 +45,45 @@ class RuntimeSecurityTests(unittest.TestCase):
         self.assertFalse(destructive["allowed"])
         self.assertFalse(write_git["allowed"])
 
+    def test_permission_grants_can_allow_deny_and_expire(self):
+        from security.policy import SecurityGrantStore, ToolSecurityPolicy
+
+        with tempfile.TemporaryDirectory() as td:
+            store = SecurityGrantStore(Path(td) / "security_policy.json")
+            policy = ToolSecurityPolicy([td], grant_store=store)
+            allow = store.add({
+                "tool": "web_fetch",
+                "decision": "allow",
+                "scope_type": "url_host",
+                "scope_value": "example.com",
+                "reason": "trusted research source",
+            })
+            expired = store.add({
+                "tool": "file_write",
+                "decision": "allow",
+                "scope_type": "path_prefix",
+                "scope_value": str(Path(td)),
+                "expires_at": "2000-01-01T00:00:00+00:00",
+            })
+            deny = store.add({
+                "tool": "shell_exec",
+                "decision": "deny",
+                "scope_type": "command",
+                "scope_value": "git status",
+            })
+
+            web = policy.evaluate("web_fetch", {"url": "https://example.com/paper"})
+            write = policy.evaluate("file_write", {"path": str(Path(td) / "ok.txt")})
+            shell = policy.evaluate("shell_exec", {"command": "git status", "workdir": str(td)})
+
+        self.assertEqual(web["decision"], "allow")
+        self.assertEqual(web["grant_id"], allow["id"])
+        self.assertEqual(write["decision"], "confirm")
+        self.assertNotEqual(write.get("grant_id"), expired["id"])
+        self.assertEqual(shell["decision"], "deny")
+        self.assertFalse(shell["allowed"])
+        self.assertEqual(shell["grant_id"], deny["id"])
+
     def test_secret_manager_never_returns_secret_value_and_audits_access(self):
         from memoryos.memory_store import MemoryStore
         from security.secrets import SecretManager

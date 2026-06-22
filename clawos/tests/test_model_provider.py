@@ -80,6 +80,77 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(client.calls[0]["url"], "http://127.0.0.1:8000/v1/chat/completions")
         self.assertNotIn("Authorization", client.calls[0]["headers"])
 
+    def test_openai_provider_forwards_json_mode_grammar_and_limits(self):
+        from providers import create_model_provider
+
+        response = FakeResponse({
+            "choices": [{"message": {"role": "assistant", "content": '{"ok":true}'}}],
+            "usage": {"total_tokens": 1},
+        })
+        client = FakeHttpClient(response)
+        provider = create_model_provider({
+            "provider": "qwen",
+            "base_url": "http://127.0.0.1:8000/v1",
+            "model": "Qwen3.5-9B-Q4_K_M",
+        })
+
+        result = asyncio.run(provider.complete(
+            [{"role": "user", "content": "json"}],
+            {
+                "response_format": {"type": "json_object"},
+                "grammar": "root ::= object",
+                "stop": ["</s>"],
+                "max_tokens": 64,
+            },
+            http_client=client,
+        ))
+
+        self.assertTrue(result["ok"])
+        payload = client.calls[0]["json"]
+        self.assertEqual(payload["response_format"], {"type": "json_object"})
+        self.assertEqual(payload["grammar"], "root ::= object")
+        self.assertEqual(payload["stop"], ["</s>"])
+        self.assertEqual(payload["max_tokens"], 64)
+
+    def test_openai_provider_uses_reasoning_content_when_content_is_empty(self):
+        from providers import create_model_provider
+
+        response = FakeResponse({
+            "choices": [{"message": {"role": "assistant", "content": "", "reasoning_content": '{"ok":true}'}}],
+        })
+        client = FakeHttpClient(response)
+        provider = create_model_provider({
+            "provider": "qwen",
+            "base_url": "http://127.0.0.1:8000/v1",
+            "model": "Qwen3.5-9B-Q4_K_M",
+        })
+
+        result = asyncio.run(provider.complete([{"role": "user", "content": "json"}], http_client=client))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["content"], '{"ok":true}')
+
+    def test_qwen_api_and_glm_aliases_use_openai_compatible_contract(self):
+        from providers import create_model_provider
+
+        qwen_api = create_model_provider({
+            "provider": "qwen_api",
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "model": "qwen-plus",
+            "api_key": "sk-test",
+        })
+        glm = create_model_provider({
+            "provider": "glm",
+            "base_url": "https://open.bigmodel.cn/api/paas/v4",
+            "model": "glm-4-flash",
+            "api_key": "sk-test",
+        })
+
+        self.assertEqual(qwen_api.name, "qwen_api")
+        self.assertEqual(glm.name, "glm")
+        self.assertTrue(qwen_api.is_configured())
+        self.assertTrue(glm.is_configured())
+
     def test_openai_compatible_missing_api_key_is_classified(self):
         from providers import create_model_provider
 
@@ -408,6 +479,51 @@ class ModelProviderTests(unittest.TestCase):
 
         self.assertEqual(client.calls[0]["json"]["model"], "local-qwen")
         self.assertEqual(result["root_cause"], "none")
+
+    def test_json_repair_handles_qwen_thinking_fences_and_trailing_commas(self):
+        from reflection.json_repair import loads_repaired_json
+
+        parsed = loads_repaired_json(
+            '<think>draft</think>\n```json\n{“root_cause”:“bad path”,'
+            '"insights":["check"],"improvements":["validate"],"patterns":[],}\n```'
+        )
+
+        self.assertEqual(parsed["root_cause"], "bad path")
+        self.assertEqual(parsed["insights"], ["check"])
+
+    def test_qwen_reflection_uses_short_prompt_json_mode_and_repair(self):
+        import tempfile
+        from memoryos.memory_store import MemoryStore
+        from reflection.analyzer import ReflectionAnalyzer
+
+        response = FakeResponse({
+            "choices": [{
+                "message": {
+                    "content": '<think>skip</think>{"root_cause":"missing path","failure_category":"environment","insights":["path missing"],"improvements":["validate path"],"patterns":[]}'
+                }
+            }]
+        })
+        client = FakeHttpClient(response)
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            analyzer = ReflectionAnalyzer(
+                store,
+                client,
+                {"provider": "qwen", "base_url": "http://127.0.0.1:8000/v1", "model": "Qwen3.5-9B-Q4_K_M"},
+            )
+            result = asyncio.run(analyzer.analyze_with_llm(
+                {"tool_calls": [{"name": "read_file", "result": {"error": "not found"}}], "key_events": []},
+                {"outcome": "failure", "reason": "tool error", "errors": ["not found"]},
+                "read missing file",
+                "failure_detected",
+            ))
+
+        payload = client.calls[0]["json"]
+        self.assertEqual(payload["response_format"], {"type": "json_object"})
+        self.assertIn("grammar", payload)
+        self.assertLessEqual(payload["max_tokens"], 320)
+        self.assertIn("Return JSON only", payload["messages"][1]["content"])
+        self.assertEqual(result["root_cause"], "missing path")
 
 
 if __name__ == "__main__":

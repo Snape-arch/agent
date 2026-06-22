@@ -49,6 +49,14 @@ class OpenAICompatibleProvider:
             "stream": False,
             "temperature": options.get("temperature", 0.0),
         }
+        if options.get("max_tokens") is not None:
+            payload["max_tokens"] = int(options["max_tokens"])
+        if options.get("response_format") is not None:
+            payload["response_format"] = options["response_format"]
+        if options.get("grammar") is not None:
+            payload["grammar"] = options["grammar"]
+        if options.get("stop") is not None:
+            payload["stop"] = options["stop"]
         if options.get("tools") is not None:
             payload["tools"] = options["tools"]
         if options.get("tool_choice") is not None:
@@ -79,7 +87,7 @@ class OpenAICompatibleProvider:
                     error="invalid_response",
                 )
             msg = choices[0].get("message") or {}
-            content = str(msg.get("content") or "")
+            content = str(msg.get("content") or msg.get("reasoning_content") or "")
             return model_result(
                 ok=True,
                 provider=self.name,

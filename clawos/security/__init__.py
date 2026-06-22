@@ -1,6 +1,6 @@
 """ClawOS runtime security services."""
 
-from .policy import ToolSecurityPolicy
+from .policy import SecurityGrantStore, ToolSecurityPolicy
 from .secrets import SecretManager
 
-__all__ = ["ToolSecurityPolicy", "SecretManager"]
+__all__ = ["SecurityGrantStore", "ToolSecurityPolicy", "SecretManager"]

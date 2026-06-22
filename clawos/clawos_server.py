@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from providers import create_model_provider
+from services import KnowledgeService, ModelService
 
 # ---- PATHS ----
 BASE_DIR = Path(__file__).parent.resolve()
@@ -56,6 +57,7 @@ g_secret_manager: Any = None
 g_workspace_services: Any = None
 g_skill_evolution: Any = None
 g_scenario_benchmark: Any = None
+g_knowledge_service: KnowledgeService | None = None
 
 SYSTEM_PROMPT = (
     "You are ClawOS, a personal AI assistant. Use the provided tools to "
@@ -112,6 +114,16 @@ def normalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
             provider_cfg["model"] = os.environ.get("QWEN_MODEL", "Qwen3.5-9B-Q4_K_M")
         if "MODEL_REQUIRES_API_KEY" not in os.environ:
             provider_cfg["requires_api_key"] = False
+    if provider_name == "qwen_api":
+        if not provider_cfg.get("base_url") or provider_cfg.get("base_url") == "https://api.deepseek.com/v1":
+            provider_cfg["base_url"] = os.environ.get("QWEN_API_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        if not provider_cfg.get("model") or provider_cfg.get("model") == "deepseek-chat":
+            provider_cfg["model"] = os.environ.get("QWEN_API_MODEL", "qwen-plus")
+    if provider_name in {"glm", "zhipu"}:
+        if not provider_cfg.get("base_url") or provider_cfg.get("base_url") == "https://api.deepseek.com/v1":
+            provider_cfg["base_url"] = os.environ.get("GLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
+        if not provider_cfg.get("model") or provider_cfg.get("model") == "deepseek-chat":
+            provider_cfg["model"] = os.environ.get("GLM_MODEL", "glm-4-flash")
     if provider_name == "deepseek":
         if not provider_cfg.get("api_key"):
             provider_cfg["api_key"] = os.environ.get("DEEPSEEK_API_KEY", "")
@@ -137,14 +149,7 @@ def _config_bool(value: Any, default: bool = False) -> bool:
 
 
 def model_provider_status(cfg: dict[str, Any]) -> dict[str, Any]:
-    provider_cfg = cfg.get("model_provider") or cfg.get("upstream") or {}
-    provider = create_model_provider(provider_cfg)
-    is_configured = provider.is_configured() if hasattr(provider, "is_configured") else True
-    return {
-        "provider": getattr(provider, "name", provider_cfg.get("provider", "")),
-        "model": getattr(provider, "model", provider_cfg.get("model", "")),
-        "configured": bool(is_configured),
-    }
+    return ModelService(cfg, create_model_provider).status()
 
 
 MODEL_ENV_KEYS = {
@@ -176,7 +181,12 @@ def model_config_payload(cfg: dict[str, Any]) -> dict[str, Any]:
         "api_key_present": bool(api_key and "${" not in api_key),
         "api_key_hint": _mask_secret(api_key),
         "requires_api_key": _config_bool(provider_cfg.get("requires_api_key"), True),
+        "mode": model_mode_label(status.get("provider", ""), bool(status.get("configured"))),
     }
+
+
+def model_mode_label(provider: str, configured: bool) -> str:
+    return ModelService.mode_label(provider, configured)
 
 
 def write_model_env(env_path: Path, updates: dict[str, str]) -> None:
@@ -201,7 +211,7 @@ def write_model_env(env_path: Path, updates: dict[str, str]) -> None:
 
 
 def apply_model_config_updates(payload: dict[str, Any]) -> dict[str, Any]:
-    allowed = {"deepseek", "openai_compatible", "openai-compatible", "local_openai", "qwen", "mock"}
+    allowed = {"deepseek", "openai_compatible", "openai-compatible", "local_openai", "qwen", "qwen_api", "glm", "zhipu", "mock"}
     provider = str(payload.get("provider") or "deepseek").strip()
     if provider not in allowed:
         raise ValueError(f"Unsupported model provider: {provider}")
@@ -950,7 +960,7 @@ async def lifespan(app: FastAPI):
     # Init MemoryOS
     global g_memory_store, g_context_builder, g_vector_store, g_policy_optimizer
     global g_security_policy, g_secret_manager
-    global g_workspace_services, g_skill_evolution, g_scenario_benchmark
+    global g_workspace_services, g_skill_evolution, g_scenario_benchmark, g_knowledge_service
     from memoryos.memory_store import MemoryStore
     from memoryos.context_builder import ContextBuilder
     from memoryos.services.vector_store import MemoryVectorStore
@@ -963,9 +973,10 @@ async def lifespan(app: FastAPI):
     g_context_builder = ContextBuilder(g_memory_store, g_vector_store)
     from policy_optimizer import PolicyOptimizer
     g_policy_optimizer = PolicyOptimizer(g_memory_store)
-    from security import SecretManager, ToolSecurityPolicy
-    g_security_policy = ToolSecurityPolicy()
+    from security import SecretManager, SecurityGrantStore, ToolSecurityPolicy
+    g_security_policy = ToolSecurityPolicy(grant_store=SecurityGrantStore(BASE_DIR / "security_policy.json"))
     g_secret_manager = SecretManager(g_memory_store)
+    g_knowledge_service = KnowledgeService(g_memory_store, UPLOAD_DIR, lambda: g_vector_store.refresh() if g_vector_store else None)
     from workspace_services import WorkspaceServices
     g_workspace_services = WorkspaceServices(g_memory_store, g_security_policy)
     from skills.skill_evolution import SkillEvolutionManager
@@ -1084,6 +1095,7 @@ async def health():
         "workspace_services": bool(g_workspace_services),
         "skill_evolution": bool(g_skill_evolution),
         "model_provider": provider_state,
+        "model_mode": model_mode_label(provider_state.get("provider", ""), bool(provider_state.get("configured"))),
         "routing_model": config.get("routing", {}).get("model", ""),
         "upstream_model": config.get("upstream", {}).get("model", ""),
         "mtclaw": mtclaw_state,
@@ -1742,6 +1754,54 @@ async def api_security_policy_check(request: Request):
     )
     return JSONResponse(result)
 
+
+@app.get("/api/security/policy/grants")
+async def api_security_policy_grants(include_expired: bool = False):
+    if not g_security_policy:
+        raise HTTPException(503, "Security Policy not initialized")
+    grants = g_security_policy.list_grants(include_expired)
+    return JSONResponse({"grants": grants, "count": len(grants)})
+
+
+@app.post("/api/security/policy/grants")
+async def api_security_policy_grant_create(request: Request):
+    if not g_security_policy:
+        raise HTTPException(503, "Security Policy not initialized")
+    data = await request.json()
+    try:
+        grant = g_security_policy.add_grant(data)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if g_memory_store:
+        g_memory_store.record_audit_event(
+            actor_id=str(data.get("created_by") or "system"),
+            action="security.grant.create",
+            resource_type="security_policy",
+            resource_id=str(grant.get("id") or ""),
+            decision=str(grant.get("decision") or ""),
+            reason=str(grant.get("reason") or ""),
+            details=grant,
+        )
+    return JSONResponse({"grant": grant})
+
+
+@app.delete("/api/security/policy/grants/{grant_id}")
+async def api_security_policy_grant_revoke(grant_id: str):
+    if not g_security_policy:
+        raise HTTPException(503, "Security Policy not initialized")
+    revoked = g_security_policy.revoke_grant(grant_id)
+    if g_memory_store:
+        g_memory_store.record_audit_event(
+            actor_id="system",
+            action="security.grant.revoke",
+            resource_type="security_policy",
+            resource_id=str(grant_id),
+            decision="allow" if revoked else "not_found",
+            reason="manual permission grant revoked",
+            details={"grant_id": grant_id},
+        )
+    return JSONResponse({"revoked": bool(revoked), "grant_id": grant_id})
+
 @app.get("/api/workspace/capabilities")
 async def api_workspace_capabilities():
     roots = [str(root) for root in (g_security_policy.allowed_roots if g_security_policy else [])]
@@ -1774,7 +1834,7 @@ async def api_workspace_capabilities():
         "document_understanding": {
             "txt": True,
             "pdf_text": shutil.which("pdftotext") is not None,
-            "pdf_ocr": "ocr_required_detection",
+            "pdf_ocr": "worker_with_sidecar_or_local_tesseract",
             "citation_validation": True,
             "paper_learning_analysis": ["markdown", "pdf"],
         },
@@ -2350,6 +2410,15 @@ async def api_document_upload(
     return JSONResponse({"documents": documents, "errors": errors, "count": len(documents)})
 
 
+def get_knowledge_service() -> KnowledgeService:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    global g_knowledge_service
+    if not g_knowledge_service or getattr(g_knowledge_service, "store", None) is not g_memory_store:
+        g_knowledge_service = KnowledgeService(g_memory_store, UPLOAD_DIR, lambda: g_vector_store.refresh() if g_vector_store else None)
+    return g_knowledge_service
+
+
 @app.get("/api/documents")
 async def api_documents(category: str = ""):
     if not g_memory_store:
@@ -2360,19 +2429,27 @@ async def api_documents(category: str = ""):
 
 @app.get("/api/documents/ocr-queue")
 async def api_documents_ocr_queue(category: str = ""):
-    if not g_memory_store:
-        return JSONResponse({"documents": [], "count": 0}, status_code=503)
-    docs = g_memory_store.list_documents(category)
-    pending = []
-    for doc in docs:
-        meta = doc.get("metadata") or {}
-        if meta.get("ocr_required") or str(doc.get("status") or "").lower() in {"ocr_required", "needs_ocr"}:
-            pending.append({
-                **doc,
-                "ocr_pages": meta.get("ocr_pages", []),
-                "ocr_reason": meta.get("ocr_reason") or "low_extractable_text",
-            })
+    service = get_knowledge_service()
+    pending = service.list_ocr_queue(category)
     return JSONResponse({"documents": pending, "count": len(pending)})
+
+
+@app.post("/api/documents/{document_id}/ocr")
+async def api_document_run_ocr(document_id: int, request: Request):
+    service = get_knowledge_service()
+    data = await request.json()
+    try:
+        result = service.run_ocr(
+            document_id,
+            sidecar_text=str(data.get("sidecar_text") or ""),
+            force=bool(data.get("force")),
+        )
+    except ValueError as exc:
+        message = str(exc)
+        if message == "Document not found":
+            raise HTTPException(404, message)
+        raise HTTPException(400, message)
+    return JSONResponse(result)
 
 
 @app.get("/api/documents/{document_id}/chunks")
@@ -2398,77 +2475,17 @@ async def api_document_search(q: str = "", category: str = "", limit: int = 10):
 
 @app.get("/api/documents/citation-answer")
 async def api_document_citation_answer(q: str = "", category: str = "", document_id: int = 0, limit: int = 5):
-    if not g_memory_store:
-        return JSONResponse({"answer": "", "citations": [], "count": 0}, status_code=503)
-    top_k = max(1, min(int(limit or 5), 12))
-    if document_id:
-        document = g_memory_store.get_document(document_id)
-        if not document:
-            raise HTTPException(404, "Document not found")
-        chunks = g_memory_store.get_document_chunks(document_id, top_k)
-        for chunk in chunks:
-            chunk.setdefault("title", document.get("title", ""))
-            chunk.setdefault("filename", document.get("filename", ""))
-            chunk.setdefault("category", document.get("category", ""))
-    elif q:
-        chunks = g_memory_store.search_document_chunks(q, category, top_k)
-    else:
-        chunks = []
-    citations = []
-    lines = []
-    for index, chunk in enumerate(chunks, 1):
-        content = str(chunk.get("content") or "").strip()
-        citation = chunk.get("citation") or f"doc:{chunk.get('document_id')}#chunk={chunk.get('chunk_index')}"
-        citations.append({
-            "rank": index,
-            "citation": citation,
-            "document_id": chunk.get("document_id"),
-            "chunk_id": chunk.get("id"),
-            "title": chunk.get("title") or chunk.get("filename") or "",
-            "snippet": content[:360],
-        })
-        if content:
-            lines.append(f"[{index}] {content[:420]}")
-    answer = "No indexed evidence matched the query."
-    if lines:
-        answer = "基于已入库资料的可引用答案草稿：\n" + "\n\n".join(lines)
-    return JSONResponse({"answer": answer, "citations": citations, "count": len(citations), "query": q, "category": category})
+    service = get_knowledge_service()
+    try:
+        return JSONResponse(service.citation_answer(q, category, document_id, limit))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
 
 
 @app.get("/api/knowledge/graph")
 async def api_knowledge_graph(category: str = "", limit: int = 80):
-    if not g_memory_store:
-        return JSONResponse({"nodes": [], "edges": [], "count": 0}, status_code=503)
-    max_nodes = max(12, min(int(limit or 80), 160))
-    docs = g_memory_store.list_documents(category)
-    knowledge = g_memory_store.list_knowledge(category)
-    nodes: dict[str, dict[str, Any]] = {}
-    edges: list[dict[str, Any]] = []
-
-    def add_node(node_id: str, label: str, node_type: str, weight: int = 1, meta: dict[str, Any] | None = None):
-        if node_id not in nodes:
-            nodes[node_id] = {"id": node_id, "label": label, "type": node_type, "weight": weight, "meta": meta or {}}
-        else:
-            nodes[node_id]["weight"] = max(int(nodes[node_id].get("weight") or 1), int(weight or 1))
-
-    root = f"category:{category or 'all'}"
-    add_node(root, category or "all", "category", max(len(docs) + len(knowledge), 1))
-    for doc in docs[: max_nodes // 2]:
-        doc_id = f"doc:{doc.get('id')}"
-        add_node(doc_id, doc.get("title") or doc.get("filename") or doc_id, "document", int(doc.get("chunk_count") or 1), {"status": doc.get("status"), "ocr_required": bool((doc.get("metadata") or {}).get("ocr_required"))})
-        edges.append({"source": root, "target": doc_id, "type": "contains"})
-        for chunk in g_memory_store.get_document_chunks(int(doc.get("id")), 3):
-            chunk_id = f"chunk:{chunk.get('id')}"
-            add_node(chunk_id, f"chunk {chunk.get('chunk_index')}", "chunk", 1, {"citation": chunk.get("citation", "")})
-            edges.append({"source": doc_id, "target": chunk_id, "type": "cites"})
-    for item in knowledge[: max_nodes // 2]:
-        item_id = f"knowledge:{item.get('id')}"
-        add_node(item_id, item.get("title") or item_id, "knowledge", int(item.get("access_count") or 1), {"source": item.get("source", ""), "tags": item.get("tags", "")})
-        edges.append({"source": root, "target": item_id, "type": "contains"})
-    limited_nodes = list(nodes.values())[:max_nodes]
-    allowed = {node["id"] for node in limited_nodes}
-    limited_edges = [edge for edge in edges if edge["source"] in allowed and edge["target"] in allowed][: max_nodes * 2]
-    return JSONResponse({"nodes": limited_nodes, "edges": limited_edges, "count": len(limited_nodes), "category": category or "all"})
+    service = get_knowledge_service()
+    return JSONResponse(service.knowledge_graph(category, limit))
 
 
 @app.get("/api/memory/items/{memory_id}/versions")
