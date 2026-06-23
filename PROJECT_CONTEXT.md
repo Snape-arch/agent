@@ -383,3 +383,26 @@ Known notes:
 - OCR is now closed-loop, but true production quality depends on installing a robust local OCR stack and adding per-page progress/retry UI.
 - Permission grants are persisted in local `clawos/security_policy.json` at runtime; do not commit that file if it contains user-specific permissions.
 - `clawos_server.py` still contains many route handlers, but model and knowledge responsibilities now have service boundaries. A later cleanup can continue with `ToolService`, `SecurityService`, and route-module splitting.
+
+### 2026-06-23 - Tool/Security/Task services, ops checks, core E2E, and streaming cancel
+
+Completed:
+- Added `clawos/services/tool_service.py`, `task_service.py`, `security_service.py`, and `maintenance_service.py`.
+- `clawos_server.py` now delegates tool execution envelopes, security grants/audit/secrets, and runtime task helpers through service boundaries while preserving existing API/helper names for compatibility.
+- Added system operations APIs: `/api/system/config/check`, `/api/system/migrations`, `/api/system/migrations/apply`, and `/api/system/backup`.
+- Added SQLite migration tracking via `schema_migrations` and safe SQLite backup using the SQLite backup API plus JSON metadata.
+- Added deterministic `core-e2e-v1` benchmark suite in `clawos/benchmarks/core_e2e_v1.json`, covering learning, research, code, and office flows.
+- Chat streaming now emits SSE metadata/chunks, includes `task_id`, and checks task cancellation during streaming.
+- Console chat now uses stream mode by default and includes a Stop button that aborts the active request and calls the task cancel API.
+
+Verification:
+- `python -m py_compile clawos\clawos_server.py clawos\scenario_benchmarks.py clawos\services\tool_service.py clawos\services\task_service.py clawos\services\security_service.py clawos\services\maintenance_service.py`: passed.
+- Bundled Node syntax check: `node.exe --check clawos\static\assets\console.js`: passed.
+- Targeted tests: `python -m unittest clawos.tests.test_operations_and_streaming clawos.tests.test_scenario_benchmarks clawos.tests.test_frontend_static clawos.tests.test_runtime_security clawos.tests.test_runtime_task_control clawos.tests.test_routing_memory`: `58 tests OK`.
+- Full suite: `python -m unittest discover -s clawos\tests`: `136 tests OK`.
+- Frozen benchmark: `python clawos\scripts\run_frozen_benchmarks.py`: `30/30`, pass_rate `1.0`, P95 about `440.854ms`.
+- Core E2E benchmark: `python clawos\scripts\run_frozen_benchmarks.py --suite clawos\benchmarks\core_e2e_v1.json`: `4/4`, pass_rate `1.0`, P95 about `70.114ms`.
+
+Known notes:
+- `node` is not on this Windows PATH; use bundled Node at `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe` for JS checks on this machine.
+- Streaming is SSE over the existing non-token provider call for model completions, with chunked delivery and cancellation checks. True provider-native token streaming can be added later behind the same frontend contract.

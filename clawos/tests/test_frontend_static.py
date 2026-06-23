@@ -138,6 +138,17 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("Local Qwen 模式", js)
         self.assertIn("Mock/offline test 模式", js)
 
+    def test_console_chat_uses_streaming_and_stop_control(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+
+        self.assertIn('id="stop"', html)
+        self.assertIn("readChatStream", js)
+        self.assertIn("stream:true", js)
+        self.assertIn("AbortController", js)
+        self.assertIn("stopGeneration", js)
+        self.assertIn("console stop generation", js)
+
     def test_console_exposes_unified_memory_governance(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")

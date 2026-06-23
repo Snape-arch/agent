@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from providers import create_model_provider
-from services import KnowledgeService, ModelService
+from services import KnowledgeService, MaintenanceService, ModelService, SecurityService, TaskService, ToolService
 
 # ---- PATHS ----
 BASE_DIR = Path(__file__).parent.resolve()
@@ -58,6 +58,9 @@ g_workspace_services: Any = None
 g_skill_evolution: Any = None
 g_scenario_benchmark: Any = None
 g_knowledge_service: KnowledgeService | None = None
+g_security_service: SecurityService | None = None
+g_task_service: TaskService | None = None
+g_maintenance_service: MaintenanceService | None = None
 
 SYSTEM_PROMPT = (
     "You are ClawOS, a personal AI assistant. Use the provided tools to "
@@ -337,11 +340,18 @@ def _record_tool_execution(session_id: str, envelope: dict[str, Any]):
 
 
 def _task_step_status(tool_status: str) -> str:
-    if tool_status == "success":
-        return "succeeded"
-    if tool_status == "error":
-        return "failed"
-    return tool_status or "failed"
+    return ToolService.task_step_status(tool_status)
+
+
+def _tool_service() -> ToolService:
+    return ToolService(
+        python_executor=execute_python_tool,
+        store_getter=lambda: g_memory_store,
+        policy_getter=lambda: g_security_policy,
+        vector_refresh=(lambda: g_vector_store.refresh()) if g_vector_store else None,
+        logger=logger,
+        confirmation_tools=TOOLS_REQUIRING_CONFIRMATION,
+    )
 
 
 def execute_tool_call(
@@ -352,131 +362,13 @@ def execute_tool_call(
     task_id: int | None = None,
 ) -> dict[str, Any]:
     """Execute a tool and return a stable envelope for tracing and reflection."""
-    confirmed_tools = confirmed_tools or set()
-    if task_id and g_memory_store and g_memory_store.is_task_cancelled(task_id):
-        envelope = {
-            "ok": False,
-            "status": "canceled",
-            "tool": name,
-            "arguments": _parse_tool_arguments(args_str),
-            "data": None,
-            "error": "Task cancellation requested before tool execution.",
-            "duration_ms": 0,
-            "requires_confirmation": False,
-            "risk_level": "low",
-        }
-        _record_tool_execution(session_id, envelope)
-        return envelope
-    args_obj = _parse_tool_arguments(args_str)
-    policy_result = {
-        "allowed": True,
-        "decision": "allow",
-        "reason": "security policy not initialized",
-        "normalized_arguments": args_obj,
-        "risk_level": "low",
-    }
-    if g_security_policy:
-        policy_result = g_security_policy.evaluate(name, args_obj)
-        args_obj = policy_result.get("normalized_arguments", args_obj)
-        args_str = json.dumps(args_obj, ensure_ascii=False)
-    if g_memory_store:
-        g_memory_store.record_audit_event(
-            "tool.preflight",
-            decision=policy_result.get("decision", "allow"),
-            session_id=session_id,
-            task_id=task_id,
-            resource_type="tool",
-            resource_id=name,
-            reason=policy_result.get("reason", ""),
-            details={"arguments": args_obj},
-        )
-    if not policy_result.get("allowed", False):
-        envelope = {
-            "ok": False,
-            "status": "denied",
-            "tool": name,
-            "arguments": args_obj,
-            "data": None,
-            "error": policy_result.get("reason", "Denied by security policy"),
-            "duration_ms": 0,
-            "requires_confirmation": False,
-            "risk_level": policy_result.get("risk_level", "low"),
-        }
-        _record_tool_execution(session_id, envelope)
-        return envelope
-    requires_confirmation = name in TOOLS_REQUIRING_CONFIRMATION or policy_result.get("decision") == "confirm"
-    started = time.perf_counter()
-    task_step = None
-    if task_id and g_memory_store:
-        try:
-            task_step = g_memory_store.add_task_step(task_id, "tool", name, status="running", input_data=args_obj)
-        except Exception as e:
-            if logger:
-                logger.warning(f"Task step start failed: {e}")
-
-    if requires_confirmation and name not in confirmed_tools:
-        envelope = {
-            "ok": False,
-            "status": "needs_confirmation",
-            "tool": name,
-            "arguments": args_obj,
-            "data": None,
-            "error": f"Tool '{name}' requires explicit confirmation before execution.",
-            "duration_ms": 0,
-            "requires_confirmation": True,
-            "risk_level": policy_result.get("risk_level", "medium"),
-        }
-        _record_tool_execution(session_id, envelope)
-        if task_step and g_memory_store:
-            g_memory_store.finish_task_step(
-                task_step["id"],
-                status="needs_confirmation",
-                output_data=envelope,
-                error=envelope["error"],
-            )
-        return envelope
-
-    raw = execute_python_tool(name, args_str)
-    duration_ms = round((time.perf_counter() - started) * 1000, 2)
-    ok = not (isinstance(raw, dict) and raw.get("error"))
-    if ok and name == "web_fetch" and isinstance(raw, dict) and raw.get("ingested") and g_vector_store:
-        g_vector_store.refresh()
-    envelope = {
-        "ok": ok,
-        "status": "success" if ok else "error",
-        "tool": name,
-        "arguments": args_obj,
-        "data": raw if ok else None,
-        "error": "" if ok else str(raw.get("error", raw)),
-        "duration_ms": duration_ms,
-        "requires_confirmation": requires_confirmation,
-        "risk_level": policy_result.get("risk_level", "low"),
-    }
-    _record_tool_execution(session_id, envelope)
-    if g_memory_store:
-        g_memory_store.record_audit_event(
-            "tool.execute",
-            decision="allow" if ok else "error",
-            session_id=session_id,
-            task_id=task_id,
-            resource_type="tool",
-            resource_id=name,
-            reason=envelope["error"],
-            details={
-                "duration_ms": duration_ms,
-                "requires_confirmation": requires_confirmation,
-                "risk_level": envelope["risk_level"],
-                "arguments": args_obj,
-            },
-        )
-    if task_step and g_memory_store:
-        g_memory_store.finish_task_step(
-            task_step["id"],
-            status=_task_step_status(envelope["status"]),
-            output_data=envelope,
-            error=envelope["error"],
-        )
-    return envelope
+    return _tool_service().execute(
+        name,
+        args_str,
+        session_id=session_id,
+        confirmed_tools=confirmed_tools or set(),
+        task_id=task_id,
+    )
 
 # ---- LLM ROUTING ----
 def _provider_candidates(section: str) -> list[Any]:
@@ -762,10 +654,29 @@ def extract_assistant_text(resp: JSONResponse) -> str:
     return ""
 
 
-def sse_from_text(text: str) -> StreamingResponse:
+def sse_from_text(text: str, task_id: int | None = None, extra: dict[str, Any] | None = None) -> StreamingResponse:
     async def gen():
-        chunk = {"choices": [{"delta": {"content": text or ""}}]}
-        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode("utf-8")
+        if extra:
+            yield f"event: clawos_meta\ndata: {json.dumps(extra, ensure_ascii=False)}\n\n".encode("utf-8")
+        content = text or ""
+        if not content:
+            yield f"data: {json.dumps({'choices': [{'delta': {'content': ''}}]}, ensure_ascii=False)}\n\n".encode("utf-8")
+        cursor = 0
+        chunk_size = 80
+        while cursor < len(content):
+            if task_id and g_memory_store and g_memory_store.is_task_cancelled(task_id):
+                cancel_payload = {
+                    "choices": [{"delta": {"content": "\n\n任务已取消。"}}],
+                    "clawos": {"task_id": task_id, "canceled": True},
+                }
+                yield f"event: canceled\ndata: {json.dumps(cancel_payload, ensure_ascii=False)}\n\n".encode("utf-8")
+                finish_runtime_task(task_id, "canceled", "Canceled during stream")
+                break
+            piece = content[cursor: cursor + chunk_size]
+            cursor += chunk_size
+            chunk = {"choices": [{"delta": {"content": piece}}]}
+            yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode("utf-8")
+            await asyncio.sleep(0)
         yield b"data: [DONE]\n\n"
     return StreamingResponse(gen(), media_type="text/event-stream")
 
@@ -810,6 +721,41 @@ def save_memory_item(data: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(400, str(e))
 
 
+def get_task_service() -> TaskService:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    global g_task_service
+    if not g_task_service or getattr(g_task_service, "store", None) is not g_memory_store:
+        g_task_service = TaskService(g_memory_store)
+    return g_task_service
+
+
+def get_security_service() -> SecurityService:
+    if not g_security_policy and not g_secret_manager and not g_memory_store:
+        raise HTTPException(503, "Security service not initialized")
+    global g_security_service
+    if (
+        not g_security_service
+        or getattr(g_security_service, "policy", None) is not g_security_policy
+        or getattr(g_security_service, "store", None) is not g_memory_store
+    ):
+        g_security_service = SecurityService(g_security_policy, g_secret_manager, g_memory_store)
+    return g_security_service
+
+
+def get_maintenance_service() -> MaintenanceService:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    global g_maintenance_service
+    if (
+        not g_maintenance_service
+        or getattr(g_maintenance_service, "store", None) is not g_memory_store
+        or Path(getattr(g_maintenance_service, "db_path", "")) != MEMORY_DB
+    ):
+        g_maintenance_service = MaintenanceService(store=g_memory_store, db_path=MEMORY_DB, base_dir=BASE_DIR, config=config)
+    return g_maintenance_service
+
+
 def list_memory_items(
     memory_type: str = "",
     include_disabled: bool = False,
@@ -842,41 +788,23 @@ def set_memory_item_enabled(memory_id: int, enabled: bool) -> dict[str, Any]:
 
 
 def create_runtime_task(session_id: str, title: str, source: str = "chat", metadata: dict[str, Any] | None = None) -> dict[str, Any]:
-    if not g_memory_store:
-        raise HTTPException(503, "MemoryOS not initialized")
-    metadata = metadata or {}
-    return g_memory_store.start_task(
-        session_id,
-        title,
-        source=source,
-        metadata=metadata,
-        idempotency_key=str(metadata.get("idempotency_key", "") or ""),
-        retry_of=metadata.get("retry_of"),
-    )
+    return get_task_service().create(session_id, title, source=source, metadata=metadata)
 
 
 def list_runtime_tasks(session_id: str = "", status: str = "", limit: int = 50) -> list[dict[str, Any]]:
-    if not g_memory_store:
-        raise HTTPException(503, "MemoryOS not initialized")
-    return g_memory_store.list_tasks(session_id=session_id, status=status, limit=limit)
+    return get_task_service().list(session_id=session_id, status=status, limit=limit)
 
 
 def list_runtime_task_queue(statuses: list[str] | None = None, limit: int = 50) -> list[dict[str, Any]]:
-    if not g_memory_store:
-        raise HTTPException(503, "MemoryOS not initialized")
-    return g_memory_store.list_task_queue(statuses=statuses, limit=limit)
+    return get_task_service().queue(statuses=statuses, limit=limit)
 
 
 def claim_runtime_task(worker_id: str = "worker", statuses: list[str] | None = None) -> dict[str, Any]:
-    if not g_memory_store:
-        raise HTTPException(503, "MemoryOS not initialized")
-    return g_memory_store.claim_next_task(worker_id=worker_id, statuses=statuses)
+    return get_task_service().claim(worker_id=worker_id, statuses=statuses)
 
 
 def get_runtime_task(task_id: int) -> dict[str, Any]:
-    if not g_memory_store:
-        raise HTTPException(503, "MemoryOS not initialized")
-    detail = g_memory_store.get_task(task_id)
+    detail = get_task_service().detail(task_id)
     if not detail:
         raise HTTPException(404, "Task not found")
     return detail
@@ -885,22 +813,18 @@ def get_runtime_task(task_id: int) -> dict[str, Any]:
 def finish_runtime_task(task_id: int | None, status: str, error: str = "", result_payload: dict[str, Any] | None = None) -> dict[str, Any]:
     if not task_id or not g_memory_store:
         return {}
-    return g_memory_store.finish_task(task_id, status, error=error, result_payload=result_payload)
+    return get_task_service().finish(task_id, status, error=error, result_payload=result_payload)
 
 
 def cancel_runtime_task(task_id: int, reason: str = "", actor_id: str = "user") -> dict[str, Any]:
-    if not g_memory_store:
-        raise HTTPException(503, "MemoryOS not initialized")
-    item = g_memory_store.cancel_task(task_id, reason=reason, actor_id=actor_id)
+    item = get_task_service().cancel(task_id, reason=reason, actor_id=actor_id)
     if not item:
         raise HTTPException(404, "Task not found")
     return item
 
 
 def retry_runtime_task(task_id: int, reason: str = "", actor_id: str = "user") -> dict[str, Any]:
-    if not g_memory_store:
-        raise HTTPException(503, "MemoryOS not initialized")
-    item = g_memory_store.retry_task(task_id, actor_id=actor_id, reason=reason)
+    item = get_task_service().retry(task_id, reason=reason, actor_id=actor_id)
     if not item:
         raise HTTPException(404, "Task not found")
     return item
@@ -915,8 +839,6 @@ async def store_assistant_response(session_id: str, resp: JSONResponse):
 
 # ---- UPSTREAM MODEL ----
 async def proxy_upstream(req_data: dict, stream: bool, tool_context: str = "") -> JSONResponse:
-    if stream:
-        raise HTTPException(400, "Streaming is not implemented for ModelProvider yet")
     messages = req_data.get("messages", [])
     result = await call_model_with_fallback(
         "upstream",
@@ -927,13 +849,16 @@ async def proxy_upstream(req_data: dict, stream: bool, tool_context: str = "") -
         }
     )
     if not result["ok"]:
-        return JSONResponse(build_openai_response(
+        body = build_openai_response(
             f"模型调用失败：{result['error']}",
             model=result.get("model"),
             extra={"model_result": result},
-        ))
+        )
+        return sse_from_text(body["choices"][0]["message"]["content"], extra=body.get("clawos")) if stream else JSONResponse(body)
     body = build_openai_response(result["content"], model=result["model"], extra={"model_result": result})
     body["usage"] = result.get("usage", {})
+    if stream:
+        return sse_from_text(result["content"], extra=body.get("clawos"))
     return JSONResponse(body)
 
 # ---- LIFESPAN ----
@@ -961,6 +886,7 @@ async def lifespan(app: FastAPI):
     global g_memory_store, g_context_builder, g_vector_store, g_policy_optimizer
     global g_security_policy, g_secret_manager
     global g_workspace_services, g_skill_evolution, g_scenario_benchmark, g_knowledge_service
+    global g_security_service, g_task_service, g_maintenance_service
     from memoryos.memory_store import MemoryStore
     from memoryos.context_builder import ContextBuilder
     from memoryos.services.vector_store import MemoryVectorStore
@@ -976,6 +902,10 @@ async def lifespan(app: FastAPI):
     from security import SecretManager, SecurityGrantStore, ToolSecurityPolicy
     g_security_policy = ToolSecurityPolicy(grant_store=SecurityGrantStore(BASE_DIR / "security_policy.json"))
     g_secret_manager = SecretManager(g_memory_store)
+    g_security_service = SecurityService(g_security_policy, g_secret_manager, g_memory_store)
+    g_task_service = TaskService(g_memory_store)
+    g_maintenance_service = MaintenanceService(store=g_memory_store, db_path=MEMORY_DB, base_dir=BASE_DIR, config=config)
+    g_maintenance_service.apply_migrations()
     g_knowledge_service = KnowledgeService(g_memory_store, UPLOAD_DIR, lambda: g_vector_store.refresh() if g_vector_store else None)
     from workspace_services import WorkspaceServices
     g_workspace_services = WorkspaceServices(g_memory_store, g_security_policy)
@@ -1387,7 +1317,7 @@ async def chat_completions(request: Request):
             g_memory_store.add_message(session_id, "assistant", text[:4000])
         finish_runtime_task(task_id, "waiting_confirmation")
         if stream:
-            return sse_from_text(text)
+            return sse_from_text(text, task_id=task_id, extra=extra)
         return JSONResponse(build_openai_response(text, extra=extra))
 
     # Auto-trigger reflection after tool execution
@@ -1436,9 +1366,9 @@ async def chat_completions(request: Request):
                 g_memory_store.add_message(session_id, "assistant", text[:4000])
             finish_runtime_task(task_id, "succeeded", result_payload=body)
             if stream:
-                return sse_from_text(text)
+                return sse_from_text(text, task_id=task_id, extra=extra)
             return JSONResponse(body)
-        resp = await proxy_upstream({**req_data, "messages": upstream_msgs}, stream)
+        resp = await proxy_upstream({**req_data, "messages": upstream_msgs}, False if stream else stream)
         if isinstance(resp, JSONResponse):
             text = extract_assistant_text(resp)
             body = json.loads(resp.body)
@@ -1446,6 +1376,8 @@ async def chat_completions(request: Request):
             if g_memory_store and text:
                 g_memory_store.add_message(session_id, "assistant", text[:4000])
             finish_runtime_task(task_id, "succeeded", result_payload=body)
+            if stream:
+                return sse_from_text(text, task_id=task_id, extra=extra)
             return JSONResponse(body)
         return resp
 
@@ -1454,7 +1386,13 @@ async def chat_completions(request: Request):
         if g_memory_store and final_text:
             g_memory_store.add_message(session_id, "assistant", final_text[:4000])
         finish_runtime_task(task_id, "succeeded")
-        return sse_from_text(final_text)
+        return sse_from_text(final_text, task_id=task_id, extra={
+            "used_tools": False,
+            "tool_calls": [],
+            "routing_rounds": tool_result.get("routing_rounds", 0),
+            "attachments": attachment_meta,
+            "task_id": task_id,
+        })
 
     resp_payload = build_openai_response(final_text, extra={
         "used_tools": False,
@@ -1712,95 +1650,109 @@ async def api_policy_promotion_rollback(promotion_id: int, request: Request):
 
 @app.get("/api/security/audit")
 async def api_security_audit(action: str = "", decision: str = "", limit: int = 100):
-    if not g_memory_store:
-        raise HTTPException(503, "Audit store not initialized")
-    rows = g_memory_store.list_audit_events(action, decision, limit)
+    try:
+        rows = get_security_service().audit(action, decision, limit)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
     return JSONResponse({"events": rows, "count": len(rows)})
 
 
 @app.post("/api/security/secrets")
 async def api_secret_register(request: Request):
-    if not g_secret_manager:
-        raise HTTPException(503, "Secret Manager not initialized")
     data = await request.json()
     try:
-        item = g_secret_manager.register(
-            data.get("name", ""),
-            data.get("env_var", ""),
-            purpose=data.get("purpose", ""),
-            allowed_tools=data.get("allowed_tools", []),
-            actor_id=data.get("actor_id", "system"),
-        )
+        item = get_security_service().register_secret(data)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
     return JSONResponse({"secret": item})
 
 
 @app.get("/api/security/secrets")
 async def api_secret_list():
-    if not g_secret_manager:
-        raise HTTPException(503, "Secret Manager not initialized")
-    return JSONResponse({"secrets": g_secret_manager.list()})
+    try:
+        secrets = get_security_service().list_secrets()
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    return JSONResponse({"secrets": secrets})
 
 
 @app.post("/api/security/policy/check")
 async def api_security_policy_check(request: Request):
-    if not g_security_policy:
-        raise HTTPException(503, "Security Policy not initialized")
     data = await request.json()
-    result = g_security_policy.evaluate(
-        str(data.get("tool", "") or ""),
-        data.get("arguments", {}),
-    )
+    try:
+        result = get_security_service().check_policy(str(data.get("tool", "") or ""), data.get("arguments", {}))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
     return JSONResponse(result)
 
 
 @app.get("/api/security/policy/grants")
 async def api_security_policy_grants(include_expired: bool = False):
-    if not g_security_policy:
-        raise HTTPException(503, "Security Policy not initialized")
-    grants = g_security_policy.list_grants(include_expired)
+    try:
+        grants = get_security_service().list_grants(include_expired)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
     return JSONResponse({"grants": grants, "count": len(grants)})
 
 
 @app.post("/api/security/policy/grants")
 async def api_security_policy_grant_create(request: Request):
-    if not g_security_policy:
-        raise HTTPException(503, "Security Policy not initialized")
     data = await request.json()
     try:
-        grant = g_security_policy.add_grant(data)
+        grant = get_security_service().create_grant(data)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    if g_memory_store:
-        g_memory_store.record_audit_event(
-            actor_id=str(data.get("created_by") or "system"),
-            action="security.grant.create",
-            resource_type="security_policy",
-            resource_id=str(grant.get("id") or ""),
-            decision=str(grant.get("decision") or ""),
-            reason=str(grant.get("reason") or ""),
-            details=grant,
-        )
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
     return JSONResponse({"grant": grant})
 
 
 @app.delete("/api/security/policy/grants/{grant_id}")
 async def api_security_policy_grant_revoke(grant_id: str):
-    if not g_security_policy:
-        raise HTTPException(503, "Security Policy not initialized")
-    revoked = g_security_policy.revoke_grant(grant_id)
-    if g_memory_store:
-        g_memory_store.record_audit_event(
-            actor_id="system",
-            action="security.grant.revoke",
-            resource_type="security_policy",
-            resource_id=str(grant_id),
-            decision="allow" if revoked else "not_found",
-            reason="manual permission grant revoked",
-            details={"grant_id": grant_id},
-        )
+    try:
+        revoked = get_security_service().revoke_grant(grant_id)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
     return JSONResponse({"revoked": bool(revoked), "grant_id": grant_id})
+
+
+@app.get("/api/system/config/check")
+async def api_system_config_check():
+    try:
+        return JSONResponse(get_maintenance_service().config_check())
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+
+
+@app.get("/api/system/migrations")
+async def api_system_migrations():
+    try:
+        return JSONResponse(get_maintenance_service().list_migrations())
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+
+
+@app.post("/api/system/migrations/apply")
+async def api_system_migrations_apply():
+    try:
+        return JSONResponse(get_maintenance_service().apply_migrations())
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+
+
+@app.post("/api/system/backup")
+async def api_system_backup(request: Request):
+    data = await request.json()
+    try:
+        result = get_maintenance_service().backup_database(
+            output_dir=str(data.get("output_dir") or ""),
+            label=str(data.get("label") or ""),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
 
 @app.get("/api/workspace/capabilities")
 async def api_workspace_capabilities():
@@ -2609,10 +2561,8 @@ async def api_tasks_queue_claim(request: Request):
 
 @app.post("/api/tasks/recover")
 async def api_tasks_recover(request: Request):
-    if not g_memory_store:
-        raise HTTPException(503, "MemoryOS not initialized")
     data = await request.json()
-    result = g_memory_store.recover_interrupted_tasks(
+    result = get_task_service().recover(
         actor_id=str(data.get("actor_id", "user")),
         create_retries=bool(data.get("create_retries", False)),
     )
@@ -2620,17 +2570,15 @@ async def api_tasks_recover(request: Request):
 
 @app.get("/api/tasks/events")
 async def api_task_events(session_id: str = "", after_id: int = 0, limit: int = 100):
-    if not g_memory_store:
+    if not g_task_service and not g_memory_store:
         return JSONResponse({"events": [], "count": 0}, status_code=503)
-    rows = g_memory_store.list_task_events(session_id=session_id, after_id=after_id, limit=limit)
+    rows = get_task_service().events(session_id=session_id, after_id=after_id, limit=limit)
     return JSONResponse({"events": rows, "count": len(rows)})
 
 @app.post("/api/tasks/events/prune")
 async def api_task_events_prune(request: Request):
-    if not g_memory_store:
-        raise HTTPException(503, "MemoryOS not initialized")
     data = await request.json()
-    result = g_memory_store.prune_task_events(
+    result = get_task_service().prune_events(
         older_than_days=data.get("older_than_days", 30),
         retain_latest_per_task=data.get("retain_latest_per_task", 100),
         dry_run=bool(data.get("dry_run", False)),
@@ -2646,7 +2594,7 @@ async def api_task_stream(session_id: str = "", after_id: int = 0):
     async def gen():
         cursor = int(after_id or 0)
         for _ in range(180):
-            rows = g_memory_store.list_task_events(session_id=session_id, after_id=cursor, limit=50)
+            rows = get_task_service().events(session_id=session_id, after_id=cursor, limit=50)
             if rows:
                 cursor = max(int(row["id"]) for row in rows)
                 yield f"event: task_events\ndata: {json.dumps(rows, ensure_ascii=False)}\n\n"

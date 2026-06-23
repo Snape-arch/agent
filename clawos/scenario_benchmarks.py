@@ -10,6 +10,7 @@ from pathlib import Path
 
 BENCHMARKS_DIR = Path(__file__).resolve().parent / "benchmarks"
 DEFAULT_SUITE_FILE = BENCHMARKS_DIR / "competition_frozen_v1.json"
+CORE_E2E_SUITE_FILE = BENCHMARKS_DIR / "core_e2e_v1.json"
 
 
 def _now_iso():
@@ -121,6 +122,7 @@ class FrozenScenarioBenchmark:
     def __init__(self, store):
         self._store = store
         self._init_db()
+        self.ensure_core_e2e_suite()
         self.ensure_default_suite()
 
     def _init_db(self):
@@ -149,21 +151,29 @@ class FrozenScenarioBenchmark:
             """)
 
     def ensure_default_suite(self):
+        return self.ensure_suite_file(DEFAULT_SUITE_FILE, fallback={
+            "name": "competition-frozen-v1",
+            "description": "Frozen multi-scenario acceptance suite for meeting, learning, project, skill, and memory flows.",
+            "cases": DEFAULT_SCENARIO_CASES,
+        })
+
+    def ensure_core_e2e_suite(self):
+        return self.ensure_suite_file(CORE_E2E_SUITE_FILE, fallback={
+            "name": "core-e2e-v1",
+            "description": "Deterministic E2E suite for learning, research, code, and office flows.",
+            "cases": DEFAULT_SCENARIO_CASES[:4],
+        })
+
+    def ensure_suite_file(self, path: str | Path, fallback: dict):
+        path = Path(path)
+        suite = load_suite_file(path) if path.exists() else fallback
         with self._store._conn() as c:
             row = c.execute(
-                "SELECT * FROM scenario_benchmark_suites WHERE name='competition-frozen-v1'"
+                "SELECT * FROM scenario_benchmark_suites WHERE name=?",
+                (suite["name"],),
             ).fetchone()
             if row:
                 return _row(row)
-            suite = (
-                load_suite_file(DEFAULT_SUITE_FILE)
-                if DEFAULT_SUITE_FILE.exists()
-                else {
-                    "name": "competition-frozen-v1",
-                    "description": "Frozen multi-scenario acceptance suite for meeting, learning, project, skill, and memory flows.",
-                    "cases": DEFAULT_SCENARIO_CASES,
-                }
-            )
             now = _now_iso()
             cursor = c.execute(
                 """

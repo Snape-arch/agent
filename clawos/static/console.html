@@ -103,6 +103,7 @@
             <button class="attach-button" onclick="chooseLocalFile()" title="添加本地文件">+</button>
             <textarea id="prompt" placeholder="有问题，尽管问。点 + 添加文件，Agent 会作为上下文自动阅读。" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
             <button class="primary" id="send" onclick="sendMessage()">发送</button>
+            <button class="secondary" id="stop" onclick="stopGeneration()" disabled>停止</button>
             <input id="filePicker" type="file" multiple hidden onchange="handlePickedFiles(event)">
           </div>
         </div>

@@ -1,0 +1,93 @@
+{
+  "name": "core-e2e-v1",
+  "description": "Deterministic four-scenario E2E suite for learning, research, code, and office workflows.",
+  "thresholds": {
+    "min_pass_rate": 1.0,
+    "max_p95_latency_ms": 5000.0
+  },
+  "cases": [
+    {
+      "name": "learning_goal_to_review_items",
+      "scenario": "learning",
+      "tool": "learning_workspace",
+      "args": {
+        "action": "create_goal",
+        "title": "Core E2E Learning Goal",
+        "description": "Create a deterministic learning plan with review items.",
+        "topics": ["MemoryOS", "Reflection", "MTClaw"]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "learning_workspace",
+        "data_paths": ["learning.id", "learning.items"],
+        "data_contains_text": ["Core E2E Learning Goal", "MemoryOS"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "research_reproducible_evidence_pack",
+      "scenario": "research",
+      "tool": "research_pdf",
+      "args": {
+        "action": "repro_workflow",
+        "title": "Core E2E Research Evidence Pack",
+        "question": "Can ClawOS preserve deterministic research evidence?",
+        "steps": ["Collect source", "Create citation notes", "Export workflow manifest"],
+        "output_path": "${tmpdir}/core-e2e/research-evidence-pack"
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "research_pdf",
+        "data_paths": ["id", "manifest.title", "manifest.steps", "output_path"],
+        "data_contains_text": ["Core E2E Research Evidence Pack"]
+      },
+      "max_latency_ms": 3000
+    },
+    {
+      "name": "code_repository_stats",
+      "scenario": "code",
+      "tool": "code_stats",
+      "args": {
+        "path": "${repo_root}/clawos"
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "code_stats",
+        "data_paths": ["total_files", "total_lines", "by_language"],
+        "data_contains_text": ["Python"]
+      },
+      "max_latency_ms": 4000
+    },
+    {
+      "name": "office_metrics_spreadsheet",
+      "scenario": "office",
+      "tool": "office_artifact",
+      "args": {
+        "action": "spreadsheet_create",
+        "output_path": "${tmpdir}/core-e2e/office-metrics.xlsx",
+        "title": "Core E2E Office Metrics",
+        "sheets": [
+          {
+            "name": "Metrics",
+            "rows": [
+              ["metric", "value"],
+              ["pass_rate", "1.0"],
+              ["scenario_count", "4"]
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "status": "success",
+        "tool": "office_artifact",
+        "data_paths": ["artifact.id", "artifact.title", "artifact.file_path", "artifact.artifact_type"],
+        "data_contains_text": ["Core E2E Office Metrics", "spreadsheet"]
+      },
+      "max_latency_ms": 4000
+    }
+  ]
+}

@@ -21,6 +21,17 @@ class ScenarioBenchmarkTests(unittest.TestCase):
         self.assertTrue({"meeting", "research", "learning", "git", "template"}.issubset(scenarios))
         self.assertEqual(suite["thresholds"]["min_pass_rate"], 1.0)
 
+    def test_core_e2e_suite_covers_learning_research_code_office(self):
+        from scenario_benchmarks import CORE_E2E_SUITE_FILE, load_suite_file
+
+        suite = load_suite_file(CORE_E2E_SUITE_FILE)
+        scenarios = [case["scenario"] for case in suite["cases"]]
+
+        self.assertEqual(suite["name"], "core-e2e-v1")
+        self.assertEqual(scenarios, ["learning", "research", "code", "office"])
+        self.assertEqual(len(suite["cases"]), 4)
+        self.assertEqual(suite["thresholds"]["min_pass_rate"], 1.0)
+
     def test_default_suite_is_frozen_and_runs_with_evidence(self):
         from memoryos.memory_store import MemoryStore
         from scenario_benchmarks import FrozenScenarioBenchmark
@@ -184,6 +195,29 @@ class ScenarioBenchmarkTests(unittest.TestCase):
         self.assertIn("failed_count=0", result.stdout)
         self.assertIn("meeting::meeting_create_structured_record", result.stdout)
         self.assertIn("cases=30/30", result.stdout)
+
+    def test_frozen_runner_script_executes_core_e2e_suite(self):
+        import subprocess
+
+        script = ROOT / "scripts" / "run_frozen_benchmarks.py"
+        suite = ROOT / "benchmarks" / "core_e2e_v1.json"
+        result = subprocess.run(
+            [sys.executable, str(script), "--suite", str(suite)],
+            cwd=str(ROOT.parent),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Frozen benchmark: passed=True", result.stdout)
+        self.assertIn("cases=4/4", result.stdout)
+        self.assertIn("learning::learning_goal_to_review_items", result.stdout)
+        self.assertIn("research::research_reproducible_evidence_pack", result.stdout)
+        self.assertIn("code::code_repository_stats", result.stdout)
+        self.assertIn("office::office_metrics_spreadsheet", result.stdout)
 
     def test_benchmark_gate_fails_on_tool_error(self):
         from memoryos.memory_store import MemoryStore
