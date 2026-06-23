@@ -296,6 +296,55 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertTrue(any(node["type"] == "document" for node in graph_payload["nodes"]))
         self.assertTrue(any(edge["type"] == "cites" for edge in graph_payload["edges"]))
 
+    def test_knowledge_obsidian_check_and_vault_export(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+        from services.knowledge_service import KnowledgeService
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_service = server.g_knowledge_service
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            server.g_memory_store = store
+            server.g_knowledge_service = None
+            try:
+                first = store.add_knowledge(
+                    "Retrieval Augmented Generation",
+                    "Use [[Citation Grounding]] to keep generated answers auditable.",
+                    "research",
+                    "doc:1#chunk=1",
+                    ["paper", "rag"],
+                    0.91,
+                )
+                second = store.add_knowledge(
+                    "Citation Grounding",
+                    "Backlinks from [[Retrieval Augmented Generation]] should appear in the vault graph.",
+                    "research",
+                    "doc:1#chunk=2",
+                    ["paper", "citation"],
+                    0.89,
+                )
+                store.add_document("RAG Paper", filename="rag.pdf", file_hash="rag-paper", category="research")
+                check_payload = json.loads(asyncio.run(server.api_knowledge_obsidian_check(category="research")).body)
+                service = KnowledgeService(store, Path(td) / "uploads")
+                export_payload = service.export_obsidian_vault(Path(td) / "vault", category="research")
+                first_note = (Path(td) / "vault" / "notes" / "Retrieval_Augmented_Generation.md").read_text(encoding="utf-8")
+            finally:
+                server.g_memory_store = old_store
+                server.g_knowledge_service = old_service
+
+        self.assertTrue(first["id"])
+        self.assertTrue(second["id"])
+        self.assertTrue(check_payload["ok"])
+        self.assertEqual(check_payload["standard"], "obsidian-frontmatter-tags-wikilinks-backlinks-graph")
+        self.assertGreaterEqual(check_payload["wikilink_count"], 1)
+        self.assertGreaterEqual(check_payload["backlink_count"], 2)
+        self.assertTrue(export_payload["exported"])
+        self.assertGreaterEqual(export_payload["file_count"], 3)
+        self.assertIn("title: \"Retrieval Augmented Generation\"", first_note)
+        self.assertIn("[[Citation Grounding]]", first_note)
+        self.assertIn("## Backlinks", first_note)
+
     def test_run_tool_loop_records_task_step_for_rule_based_tool(self):
         from memoryos.memory_store import MemoryStore
 

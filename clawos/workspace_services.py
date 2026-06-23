@@ -8,7 +8,6 @@ import re
 import shutil
 import subprocess
 import tempfile
-import textwrap
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -984,9 +983,11 @@ class WorkspaceServices:
 
     def _write_learning_analysis_pdf(self, path, title, markdown):
         try:
+            from reportlab.lib import colors
             from reportlab.lib.pagesizes import A4
-            from reportlab.lib.styles import getSampleStyleSheet
-            from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+            from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+            from reportlab.lib.units import mm
+            from reportlab.platypus import HRFlowable, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer
             from reportlab.pdfbase import pdfmetrics
             from reportlab.pdfbase.cidfonts import UnicodeCIDFont
             from reportlab.pdfbase.ttfonts import TTFont
@@ -1004,33 +1005,176 @@ class WorkspaceServices:
                 break
         else:
             pdfmetrics.registerFont(UnicodeCIDFont(font_name))
-        doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=42, leftMargin=42, topMargin=48, bottomMargin=42)
-        styles = getSampleStyleSheet()
-        for style in styles.byName.values():
-            if hasattr(style, "fontName"):
-                style.fontName = font_name
-            if hasattr(style, "leading") and hasattr(style, "fontSize"):
-                style.leading = max(style.leading, style.fontSize + 4)
+        page_width, page_height = A4
+        doc = SimpleDocTemplate(
+            str(path),
+            pagesize=A4,
+            rightMargin=20 * mm,
+            leftMargin=20 * mm,
+            topMargin=24 * mm,
+            bottomMargin=22 * mm,
+            title=title,
+            author="ClawOS",
+        )
+        sample = getSampleStyleSheet()
+        palette = {
+            "ink": colors.HexColor("#1f2933"),
+            "muted": colors.HexColor("#5f6b7a"),
+            "rule": colors.HexColor("#d8dee8"),
+            "accent": colors.HexColor("#245f73"),
+            "soft": colors.HexColor("#eef5f7"),
+        }
+        styles = {
+            "Title": ParagraphStyle(
+                "ClawOSTitle",
+                parent=sample["Title"],
+                fontName=font_name,
+                fontSize=22,
+                leading=29,
+                textColor=palette["ink"],
+                alignment=1,
+                spaceAfter=12,
+            ),
+            "Kicker": ParagraphStyle(
+                "ClawOSKicker",
+                parent=sample["BodyText"],
+                fontName=font_name,
+                fontSize=9,
+                leading=13,
+                textColor=palette["accent"],
+                alignment=1,
+                uppercase=True,
+                spaceAfter=16,
+            ),
+            "Body": ParagraphStyle(
+                "ClawOSBody",
+                parent=sample["BodyText"],
+                fontName=font_name,
+                fontSize=10.5,
+                leading=17,
+                firstLineIndent=12,
+                textColor=palette["ink"],
+                spaceAfter=5,
+            ),
+            "Lead": ParagraphStyle(
+                "ClawOSLead",
+                parent=sample["BodyText"],
+                fontName=font_name,
+                fontSize=11,
+                leading=18,
+                textColor=palette["muted"],
+                alignment=1,
+                spaceAfter=16,
+            ),
+            "Heading1": ParagraphStyle(
+                "ClawOSHeading1",
+                parent=sample["Heading1"],
+                fontName=font_name,
+                fontSize=15,
+                leading=21,
+                textColor=palette["accent"],
+                spaceBefore=14,
+                spaceAfter=8,
+                keepWithNext=True,
+            ),
+            "Heading2": ParagraphStyle(
+                "ClawOSHeading2",
+                parent=sample["Heading2"],
+                fontName=font_name,
+                fontSize=12.5,
+                leading=18,
+                textColor=palette["ink"],
+                spaceBefore=10,
+                spaceAfter=6,
+                keepWithNext=True,
+            ),
+            "Heading3": ParagraphStyle(
+                "ClawOSHeading3",
+                parent=sample["Heading3"],
+                fontName=font_name,
+                fontSize=10.8,
+                leading=16,
+                textColor=palette["accent"],
+                spaceBefore=8,
+                spaceAfter=4,
+                keepWithNext=True,
+            ),
+            "Bullet": ParagraphStyle(
+                "ClawOSBullet",
+                parent=sample["BodyText"],
+                fontName=font_name,
+                fontSize=10,
+                leading=15.5,
+                leftIndent=13,
+                firstLineIndent=-8,
+                textColor=palette["ink"],
+                bulletIndent=0,
+                spaceAfter=4,
+            ),
+            "Evidence": ParagraphStyle(
+                "ClawOSEvidence",
+                parent=sample["BodyText"],
+                fontName=font_name,
+                fontSize=9.4,
+                leading=14,
+                leftIndent=10,
+                rightIndent=10,
+                borderColor=palette["rule"],
+                borderWidth=0.7,
+                borderPadding=6,
+                backColor=palette["soft"],
+                textColor=palette["muted"],
+                spaceBefore=4,
+                spaceAfter=8,
+            ),
+        }
+
+        def header_footer(canvas, _doc):
+            canvas.saveState()
+            canvas.setStrokeColor(palette["rule"])
+            canvas.setLineWidth(0.5)
+            canvas.line(doc.leftMargin, page_height - 16 * mm, page_width - doc.rightMargin, page_height - 16 * mm)
+            canvas.setFont(font_name, 8.5)
+            canvas.setFillColor(palette["muted"])
+            canvas.drawString(doc.leftMargin, page_height - 12 * mm, "ClawOS Research Learning Analysis")
+            canvas.drawRightString(page_width - doc.rightMargin, page_height - 12 * mm, str(title)[:70])
+            canvas.line(doc.leftMargin, 14 * mm, page_width - doc.rightMargin, 14 * mm)
+            canvas.drawString(doc.leftMargin, 9 * mm, datetime.now(timezone.utc).strftime("Generated %Y-%m-%d UTC"))
+            canvas.drawRightString(page_width - doc.rightMargin, 9 * mm, f"Page {canvas.getPageNumber()}")
+            canvas.restoreState()
+
+        def md_inline(text):
+            escaped = xml_escape(str(text))
+            return re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", escaped)
+
         story = []
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("Journal-style paper reading dossier", styles["Kicker"]))
+        story.append(Paragraph(md_inline(title), styles["Title"]))
+        story.append(HRFlowable(width="45%", thickness=1.0, color=palette["accent"], spaceBefore=2, spaceAfter=14, hAlign="CENTER"))
+        story.append(Paragraph("Structured parsing, self-questioning, evidence tracing, concepts, limits, and follow-up reading plan.", styles["Lead"]))
+        story.append(PageBreak())
         for raw in markdown.splitlines():
             line = raw.strip()
             if not line:
-                story.append(Spacer(1, 8))
+                story.append(Spacer(1, 5))
                 continue
             if line.startswith("# "):
-                story.append(Paragraph(xml_escape(line[2:]), styles["Title"]))
+                story.append(Paragraph(md_inline(line[2:]), styles["Heading1"]))
+                story.append(HRFlowable(width="100%", thickness=0.6, color=palette["rule"], spaceBefore=0, spaceAfter=7))
             elif line.startswith("## "):
-                story.append(Paragraph(xml_escape(line[3:]), styles["Heading1"]))
+                story.append(Paragraph(md_inline(line[3:]), styles["Heading1"]))
             elif line.startswith("### "):
-                story.append(Paragraph(xml_escape(line[4:]), styles["Heading2"]))
+                story.append(Paragraph(md_inline(line[4:]), styles["Heading2"]))
             elif line.startswith("#### "):
-                story.append(Paragraph(xml_escape(line[5:]), styles["Heading3"]))
+                story.append(Paragraph(md_inline(line[5:]), styles["Heading3"]))
             elif line.startswith("- "):
-                story.append(Paragraph("- " + xml_escape(line[2:]), styles["BodyText"]))
+                story.append(Paragraph(md_inline(line[2:]), styles["Bullet"], bulletText="-"))
+            elif line.startswith("璇佹嵁") or line.startswith("证据") or line.lower().startswith("evidence"):
+                story.append(KeepTogether([Paragraph(md_inline(line), styles["Evidence"])]))
             else:
-                for wrapped in textwrap.wrap(line, width=92) or [line]:
-                    story.append(Paragraph(xml_escape(wrapped), styles["BodyText"]))
-        doc.build(story)
+                story.append(Paragraph(md_inline(line), styles["Body"]))
+        doc.build(story, onFirstPage=header_footer, onLaterPages=header_footer)
 
     @staticmethod
     def _safe_filename(name):

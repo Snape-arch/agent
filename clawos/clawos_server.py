@@ -2440,6 +2440,35 @@ async def api_knowledge_graph(category: str = "", limit: int = 80):
     return JSONResponse(service.knowledge_graph(category, limit))
 
 
+@app.get("/api/knowledge/obsidian/check")
+async def api_knowledge_obsidian_check(category: str = "", limit: int = 120):
+    service = get_knowledge_service()
+    return JSONResponse(service.obsidian_check(category, limit))
+
+
+@app.post("/api/knowledge/obsidian/export")
+async def api_knowledge_obsidian_export(request: Request):
+    service = get_knowledge_service()
+    data = await request.json()
+    category = str(data.get("category", "") or "")
+    limit = max(1, min(int(data.get("limit", 300) or 300), 1000))
+    output_root = (BASE_DIR.parent / "output" / "obsidian").resolve()
+    requested = str(data.get("output_dir", "") or "").strip()
+    if requested:
+        output_dir = Path(requested).expanduser()
+        if not output_dir.is_absolute():
+            output_dir = output_root / output_dir
+        output_dir = output_dir.resolve()
+        try:
+            output_dir.relative_to(output_root)
+        except ValueError:
+            raise HTTPException(400, "output_dir must stay under output/obsidian")
+    else:
+        slug = re.sub(r"[^\w.-]+", "_", category or "all").strip("._") or "all"
+        output_dir = output_root / slug
+    return JSONResponse(service.export_obsidian_vault(output_dir, category=category, limit=limit))
+
+
 @app.get("/api/memory/items/{memory_id}/versions")
 async def api_memory_versions(memory_id: int, limit: int = 100):
     if not g_memory_store or not g_memory_store.get_memory(memory_id):

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -105,6 +107,77 @@ class KnowledgeService:
         allowed = {node["id"] for node in limited_nodes}
         limited_edges = [edge for edge in edges if edge["source"] in allowed and edge["target"] in allowed][: max_nodes * 2]
         return {"nodes": limited_nodes, "edges": limited_edges, "count": len(limited_nodes), "category": category or "all"}
+
+    def obsidian_check(self, category: str = "", limit: int = 120) -> dict[str, Any]:
+        """Validate whether the indexed knowledge can form a useful Obsidian-style vault."""
+        items = self.store.list_knowledge(category)[: max(1, min(int(limit or 120), 500))]
+        docs = self.store.list_documents(category)
+        notes = [self._obsidian_note_payload(item, items) for item in items]
+        wikilinks = sorted({link for note in notes for link in note["wikilinks"]})
+        backlinks = sum(len(note["backlinks"]) for note in notes)
+        tagged = sum(1 for note in notes if note["tags"])
+        with_source = sum(1 for note in notes if note["source"])
+        graph = self.knowledge_graph(category, limit=max(24, min(int(limit or 120), 160)))
+        checks = [
+            {"name": "frontmatter", "passed": all(note["frontmatter_ok"] for note in notes) if notes else True, "detail": "title/category/source/tags/confidence are renderable"},
+            {"name": "wikilinks", "passed": bool(wikilinks) or len(notes) <= 1, "detail": f"{len(wikilinks)} wiki links detected"},
+            {"name": "backlinks", "passed": backlinks > 0 or len(notes) <= 1, "detail": f"{backlinks} backlink edges detected"},
+            {"name": "tags", "passed": tagged == len(notes) if notes else True, "detail": f"{tagged}/{len(notes)} notes have tags"},
+            {"name": "sources", "passed": with_source == len(notes) if notes else True, "detail": f"{with_source}/{len(notes)} notes have source references"},
+            {"name": "graph", "passed": bool(graph["nodes"]) and (bool(graph["edges"]) or len(notes) + len(docs) <= 1), "detail": f"{len(graph['nodes'])} nodes, {len(graph['edges'])} edges"},
+        ]
+        passed = sum(1 for check in checks if check["passed"])
+        score = round(passed / len(checks), 4) if checks else 1.0
+        return {
+            "ok": score >= 0.84,
+            "score": score,
+            "category": category or "all",
+            "note_count": len(notes),
+            "document_count": len(docs),
+            "wikilink_count": len(wikilinks),
+            "backlink_count": backlinks,
+            "checks": checks,
+            "sample_notes": notes[:5],
+            "graph": {"nodes": len(graph["nodes"]), "edges": len(graph["edges"])},
+            "standard": "obsidian-frontmatter-tags-wikilinks-backlinks-graph",
+        }
+
+    def export_obsidian_vault(self, output_dir: Path, category: str = "", limit: int = 300) -> dict[str, Any]:
+        items = self.store.list_knowledge(category)[: max(1, min(int(limit or 300), 1000))]
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        notes_dir = output_dir / "notes"
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        index_lines = [
+            "---",
+            "title: ClawOS Knowledge Vault",
+            f"category: {self._yaml_scalar(category or 'all')}",
+            f"generated_at: {self._yaml_scalar(datetime.now(timezone.utc).isoformat())}",
+            "tags:",
+            "  - clawos",
+            "  - knowledge-vault",
+            "---",
+            "",
+            "# ClawOS Knowledge Vault",
+            "",
+        ]
+        notes = [self._obsidian_note_payload(item, items) for item in items]
+        written = []
+        for note in notes:
+            filename = f"{self._safe_note_filename(note['title'])}.md"
+            target = notes_dir / filename
+            target.write_text(note["markdown"], encoding="utf-8")
+            written.append(str(target))
+            index_lines.append(f"- [[notes/{target.stem}|{note['title']}]]")
+        (output_dir / "index.md").write_text("\n".join(index_lines) + "\n", encoding="utf-8")
+        report = self.obsidian_check(category, limit=limit)
+        report.update({
+            "exported": True,
+            "output_dir": str(output_dir),
+            "files": [str(output_dir / "index.md"), *written],
+            "file_count": len(written) + 1,
+        })
+        return report
 
     def run_ocr(self, document_id: int, *, sidecar_text: str = "", force: bool = False) -> dict[str, Any]:
         document = self.store.get_document(document_id)
@@ -219,3 +292,86 @@ class KnowledgeService:
                 if text_path.exists():
                     chunks.append(text_path.read_text(encoding="utf-8", errors="replace"))
         return "\n\n".join(chunks)
+
+    def _obsidian_note_payload(self, item: dict[str, Any], all_items: list[dict[str, Any]]) -> dict[str, Any]:
+        title = str(item.get("title") or f"Knowledge {item.get('id')}")
+        content = str(item.get("content") or "").strip()
+        source = str(item.get("source") or "").strip()
+        tags = self._normalize_tags(item.get("tags"))
+        if not tags:
+            tags = [str(item.get("category") or "domain")]
+        wikilinks = self._extract_wikilinks(content)
+        titles = {str(other.get("title") or ""): other for other in all_items if other.get("id") != item.get("id")}
+        backlinks = []
+        for other in all_items:
+            if other.get("id") == item.get("id"):
+                continue
+            other_content = str(other.get("content") or "")
+            other_links = self._extract_wikilinks(other_content)
+            if title in other_links or f"[[{title}]]" in other_content:
+                backlinks.append({"id": other.get("id"), "title": other.get("title") or f"Knowledge {other.get('id')}"})
+        inferred_links = [name for name in titles if name and name in content and name not in wikilinks]
+        links = sorted(set(wikilinks + inferred_links))
+        frontmatter = [
+            "---",
+            f"title: {self._yaml_scalar(title)}",
+            f"category: {self._yaml_scalar(item.get('category') or 'domain')}",
+            f"source: {self._yaml_scalar(source or 'manual')}",
+            f"confidence: {float(item.get('confidence') or 0):.3f}",
+            "tags:",
+            *[f"  - {self._yaml_scalar(tag)}" for tag in tags],
+            "---",
+            "",
+        ]
+        body = [f"# {title}", "", content or "_No content captured._", ""]
+        if source:
+            body.extend(["## Source", "", source, ""])
+        body.extend(["## Links", ""])
+        body.extend([f"- [[{link}]]" for link in links] or ["- No wiki links detected"])
+        body.extend(["", "## Backlinks", ""])
+        body.extend([f"- [[{entry['title']}]]" for entry in backlinks] or ["- No backlinks detected"])
+        return {
+            "id": item.get("id"),
+            "title": title,
+            "source": source,
+            "tags": tags,
+            "wikilinks": links,
+            "backlinks": backlinks,
+            "frontmatter_ok": bool(title and tags and (source or item.get("source") == "")),
+            "markdown": "\n".join(frontmatter + body) + "\n",
+        }
+
+    @staticmethod
+    def _normalize_tags(raw: Any) -> list[str]:
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                parsed = [part.strip() for part in raw.split(",")]
+        else:
+            parsed = raw or []
+        tags = []
+        for tag in parsed if isinstance(parsed, list) else []:
+            clean = re.sub(r"[^A-Za-z0-9_\-\u4e00-\u9fff/]+", "-", str(tag).strip()).strip("-")
+            if clean and clean not in tags:
+                tags.append(clean)
+        return tags
+
+    @staticmethod
+    def _extract_wikilinks(content: str) -> list[str]:
+        links = []
+        for match in re.findall(r"\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]", str(content)):
+            link = match.strip()
+            if link and link not in links:
+                links.append(link)
+        return links
+
+    @staticmethod
+    def _safe_note_filename(title: str) -> str:
+        safe = re.sub(r"[^\w\u4e00-\u9fff.-]+", "_", str(title)).strip("._")
+        return safe[:90] or "knowledge_note"
+
+    @staticmethod
+    def _yaml_scalar(value: Any) -> str:
+        text = str(value if value is not None else "").replace('"', '\\"')
+        return f'"{text}"'

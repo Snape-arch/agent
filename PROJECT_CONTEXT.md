@@ -406,3 +406,28 @@ Verification:
 Known notes:
 - `node` is not on this Windows PATH; use bundled Node at `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe` for JS checks on this machine.
 - Streaming is SSE over the existing non-token provider call for model completions, with chunked delivery and cancellation checks. True provider-native token streaming can be added later behind the same frontend contract.
+
+### 2026-06-23 - Paper PDF quality and Obsidian knowledge validation pass
+
+Completed:
+- Upgraded `WorkspaceServices.generate_research_learning_analysis(..., formats=["pdf"])` PDF rendering from plain Markdown flowables to a journal-style report layout with title page, margins, header/footer, page numbers, section hierarchy, evidence callouts, and inline bold handling.
+- Added Obsidian-style knowledge validation in `KnowledgeService`: frontmatter readiness, tags, sources, wiki links, backlinks, and graph coverage now return a deterministic score.
+- Added Obsidian vault export support with `index.md` plus note files containing YAML frontmatter, `[[wikilinks]]`, backlinks, tags, and source sections.
+- Added API endpoints `/api/knowledge/obsidian/check` and `/api/knowledge/obsidian/export`.
+- Added tests for deep paper-reading PDF generation quality and Obsidian vault validation/export.
+
+Verification:
+- `python -m py_compile clawos\workspace_services.py clawos\services\knowledge_service.py clawos\clawos_server.py`: passed.
+- `python -m unittest clawos.tests.test_workspace_services clawos.tests.test_routing_memory`: `31 tests OK`.
+- `python -m unittest discover -s clawos\tests`: `137 tests OK`.
+- `python clawos\scripts\run_frozen_benchmarks.py`: `30/30`, pass_rate `1.0`, P95 about `428.767ms`.
+- `python clawos\scripts\run_frozen_benchmarks.py --suite clawos\benchmarks\core_e2e_v1.json`: `4/4`, pass_rate `1.0`, P95 about `99.476ms`.
+- Rendered a generated learning-analysis PDF with `pdftoppm` and visually inspected pages 1, 2, and 5. Layout, hierarchy, evidence boxes, and footer/page numbers rendered correctly.
+
+Known notes:
+- `pdftoppm` emitted a non-blocking `No display font for 'ArialUnicode'` warning, but rendered PNG pages successfully with readable CJK/English text.
+- MTTBook hardware validation remains intentionally deferred until the device is available.
+- Generated PDF/rendering scratch files are under `clawos\tmp\pdfs\pdf_quality_check` and should not be committed.
+
+Recommended next step:
+- Add frontend controls for Obsidian check/export and a visual quality preset selector for report generation, then do real MTTBook acceptance once hardware arrives.

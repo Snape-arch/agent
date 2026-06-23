@@ -152,10 +152,17 @@ class WorkspaceServicesTests(unittest.TestCase):
             content = markdown.read_text(encoding="utf-8")
             markdown_exists = markdown.exists()
             pdf_exists = generated_pdf.exists()
+            pdf_size = generated_pdf.stat().st_size if generated_pdf.exists() else 0
+            pdf_blob = generated_pdf.read_bytes() if generated_pdf.exists() else b""
+            page_markers = pdf_blob.count(b"/Type /Page")
+            title_marker = b"/Title" in pdf_blob
 
         self.assertEqual(report["question_count"], 9)
         self.assertTrue(markdown_exists)
         self.assertTrue(pdf_exists)
+        self.assertGreaterEqual(page_markers, 2)
+        self.assertTrue(title_marker)
+        self.assertGreater(pdf_size, 6000)
         self.assertIn("论文深度解析报告", content)
         self.assertIn("L1 自问", content)
         self.assertIn("证据：第", content)
