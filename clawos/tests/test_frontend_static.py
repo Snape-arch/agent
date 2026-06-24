@@ -58,6 +58,9 @@ class FrontendStaticTests(unittest.TestCase):
             "knowledgeFilePicker",
             "knowledgeSessionSelect",
             "knowledgeStatus",
+            "obsidianStatus",
+            "obsidianExportDir",
+            "obsidianCheckTable",
             "attachmentTray",
             ):
             self.assertIn(token, html)
@@ -73,10 +76,17 @@ class FrontendStaticTests(unittest.TestCase):
             "appendKnowledgeToPrompt",
             "deleteKnowledgeItem",
             "editingKnowledgeId",
+            "checkObsidianVault",
+            "exportObsidianVault",
+            "renderObsidianCheck",
+            "/api/knowledge/obsidian/check",
+            "/api/knowledge/obsidian/export",
         ):
             self.assertIn(token, js)
 
         self.assertIn(".knowledge-toolbar", css)
+        self.assertIn(".obsidian-panel", css)
+        self.assertIn(".compact-block", css)
         self.assertIn(".import-drop", css)
         self.assertIn(".session-import", css)
         self.assertIn("Overflow safety layer", css)

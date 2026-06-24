@@ -431,3 +431,30 @@ Known notes:
 
 Recommended next step:
 - Add frontend controls for Obsidian check/export and a visual quality preset selector for report generation, then do real MTTBook acceptance once hardware arrives.
+
+### 2026-06-24 - PDF contrast, Obsidian console controls, semantic graph, and paper intelligence pass
+
+Completed:
+- Increased learning-analysis PDF contrast and visual weight: darker ink/rules, stronger evidence boxes, larger body text, and Windows `simhei` priority for more readable CJK/English output.
+- Added deterministic `Paper Intelligence Addendum` to paper-reading reports, covering contribution reading, method/experiment/reproducibility/limitation signals, evidence density, and a reproducibility checklist.
+- Upgraded `KnowledgeService.knowledge_graph` semantic edges beyond containment: tags, wiki links, backlinks, source/citation nodes, and concept mentions are now represented as graph nodes/edges.
+- Added console Obsidian controls in the Knowledge view: check, export directory input, export button, score table, and status feedback wired to `/api/knowledge/obsidian/check` and `/api/knowledge/obsidian/export`.
+- Updated frontend graph rendering to draw actual returned semantic edges with per-relation coloring instead of only center-to-node spokes.
+- Added tests for PDF intelligence content, Obsidian console controls, semantic graph edges, and frontend API wiring.
+
+Verification:
+- `python -m py_compile clawos\workspace_services.py clawos\services\knowledge_service.py clawos\clawos_server.py`: passed.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_workspace_services clawos.tests.test_routing_memory clawos.tests.test_frontend_static`: `47 tests OK`.
+- `python -m unittest discover -s clawos\tests`: `137 tests OK`.
+- `python clawos\scripts\run_frozen_benchmarks.py`: `30/30`, pass_rate `1.0`, P95 about `688.476ms`.
+- `python clawos\scripts\run_frozen_benchmarks.py --suite clawos\benchmarks\core_e2e_v1.json`: `4/4`, pass_rate `1.0`, P95 about `253.843ms`.
+- Rendered the updated PDF with `pdftoppm` and visually inspected pages 2 and 6. Text is substantially darker and the intelligence addendum renders without overlap or clipping.
+
+Known notes:
+- `pdftoppm` still emits a non-blocking `No display font for 'ArialUnicode'` warning while producing valid PNG output.
+- Current paper intelligence is deterministic/extractive. Higher semantic depth can later come from model synthesis over cited chunks, keeping the same report structure.
+- MTTBook hardware validation remains deferred until the device is available.
+
+Recommended next step:
+- Add a report style selector in the UI and a model-assisted citation synthesis pass for the `Paper Intelligence Addendum`, then run MTTBook real-device acceptance.

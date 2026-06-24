@@ -146,6 +146,16 @@
             <button class="secondary" onclick="draftKnowledgeFromSelectedSession()">生成文档草稿</button>
           </div>
         </div>
+        <div class="obsidian-panel">
+          <div>
+            <b>Obsidian 验收与导出</b>
+            <span id="obsidianStatus">检查 frontmatter、标签、双链、反链和图谱关系</span>
+          </div>
+          <label>导出目录<input id="obsidianExportDir" placeholder="默认 output/obsidian/当前库"></label>
+          <button class="secondary" onclick="checkObsidianVault()">验收</button>
+          <button class="primary" onclick="exportObsidianVault()">导出 Vault</button>
+        </div>
+        <div class="section-block compact-block" id="obsidianResultBlock"><h2>Obsidian 结果</h2><table class="table" id="obsidianCheckTable"></table></div>
         <div class="knowledge-layout">
           <section class="knowledge-editor">
             <label>标题<input id="knowledgeTitle" placeholder="论文精读：Agent 工具调用评测"></label>

@@ -99,10 +99,39 @@ class KnowledgeService:
                 chunk_id = f"chunk:{chunk.get('id')}"
                 add_node(chunk_id, f"chunk {chunk.get('chunk_index')}", "chunk", 1, {"citation": chunk.get("citation", "")})
                 edges.append({"source": doc_id, "target": chunk_id, "type": "cites"})
+                for concept in self._extract_concepts(chunk.get("content", ""), limit=3):
+                    concept_id = f"concept:{concept.lower()}"
+                    add_node(concept_id, concept, "concept", 1)
+                    edges.append({"source": chunk_id, "target": concept_id, "type": "mentions"})
         for item in knowledge[: max_nodes // 2]:
             item_id = f"knowledge:{item.get('id')}"
             add_node(item_id, item.get("title") or item_id, "knowledge", int(item.get("access_count") or 1), {"source": item.get("source", ""), "tags": item.get("tags", "")})
             edges.append({"source": root, "target": item_id, "type": "contains"})
+            for tag in self._normalize_tags(item.get("tags"))[:6]:
+                tag_id = f"tag:{tag.lower()}"
+                add_node(tag_id, f"#{tag}", "tag", 1)
+                edges.append({"source": item_id, "target": tag_id, "type": "tagged"})
+            source = str(item.get("source") or "").strip()
+            if source:
+                source_key = source.split("#", 1)[0][:80]
+                source_id = f"source:{source_key}"
+                add_node(source_id, source_key, "source", 1, {"source": source})
+                edges.append({"source": item_id, "target": source_id, "type": "sourced_from"})
+            for link in self._extract_wikilinks(str(item.get("content") or ""))[:8]:
+                link_id = f"wikilink:{link.lower()}"
+                add_node(link_id, link, "wikilink", 1)
+                edges.append({"source": item_id, "target": link_id, "type": "links_to"})
+            for concept in self._extract_concepts(f"{item.get('title', '')} {item.get('content', '')}", limit=4):
+                concept_id = f"concept:{concept.lower()}"
+                add_node(concept_id, concept, "concept", 1)
+                edges.append({"source": item_id, "target": concept_id, "type": "mentions"})
+        title_to_id = {str(item.get("title") or ""): f"knowledge:{item.get('id')}" for item in knowledge if item.get("title")}
+        for item in knowledge[: max_nodes // 2]:
+            item_id = f"knowledge:{item.get('id')}"
+            for link in self._extract_wikilinks(str(item.get("content") or "")):
+                target_id = title_to_id.get(link)
+                if target_id and target_id != item_id:
+                    edges.append({"source": item_id, "target": target_id, "type": "backlink"})
         limited_nodes = list(nodes.values())[:max_nodes]
         allowed = {node["id"] for node in limited_nodes}
         limited_edges = [edge for edge in edges if edge["source"] in allowed and edge["target"] in allowed][: max_nodes * 2]
@@ -365,6 +394,21 @@ class KnowledgeService:
             if link and link not in links:
                 links.append(link)
         return links
+
+    @staticmethod
+    def _extract_concepts(content: str, limit: int = 6) -> list[str]:
+        stop = {
+            "the", "and", "for", "with", "from", "this", "that", "into", "should", "about",
+            "source", "manual", "document", "chunk", "answers", "generated",
+        }
+        counts: dict[str, int] = {}
+        for raw in re.findall(r"[A-Za-z][A-Za-z0-9_-]{4,}|[\u4e00-\u9fff]{2,8}", str(content or "")):
+            key = raw.strip()
+            lowered = key.lower()
+            if lowered in stop or len(key) < 2:
+                continue
+            counts[key] = counts.get(key, 0) + 1
+        return [word for word, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0].lower()))[: max(1, int(limit or 6))]]
 
     @staticmethod
     def _safe_note_filename(title: str) -> str:

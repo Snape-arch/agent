@@ -295,6 +295,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertIn("citation chunks", answer_payload["answer"])
         self.assertTrue(any(node["type"] == "document" for node in graph_payload["nodes"]))
         self.assertTrue(any(edge["type"] == "cites" for edge in graph_payload["edges"]))
+        self.assertTrue(any(edge["type"] == "mentions" for edge in graph_payload["edges"]))
 
     def test_knowledge_obsidian_check_and_vault_export(self):
         import clawos_server as server
@@ -326,6 +327,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 )
                 store.add_document("RAG Paper", filename="rag.pdf", file_hash="rag-paper", category="research")
                 check_payload = json.loads(asyncio.run(server.api_knowledge_obsidian_check(category="research")).body)
+                graph_payload = json.loads(asyncio.run(server.api_knowledge_graph(category="research", limit=80)).body)
                 service = KnowledgeService(store, Path(td) / "uploads")
                 export_payload = service.export_obsidian_vault(Path(td) / "vault", category="research")
                 first_note = (Path(td) / "vault" / "notes" / "Retrieval_Augmented_Generation.md").read_text(encoding="utf-8")
@@ -341,6 +343,10 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertGreaterEqual(check_payload["backlink_count"], 2)
         self.assertTrue(export_payload["exported"])
         self.assertGreaterEqual(export_payload["file_count"], 3)
+        self.assertTrue(any(edge["type"] == "tagged" for edge in graph_payload["edges"]))
+        self.assertTrue(any(edge["type"] == "links_to" for edge in graph_payload["edges"]))
+        self.assertTrue(any(edge["type"] == "backlink" for edge in graph_payload["edges"]))
+        self.assertTrue(any(edge["type"] == "sourced_from" for edge in graph_payload["edges"]))
         self.assertIn("title: \"Retrieval Augmented Generation\"", first_note)
         self.assertIn("[[Citation Grounding]]", first_note)
         self.assertIn("## Backlinks", first_note)

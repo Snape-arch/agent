@@ -828,11 +828,12 @@ class WorkspaceServices:
                         break
                     page = pages[(len(questions) + cursor) % len(pages)]
                     evidence = self._best_evidence_for_topic(page_text, topic, page)
+                    template = templates[min(level - 1, len(templates) - 1)]
                     questions.append({
                         "topic_index": topic_index,
                         "topic": topic,
                         "level": level,
-                        "question": templates[level - 1].format(topic=topic),
+                        "question": template.format(topic=topic),
                         "answer": self._evidence_answer(topic, evidence, level),
                         "evidence": evidence,
                         "page": evidence["page"],
@@ -914,6 +915,48 @@ class WorkspaceServices:
             counts[key] = counts.get(key, 0) + 1
         return [word for word, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]]
 
+    def _paper_quality_insights(self, document, outline, questions, concepts):
+        chunks = self._research_document_chunks(document["id"])
+        text = "\n".join(chunk["content"] for chunk in chunks)
+        lowered = text.lower()
+        signals = {
+            "method": ["method", "approach", "framework", "algorithm", "model", "architecture", "pipeline"],
+            "experiment": ["experiment", "evaluation", "benchmark", "dataset", "metric", "result", "ablation"],
+            "reproducibility": ["code", "implementation", "parameter", "hyperparameter", "environment", "github", "appendix"],
+            "limitation": ["limitation", "future work", "threat", "risk", "failure", "error"],
+        }
+        signal_rows = []
+        for name, terms in signals.items():
+            hits = sum(lowered.count(term) for term in terms)
+            signal_rows.append((name, hits, "strong" if hits >= 3 else "partial" if hits else "missing"))
+        cited_pages = sorted({q["page"] for q in questions})
+        evidence_density = round(len(questions) / max(len(cited_pages), 1), 2)
+        top_concepts = ", ".join(concepts[:8]) or "not enough terms"
+        outline_preview = " / ".join(outline[:5]) or "no explicit outline"
+        return [
+            "",
+            "## Paper Intelligence Addendum",
+            "",
+            "### Contribution Reading",
+            f"- Claimed focus: {self._one_sentence_summary(questions)}",
+            f"- Outline signal: {outline_preview}",
+            f"- Key concept cluster: {top_concepts}",
+            "",
+            "### Method And Evidence Signals",
+            *[f"- {name}: {status} ({hits} keyword hits)" for name, hits, status in signal_rows],
+            f"- Evidence density: {len(questions)} question nodes over {max(len(cited_pages), 1)} cited pages, about {evidence_density} nodes/page.",
+            "",
+            "### Reproducibility Checklist",
+            "- Problem statement: verify that the target task, inputs, and expected outputs are explicit.",
+            "- Method mechanism: trace each module to a cited sentence, figure, table, or experiment.",
+            "- Evaluation protocol: confirm dataset, metric, baseline, ablation, and failure case coverage.",
+            "- Rebuild plan: convert the strongest L3-L5 questions into implementation tasks before coding.",
+            "",
+            "### Reading Verdict",
+            "- Treat strong signal sections as the first pass for presentation slides.",
+            "- Treat missing signal sections as follow-up questions for manual reading or model-assisted re-query.",
+        ]
+
     def _render_learning_analysis_markdown(self, document, outline, questions, concepts, depth):
         lines = [
             f"# 《{document['title']}》论文深度解析报告",
@@ -973,6 +1016,7 @@ class WorkspaceServices:
             "- 第三遍把每个 L4/L5 问题改写成自己的复现任务或讨论题。",
             "- 最后输出一页纸复盘：贡献、证据、局限、可复现计划。",
         ])
+        lines.extend(self._paper_quality_insights(document, outline, questions, concepts))
         return "\n".join(lines) + "\n"
 
     def _one_sentence_summary(self, questions):
@@ -995,8 +1039,9 @@ class WorkspaceServices:
             raise RuntimeError(f"reportlab is required to generate PDF: {exc}") from exc
         font_name = "STSong-Light"
         for font_path in (
-            Path("C:/Windows/Fonts/NotoSansSC-VF.ttf"),
             Path("C:/Windows/Fonts/simhei.ttf"),
+            Path("C:/Windows/Fonts/msyhbd.ttc"),
+            Path("C:/Windows/Fonts/NotoSansSC-VF.ttf"),
             Path("C:/Windows/Fonts/simsunb.ttf"),
         ):
             if font_path.is_file():
@@ -1018,11 +1063,11 @@ class WorkspaceServices:
         )
         sample = getSampleStyleSheet()
         palette = {
-            "ink": colors.HexColor("#1f2933"),
-            "muted": colors.HexColor("#5f6b7a"),
-            "rule": colors.HexColor("#d8dee8"),
-            "accent": colors.HexColor("#245f73"),
-            "soft": colors.HexColor("#eef5f7"),
+            "ink": colors.HexColor("#020617"),
+            "muted": colors.HexColor("#111827"),
+            "rule": colors.HexColor("#7f8ea3"),
+            "accent": colors.HexColor("#0b3344"),
+            "soft": colors.HexColor("#edf3f6"),
         }
         styles = {
             "Title": ParagraphStyle(
@@ -1050,8 +1095,8 @@ class WorkspaceServices:
                 "ClawOSBody",
                 parent=sample["BodyText"],
                 fontName=font_name,
-                fontSize=10.5,
-                leading=17,
+                fontSize=10.8,
+                leading=17.2,
                 firstLineIndent=12,
                 textColor=palette["ink"],
                 spaceAfter=5,
@@ -1060,8 +1105,8 @@ class WorkspaceServices:
                 "ClawOSLead",
                 parent=sample["BodyText"],
                 fontName=font_name,
-                fontSize=11,
-                leading=18,
+                fontSize=11.4,
+                leading=18.4,
                 textColor=palette["muted"],
                 alignment=1,
                 spaceAfter=16,
@@ -1070,8 +1115,8 @@ class WorkspaceServices:
                 "ClawOSHeading1",
                 parent=sample["Heading1"],
                 fontName=font_name,
-                fontSize=15,
-                leading=21,
+                fontSize=15.5,
+                leading=21.5,
                 textColor=palette["accent"],
                 spaceBefore=14,
                 spaceAfter=8,
@@ -1081,8 +1126,8 @@ class WorkspaceServices:
                 "ClawOSHeading2",
                 parent=sample["Heading2"],
                 fontName=font_name,
-                fontSize=12.5,
-                leading=18,
+                fontSize=13,
+                leading=18.5,
                 textColor=palette["ink"],
                 spaceBefore=10,
                 spaceAfter=6,
@@ -1103,8 +1148,8 @@ class WorkspaceServices:
                 "ClawOSBullet",
                 parent=sample["BodyText"],
                 fontName=font_name,
-                fontSize=10,
-                leading=15.5,
+                fontSize=10.4,
+                leading=16,
                 leftIndent=13,
                 firstLineIndent=-8,
                 textColor=palette["ink"],
@@ -1115,15 +1160,15 @@ class WorkspaceServices:
                 "ClawOSEvidence",
                 parent=sample["BodyText"],
                 fontName=font_name,
-                fontSize=9.4,
-                leading=14,
+                fontSize=9.8,
+                leading=14.6,
                 leftIndent=10,
                 rightIndent=10,
                 borderColor=palette["rule"],
-                borderWidth=0.7,
+                borderWidth=0.9,
                 borderPadding=6,
                 backColor=palette["soft"],
-                textColor=palette["muted"],
+                textColor=palette["ink"],
                 spaceBefore=4,
                 spaceAfter=8,
             ),
@@ -1132,9 +1177,9 @@ class WorkspaceServices:
         def header_footer(canvas, _doc):
             canvas.saveState()
             canvas.setStrokeColor(palette["rule"])
-            canvas.setLineWidth(0.5)
+            canvas.setLineWidth(0.65)
             canvas.line(doc.leftMargin, page_height - 16 * mm, page_width - doc.rightMargin, page_height - 16 * mm)
-            canvas.setFont(font_name, 8.5)
+            canvas.setFont(font_name, 8.8)
             canvas.setFillColor(palette["muted"])
             canvas.drawString(doc.leftMargin, page_height - 12 * mm, "ClawOS Research Learning Analysis")
             canvas.drawRightString(page_width - doc.rightMargin, page_height - 12 * mm, str(title)[:70])
