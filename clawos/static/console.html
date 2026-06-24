@@ -83,6 +83,15 @@
             <div class="empty">
               <b>准备好了，随时开始</b>
               <span>直接提问，或通过知识库、项目和本地文件把上下文交给 ClawOS。</span>
+              <div class="first-run-model-card" id="firstRunModelCard">
+                <div>
+                  <b>&#x9009;&#x62e9;&#x6a21;&#x578b;&#x6a21;&#x5f0f;</b>
+                  <span>API &#x9002;&#x5408;&#x65e5;&#x5e38;&#x4f7f;&#x7528;&#xff1b;Local Qwen &#x9002;&#x5408;&#x672c;&#x5730;&#x79bb;&#x7ebf;&#xff1b;Mock &#x7528;&#x4e8e;&#x65e0; Key &#x6a21;&#x5f0f;&#x3002;</span>
+                </div>
+                <button onclick="chooseFirstRunModel('deepseek')">DeepSeek/API</button>
+                <button onclick="chooseFirstRunModel('qwen')">Local Qwen</button>
+                <button onclick="chooseFirstRunModel('mock')">Mock/offline</button>
+              </div>
               <div class="quick-grid">
                 <button class="quick" onclick="usePrompt('分析当前项目并给出下一步开发计划')">分析项目与开发计划</button>
                 <button class="quick" onclick="usePrompt('检索我的知识库和长期记忆，回答这个问题：')">检索知识库</button>
@@ -148,12 +157,21 @@
         </div>
         <div class="obsidian-panel">
           <div>
-            <b>Obsidian 验收与导出</b>
+            <b>Obsidian 检查与导出</b>
             <span id="obsidianStatus">检查 frontmatter、标签、双链、反链和图谱关系</span>
           </div>
           <label>导出目录<input id="obsidianExportDir" placeholder="默认 output/obsidian/当前库"></label>
-          <button class="secondary" onclick="checkObsidianVault()">验收</button>
+          <button class="secondary" onclick="checkObsidianVault()">检查</button>
           <button class="primary" onclick="exportObsidianVault()">导出 Vault</button>
+        </div>
+        <div class="report-style-panel">
+          <div>
+            <b>&#x62a5;&#x544a;&#x6837;&#x5f0f;&#x9884;&#x8bbe;</b>
+            <span id="reportStyleHint">&#x9009;&#x62e9;&#x8bba;&#x6587;&#x5206;&#x6790;&#x3001;&#x5b66;&#x4e60;&#x7b14;&#x8bb0;&#x3001;&#x5546;&#x4e1a;&#x7b80;&#x62a5;&#x6216;&#x7d27;&#x51d1;&#x7248;&#x8f93;&#x51fa;&#x53e3;&#x5f84;&#x3002;</span>
+          </div>
+          <label>&#x6837;&#x5f0f;<select id="reportStylePreset" onchange="applyReportPreset()"><option value="journal">&#x8bba;&#x6587;&#x5206;&#x6790;</option><option value="learning_notes">&#x5b66;&#x4e60;&#x7b14;&#x8bb0;</option><option value="business_brief">&#x5546;&#x4e1a;&#x7b80;&#x62a5;</option><option value="compact">&#x7d27;&#x51d1;&#x7248;</option></select></label>
+          <label>&#x6df1;&#x5ea6;<select id="reportDepthPreset" onchange="applyReportPreset()"><option value="5">&#x6df1;&#x5ea6;</option><option value="3">&#x6807;&#x51c6;</option><option value="2">&#x5feb;&#x901f;</option></select></label>
+          <button class="primary" onclick="useReportStylePrompt()">&#x7528;&#x4e8e;&#x4e0b;&#x4e00;&#x6b21;&#x62a5;&#x544a;</button>
         </div>
         <div class="section-block compact-block" id="obsidianResultBlock"><h2>Obsidian 结果</h2><table class="table" id="obsidianCheckTable"></table></div>
         <div class="knowledge-layout">
@@ -219,7 +237,7 @@
 </section>
     <section class="view" id="view-tools"><div class="panel-view glass-panel"><div class="searchbar"><input id="toolQuery" placeholder="筛选工具" oninput="renderTools()"><button class="secondary" onclick="renderTools()">筛选</button></div><table class="table" id="toolsTable"></table><div class="section-block"><h2>工具运行轨迹</h2><table class="table" id="toolExecTable"></table></div></div></section>
     <section class="view" id="view-tasks"><div class="panel-view glass-panel"><div class="action-row"><button class="secondary" onclick="recoverTasks()">恢复中断任务</button><button class="secondary" onclick="loadTaskQueue()">刷新队列</button><button class="primary" onclick="claimTask()">领取下一个任务</button><span class="hint" id="liveTaskState">实时事件：连接中</span></div><div class="section-block"><h2>恢复队列</h2><table class="table" id="taskQueueTable"></table></div><div class="section-block"><h2>任务运行轨迹</h2><table class="table" id="taskTable"></table></div><div class="section-block"><h2>步骤 Trace</h2><table class="table" id="taskStepTable"></table></div><div class="section-block"><h2>事件审计</h2><table class="table" id="taskEventTable"></table></div></div></section>
-    <section class="view" id="view-benchmarks"><div class="panel-view glass-panel"><div class="action-row"><button class="primary" onclick="runScenarioBenchmark()">运行默认冻结基准</button><button class="secondary" onclick="loadBenchmarks()">刷新结果</button><span class="hint">覆盖会议、学习、项目模板、技能和记忆五类低风险场景。</span></div><div class="section-block"><h2>冻结场景套件</h2><table class="table" id="benchmarkSuiteTable"></table></div><div class="section-block"><h2>最近验收结果</h2><table class="table" id="benchmarkRunTable"></table></div></div></section>
+    <section class="view" id="view-benchmarks"><div class="panel-view glass-panel"><div class="action-row"><button class="primary" onclick="runScenarioBenchmark()">运行默认冻结基准</button><button class="secondary" onclick="loadBenchmarks()">刷新结果</button><span class="hint">覆盖会议、学习、项目模板、技能和记忆五类低风险场景。</span></div><div class="section-block"><h2>冻结场景套件</h2><table class="table" id="benchmarkSuiteTable"></table></div><div class="section-block"><h2>最近运行结果</h2><table class="table" id="benchmarkRunTable"></table></div></div></section>
     <section class="view" id="view-scenes"><div class="panel-view glass-panel"><div class="section-block"><h2>本地能力体检</h2><table class="table" id="capabilityTable"></table></div><div class="section-block"><h2>场景交付边界</h2><table class="table" id="sceneBoundaryTable"></table></div></div></section>
     <section class="view" id="view-security"><div class="panel-view glass-panel security-workspace"><div class="library-head"><div><h2>权限中心</h2><p class="hint">统一查看联网、Shell、文件写入、Git、外部 API 的风险分级、审批状态和审计记录。</p></div><button class="secondary" onclick="loadSecurityCenter()">刷新</button></div><div class="security-grid"><div class="section-block"><h2>策略矩阵</h2><table class="table" id="securityPolicyTable"></table></div><div class="section-block"><h2>允许边界</h2><table class="table" id="securityBoundaryTable"></table></div></div><div class="section-block"><h2>细粒度授权</h2><div class="permission-editor"><select id="securityGrantTool"><option value="web_fetch">web_fetch</option><option value="web_search">web_search</option><option value="file_write">file_write</option><option value="shell_exec">shell_exec</option><option value="git_workspace">git_workspace</option><option value="*">全部工具</option></select><select id="securityGrantDecision"><option value="allow">允许</option><option value="confirm">确认</option><option value="deny">拒绝</option></select><select id="securityGrantScopeType"><option value="tool">工具</option><option value="url_host">URL 域名</option><option value="path_prefix">路径前缀</option><option value="command">命令前缀</option></select><input id="securityGrantScopeValue" placeholder="example.com / C:\Users\34712\Desktop / git status"><input id="securityGrantMinutes" type="number" min="1" placeholder="有效分钟"><input id="securityGrantReason" placeholder="授权原因"><button class="primary" onclick="saveSecurityGrant()">保存授权</button></div><table class="table" id="securityGrantTable"></table></div><div class="section-block"><h2>审计事件</h2><table class="table" id="securityAuditTable"></table></div></div></section>
   </main>
@@ -243,7 +261,7 @@
         <button onclick="openDrawerView('tasks')"><b>运行轨迹</b><span>任务、队列、事件审计</span></button>
         <button onclick="openDrawerView('reflection')"><b>反思循环</b><span>复盘、改进、回滚</span></button>
         <button onclick="openDrawerView('skills')"><b>固化技能</b><span>Skill 发布与质量</span></button>
-        <button onclick="openDrawerView('benchmarks')"><b>冻结基准</b><span>比赛验收和 P95</span></button>
+        <button onclick="openDrawerView('benchmarks')"><b>冻结基准</b><span>离线基准和 P95</span></button>
         <button onclick="openDrawerView('scenes')"><b>场景工作流</b><span>会议、科研、办公、学习</span></button>
         <button onclick="openDrawerView('security')"><b>权限中心</b><span>联网、Shell、文件、Git 和外部 API 审批</span></button>
         <button onclick="openModelSettings()"><b>模型配置</b><span>DeepSeek/API/本地模型</span></button>

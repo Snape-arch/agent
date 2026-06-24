@@ -93,6 +93,78 @@
   grid-template-columns:repeat(4,minmax(0,1fr));
   max-width:760px;
 }
+
+.first-run-model-card{
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) repeat(3,auto);
+  align-items:center;
+  gap:10px;
+  width:min(100%,780px);
+  margin:18px auto 6px;
+  padding:12px;
+  border:1px solid rgba(17,24,39,.1);
+  border-radius:18px;
+  background:rgba(255,255,255,.72);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 12px 30px rgba(31,35,40,.06);
+  text-align:left;
+}
+.first-run-model-card b{
+  display:block;
+  color:#111827;
+  font-size:14px;
+}
+.first-run-model-card span{
+  display:block;
+  margin-top:4px;
+  color:#6b7280;
+  font-size:12px;
+  line-height:1.45;
+}
+.first-run-model-card button{
+  min-height:36px;
+  border:1px solid rgba(17,24,39,.1);
+  border-radius:999px;
+  background:rgba(255,255,255,.8);
+  color:#111827;
+  padding:8px 12px;
+  white-space:nowrap;
+}
+.first-run-model-card button:hover{
+  background:#111827;
+  color:white;
+}
+.report-style-panel{
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) minmax(160px,220px) minmax(120px,160px) auto;
+  align-items:end;
+  gap:12px;
+  margin:0 0 16px;
+  padding:14px;
+  border:1px solid rgba(17,24,39,.1);
+  border-radius:16px;
+  background:rgba(255,255,255,.68);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.82),0 10px 24px rgba(31,35,40,.05);
+}
+.report-style-panel b{
+  display:block;
+  color:#111827;
+  font-size:14px;
+}
+.report-style-panel span{
+  display:block;
+  margin-top:5px;
+  color:#4b5563;
+  font-size:12px;
+  line-height:1.45;
+}
+.report-style-panel label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  color:#4b5563;
+  font-size:12px;
+  font-weight:650;
+}
 .quick{
   text-align:center;
   border-radius:999px;
@@ -638,6 +710,8 @@
   .knowledge-layout{grid-template-columns:1fr}
   .knowledge-toolbar{grid-template-columns:1fr}
   .obsidian-panel{grid-template-columns:1fr}
+  .report-style-panel{grid-template-columns:1fr}
+  .first-run-model-card{grid-template-columns:1fr}
   .app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media(max-width:760px){

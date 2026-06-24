@@ -1995,6 +1995,7 @@ async def api_research_learning_analysis(request: Request):
             formats=data.get("formats"),
             depth=data.get("depth", 5),
             question_count=data.get("question_count", 50),
+            report_style=data.get("report_style", "journal"),
         )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(400, str(exc))

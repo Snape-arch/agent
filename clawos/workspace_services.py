@@ -683,6 +683,7 @@ class WorkspaceServices:
         formats=None,
         depth=5,
         question_count=50,
+        report_style="journal",
     ):
         """Generate an editable self-questioning paper study report."""
         formats = formats or ["markdown", "pdf"]
@@ -702,6 +703,10 @@ class WorkspaceServices:
         full_text = "\n".join(page_text[page] for page in sorted(page_text))
         max_depth = max(1, min(int(depth or 5), 5))
         max_questions = max(6, min(int(question_count or 50), 80))
+        report_styles = {"journal", "learning_notes", "business_brief", "compact"}
+        report_style = str(report_style or "journal").lower()
+        if report_style not in report_styles:
+            report_style = "journal"
         outline = self._paper_outline(full_text)
         topics = self._analysis_topics(outline, full_text, max(3, min(8, max_questions // max_depth)))
         questions = self._analysis_questions(topics, page_text, max_depth, max_questions)
@@ -725,6 +730,7 @@ class WorkspaceServices:
             "outline_count": len(outline),
             "concept_count": len(concepts),
             "mode": "deterministic_evidence_based",
+            "report_style": report_style,
         }
         with self.store._conn() as c:
             cursor = c.execute(
