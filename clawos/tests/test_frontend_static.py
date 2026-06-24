@@ -179,6 +179,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("loadKnowledgeDocuments", js)
         self.assertIn("renderDocumentReportSelect", js)
         self.assertIn("generateKnowledgeReport", js)
+        self.assertIn("saveGeneratedReportToKnowledge", js)
+        self.assertIn("lastGeneratedReport", js)
         self.assertIn("library_document_id", js)
         self.assertIn("/api/workspace/research/learning-analysis", js)
         self.assertIn("business_brief", js)

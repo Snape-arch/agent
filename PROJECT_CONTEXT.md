@@ -535,3 +535,23 @@ Known notes:
 
 Recommended next step:
 - Make `report_style` alter the actual Markdown/PDF report structure, then add a save-generated-report-to-knowledge/Obsidian action for a full user workflow loop.
+### 2026-06-24 - Report style templates and save-back action
+
+Completed:
+- Confirmed the backend report renderer has distinct Markdown structures for journal, learning notes, business brief, and compact reports.
+- Added a console action to save the latest generated report back into the knowledge base, including Markdown/PDF paths, style metadata, and preview content.
+- Kept Obsidian export as the next visible action after saving, so generated reports can re-enter the knowledge/Obsidian loop.
+- Updated tests so business brief output is checked against business-style sections and all four report styles are covered.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m py_compile clawos\workspace_services.py clawos\clawos_server.py`: passed.
+- Targeted report/style/frontend tests: `3 tests OK`.
+- `git diff --check`: passed.
+- `python -m unittest discover -s clawos\tests`: `143 tests OK`.
+
+Known notes:
+- Full tests mutate `clawos/skills/skill_registry.jsonl` use counters. A restore attempt was blocked by the environment usage limit, so the working tree currently still shows that test side-effect file as modified.
+
+Recommended next step:
+- Add a user-visible link from a saved generated report back into chat, so follow-up Q&A can start from the saved report item instead of only the original source document.

@@ -165,12 +165,49 @@ class WorkspaceServicesTests(unittest.TestCase):
         self.assertGreaterEqual(page_markers, 2)
         self.assertTrue(title_marker)
         self.assertGreater(pdf_size, 6000)
-        self.assertIn("Paper Intelligence Addendum", content)
-        self.assertIn("Method And Evidence Signals", content)
-        self.assertIn("Reproducibility Checklist", content)
-        self.assertIn("论文深度解析报告", content)
-        self.assertIn("L1 自问", content)
-        self.assertIn("证据：第", content)
+        self.assertIn("Business Brief", content)
+        self.assertIn("Decision Snapshot", content)
+        self.assertIn("Value And Use Cases", content)
+        self.assertIn("Recommended Next Moves", content)
+
+    def test_learning_analysis_report_styles_change_structure(self):
+        from reportlab.pdfgen import canvas
+
+        with tempfile.TemporaryDirectory() as td:
+            _, services = self._services(td)
+            pdf = Path(td) / "paper.pdf"
+            doc = canvas.Canvas(str(pdf))
+            doc.drawString(72, 720, "1 Introduction")
+            doc.drawString(72, 700, "Retrieval systems need grounded evidence and usable reports.")
+            doc.showPage()
+            doc.drawString(72, 720, "2 Evaluation")
+            doc.drawString(72, 700, "Evaluation includes metrics, baselines, risks, and implementation details.")
+            doc.save()
+            imported = services.import_research_pdf(pdf, "Style Study")
+            expectations = {
+                "journal": "Paper Intelligence Addendum",
+                "learning_notes": "Learning Notes",
+                "business_brief": "Business Brief",
+                "compact": "Compact Report",
+            }
+            contents = {}
+            for style, marker in expectations.items():
+                result = services.generate_research_learning_analysis(
+                    document_id=imported["id"],
+                    output_dir=Path(td) / style,
+                    formats=["markdown"],
+                    depth=2,
+                    question_count=8,
+                    report_style=style,
+                )
+                content = Path(result["report"]["markdown_path"]).read_text(encoding="utf-8")
+                contents[style] = content
+                self.assertEqual(result["report"]["metadata"]["report_style"], style)
+                self.assertIn(marker, content)
+
+        self.assertIn("Guided Notes", contents["learning_notes"])
+        self.assertIn("Decision Snapshot", contents["business_brief"])
+        self.assertIn("One Page Summary", contents["compact"])
 
     def test_learning_analysis_pdf_prefers_mixed_cjk_latin_font(self):
         source = Path(__file__).resolve().parents[1] / "workspace_services.py"
