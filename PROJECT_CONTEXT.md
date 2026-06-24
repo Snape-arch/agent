@@ -513,3 +513,25 @@ Completed:
 Verification:
 - Bundled Node syntax check: `node.exe --check clawos\static\assets\console.js`: passed.
 - Frontend static tests: `19 tests OK`.
+
+### 2026-06-24 - Knowledge document report generation flow
+
+Completed:
+- Replaced the Knowledge view report preset card's primary path with a real document-to-report workflow: users can pick an uploaded PDF, select report style/depth, choose an output directory, and generate Markdown/PDF directly.
+- Added `library_document_id` support to `/api/workspace/research/learning-analysis`, bridging MemoryOS uploaded documents into the research report generator through the stored source file path.
+- Added result rendering for generated report metadata, Markdown/PDF paths, output directory, and preview in the console.
+- Added frontend static coverage for the real report generation controls and backend route coverage for generating a report from a library document.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m py_compile clawos\clawos_server.py`: passed.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_learning_analysis_accepts_library_document_id clawos.tests.test_workspace_services.WorkspaceServicesTests.test_research_learning_analysis_generates_markdown_and_pdf`: `21 tests OK`.
+- `git diff --check`: passed.
+- `python -m unittest discover -s clawos\tests`: `142 tests OK`.
+
+Known notes:
+- Current report generation bridge supports uploaded PDF documents because the existing research report generator requires readable PDF input.
+- Running tests may create an untracked `%SystemDrive%/` local artifact in the workspace on this Windows machine.
+
+Recommended next step:
+- Make `report_style` alter the actual Markdown/PDF report structure, then add a save-generated-report-to-knowledge/Obsidian action for a full user workflow loop.

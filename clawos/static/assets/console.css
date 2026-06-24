@@ -135,7 +135,7 @@
 }
 .report-style-panel{
   display:grid;
-  grid-template-columns:minmax(220px,1fr) minmax(160px,220px) minmax(120px,160px) auto;
+  grid-template-columns:minmax(220px,1.2fr) minmax(180px,1fr) minmax(150px,190px) minmax(110px,140px) minmax(170px,220px) auto;
   align-items:end;
   gap:12px;
   margin:0 0 16px;
@@ -157,6 +157,10 @@
   font-size:12px;
   line-height:1.45;
 }
+.report-style-panel input,
+.report-style-panel select{
+  min-width:0;
+}
 .report-style-panel label{
   display:flex;
   flex-direction:column;
@@ -164,6 +168,21 @@
   color:#4b5563;
   font-size:12px;
   font-weight:650;
+}
+.report-result{
+  display:grid;
+  gap:10px;
+  color:#374151;
+  font-size:13px;
+}
+.report-preview{
+  max-height:220px;
+  overflow:auto;
+  padding:12px;
+  border:1px solid rgba(17,24,39,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.72);
+  line-height:1.55;
 }
 .quick{
   text-align:center;

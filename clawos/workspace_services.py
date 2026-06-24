@@ -711,7 +711,7 @@ class WorkspaceServices:
         topics = self._analysis_topics(outline, full_text, max(3, min(8, max_questions // max_depth)))
         questions = self._analysis_questions(topics, page_text, max_depth, max_questions)
         concepts = self._paper_concepts(full_text, limit=14)
-        report = self._render_learning_analysis_markdown(document, outline, questions, concepts, max_depth)
+        report = self._render_learning_analysis_markdown(document, outline, questions, concepts, max_depth, report_style)
         safe_name = self._safe_filename(f"{document['title']}_learning_analysis")
         markdown_path = ""
         pdf_path = ""
@@ -963,7 +963,9 @@ class WorkspaceServices:
             "- Treat missing signal sections as follow-up questions for manual reading or model-assisted re-query.",
         ]
 
-    def _render_learning_analysis_markdown(self, document, outline, questions, concepts, depth):
+    def _render_learning_analysis_markdown(self, document, outline, questions, concepts, depth, report_style="journal"):
+        if report_style != "journal":
+            return self._render_styled_learning_analysis_markdown(document, outline, questions, concepts, depth, report_style)
         lines = [
             f"# 《{document['title']}》论文深度解析报告",
             "",
@@ -1023,6 +1025,101 @@ class WorkspaceServices:
             "- 最后输出一页纸复盘：贡献、证据、局限、可复现计划。",
         ])
         lines.extend(self._paper_quality_insights(document, outline, questions, concepts))
+        return "\n".join(lines) + "\n"
+
+    def _render_styled_learning_analysis_markdown(self, document, outline, questions, concepts, depth, report_style):
+        title = document["title"]
+        summary = self._one_sentence_summary(questions)
+        topics = []
+        seen = set()
+        for question in questions:
+            topic = str(question.get("topic") or "General")
+            if topic not in seen:
+                topics.append(topic)
+                seen.add(topic)
+        cited_pages = sorted({int(q.get("page") or 1) for q in questions})
+        first_questions = questions[: min(len(questions), 8)]
+        concept_line = ", ".join(concepts[:10]) or "No dominant concepts detected"
+        style_titles = {
+            "learning_notes": "Learning Notes",
+            "business_brief": "Business Brief",
+            "compact": "Compact Report",
+        }
+        lines = [
+            f"# {title} - {style_titles.get(report_style, 'Learning Report')}",
+            "",
+            f"Source pages: {len(cited_pages)} cited pages. Depth: L{depth}. Question nodes: {len(questions)}.",
+            "",
+        ]
+        if report_style == "learning_notes":
+            lines.extend([
+                "## Learning Map",
+                summary,
+                "",
+                "## Core Concepts",
+                *[f"- {concept}" for concept in concepts[:12]],
+                "",
+                "## Guided Notes",
+            ])
+            for topic in topics[:8]:
+                related = [q for q in questions if q.get("topic") == topic][:3]
+                lines.extend(["", f"### {topic}"])
+                for item in related:
+                    lines.extend([
+                        f"- Q{item['level']}: {item['question']}",
+                        f"  Evidence: page {item['page']}. {item['answer']}",
+                    ])
+            lines.extend([
+                "",
+                "## Self Check",
+                *[f"- Explain {q['topic']} without looking at the source, then verify page {q['page']}." for q in first_questions[:6]],
+                "",
+                "## Next Study Actions",
+                "- Turn weak concepts into flashcards.",
+                "- Re-read the cited pages before summarizing from memory.",
+                "- Save unresolved questions back into the knowledge base.",
+            ])
+        elif report_style == "business_brief":
+            lines.extend([
+                "## Decision Snapshot",
+                f"- Main point: {summary}",
+                f"- Evidence base: {len(questions)} extracted question/evidence nodes across {len(cited_pages)} pages.",
+                f"- Concept cluster: {concept_line}",
+                "",
+                "## Value And Use Cases",
+                *[f"- {topic}" for topic in topics[:6]],
+                "",
+                "## Evidence To Cite",
+                *[f"- Page {q['page']}: {q['answer']}" for q in first_questions[:5]],
+                "",
+                "## Risks And Open Questions",
+                "- Validate whether the paper's assumptions match the target user, market, or deployment context.",
+                "- Separate experimentally supported claims from plausible but untested extensions.",
+                "- Check reproducibility before using the result as a product or investment claim.",
+                "",
+                "## Recommended Next Moves",
+                "- Convert the strongest claim into one slide or one product requirement.",
+                "- Ask follow-up questions against the cited pages before external sharing.",
+            ])
+        else:
+            lines.extend([
+                "## One Page Summary",
+                summary,
+                "",
+                "## Key Points",
+                *[f"- {topic}" for topic in topics[:5]],
+                "",
+                "## Evidence",
+                *[f"- Page {q['page']}: {q['question']}" for q in first_questions[:6]],
+                "",
+                "## Concepts",
+                concept_line,
+                "",
+                "## Actions",
+                "- Keep the Markdown report as the editable source.",
+                "- Use the PDF for review or sharing.",
+                "- Save this report back to the knowledge base for later Q&A.",
+            ])
         return "\n".join(lines) + "\n"
 
     def _one_sentence_summary(self, questions):

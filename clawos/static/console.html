@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -166,13 +166,16 @@
         </div>
         <div class="report-style-panel">
           <div>
-            <b>&#x62a5;&#x544a;&#x6837;&#x5f0f;&#x9884;&#x8bbe;</b>
-            <span id="reportStyleHint">&#x9009;&#x62e9;&#x8bba;&#x6587;&#x5206;&#x6790;&#x3001;&#x5b66;&#x4e60;&#x7b14;&#x8bb0;&#x3001;&#x5546;&#x4e1a;&#x7b80;&#x62a5;&#x6216;&#x7d27;&#x51d1;&#x7248;&#x8f93;&#x51fa;&#x53e3;&#x5f84;&#x3002;</span>
+            <b>&#x751f;&#x6210;&#x8d44;&#x6599;&#x62a5;&#x544a;</b>
+            <span id="reportStyleHint">&#x9009;&#x62e9;&#x5df2;&#x4e0a;&#x4f20;&#x7684; PDF &#x8d44;&#x6599;&#xff0c;&#x76f4;&#x63a5;&#x751f;&#x6210; Markdown &#x548c; PDF &#x62a5;&#x544a;&#x3002;</span>
           </div>
+          <label>&#x8d44;&#x6599;<select id="reportDocumentSelect"></select></label>
           <label>&#x6837;&#x5f0f;<select id="reportStylePreset" onchange="applyReportPreset()"><option value="journal">&#x8bba;&#x6587;&#x5206;&#x6790;</option><option value="learning_notes">&#x5b66;&#x4e60;&#x7b14;&#x8bb0;</option><option value="business_brief">&#x5546;&#x4e1a;&#x7b80;&#x62a5;</option><option value="compact">&#x7d27;&#x51d1;&#x7248;</option></select></label>
           <label>&#x6df1;&#x5ea6;<select id="reportDepthPreset" onchange="applyReportPreset()"><option value="5">&#x6df1;&#x5ea6;</option><option value="3">&#x6807;&#x51c6;</option><option value="2">&#x5feb;&#x901f;</option></select></label>
-          <button class="primary" onclick="useReportStylePrompt()">&#x7528;&#x4e8e;&#x4e0b;&#x4e00;&#x6b21;&#x62a5;&#x544a;</button>
+          <label>&#x8f93;&#x51fa;&#x76ee;&#x5f55;<input id="reportOutputDir" placeholder="output/reports"></label>
+          <button class="primary" onclick="generateKnowledgeReport()">&#x751f;&#x6210;&#x62a5;&#x544a;</button>
         </div>
+        <div class="section-block compact-block" id="reportResultBlock"><h2>&#x62a5;&#x544a;&#x7ed3;&#x679c;</h2><div class="report-result" id="reportResult">&#x9009;&#x62e9;&#x8d44;&#x6599;&#x540e;&#x751f;&#x6210;&#x62a5;&#x544a;</div></div>
         <div class="section-block compact-block" id="obsidianResultBlock"><h2>Obsidian 结果</h2><table class="table" id="obsidianCheckTable"></table></div>
         <div class="knowledge-layout">
           <section class="knowledge-editor">
@@ -297,4 +300,3 @@
   <script src="/assets/console.js"></script>
 </body>
 </html>
-

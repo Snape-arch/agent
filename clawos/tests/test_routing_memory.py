@@ -297,6 +297,57 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertTrue(any(edge["type"] == "cites" for edge in graph_payload["edges"]))
         self.assertTrue(any(edge["type"] == "mentions" for edge in graph_payload["edges"]))
 
+    def test_learning_analysis_accepts_library_document_id(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+        from reportlab.pdfgen import canvas
+        from security.policy import ToolSecurityPolicy
+        from workspace_services import WorkspaceServices
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_services = server.g_workspace_services
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            services = WorkspaceServices(store, ToolSecurityPolicy([td]))
+            pdf = Path(td) / "library.pdf"
+            doc = canvas.Canvas(str(pdf))
+            doc.drawString(72, 720, "1 Introduction")
+            doc.drawString(72, 700, "Local knowledge reports should reuse uploaded library documents.")
+            doc.showPage()
+            doc.drawString(72, 720, "2 Evidence")
+            doc.drawString(72, 700, "The report keeps citations, questions, and output files together.")
+            doc.save()
+            library_doc = store.add_document(
+                "Library RAG Paper",
+                filename="library.pdf",
+                file_path=str(pdf),
+                file_hash="library-rag-paper",
+                category="research",
+                status="ready",
+            )
+            server.g_memory_store = store
+            server.g_workspace_services = services
+            try:
+                payload = json.loads(asyncio.run(server.api_research_learning_analysis(FakeRequest({
+                    "library_document_id": library_doc["id"],
+                    "output_dir": str(Path(td) / "reports"),
+                    "formats": ["markdown", "pdf"],
+                    "depth": 2,
+                    "question_count": 8,
+                    "report_style": "learning_notes",
+                }))).body)
+                markdown_exists = Path(payload["report"]["markdown_path"]).exists()
+                pdf_exists = Path(payload["report"]["pdf_path"]).exists()
+            finally:
+                server.g_memory_store = old_store
+                server.g_workspace_services = old_services
+
+        self.assertEqual(payload["library_document"]["id"], library_doc["id"])
+        self.assertEqual(payload["report"]["metadata"]["report_style"], "learning_notes")
+        self.assertTrue(markdown_exists)
+        self.assertTrue(pdf_exists)
+        self.assertIn("Library RAG Paper", payload["document"]["title"])
+
     def test_knowledge_obsidian_check_and_vault_export(self):
         import clawos_server as server
         from memoryos.memory_store import MemoryStore
