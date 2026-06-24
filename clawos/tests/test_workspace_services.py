@@ -145,6 +145,7 @@ class WorkspaceServicesTests(unittest.TestCase):
                 formats=["markdown", "pdf"],
                 depth=3,
                 question_count=9,
+                report_style="business_brief",
             )
             report = result["report"]
             markdown = Path(report["markdown_path"])
@@ -158,6 +159,7 @@ class WorkspaceServicesTests(unittest.TestCase):
             title_marker = b"/Title" in pdf_blob
 
         self.assertEqual(report["question_count"], 9)
+        self.assertEqual(report["metadata"]["report_style"], "business_brief")
         self.assertTrue(markdown_exists)
         self.assertTrue(pdf_exists)
         self.assertGreaterEqual(page_markers, 2)

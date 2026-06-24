@@ -483,3 +483,33 @@ Known notes:
 
 Recommended next step:
 - Add a visible report style/preset selector and a first-run model-choice card, then run MTTBook real-device acceptance when hardware is available.
+
+### 2026-06-24 - First-run model choice and report preset controls
+
+Completed:
+- Added a first-run model choice card to the console empty chat state with direct choices for DeepSeek/API, Local Qwen, and Mock/offline mode.
+- Added report style presets in the Knowledge view for journal, learning notes, business brief, and compact report workflows.
+- Wired report preset controls to update the next chat prompt, so users can choose the report output style before asking ClawOS to generate a paper/report artifact.
+- Added `report_style` passthrough to `/api/workspace/research/learning-analysis` and persisted it in generated report metadata.
+- Added frontend/static and workspace service tests covering the new model-choice and report-style controls.
+
+Verification:
+- `python -m py_compile clawos\clawos_server.py clawos\workspace_services.py`: passed.
+- Bundled Node syntax check: `node.exe --check clawos\static\assets\console.js`: passed.
+- Targeted tests: `clawos.tests.test_frontend_static clawos.tests.test_workspace_services`: `29 tests OK`.
+- Full suite with project `.venv`: `139 tests OK`.
+
+Known notes:
+- Full suite mutates `clawos/skills/skill_registry.jsonl` usage counters and produced a `%SystemDrive%/` test artifact on this machine; both were restored/removed after validation.
+- `PROJECT_CONTEXT.md` displays mojibake in the current PowerShell output, likely due terminal/codepage handling; file content should be checked in an editor before final handoff if this becomes visible to reviewers.
+
+### 2026-06-24 - User-facing console copy pass
+
+Completed:
+- Reworded the first-run model card from demo language to normal product language: choose a model mode for daily use, local offline use, or no-key mode.
+- Renamed Obsidian validation UI copy to check/export wording and changed benchmark result copy from acceptance phrasing to run-result phrasing.
+- Added frontend static regression coverage so the console does not reintroduce internal demo/competition acceptance terms in user-facing copy.
+
+Verification:
+- Bundled Node syntax check: `node.exe --check clawos\static\assets\console.js`: passed.
+- Frontend static tests: `19 tests OK`.

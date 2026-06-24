@@ -163,6 +163,31 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("[switch]$Download", qwen_starter)
         self.assertIn("rerun this script with -Download", qwen_starter)
 
+    def test_console_exposes_report_style_presets(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
+
+        self.assertIn("reportStylePreset", html)
+        self.assertIn("reportDepthPreset", html)
+        self.assertIn("reportStyleHint", html)
+        self.assertIn("applyReportPreset", js)
+        self.assertIn("useReportStylePrompt", js)
+        self.assertIn("business_brief", js)
+        self.assertIn(".report-style-panel", css)
+
+    def test_console_user_facing_copy_avoids_internal_demo_terms(self):
+        combined = "\n".join(
+            self.read_page(name)
+            for name in ("console.html", "assets/console.js")
+        )
+
+        for token in ("\u672c\u6b21\u6f14\u793a", "\u6bd4\u8d5b\u9a8c\u6536", "\u6f14\u793a\u68c0\u67e5", "\u6f14\u793a\u963b\u788d"):
+            self.assertNotIn(token, combined)
+        self.assertIn("firstRunModelCard", combined)
+        self.assertIn("Obsidian \u68c0\u67e5\u4e0e\u5bfc\u51fa", combined)
+        self.assertIn("\u6700\u8fd1\u8fd0\u884c\u7ed3\u679c", combined)
+
     def test_console_chat_uses_streaming_and_stop_control(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
