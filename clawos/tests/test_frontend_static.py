@@ -3,6 +3,7 @@ import unittest
 
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class FrontendStaticTests(unittest.TestCase):
@@ -147,6 +148,20 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("providerPreset", js)
         self.assertIn("Local Qwen 模式", js)
         self.assertIn("Mock/offline test 模式", js)
+        self.assertIn("localModelNote", html)
+        self.assertIn("不会自动下载本地模型权重", html)
+        self.assertIn("手动下载/启动", js)
+
+    def test_launcher_does_not_auto_download_or_start_local_qwen(self):
+        launcher = (REPO_ROOT / "start_clawos.bat").read_text(encoding="utf-8")
+        qwen_starter = (REPO_ROOT / "clawos" / "scripts" / "start_qwen_llama_server.ps1").read_text(encoding="utf-8-sig")
+
+        self.assertIn("configuration-first mode", launcher)
+        self.assertIn("No model weights or llama.cpp runtime will be downloaded", launcher)
+        self.assertNotIn("Starting local Qwen fallback", launcher)
+        self.assertNotIn("start_qwen_llama_server.ps1", launcher)
+        self.assertIn("[switch]$Download", qwen_starter)
+        self.assertIn("rerun this script with -Download", qwen_starter)
 
     def test_console_chat_uses_streaming_and_stop_control(self):
         html = self.read_page("console.html")

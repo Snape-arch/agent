@@ -5,7 +5,7 @@ param(
     [int]$ContextSize = 8192,
     [int]$GpuLayers = 99,
     [string]$ServerPath = "",
-    [switch]$NoDownload
+    [switch]$Download
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,10 +14,11 @@ if (-not [System.IO.Path]::IsPathRooted($ModelPath)) {
     $ModelPath = Join-Path $repoRoot $ModelPath
 }
 if (-not (Test-Path -LiteralPath $ModelPath)) {
-    if ($NoDownload) {
-        throw "Qwen GGUF model not found: $ModelPath"
+    if ($Download) {
+        & (Join-Path $PSScriptRoot "download_qwen_model.ps1")
+    } else {
+        throw "Qwen GGUF model not found: $ModelPath. Run download_qwen_model.ps1 first, or rerun this script with -Download."
     }
-    & (Join-Path $PSScriptRoot "download_qwen_model.ps1")
 }
 if (-not (Test-Path -LiteralPath $ModelPath)) {
     throw "Qwen GGUF model not found after download: $ModelPath"
@@ -46,7 +47,7 @@ if (-not $server) {
     $found = Get-ChildItem -LiteralPath $runtimeRoot -Recurse -Filter llama-server.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($found) { $server = $found.FullName }
 }
-if (-not $server -and -not $NoDownload) {
+if (-not $server -and $Download) {
     & (Join-Path $PSScriptRoot "download_llama_cpp.ps1")
     $runtimeRoot = Join-Path $repoRoot "tools\llama.cpp"
     $found = Get-ChildItem -LiteralPath $runtimeRoot -Recurse -Filter llama-server.exe -ErrorAction SilentlyContinue | Select-Object -First 1

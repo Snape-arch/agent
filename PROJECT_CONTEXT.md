@@ -458,3 +458,28 @@ Known notes:
 
 Recommended next step:
 - Add a report style selector in the UI and a model-assisted citation synthesis pass for the `Paper Intelligence Addendum`, then run MTTBook real-device acceptance.
+
+### 2026-06-24 - PDF mixed-font polish and configuration-first startup
+
+Completed:
+- Changed the learning-analysis PDF font preference from SimHei-first to Microsoft YaHei / Noto Sans SC before SimHei, improving mixed Chinese-English typography while keeping the darker journal-style contrast.
+- Slightly softened the darkest PDF ink palette after the font change so body text remains strong without making English look heavy or cramped.
+- Changed `start_clawos.bat` so missing `MODEL_API_KEY` opens ClawOS in configuration-first mock mode instead of starting local Qwen or downloading model/runtime dependencies.
+- Changed `start_qwen_llama_server.ps1` to opt in to downloads with `-Download`; missing Qwen GGUF or llama.cpp now produces an explicit manual-action message.
+- Added console model-settings copy explaining that Local Qwen saves the local endpoint only; users choose API or offline mode themselves and download/start local model manually when needed.
+- Added regression tests for the PDF font preference and for launcher/local-Qwen no-auto-download behavior.
+
+Verification:
+- `python -m py_compile clawos\workspace_services.py clawos\clawos_server.py`: passed.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest discover -s clawos\tests`: `139 tests OK`.
+- `python clawos\scripts\run_frozen_benchmarks.py`: `30/30`, pass_rate `1.0`, P95 about `479.606ms`.
+- `python clawos\scripts\run_frozen_benchmarks.py --suite clawos\benchmarks\core_e2e_v1.json`: `4/4`, pass_rate `1.0`, P95 about `77.191ms`.
+- Rendered a generated mixed Chinese-English learning-analysis PDF with `pdftoppm` and visually inspected pages 2 and 6. English typography is improved, CJK remains readable, and no overlap/clipping was observed.
+
+Known notes:
+- `pdftoppm` still emits the non-blocking `No display font for 'ArialUnicode'` warning while producing valid PNG output.
+- The app no longer auto-downloads or auto-starts Qwen from the launcher; offline model setup is now an explicit user choice.
+
+Recommended next step:
+- Add a visible report style/preset selector and a first-run model-choice card, then run MTTBook real-device acceptance when hardware is available.

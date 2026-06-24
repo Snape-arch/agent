@@ -1039,10 +1039,11 @@ class WorkspaceServices:
             raise RuntimeError(f"reportlab is required to generate PDF: {exc}") from exc
         font_name = "STSong-Light"
         for font_path in (
-            Path("C:/Windows/Fonts/simhei.ttf"),
+            Path("C:/Windows/Fonts/msyh.ttc"),
             Path("C:/Windows/Fonts/msyhbd.ttc"),
             Path("C:/Windows/Fonts/NotoSansSC-VF.ttf"),
             Path("C:/Windows/Fonts/simsunb.ttf"),
+            Path("C:/Windows/Fonts/simhei.ttf"),
         ):
             if font_path.is_file():
                 font_name = "ClawOSCJK"
@@ -1063,8 +1064,8 @@ class WorkspaceServices:
         )
         sample = getSampleStyleSheet()
         palette = {
-            "ink": colors.HexColor("#020617"),
-            "muted": colors.HexColor("#111827"),
+            "ink": colors.HexColor("#07111f"),
+            "muted": colors.HexColor("#172033"),
             "rule": colors.HexColor("#7f8ea3"),
             "accent": colors.HexColor("#0b3344"),
             "soft": colors.HexColor("#edf3f6"),

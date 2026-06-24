@@ -170,6 +170,13 @@ class WorkspaceServicesTests(unittest.TestCase):
         self.assertIn("L1 自问", content)
         self.assertIn("证据：第", content)
 
+    def test_learning_analysis_pdf_prefers_mixed_cjk_latin_font(self):
+        source = Path(__file__).resolve().parents[1] / "workspace_services.py"
+        text = source.read_text(encoding="utf-8")
+
+        self.assertLess(text.index("msyh.ttc"), text.index("simhei.ttf"))
+        self.assertIn("NotoSansSC-VF.ttf", text)
+
     def test_office_artifacts_create_and_edit_xlsx_pptx_without_external_packages(self):
         with tempfile.TemporaryDirectory() as td:
             _, services = self._services(td)
