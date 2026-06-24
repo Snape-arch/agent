@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 import unittest
 
 
@@ -168,13 +168,22 @@ class FrontendStaticTests(unittest.TestCase):
         js = self.read_page("assets/console.js")
         css = self.read_page("assets/console.css")
 
+        self.assertIn("reportDocumentSelect", html)
         self.assertIn("reportStylePreset", html)
         self.assertIn("reportDepthPreset", html)
-        self.assertIn("reportStyleHint", html)
+        self.assertIn("reportOutputDir", html)
+        self.assertIn("reportResult", html)
+        self.assertIn("generateKnowledgeReport", html)
+        self.assertNotIn('onclick="useReportStylePrompt()"', html)
         self.assertIn("applyReportPreset", js)
-        self.assertIn("useReportStylePrompt", js)
+        self.assertIn("loadKnowledgeDocuments", js)
+        self.assertIn("renderDocumentReportSelect", js)
+        self.assertIn("generateKnowledgeReport", js)
+        self.assertIn("library_document_id", js)
+        self.assertIn("/api/workspace/research/learning-analysis", js)
         self.assertIn("business_brief", js)
         self.assertIn(".report-style-panel", css)
+        self.assertIn(".report-result", css)
 
     def test_console_user_facing_copy_avoids_internal_demo_terms(self):
         combined = "\n".join(
@@ -334,4 +343,3 @@ class FrontendStaticTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

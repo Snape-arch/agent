@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """ClawOS Server - Self-contained AI Agent with DeepSeek + Function Router."""
 from __future__ import annotations
 import argparse, asyncio, json, logging, os, re, sys, time, subprocess, shutil
@@ -1986,6 +1986,24 @@ async def api_research_repro_workflow(request: Request):
 @app.post("/api/workspace/research/learning-analysis")
 async def api_research_learning_analysis(request: Request):
     data = await request.json()
+    library_document = None
+    library_document_id = data.get("library_document_id")
+    if library_document_id:
+        if not g_memory_store:
+            raise HTTPException(503, "MemoryOS not initialized")
+        try:
+            library_document_id = int(library_document_id)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Invalid document id")
+        library_document = g_memory_store.get_document(library_document_id)
+        if not library_document:
+            raise HTTPException(404, "Document not found")
+        if library_document.get("status") != "ready":
+            raise HTTPException(400, "Document is not ready for report generation")
+        if not library_document.get("file_path"):
+            raise HTTPException(400, "Document has no source file path")
+        data["file_path"] = library_document.get("file_path", "")
+        data["title"] = data.get("title") or library_document.get("title", "")
     try:
         result = g_workspace_services.generate_research_learning_analysis(
             document_id=data.get("document_id"),
@@ -1999,8 +2017,9 @@ async def api_research_learning_analysis(request: Request):
         )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(400, str(exc))
+    if library_document:
+        result["library_document"] = library_document
     return JSONResponse(result)
-
 
 @app.post("/api/workspace/learning/goals")
 async def api_learning_goal_create(request: Request):
@@ -3124,5 +3143,3 @@ def main():
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 if __name__ == "__main__":
     main()
-
-
