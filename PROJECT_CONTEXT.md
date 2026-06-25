@@ -674,3 +674,22 @@ Known notes:
 
 Recommended next step:
 - Run one more focused browser check with a realistic user PDF when the user is ready, then prepare the branch for push/PR.
+### 2026-06-25 - Obsidian export path stability fix
+
+Completed:
+- Browser validation found that entering `output/obsidian/browser-flow-check` in the Obsidian export field produced a duplicated path: `output/obsidian/output/obsidian/browser-flow-check`.
+- Added `resolve_obsidian_output_dir()` in `clawos_server.py` so both `browser-flow-check` and `output/obsidian/browser-flow-check` resolve to the same stable vault directory under `output/obsidian`.
+- Kept the existing safety boundary: absolute or relative paths outside `output/obsidian` still raise `400`.
+- Added routing-memory test coverage for the stable output path behavior.
+- Added `output/obsidian/` to `.gitignore` so local Vault exports do not pollute Git status.
+
+Verification:
+- `.\clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py`: passed.
+- `.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_obsidian_export_output_dir_accepts_repo_relative_path`: passed.
+- `.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_knowledge_obsidian_check_and_vault_export clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_obsidian_export_output_dir_accepts_repo_relative_path`: `2 tests OK`.
+
+Known notes:
+- The already-running browser server needs a restart to pick up this backend path fix.
+
+Recommended next step:
+- Restart the local ClawOS server and rerun the browser Obsidian export check with `output/obsidian/browser-flow-check`.

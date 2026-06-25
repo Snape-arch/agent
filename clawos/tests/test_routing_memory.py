@@ -420,6 +420,18 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertTrue(pdf_exists)
         self.assertTrue(any(item["id"] == saved["item"]["id"] for item in listed["items"]))
 
+    def test_obsidian_export_output_dir_accepts_repo_relative_path(self):
+        import clawos_server as server
+
+        output_root = (server.BASE_DIR.parent / "output" / "obsidian").resolve()
+        full_relative = server.resolve_obsidian_output_dir("output/obsidian/browser-flow-check", "research")
+        short_relative = server.resolve_obsidian_output_dir("browser-flow-check", "research")
+        default_dir = server.resolve_obsidian_output_dir("", "research")
+
+        self.assertEqual(full_relative, output_root / "browser-flow-check")
+        self.assertEqual(short_relative, output_root / "browser-flow-check")
+        self.assertEqual(default_dir, output_root / "research")
+
     def test_knowledge_obsidian_check_and_vault_export(self):
         import clawos_server as server
         from memoryos.memory_store import MemoryStore
