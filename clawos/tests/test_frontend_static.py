@@ -95,6 +95,11 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("max-height:min(42vh,420px)", css)
         self.assertIn("overflow-y:auto", css)
         self.assertIn("display:block", css)
+        self.assertIn("cleanSessionTitle", js)
+        self.assertIn("未命名会话", js)
+        self.assertIn(".aether-console .sessions .session-tags", css)
+        self.assertIn("text-overflow:ellipsis", css)
+        self.assertIn(".aether-console [hidden]", css)
 
     def test_chat_file_picker_uses_attachment_context_not_prompt_paste(self):
         html = self.read_page("console.html")
@@ -146,6 +151,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("saveModelSettings", js)
         self.assertIn("modelModeText", js)
         self.assertIn("providerPreset", js)
+        self.assertIn("updateFirstRunModelCard", js)
+        self.assertIn("card.hidden=!!configured", js)
+        self.assertIn("updateFirstRunModelCard(configured)", js)
         self.assertIn("Local Qwen 模式", js)
         self.assertIn("Mock/offline test 模式", js)
         self.assertIn("localModelNote", html)
@@ -199,6 +207,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".report-result", css)
         self.assertIn(".report-flow", css)
         self.assertIn(".report-flow-steps", css)
+        self.assertIn("grid-template-columns:minmax(180px,1.1fr)", css)
+        self.assertIn(".report-style-panel .primary", css)
+        self.assertIn("@media(max-width:1280px)", css)
 
     def test_console_user_facing_copy_avoids_internal_demo_terms(self):
         combined = "\n".join(

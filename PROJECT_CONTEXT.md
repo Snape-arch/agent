@@ -636,3 +636,24 @@ Known notes:
 
 Recommended next step:
 - Run a real browser user-flow check of first-run model choice -> upload PDF -> generate report -> save -> follow-up, then commit this usability pass if the visual flow is acceptable.
+### 2026-06-25 - Browser sidebar and knowledge layout fix
+
+Completed:
+- Ran a real browser check on the console Knowledge view and reproduced the user-reported sidebar mojibake/compression and report-row clipping issues.
+- Added session-title cleanup so unreadable history titles made only of question marks or replacement characters display as `未命名会话`.
+- Tightened the left sidebar recent-session list: one-line ellipsis titles, no tag chips in the compact sidebar, scrollable history, and bottom settings pinned after available space.
+- Fixed `hidden` handling for the first-run model card so CSS display rules cannot override hidden state.
+- Made the Knowledge report-generation row responsive and kept the `生成报告` button inside the panel.
+- Constrained top status badges so model/tool status does not overflow the header.
+- Captured a post-fix browser screenshot at `tmp/clawos-knowledge-layout-fixed.png` for local visual evidence.
+
+Verification:
+- Browser DOM check confirmed no `??????????` session title remains, no common mojibake fragments are visible, no internal demo/acceptance terms are visible, the report button stays inside its panel, and header actions stay inside the header.
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `19 tests OK`.
+
+Known notes:
+- The screenshot under `tmp/` is local visual evidence and should not be committed unless explicitly needed.
+
+Recommended next step:
+- Continue browser-driven checks on the full first-run workflow, especially after uploading a real PDF and generating/saving a report.
