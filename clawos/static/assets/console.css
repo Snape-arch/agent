@@ -168,6 +168,40 @@
   color:#374151;
   font-size:13px;
 }
+.report-flow{
+  display:grid;
+  gap:10px;
+  padding:12px;
+  border:1px solid rgba(17,24,39,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.76);
+}
+.report-flow b{
+  color:#111827;
+  font-size:14px;
+}
+.report-flow span{
+  color:#4b5563;
+  line-height:1.45;
+}
+.report-flow-steps{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+}
+.report-flow-steps span{
+  padding:7px 9px;
+  border-radius:999px;
+  background:rgba(17,24,39,.06);
+  color:#4b5563;
+  text-align:center;
+  font-size:12px;
+  font-weight:700;
+}
+.report-flow-steps .done{
+  background:rgba(22,163,74,.12);
+  color:#166534;
+}
 .report-preview{
   max-height:220px;
   overflow:auto;
@@ -935,4 +969,78 @@
 }
 @media (max-width: 980px){
   .skills-workbench .skill-toolbar,.skill-grid,.skill-grid.lower{grid-template-columns:1fr}
+}
+
+/* User-flow viewport fixes: keep sidebar history and report controls readable. */
+.aether-console [hidden]{
+  display:none!important;
+}
+.aether-console .side{
+  min-height:100vh;
+  overflow:hidden;
+}
+.aether-console .sessions{
+  flex:1 1 auto;
+  min-height:80px;
+  max-height:none;
+  overflow-y:auto;
+  padding-right:2px;
+}
+.aether-console .sessions .session{
+  min-height:34px;
+  padding:7px 10px;
+  line-height:1.25;
+}
+.aether-console .sessions .session b{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.aether-console .sessions .session-tags{
+  display:none;
+}
+.aether-console .side-bottom{
+  margin-top:auto;
+}
+.aether-console .console-head{
+  min-width:0;
+  overflow:hidden;
+}
+.aether-console .console-head > div:first-child{
+  min-width:190px;
+  max-width:360px;
+}
+.aether-console .model-mode-panel{
+  flex:0 1 260px;
+  min-width:180px;
+}
+.aether-console .head-actions{
+  flex:0 1 320px;
+  min-width:0;
+  max-width:320px;
+  overflow:hidden;
+}
+.aether-console .head-actions .badge{
+  max-width:150px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.report-style-panel{
+  grid-template-columns:minmax(180px,1.1fr) repeat(4,minmax(120px,1fr)) minmax(116px,auto);
+}
+.report-style-panel > *,
+.obsidian-panel > *,
+.knowledge-toolbar > *{
+  min-width:0;
+}
+.report-style-panel .primary{
+  min-width:116px;
+  white-space:nowrap;
+}
+@media(max-width:1280px){
+  .aether-console .head-actions{display:none}
+  .report-style-panel{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .report-style-panel > div{grid-column:1/-1}
 }

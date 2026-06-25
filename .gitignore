@@ -22,3 +22,10 @@ Thumbs.db
 Desktop.ini
 .vscode/
 .idea/
+
+# ClawOS local runtime artifacts
+clawos/uploads/
+output/reports/
+tmp/*.png
+output/obsidian/
+clawos/backups/

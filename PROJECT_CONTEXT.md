@@ -535,6 +535,7 @@ Known notes:
 
 Recommended next step:
 - Make `report_style` alter the actual Markdown/PDF report structure, then add a save-generated-report-to-knowledge/Obsidian action for a full user workflow loop.
+
 ### 2026-06-24 - Report style templates and save-back action
 
 Completed:
@@ -556,6 +557,142 @@ Known notes:
 Recommended next step:
 - Add a user-visible link from a saved generated report back into chat, so follow-up Q&A can start from the saved report item instead of only the original source document.
 
+### 2026-06-25 - Saved report follow-up action
+
+Completed:
+- Added a follow-up action after saving a generated report to the knowledge base: the result panel now exposes a direct button to ask about the saved report through the existing knowledge prompt path.
+- Reused `appendKnowledgeToPrompt` instead of adding a parallel chat mechanism, keeping report follow-up consistent with normal knowledge items.
+- Added frontend static coverage for the saved-report knowledge id and follow-up prompt hook.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `19 tests OK`.
+- `git diff --check`: passed.
+- `python -m unittest discover -s clawos\tests`: `143 tests OK`.
+
+Known notes:
+- Full tests mutate `clawos/skills/skill_registry.jsonl` use counters. This remains visible in the working tree because the previous restore attempt was rejected by environment usage limits and should not be bypassed.
+
+Recommended next step:
+- Add a small end-to-end user-flow test around upload/generate/save/follow-up once a browser or API-level scenario harness is selected for this workflow.
+
+### 2026-06-25 - API-level report workflow test
+
+Completed:
+- Added an API-level user-flow test that models the main knowledge workflow: uploaded library PDF, report generation, save generated report into the knowledge base, and verify the saved report is visible for follow-up actions.
+- The test uses the same `/api/workspace/research/learning-analysis`, `/api/knowledge`, and `/api/knowledge` list endpoints that back the console flow.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: passed.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: `20 tests OK`.
+- `git diff --check`: passed.
+- `python -m unittest discover -s clawos\tests`: `144 tests OK`.
+
+Known notes:
+- Full tests continue to mutate `clawos/skills/skill_registry.jsonl` use counters. The current diff in that file is a test side effect and should be restored before commit when the environment allows it.
+
+Recommended next step:
+- Do a user-facing copy and visual pass on the report result panel so the generate/save/follow-up actions read as one compact workflow rather than separate tool outputs.
+
+### 2026-06-25 - Report result workflow copy and layout
+
+Completed:
+- Reworked the report result panel into a four-step user workflow: generate report, save to knowledge base, export Obsidian, continue asking questions.
+- Added compact styling for the workflow step chips so the result panel reads as one continuous user path instead of isolated tool outputs.
+- Updated frontend static coverage for the workflow classes and user-facing result-panel copy.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `19 tests OK`.
+- `python -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: passed.
+- `git diff --check`: passed.
+- `python -m unittest discover -s clawos\tests`: `144 tests OK`.
+
+Known notes:
+- `clawos/skills/skill_registry.jsonl` still shows the full-test use counter side effect from earlier runs. Restore it before commit when allowed.
+
+Recommended next step:
+- Restore the clawos/skills/skill_registry.jsonl test counter side effect when allowed, then stage only product/test/context changes for the final commit.
+
+### 2026-06-25 - Upload-to-report next-step guidance
+
+Completed:
+- Improved the Knowledge upload flow from a passive parse result into a clearer next step for normal users.
+- After uploading a ready PDF, the console now auto-selects the newest PDF in the report selector and tells the user to choose a style and generate the report.
+- If uploaded files are not report-ready PDFs, the status now explains that report generation needs a readable PDF.
+- Report generation failures now show user-actionable reasons instead of only passing through a raw error string.
+- Added frontend static coverage for PDF auto-selection, next-step copy, and report-generation failure guidance.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `19 tests OK`.
+- `python -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: failed under system Python because `uvicorn` is not installed there.
+- `.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: passed.
+
+Known notes:
+- Use the project virtual environment for backend/API tests on this machine; system Python is missing FastAPI runtime dependencies such as `uvicorn`.
+- Current worktree intentionally contains this frontend/test/context update only.
+
+Recommended next step:
+- Run a real browser user-flow check of first-run model choice -> upload PDF -> generate report -> save -> follow-up, then commit this usability pass if the visual flow is acceptable.
+### 2026-06-25 - Browser sidebar and knowledge layout fix
+
+Completed:
+- Ran a real browser check on the console Knowledge view and reproduced the user-reported sidebar mojibake/compression and report-row clipping issues.
+- Added session-title cleanup so unreadable history titles made only of question marks or replacement characters display as `未命名会话`.
+- Tightened the left sidebar recent-session list: one-line ellipsis titles, no tag chips in the compact sidebar, scrollable history, and bottom settings pinned after available space.
+- Fixed `hidden` handling for the first-run model card so CSS display rules cannot override hidden state.
+- Made the Knowledge report-generation row responsive and kept the `生成报告` button inside the panel.
+- Constrained top status badges so model/tool status does not overflow the header.
+- Captured a post-fix browser screenshot at `tmp/clawos-knowledge-layout-fixed.png` for local visual evidence.
+
+Verification:
+- Browser DOM check confirmed no `??????????` session title remains, no common mojibake fragments are visible, no internal demo/acceptance terms are visible, the report button stays inside its panel, and header actions stay inside the header.
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `19 tests OK`.
+
+Known notes:
+- The screenshot under `tmp/` is local visual evidence and should not be committed unless explicitly needed.
+
+Recommended next step:
+- Continue browser-driven checks on the full first-run workflow, especially after uploading a real PDF and generating/saving a report.
+### 2026-06-25 - Browser report workflow validation and artifact ignore
+
+Completed:
+- Ran the main browser workflow against the live local console: temporary PDF upload, automatic report document selection, compact report generation, save generated report to the knowledge base, and continue asking about the saved report.
+- Verified the generated report panel shows Markdown path, PDF path, output directory, style, question count, preview content, save action, Obsidian action, and follow-up prompt action.
+- Added root `.gitignore` entries for local ClawOS runtime artifacts created during manual/browser validation: `clawos/uploads/`, `output/reports/`, and `tmp/*.png`.
+
+Verification:
+- Browser flow returned `ok=true` for report generation and populated the follow-up chat prompt from the saved knowledge report.
+- `git status` after the ignore update no longer lists the generated upload/report/screenshot artifacts.
+
+Known notes:
+- The browser validation intentionally used a synthetic non-sensitive PDF named `clawos-flow-check.pdf`.
+- Runtime artifacts remain on disk for local inspection, but are now ignored by Git.
+
+Recommended next step:
+- Run one more focused browser check with a realistic user PDF when the user is ready, then prepare the branch for push/PR.
+### 2026-06-25 - Obsidian export path stability fix
+
+Completed:
+- Browser validation found that entering `output/obsidian/browser-flow-check` in the Obsidian export field produced a duplicated path: `output/obsidian/output/obsidian/browser-flow-check`.
+- Added `resolve_obsidian_output_dir()` in `clawos_server.py` so both `browser-flow-check` and `output/obsidian/browser-flow-check` resolve to the same stable vault directory under `output/obsidian`.
+- Kept the existing safety boundary: absolute or relative paths outside `output/obsidian` still raise `400`.
+- Added routing-memory test coverage for the stable output path behavior.
+- Added `output/obsidian/` to `.gitignore` so local Vault exports do not pollute Git status.
+
+Verification:
+- `.\clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py`: passed.
+- `.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_obsidian_export_output_dir_accepts_repo_relative_path`: passed.
+- `.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_knowledge_obsidian_check_and_vault_export clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_obsidian_export_output_dir_accepts_repo_relative_path`: `2 tests OK`.
+
+Known notes:
+- The already-running browser server needs a restart to pick up this backend path fix.
+
+Recommended next step:
+- Restart the local ClawOS server and rerun the browser Obsidian export check with `output/obsidian/browser-flow-check`.
 ### 2026-06-25 - Restore API, minimal task worker, and model settings placement
 
 Completed:
