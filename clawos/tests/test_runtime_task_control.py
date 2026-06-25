@@ -168,6 +168,74 @@ class RuntimeTaskControlTests(unittest.TestCase):
         self.assertEqual(claim_payload["task"]["id"], task["id"])
         self.assertEqual(claim_payload["task"]["metadata"]["claimed_by"], "api-worker")
 
+    def test_background_worker_tick_succeeds_and_retries_failures(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_task_service = server.g_task_service
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            server.g_task_service = None
+            try:
+                ok_task = server.g_memory_store.start_task(
+                    "s-worker",
+                    "Worker noop",
+                    metadata={"worker_action": "noop"},
+                    status="pending",
+                )
+                fail_task = server.g_memory_store.start_task(
+                    "s-worker",
+                    "Worker fail",
+                    metadata={"worker_action": "fail", "error": "boom"},
+                    status="pending",
+                )
+                first = asyncio.run(server.api_tasks_worker_tick(JsonRequest({"worker_id": "test-worker"})))
+                second = asyncio.run(server.api_tasks_worker_tick(JsonRequest({"worker_id": "test-worker", "max_attempts": 3})))
+                ok_after = server.g_memory_store.get_task(ok_task["id"])["task"]
+                fail_after = server.g_memory_store.get_task(fail_task["id"])["task"]
+                queued = server.g_memory_store.list_task_queue(statuses=["pending_retry"])
+            finally:
+                server.g_memory_store = old_store
+                server.g_task_service = old_task_service
+
+        self.assertTrue(json.loads(first.body.decode("utf-8"))["ok"])
+        self.assertFalse(json.loads(second.body.decode("utf-8"))["ok"])
+        self.assertEqual(ok_after["status"], "succeeded")
+        self.assertEqual(fail_after["status"], "failed")
+        self.assertEqual(queued[0]["retry_of"], fail_task["id"])
+
+    def test_background_worker_long_task_honors_cancellation(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        async def run_and_cancel(task_id):
+            worker = asyncio.create_task(server.run_background_worker_once(worker_id="cancel-worker"))
+            await asyncio.sleep(0.05)
+            server.g_memory_store.cancel_task(task_id, reason="stop long task", actor_id="test")
+            return await worker
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_task_service = server.g_task_service
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            server.g_task_service = None
+            try:
+                task = server.g_memory_store.start_task(
+                    "s-worker",
+                    "Long worker task",
+                    metadata={"worker_action": "sleep", "duration_ms": 500},
+                    status="pending",
+                )
+                result = asyncio.run(run_and_cancel(task["id"]))
+                after = server.g_memory_store.get_task(task["id"])["task"]
+            finally:
+                server.g_memory_store = old_store
+                server.g_task_service = old_task_service
+
+        self.assertTrue(result["canceled"])
+        self.assertEqual(after["status"], "canceled")
+
     def test_task_event_retention_prunes_old_detail_events_but_keeps_audit_tail(self):
         from memoryos.memory_store import MemoryStore
 

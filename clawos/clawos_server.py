@@ -61,6 +61,14 @@ g_knowledge_service: KnowledgeService | None = None
 g_security_service: SecurityService | None = None
 g_task_service: TaskService | None = None
 g_maintenance_service: MaintenanceService | None = None
+g_background_worker_task: asyncio.Task | None = None
+g_background_worker_status: dict[str, Any] = {
+    "running": False,
+    "worker_id": "",
+    "processed": 0,
+    "last_result": None,
+    "last_error": "",
+}
 
 SYSTEM_PROMPT = (
     "You are ClawOS, a personal AI assistant. Use the provided tools to "
@@ -830,6 +838,40 @@ def retry_runtime_task(task_id: int, reason: str = "", actor_id: str = "user") -
     return item
 
 
+async def run_background_worker_once(worker_id: str = "background-worker", max_attempts: int = 3) -> dict[str, Any]:
+    global g_background_worker_status
+    result = await get_task_service().run_worker_once(
+        worker_id=worker_id,
+        max_attempts=max_attempts,
+    )
+    g_background_worker_status["worker_id"] = worker_id
+    g_background_worker_status["last_result"] = result
+    g_background_worker_status["last_error"] = "" if result.get("ok", True) else str(result.get("error", ""))
+    if result.get("claimed"):
+        g_background_worker_status["processed"] = int(g_background_worker_status.get("processed") or 0) + 1
+    return result
+
+
+async def background_worker_loop(worker_id: str = "background-worker", interval_s: float = 0.5, max_attempts: int = 3) -> None:
+    global g_background_worker_status
+    g_background_worker_status.update({"running": True, "worker_id": worker_id, "last_error": ""})
+    try:
+        get_task_service().recover(actor_id=worker_id, create_retries=True)
+        while True:
+            result = await run_background_worker_once(worker_id=worker_id, max_attempts=max_attempts)
+            if not result.get("claimed"):
+                await asyncio.sleep(max(0.1, float(interval_s or 0.5)))
+    except asyncio.CancelledError:
+        g_background_worker_status["last_error"] = "stopped"
+        raise
+    except Exception as exc:
+        g_background_worker_status["last_error"] = str(exc)
+        if logger:
+            logger.warning("Background worker stopped after error: %s", exc)
+    finally:
+        g_background_worker_status["running"] = False
+
+
 async def store_assistant_response(session_id: str, resp: JSONResponse):
     if not g_memory_store:
         return
@@ -944,6 +986,14 @@ async def lifespan(app: FastAPI):
         g_mtclaw_adapter.enabled,
     )
     yield
+    global g_background_worker_task
+    if g_background_worker_task and not g_background_worker_task.done():
+        g_background_worker_task.cancel()
+        try:
+            await g_background_worker_task
+        except asyncio.CancelledError:
+            pass
+    g_background_worker_task = None
     if mtclaw_http_client:
         await mtclaw_http_client.aclose()
     if http_client:
@@ -1750,6 +1800,24 @@ async def api_system_backup(request: Request):
             output_dir=str(data.get("output_dir") or ""),
             label=str(data.get("label") or ""),
         )
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+
+@app.post("/api/system/restore")
+async def api_system_restore(request: Request):
+    data = await request.json()
+    try:
+        result = get_maintenance_service().restore_database(
+            str(data.get("backup_path") or data.get("path") or ""),
+            confirm=bool(data.get("confirm", False)),
+            label=str(data.get("label") or "pre-restore"),
+        )
+        if g_vector_store:
+            g_vector_store.refresh()
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     except RuntimeError as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse(result)
@@ -2626,6 +2694,62 @@ async def api_tasks_recover(request: Request):
         create_retries=bool(data.get("create_retries", False)),
     )
     return JSONResponse(result)
+
+
+@app.get("/api/tasks/worker/status")
+async def api_tasks_worker_status():
+    task = g_background_worker_task
+    state = dict(g_background_worker_status)
+    state["running"] = bool(task and not task.done())
+    state["done"] = bool(task.done()) if task else True
+    return JSONResponse(state)
+
+
+@app.post("/api/tasks/worker/tick")
+async def api_tasks_worker_tick(request: Request):
+    data = await request.json()
+    result = await run_background_worker_once(
+        worker_id=str(data.get("worker_id") or "api-worker"),
+        max_attempts=int(data.get("max_attempts") or 3),
+    )
+    return JSONResponse(result)
+
+
+@app.post("/api/tasks/worker/start")
+async def api_tasks_worker_start(request: Request):
+    global g_background_worker_task
+    data = await request.json()
+    if g_background_worker_task and not g_background_worker_task.done():
+        return JSONResponse({"ok": True, "already_running": True, **g_background_worker_status})
+    worker_id = str(data.get("worker_id") or "background-worker")
+    interval_s = float(data.get("interval_s") or 0.5)
+    max_attempts = int(data.get("max_attempts") or 3)
+    g_background_worker_status.update({
+        "running": True,
+        "worker_id": worker_id,
+        "last_error": "",
+    })
+    g_background_worker_task = asyncio.create_task(
+        background_worker_loop(worker_id=worker_id, interval_s=interval_s, max_attempts=max_attempts)
+    )
+    return JSONResponse({"ok": True, "started": True, "worker_id": worker_id})
+
+
+@app.post("/api/tasks/worker/stop")
+async def api_tasks_worker_stop():
+    global g_background_worker_task
+    task = g_background_worker_task
+    if not task or task.done():
+        g_background_worker_status["running"] = False
+        return JSONResponse({"ok": True, "stopped": False, **g_background_worker_status})
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    g_background_worker_task = None
+    g_background_worker_status["running"] = False
+    return JSONResponse({"ok": True, "stopped": True, **g_background_worker_status})
 
 @app.get("/api/tasks/events")
 async def api_task_events(session_id: str = "", after_id: int = 0, limit: int = 100):

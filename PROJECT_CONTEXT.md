@@ -693,3 +693,26 @@ Known notes:
 
 Recommended next step:
 - Restart the local ClawOS server and rerun the browser Obsidian export check with `output/obsidian/browser-flow-check`.
+### 2026-06-25 - Restore API, minimal task worker, and model settings placement
+
+Completed:
+- Added `/api/system/restore` to close the SQLite backup/restore loop. Restore now requires `confirm=true`, validates the backup with SQLite integrity check, creates a pre-restore backup, replaces the active DB, reapplies migrations, and refreshes vectors.
+- Added a minimal background task worker path with `/api/tasks/worker/status`, `/api/tasks/worker/tick`, `/api/tasks/worker/start`, and `/api/tasks/worker/stop`.
+- Worker support covers queue consumption, startup recovery retry creation, deterministic long-task sleep, cancellation checks, failure marking, and bounded retry creation.
+- Moved API/local/mock model choice out of the chat first screen. Model selection now lives under More -> Model configuration only, while Local Qwen remains explicit/manual for download and startup.
+- Added tests for restore rollback behavior, worker success/failure/retry/cancellation, and the model-choice UI placement.
+
+Verification:
+- `python -m py_compile clawos\clawos_server.py clawos\services\maintenance_service.py clawos\services\task_service.py`: passed.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- Targeted tests: `python -m unittest clawos.tests.test_operations_and_streaming clawos.tests.test_runtime_task_control clawos.tests.test_frontend_static`: `32 tests OK`.
+- Full suite: `python -m unittest discover -s clawos\tests`: `145 tests OK`.
+- Frozen benchmark: `python clawos\scripts\run_frozen_benchmarks.py`: `30/30`, pass_rate `1.0`, P95 about `510.304ms`.
+- Core E2E benchmark: `python clawos\scripts\run_frozen_benchmarks.py --suite clawos\benchmarks\core_e2e_v1.json`: `4/4`, pass_rate `1.0`, P95 about `73.603ms`.
+
+Known notes:
+- The worker is intentionally minimal and single-process. It is good for local recovery/queue consumption demos, not yet a distributed scheduler or multi-agent runtime.
+- Restore is a local high-risk operation and must remain confirmation-gated in product UI.
+
+Recommended next step:
+- Add a small Ops UI for backup/restore/worker controls, then add richer worker actions for real report generation and document processing jobs.

@@ -83,15 +83,6 @@
             <div class="empty">
               <b>准备好了，随时开始</b>
               <span>直接提问，或通过知识库、项目和本地文件把上下文交给 ClawOS。</span>
-              <div class="first-run-model-card" id="firstRunModelCard">
-                <div>
-                  <b>&#x9009;&#x62e9;&#x6a21;&#x578b;&#x6a21;&#x5f0f;</b>
-                  <span>API &#x9002;&#x5408;&#x65e5;&#x5e38;&#x4f7f;&#x7528;&#xff1b;Local Qwen &#x9002;&#x5408;&#x672c;&#x5730;&#x79bb;&#x7ebf;&#xff1b;Mock &#x7528;&#x4e8e;&#x65e0; Key &#x6a21;&#x5f0f;&#x3002;</span>
-                </div>
-                <button onclick="chooseFirstRunModel('deepseek')">DeepSeek/API</button>
-                <button onclick="chooseFirstRunModel('qwen')">Local Qwen</button>
-                <button onclick="chooseFirstRunModel('mock')">Mock/offline</button>
-              </div>
               <div class="quick-grid">
                 <button class="quick" onclick="usePrompt('分析当前项目并给出下一步开发计划')">分析项目与开发计划</button>
                 <button class="quick" onclick="usePrompt('检索我的知识库和长期记忆，回答这个问题：')">检索知识库</button>
@@ -289,6 +280,12 @@
         <label class="wide">API Key<input id="cfgApiKey" type="password" autocomplete="off" placeholder="留空则保持当前密钥"></label>
       </div>
       <p class="settings-note" id="localModelNote">启动器会直接打开工作台，不会自动下载本地模型权重。选择 Local Qwen 只保存本地端点；需要离线模型时，请手动运行 download_qwen_model.ps1 / start_qwen_llama_server.ps1。</p>
+      <div class="model-choice-actions" id="modelChoiceActions">
+        <span>Choose model mode here:</span>
+        <button type="button" onclick="chooseFirstRunModel('deepseek')">DeepSeek/API</button>
+        <button type="button" onclick="chooseFirstRunModel('qwen')">Local Qwen</button>
+        <button type="button" onclick="chooseFirstRunModel('mock')">Mock/offline</button>
+      </div>
       <div class="settings-actions">
         <span class="hint" id="cfgStatus">等待读取配置</span>
         <button class="secondary" onclick="closeModelSettings()">取消</button>
