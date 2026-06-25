@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 
@@ -62,3 +64,68 @@ class TaskService:
             dry_run=bool(dry_run),
             actor_id=str(actor_id or "user"),
         )
+
+    def is_cancelled(self, task_id: int) -> bool:
+        return self.require_store().is_task_cancelled(task_id)
+
+    async def run_worker_once(
+        self,
+        *,
+        worker_id: str = "background-worker",
+        statuses: list[str] | None = None,
+        max_attempts: int = 3,
+    ) -> dict[str, Any]:
+        store = self.require_store()
+        task = store.claim_next_task(
+            worker_id=worker_id,
+            statuses=statuses or ["pending", "pending_retry"],
+        )
+        if not task:
+            return {"ok": True, "claimed": False, "task": None}
+        task_id = int(task["id"])
+        metadata = dict(task.get("metadata") or {})
+        action = str(metadata.get("worker_action") or "noop")
+        try:
+            if self.is_cancelled(task_id):
+                item = store.finish_task(task_id, "canceled", error="canceled before worker execution")
+                return {"ok": True, "claimed": True, "canceled": True, "task": item}
+            result = await self._execute_worker_action(task, action)
+            if self.is_cancelled(task_id):
+                item = store.finish_task(task_id, "canceled", error="canceled during worker execution")
+                return {"ok": True, "claimed": True, "canceled": True, "task": item}
+            item = store.finish_task(task_id, "succeeded", result_payload=result)
+            return {"ok": True, "claimed": True, "task": item, "result": result}
+        except asyncio.CancelledError:
+            store.finish_task(task_id, "interrupted", error="worker stopped")
+            raise
+        except Exception as exc:
+            item = store.finish_task(task_id, "failed", error=str(exc))
+            retry = {}
+            if int(task.get("attempt") or 1) < int(max_attempts or 1):
+                retry = store.retry_task(task_id, actor_id=worker_id, reason=str(exc))
+            return {
+                "ok": False,
+                "claimed": True,
+                "task": item,
+                "error": str(exc),
+                "retry_task": retry,
+            }
+
+    async def _execute_worker_action(self, task: dict[str, Any], action: str) -> dict[str, Any]:
+        metadata = dict(task.get("metadata") or {})
+        task_id = int(task["id"])
+        if action == "fail":
+            raise RuntimeError(str(metadata.get("error") or "worker action failed"))
+        if action in {"sleep", "long_task"}:
+            duration_ms = max(0, min(int(metadata.get("duration_ms") or 1000), 30000))
+            deadline = time.monotonic() + duration_ms / 1000.0
+            while time.monotonic() < deadline:
+                if self.is_cancelled(task_id):
+                    return {"action": action, "canceled": True}
+                await asyncio.sleep(min(0.1, max(0, deadline - time.monotonic())))
+            return {"action": action, "duration_ms": duration_ms}
+        return {
+            "action": action,
+            "message": "Task consumed by minimal background worker.",
+            "metadata_keys": sorted(metadata.keys()),
+        }

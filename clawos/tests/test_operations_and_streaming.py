@@ -56,6 +56,13 @@ class OperationsAndStreamingTests(unittest.TestCase):
                 checked = json.loads(asyncio.run(server.api_system_config_check()).body)
                 backup = json.loads(asyncio.run(server.api_system_backup(JsonRequest({"output_dir": str(Path(td) / "backups"), "label": "test"}))).body)
                 backup_exists = Path(backup["path"]).exists()
+                server.g_memory_store.add_message("restore-session", "user", "after backup")
+                restored = json.loads(asyncio.run(server.api_system_restore(JsonRequest({
+                    "backup_path": backup["path"],
+                    "confirm": True,
+                    "label": "test-restore",
+                }))).body)
+                messages_after_restore = server.g_memory_store.get_session_messages("restore-session")
             finally:
                 server.g_memory_store = old_store
                 server.config = old_config
@@ -67,6 +74,9 @@ class OperationsAndStreamingTests(unittest.TestCase):
         self.assertTrue(checked["ok"])
         self.assertTrue(backup_exists)
         self.assertGreater(backup["bytes"], 0)
+        self.assertTrue(restored["ok"])
+        self.assertTrue(Path(restored["pre_restore_backup"]["path"]).exists())
+        self.assertEqual(messages_after_restore, [])
 
     def test_streaming_response_emits_metadata_chunks_and_cancellation(self):
         server = importlib.import_module("clawos_server")

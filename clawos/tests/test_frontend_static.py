@@ -149,6 +149,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("Local Qwen 模式", js)
         self.assertIn("Mock/offline test 模式", js)
         self.assertIn("localModelNote", html)
+        self.assertIn("modelChoiceActions", html)
+        self.assertIn("chooseFirstRunModel", html + js)
+        self.assertNotIn("firstRunModelCard", html)
         self.assertIn("不会自动下载本地模型权重", html)
         self.assertIn("手动下载/启动", js)
 
@@ -195,7 +198,8 @@ class FrontendStaticTests(unittest.TestCase):
 
         for token in ("\u672c\u6b21\u6f14\u793a", "\u6bd4\u8d5b\u9a8c\u6536", "\u6f14\u793a\u68c0\u67e5", "\u6f14\u793a\u963b\u788d"):
             self.assertNotIn(token, combined)
-        self.assertIn("firstRunModelCard", combined)
+        self.assertNotIn("firstRunModelCard", combined)
+        self.assertIn("modelChoiceActions", combined)
         self.assertIn("Obsidian \u68c0\u67e5\u4e0e\u5bfc\u51fa", combined)
         self.assertIn("\u6700\u8fd1\u8fd0\u884c\u7ed3\u679c", combined)
 

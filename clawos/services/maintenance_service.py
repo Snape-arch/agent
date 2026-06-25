@@ -103,6 +103,31 @@ class MaintenanceService:
         (target.with_suffix(target.suffix + ".json")).write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         return meta
 
+    def restore_database(self, backup_path: str, *, confirm: bool = False, label: str = "pre-restore") -> dict[str, Any]:
+        if not confirm:
+            raise ValueError("restore requires confirm=true")
+        source = Path(backup_path or "").expanduser()
+        if not source.is_absolute():
+            source = (self.base_dir / source).resolve()
+        if not source.exists() or not source.is_file():
+            raise RuntimeError(f"backup file does not exist: {source}")
+        self._assert_sqlite_ok(source)
+        pre_restore = self.backup_database(label=label or "pre-restore") if self.db_path.exists() else {}
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_target = self.db_path.with_suffix(self.db_path.suffix + ".restore_tmp")
+        shutil.copy2(source, temp_target)
+        self._assert_sqlite_ok(temp_target)
+        temp_target.replace(self.db_path)
+        self.apply_migrations()
+        return {
+            "ok": True,
+            "restored_from": str(source),
+            "target": str(self.db_path),
+            "bytes": self.db_path.stat().st_size,
+            "pre_restore_backup": pre_restore,
+            "restored_at": self._now(),
+        }
+
     def config_check(self) -> dict[str, Any]:
         checks: list[dict[str, Any]] = []
 
@@ -140,6 +165,16 @@ class MaintenanceService:
             "checks": checks,
             "checked_at": self._now(),
         }
+
+    @staticmethod
+    def _assert_sqlite_ok(path: Path) -> None:
+        conn = sqlite3.connect(str(path))
+        try:
+            integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        finally:
+            conn.close()
+        if integrity != "ok":
+            raise RuntimeError(f"sqlite integrity check failed: {integrity}")
 
     @staticmethod
     def _now() -> str:
