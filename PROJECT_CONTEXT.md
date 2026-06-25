@@ -614,3 +614,25 @@ Known notes:
 
 Recommended next step:
 - Restore the clawos/skills/skill_registry.jsonl test counter side effect when allowed, then stage only product/test/context changes for the final commit.
+
+### 2026-06-25 - Upload-to-report next-step guidance
+
+Completed:
+- Improved the Knowledge upload flow from a passive parse result into a clearer next step for normal users.
+- After uploading a ready PDF, the console now auto-selects the newest PDF in the report selector and tells the user to choose a style and generate the report.
+- If uploaded files are not report-ready PDFs, the status now explains that report generation needs a readable PDF.
+- Report generation failures now show user-actionable reasons instead of only passing through a raw error string.
+- Added frontend static coverage for PDF auto-selection, next-step copy, and report-generation failure guidance.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `19 tests OK`.
+- `python -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: failed under system Python because `uvicorn` is not installed there.
+- `.\clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: passed.
+
+Known notes:
+- Use the project virtual environment for backend/API tests on this machine; system Python is missing FastAPI runtime dependencies such as `uvicorn`.
+- Current worktree intentionally contains this frontend/test/context update only.
+
+Recommended next step:
+- Run a real browser user-flow check of first-run model choice -> upload PDF -> generate report -> save -> follow-up, then commit this usability pass if the visual flow is acceptable.
