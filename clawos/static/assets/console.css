@@ -175,6 +175,40 @@
   color:#374151;
   font-size:13px;
 }
+.report-flow{
+  display:grid;
+  gap:10px;
+  padding:12px;
+  border:1px solid rgba(17,24,39,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.76);
+}
+.report-flow b{
+  color:#111827;
+  font-size:14px;
+}
+.report-flow span{
+  color:#4b5563;
+  line-height:1.45;
+}
+.report-flow-steps{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+}
+.report-flow-steps span{
+  padding:7px 9px;
+  border-radius:999px;
+  background:rgba(17,24,39,.06);
+  color:#4b5563;
+  text-align:center;
+  font-size:12px;
+  font-weight:700;
+}
+.report-flow-steps .done{
+  background:rgba(22,163,74,.12);
+  color:#166534;
+}
 .report-preview{
   max-height:220px;
   overflow:auto;

@@ -348,6 +348,78 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertTrue(pdf_exists)
         self.assertIn("Library RAG Paper", payload["document"]["title"])
 
+    def test_user_report_flow_generate_save_and_search_followup(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+        from reportlab.pdfgen import canvas
+        from security.policy import ToolSecurityPolicy
+        from workspace_services import WorkspaceServices
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_services = server.g_workspace_services
+            old_vector = server.g_vector_store
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            services = WorkspaceServices(store, ToolSecurityPolicy([td]))
+            pdf = Path(td) / "source.pdf"
+            doc = canvas.Canvas(str(pdf))
+            doc.drawString(72, 720, "1 Upload")
+            doc.drawString(72, 700, "A normal user uploads a source document for local knowledge work.")
+            doc.showPage()
+            doc.drawString(72, 720, "2 Follow up")
+            doc.drawString(72, 700, "The generated report should be saved, searchable, and ready for follow-up questions.")
+            doc.save()
+            library_doc = store.add_document(
+                "User Flow Source",
+                filename="source.pdf",
+                file_path=str(pdf),
+                file_hash="user-flow-source",
+                category="research",
+                status="ready",
+            )
+            server.g_memory_store = store
+            server.g_workspace_services = services
+            server.g_vector_store = None
+            try:
+                generated = json.loads(asyncio.run(server.api_research_learning_analysis(FakeRequest({
+                    "library_document_id": library_doc["id"],
+                    "output_dir": str(Path(td) / "reports"),
+                    "formats": ["markdown", "pdf"],
+                    "depth": 2,
+                    "question_count": 8,
+                    "report_style": "compact",
+                }))).body)
+                report = generated["report"]
+                saved = json.loads(asyncio.run(server.api_knowledge_save(FakeRequest({
+                    "title": "User Flow Source · compact",
+                    "content": "\n".join([
+                        "# User Flow Source · compact",
+                        f"Markdown: {report['markdown_path']}",
+                        f"PDF: {report['pdf_path']}",
+                        "Style: compact",
+                        "## Preview",
+                        generated.get("preview", ""),
+                    ]),
+                    "category": "research",
+                    "source": report["markdown_path"],
+                    "tags": ["report", "compact", "generated"],
+                }))).body)
+                markdown_exists = Path(report["markdown_path"]).exists()
+                pdf_exists = Path(report["pdf_path"]).exists()
+                listed = json.loads(asyncio.run(server.api_knowledge_list(category="research")).body)
+            finally:
+                server.g_memory_store = old_store
+                server.g_workspace_services = old_services
+                server.g_vector_store = old_vector
+
+        self.assertTrue(saved["saved"])
+        self.assertTrue(saved["item"]["id"])
+        self.assertIn("Markdown:", saved["item"]["content"])
+        self.assertIn("PDF:", saved["item"]["content"])
+        self.assertTrue(markdown_exists)
+        self.assertTrue(pdf_exists)
+        self.assertTrue(any(item["id"] == saved["item"]["id"] for item in listed["items"]))
+
     def test_knowledge_obsidian_check_and_vault_export(self):
         import clawos_server as server
         from memoryos.memory_store import MemoryStore

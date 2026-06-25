@@ -181,11 +181,19 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("generateKnowledgeReport", js)
         self.assertIn("saveGeneratedReportToKnowledge", js)
         self.assertIn("lastGeneratedReport", js)
+        self.assertIn("lastSavedReportKnowledgeId", js)
+        self.assertIn("report-flow", js)
+        self.assertIn("report-flow-steps", js)
+        self.assertIn("报告已生成", js)
+        self.assertIn("继续追问", js)
+        self.assertIn("appendKnowledgeToPrompt(${Number(lastSavedReportKnowledgeId)})", js)
         self.assertIn("library_document_id", js)
         self.assertIn("/api/workspace/research/learning-analysis", js)
         self.assertIn("business_brief", js)
         self.assertIn(".report-style-panel", css)
         self.assertIn(".report-result", css)
+        self.assertIn(".report-flow", css)
+        self.assertIn(".report-flow-steps", css)
 
     def test_console_user_facing_copy_avoids_internal_demo_terms(self):
         combined = "\n".join(

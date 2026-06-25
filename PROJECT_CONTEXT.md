@@ -535,6 +535,7 @@ Known notes:
 
 Recommended next step:
 - Make `report_style` alter the actual Markdown/PDF report structure, then add a save-generated-report-to-knowledge/Obsidian action for a full user workflow loop.
+
 ### 2026-06-24 - Report style templates and save-back action
 
 Completed:
@@ -555,3 +556,61 @@ Known notes:
 
 Recommended next step:
 - Add a user-visible link from a saved generated report back into chat, so follow-up Q&A can start from the saved report item instead of only the original source document.
+
+### 2026-06-25 - Saved report follow-up action
+
+Completed:
+- Added a follow-up action after saving a generated report to the knowledge base: the result panel now exposes a direct button to ask about the saved report through the existing knowledge prompt path.
+- Reused `appendKnowledgeToPrompt` instead of adding a parallel chat mechanism, keeping report follow-up consistent with normal knowledge items.
+- Added frontend static coverage for the saved-report knowledge id and follow-up prompt hook.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `19 tests OK`.
+- `git diff --check`: passed.
+- `python -m unittest discover -s clawos\tests`: `143 tests OK`.
+
+Known notes:
+- Full tests mutate `clawos/skills/skill_registry.jsonl` use counters. This remains visible in the working tree because the previous restore attempt was rejected by environment usage limits and should not be bypassed.
+
+Recommended next step:
+- Add a small end-to-end user-flow test around upload/generate/save/follow-up once a browser or API-level scenario harness is selected for this workflow.
+
+### 2026-06-25 - API-level report workflow test
+
+Completed:
+- Added an API-level user-flow test that models the main knowledge workflow: uploaded library PDF, report generation, save generated report into the knowledge base, and verify the saved report is visible for follow-up actions.
+- The test uses the same `/api/workspace/research/learning-analysis`, `/api/knowledge`, and `/api/knowledge` list endpoints that back the console flow.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: passed.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: `20 tests OK`.
+- `git diff --check`: passed.
+- `python -m unittest discover -s clawos\tests`: `144 tests OK`.
+
+Known notes:
+- Full tests continue to mutate `clawos/skills/skill_registry.jsonl` use counters. The current diff in that file is a test side effect and should be restored before commit when the environment allows it.
+
+Recommended next step:
+- Do a user-facing copy and visual pass on the report result panel so the generate/save/follow-up actions read as one compact workflow rather than separate tool outputs.
+
+### 2026-06-25 - Report result workflow copy and layout
+
+Completed:
+- Reworked the report result panel into a four-step user workflow: generate report, save to knowledge base, export Obsidian, continue asking questions.
+- Added compact styling for the workflow step chips so the result panel reads as one continuous user path instead of isolated tool outputs.
+- Updated frontend static coverage for the workflow classes and user-facing result-panel copy.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `19 tests OK`.
+- `python -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: passed.
+- `git diff --check`: passed.
+- `python -m unittest discover -s clawos\tests`: `144 tests OK`.
+
+Known notes:
+- `clawos/skills/skill_registry.jsonl` still shows the full-test use counter side effect from earlier runs. Restore it before commit when allowed.
+
+Recommended next step:
+- Restore the clawos/skills/skill_registry.jsonl test counter side effect when allowed, then stage only product/test/context changes for the final commit.
