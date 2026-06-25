@@ -657,3 +657,20 @@ Known notes:
 
 Recommended next step:
 - Continue browser-driven checks on the full first-run workflow, especially after uploading a real PDF and generating/saving a report.
+### 2026-06-25 - Browser report workflow validation and artifact ignore
+
+Completed:
+- Ran the main browser workflow against the live local console: temporary PDF upload, automatic report document selection, compact report generation, save generated report to the knowledge base, and continue asking about the saved report.
+- Verified the generated report panel shows Markdown path, PDF path, output directory, style, question count, preview content, save action, Obsidian action, and follow-up prompt action.
+- Added root `.gitignore` entries for local ClawOS runtime artifacts created during manual/browser validation: `clawos/uploads/`, `output/reports/`, and `tmp/*.png`.
+
+Verification:
+- Browser flow returned `ok=true` for report generation and populated the follow-up chat prompt from the saved knowledge report.
+- `git status` after the ignore update no longer lists the generated upload/report/screenshot artifacts.
+
+Known notes:
+- The browser validation intentionally used a synthetic non-sensitive PDF named `clawos-flow-check.pdf`.
+- Runtime artifacts remain on disk for local inspection, but are now ignored by Git.
+
+Recommended next step:
+- Run one more focused browser check with a realistic user PDF when the user is ready, then prepare the branch for push/PR.
