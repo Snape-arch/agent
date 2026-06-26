@@ -780,3 +780,21 @@ Known notes:
 
 Recommended next step:
 - Run a live browser pass on the first-run path at mobile width: model settings -> upload material -> generate report -> save to knowledge/Obsidian.
+
+### 2026-06-26 - User report-to-Obsidian flow test coverage
+
+Completed:
+- Extended the user-facing report workflow regression so it now covers: choose an uploaded/library PDF, generate Markdown/PDF, save the generated report into the knowledge base, export that saved report to an Obsidian vault, and verify the exported note keeps Markdown/PDF paths and report style.
+- Kept the flow on the real route functions instead of static UI assertions, using the existing output/obsidian safety boundary.
+- Normalized the test report title separator to ASCII to avoid unnecessary encoding fragility in the regression.
+
+Verification:
+- `python -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: passed.
+- `python -m unittest clawos.tests.test_routing_memory clawos.tests.test_workspace_services`: `36 tests OK`.
+- `node --check clawos\static\assets\console.js`: passed.
+
+Known notes:
+- The test writes its Obsidian export under `output/obsidian/user-flow-e2e-test`, which is already ignored as a local generated artifact.
+
+Recommended next step:
+- Run the same first-run path through a live browser at mobile width, then decide whether the report result panel needs clearer one-click actions for continuing the conversation from the saved note.
