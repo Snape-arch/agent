@@ -798,3 +798,24 @@ Known notes:
 
 Recommended next step:
 - Run the same first-run path through a live browser at mobile width, then decide whether the report result panel needs clearer one-click actions for continuing the conversation from the saved note.
+
+### 2026-06-26 - Mobile browser first-run flow and Obsidian graph link fix
+
+Completed:
+- Ran a live Chrome DevTools mobile viewport pass at 390x900 against the local console. The mobile More entry is visible, the main area starts at x=0, and no horizontal page overflow was detected.
+- Exercised the user flow with a real uploaded PDF document: choose library PDF, generate a business brief Markdown/PDF report, save it into the knowledge base, export to Obsidian, and continue asking from the saved report.
+- Fixed the saved report knowledge content so it includes a source wikilink like `[[source title #1]]`; this gives the Obsidian export a real graph edge/backlink instead of showing failed wikilink/backlink checks after a successful report export.
+- Added `output/playwright/` to `.gitignore` for local browser evidence screenshots/PDFs.
+
+Verification:
+- Mobile browser layout check: viewport `390x900`, `scrollWidth=390`, `clientWidth=390`, `mainLeft=0`, mobile More entry displayed as `flex`, no common mojibake/internal demo fragments.
+- Mobile browser report flow: generated Markdown/PDF under `output/reports/mobile-browser-flow-linked`, saved latest report knowledge item with `Related source: [[mobile-flow-source #1]]`, Obsidian result showed `100 / 100` with wikilinks/backlinks success, and Continue follow-up returned to chat with the saved-report prompt.
+- Browser evidence screenshots: `output/playwright/mobile-console-more-entry.png` and `output/playwright/mobile-report-obsidian-linked.png` (local ignored artifacts).
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `22 tests OK`.
+
+Known notes:
+- The live browser run used a synthetic non-sensitive PDF generated under `output/playwright/`; uploaded/report/Obsidian artifacts are local runtime evidence and ignored by Git.
+
+Recommended next step:
+- Review the model settings modal copy and first-run API/local/offline mode selection at mobile width, then run the targeted routing/workspace tests before a final full-suite pass.

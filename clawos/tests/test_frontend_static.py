@@ -209,6 +209,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("saveGeneratedReportToKnowledge", js)
         self.assertIn("lastGeneratedReport", js)
         self.assertIn("lastSavedReportKnowledgeId", js)
+        self.assertIn("sourceLink", js)
+        self.assertIn("Related source: [[${sourceTitle} #1]]", js)
         self.assertIn("report-flow", js)
         self.assertIn("report-flow-steps", js)
         self.assertIn("报告已生成", js)

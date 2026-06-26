@@ -721,7 +721,9 @@ async function saveGeneratedReportToKnowledge() {
   const doc = lastGeneratedReport.library_document || lastGeneratedReport.document || {};
   const style = report.metadata?.report_style || $("reportStylePreset")?.value || "journal";
   const title = `${doc.title || "资料报告"} · ${style}`;
-  const content = [`# ${title}`, "", `Markdown: ${report.markdown_path || ""}`, `PDF: ${report.pdf_path || ""}`, `Output: ${report.output_dir || ""}`, `Style: ${style}`, "", "## Preview", lastGeneratedReport.preview || ""].join("\n");
+  const sourceTitle = String(doc.title || "").trim();
+  const sourceLink = sourceTitle ? `Related source: [[${sourceTitle} #1]]` : "";
+  const content = [`# ${title}`, "", `Markdown: ${report.markdown_path || ""}`, `PDF: ${report.pdf_path || ""}`, `Output: ${report.output_dir || ""}`, `Style: ${style}`, sourceLink, "", "## Preview", lastGeneratedReport.preview || ""].filter(Boolean).join("\n");
   const saved = await api("/api/knowledge", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
