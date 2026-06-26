@@ -89,8 +89,8 @@ $env:MODEL_API_KEY="<your-deepseek-key>"
 ## 当前缺口
 
 - 还需要一次真实浏览器截图或人工目视复核；本轮已完成启动后的 HTTP 页面/API 演示检查，但本地 Node 未安装 `playwright` 包，独立截图未生成。
-- Task Runtime 仍缺长期后台 worker、补偿事务和故障注入验收。
-- 身份、RBAC、Keyring、备份恢复、迁移、可观测性还只是后续方向，不属于本轮 MVP+ 验收门槛。
+- Task Runtime 已有单进程后台 worker、恢复、取消、重试和真实业务 job 接入；仍缺分布式调度、资源配额、补偿事务和故障注入验收。
+- 身份、RBAC、Keyring、可观测性和长期审计导出仍是后续方向；备份恢复和迁移已有本地 API/UI 闭环。
 
 ## 最近完成
 
@@ -716,3 +716,26 @@ Known notes:
 
 Recommended next step:
 - Add a small Ops UI for backup/restore/worker controls, then add richer worker actions for real report generation and document processing jobs.
+
+### 2026-06-26 - Ops Center, real worker jobs, and professional boards
+
+Completed:
+- Added an Ops Center under the More drawer with readiness score, config check, backup/restore controls, worker start/stop/tick, and long-running business job queue controls.
+- Added `/api/system/readiness` so the local single-user ops standard is visible as weighted checks rather than a vague claim.
+- Extended `TaskService` with pluggable worker action handlers and pending enqueue support.
+- Connected real business jobs to the worker: background report generation, batch document ingestion, and OCR queue processing. These reuse the existing report, document ingestion, and KnowledgeService OCR paths.
+- Added job enqueue APIs: `/api/tasks/jobs/report`, `/api/tasks/jobs/ocr-queue`, and `/api/tasks/jobs/batch-ingest`.
+- Added a professional scenario board for research, learning, code, and office workflows with concrete gates: citation/reproducibility, mastery evidence, tests/handoff, and export quality.
+- Added regression tests covering real worker handler dispatch, business job queueing, batch ingest + OCR worker execution, Ops UI wiring, and Professional Template Board presence.
+
+Verification:
+- Bundled Node syntax check: `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- Targeted tests: `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_runtime_task_control`: `35 tests OK`.
+- Full suite: `python -m unittest discover -s clawos\tests`: `152 tests OK`.
+
+Known notes:
+- Ops readiness is scoped to a local single-user enterprise-style operations gate. It is not a production enterprise claim because RBAC, Keyring, multi-tenant identity, resource quotas, and MTTBook real-device validation remain pending.
+- Full tests still mutate `clawos/skills/skill_registry.jsonl` usage counters; the file was restored after validation and should not be staged.
+
+Recommended next step:
+- Run a browser visual pass on More -> Ops Center and Scenes -> Professional Template Board, then decide whether to add progress percentages/log tailing for long report/OCR jobs.

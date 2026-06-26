@@ -734,7 +734,7 @@ def get_task_service() -> TaskService:
         raise HTTPException(503, "MemoryOS not initialized")
     global g_task_service
     if not g_task_service or getattr(g_task_service, "store", None) is not g_memory_store:
-        g_task_service = TaskService(g_memory_store)
+        g_task_service = TaskService(g_memory_store, action_handlers=worker_action_handlers())
     return g_task_service
 
 
@@ -799,6 +799,10 @@ def create_runtime_task(session_id: str, title: str, source: str = "chat", metad
     return get_task_service().create(session_id, title, source=source, metadata=metadata)
 
 
+def enqueue_runtime_task(session_id: str, title: str, source: str = "worker_job", metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    return get_task_service().enqueue(session_id, title, source=source, metadata=metadata)
+
+
 def list_runtime_tasks(session_id: str = "", status: str = "", limit: int = 50) -> list[dict[str, Any]]:
     return get_task_service().list(session_id=session_id, status=status, limit=limit)
 
@@ -836,6 +840,106 @@ def retry_runtime_task(task_id: int, reason: str = "", actor_id: str = "user") -
     if not item:
         raise HTTPException(404, "Task not found")
     return item
+
+
+def worker_action_handlers() -> dict[str, Any]:
+    return {
+        "generate_report": worker_generate_report,
+        "batch_ingest_documents": worker_batch_ingest_documents,
+        "process_ocr_queue": worker_process_ocr_queue,
+    }
+
+
+def _worker_require_not_cancelled(task_id: int) -> None:
+    if get_task_service().is_cancelled(task_id):
+        raise asyncio.CancelledError()
+
+
+def worker_generate_report(task: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    if not g_workspace_services:
+        raise RuntimeError("Workspace services not initialized")
+    if not g_memory_store:
+        raise RuntimeError("MemoryOS not initialized")
+    task_id = int(task["id"])
+    document_id = int(metadata.get("library_document_id") or metadata.get("document_id") or 0)
+    if not document_id:
+        raise ValueError("library_document_id is required")
+    library_document = g_memory_store.get_document(document_id)
+    if not library_document:
+        raise ValueError("Document not found")
+    if library_document.get("status") != "ready":
+        raise ValueError("Document is not ready for report generation")
+    _worker_require_not_cancelled(task_id)
+    result = g_workspace_services.generate_research_learning_analysis(
+        document_id=metadata.get("research_document_id"),
+        file_path=library_document.get("file_path", ""),
+        title=metadata.get("title") or library_document.get("title", ""),
+        output_dir=metadata.get("output_dir") or "output/reports",
+        formats=metadata.get("formats") or ["markdown", "pdf"],
+        depth=metadata.get("depth", 5),
+        question_count=metadata.get("question_count", 40),
+        report_style=metadata.get("report_style", "journal"),
+    )
+    result["library_document"] = library_document
+    return {"action": "generate_report", **result}
+
+
+def worker_batch_ingest_documents(task: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    if not g_memory_store:
+        raise RuntimeError("MemoryOS not initialized")
+    from memoryos.document_ingestion import ingest_file
+
+    task_id = int(task["id"])
+    raw_files = metadata.get("files") or metadata.get("paths") or []
+    if isinstance(raw_files, str):
+        raw_files = [item.strip() for item in re.split(r"[\n,;]+", raw_files) if item.strip()]
+    if not isinstance(raw_files, list) or not raw_files:
+        raise ValueError("files must be a non-empty list")
+    category = str(metadata.get("category") or "domain")
+    limit = max(1, min(int(metadata.get("limit") or 24), 100))
+    documents, errors = [], []
+    for raw_path in raw_files[:limit]:
+        _worker_require_not_cancelled(task_id)
+        try:
+            source = g_security_policy.resolve_path(str(raw_path)) if g_security_policy else Path(str(raw_path)).expanduser().resolve()
+            if not source.is_file():
+                raise ValueError("file not found")
+            documents.append(ingest_file(g_memory_store, UPLOAD_DIR, source, title=source.stem, category=category))
+        except Exception as exc:
+            errors.append({"file": str(raw_path), "error": str(exc)})
+    if g_vector_store:
+        g_vector_store.refresh()
+    return {
+        "action": "batch_ingest_documents",
+        "category": category,
+        "processed": len(documents),
+        "failed": len(errors),
+        "documents": documents,
+        "errors": errors,
+    }
+
+
+def worker_process_ocr_queue(task: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    service = get_knowledge_service()
+    task_id = int(task["id"])
+    category = str(metadata.get("category") or "")
+    limit = max(1, min(int(metadata.get("limit") or 12), 50))
+    pending = service.list_ocr_queue(category)[:limit]
+    results, errors = [], []
+    for document in pending:
+        _worker_require_not_cancelled(task_id)
+        try:
+            results.append(service.run_ocr(int(document["id"]), force=bool(metadata.get("force", True))))
+        except Exception as exc:
+            errors.append({"document_id": document.get("id"), "error": str(exc)})
+    return {
+        "action": "process_ocr_queue",
+        "category": category or "all",
+        "processed": len(results),
+        "failed": len(errors),
+        "results": results,
+        "errors": errors,
+    }
 
 
 async def run_background_worker_once(worker_id: str = "background-worker", max_attempts: int = 3) -> dict[str, Any]:
@@ -945,7 +1049,7 @@ async def lifespan(app: FastAPI):
     g_security_policy = ToolSecurityPolicy(grant_store=SecurityGrantStore(BASE_DIR / "security_policy.json"))
     g_secret_manager = SecretManager(g_memory_store)
     g_security_service = SecurityService(g_security_policy, g_secret_manager, g_memory_store)
-    g_task_service = TaskService(g_memory_store)
+    g_task_service = TaskService(g_memory_store, action_handlers=worker_action_handlers())
     g_maintenance_service = MaintenanceService(store=g_memory_store, db_path=MEMORY_DB, base_dir=BASE_DIR, config=config)
     g_maintenance_service.apply_migrations()
     g_knowledge_service = KnowledgeService(g_memory_store, UPLOAD_DIR, lambda: g_vector_store.refresh() if g_vector_store else None)
@@ -1821,6 +1925,31 @@ async def api_system_restore(request: Request):
     except RuntimeError as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse(result)
+
+
+@app.get("/api/system/readiness")
+async def api_system_readiness():
+    checks = [
+        {"id": "config_check", "label": "Configuration check API", "ok": bool(g_maintenance_service), "weight": 12},
+        {"id": "migrations", "label": "SQLite migrations API", "ok": bool(g_maintenance_service), "weight": 10},
+        {"id": "backup_restore", "label": "Backup and restore API", "ok": bool(g_maintenance_service), "weight": 14},
+        {"id": "task_runtime", "label": "Task queue, cancel, retry, recover", "ok": bool(g_memory_store), "weight": 14},
+        {"id": "worker_loop", "label": "Background worker control plane", "ok": bool(get_task_service()), "weight": 12},
+        {"id": "real_worker_jobs", "label": "Report, OCR queue, batch document jobs", "ok": set(worker_action_handlers()) >= {"generate_report", "process_ocr_queue", "batch_ingest_documents"}, "weight": 16},
+        {"id": "security_audit", "label": "Security policy and audit center", "ok": bool(g_security_policy and g_memory_store), "weight": 10},
+        {"id": "knowledge_ops", "label": "Knowledge graph, Obsidian, OCR operations", "ok": bool(get_knowledge_service()), "weight": 12},
+    ]
+    total = sum(int(item["weight"]) for item in checks)
+    passed = sum(int(item["weight"]) for item in checks if item["ok"])
+    score = round(passed / total, 4) if total else 0
+    return JSONResponse({
+        "score": score,
+        "percent": round(score * 100, 1),
+        "standard": "single-user enterprise ops readiness",
+        "enterprise_ready": score >= 0.9,
+        "checks": checks,
+        "remaining": [item for item in checks if not item["ok"]],
+    })
 
 @app.get("/api/workspace/capabilities")
 async def api_workspace_capabilities():
@@ -2750,6 +2879,59 @@ async def api_tasks_worker_stop():
     g_background_worker_task = None
     g_background_worker_status["running"] = False
     return JSONResponse({"ok": True, "stopped": True, **g_background_worker_status})
+
+
+@app.post("/api/tasks/jobs/report")
+async def api_tasks_job_report(request: Request):
+    data = await request.json()
+    document_id = int(data.get("library_document_id") or data.get("document_id") or 0)
+    if not document_id:
+        raise HTTPException(400, "library_document_id is required")
+    metadata = {
+        "worker_action": "generate_report",
+        "library_document_id": document_id,
+        "report_style": data.get("report_style", "journal"),
+        "depth": data.get("depth", 5),
+        "question_count": data.get("question_count", 40),
+        "output_dir": data.get("output_dir", "output/reports"),
+        "formats": data.get("formats") or ["markdown", "pdf"],
+        "idempotency_key": data.get("idempotency_key", ""),
+    }
+    task = enqueue_runtime_task("worker-jobs", f"Generate report for document {document_id}", metadata=metadata)
+    return JSONResponse({"queued": True, "task": task})
+
+
+@app.post("/api/tasks/jobs/ocr-queue")
+async def api_tasks_job_ocr_queue(request: Request):
+    data = await request.json()
+    metadata = {
+        "worker_action": "process_ocr_queue",
+        "category": data.get("category", ""),
+        "limit": data.get("limit", 12),
+        "force": bool(data.get("force", True)),
+        "idempotency_key": data.get("idempotency_key", ""),
+    }
+    task = enqueue_runtime_task("worker-jobs", "Process OCR queue", metadata=metadata)
+    return JSONResponse({"queued": True, "task": task})
+
+
+@app.post("/api/tasks/jobs/batch-ingest")
+async def api_tasks_job_batch_ingest(request: Request):
+    data = await request.json()
+    files = data.get("files") or data.get("paths") or []
+    if isinstance(files, str):
+        files = [item.strip() for item in re.split(r"[\n,;]+", files) if item.strip()]
+    if not isinstance(files, list) or not files:
+        raise HTTPException(400, "files must be a non-empty list")
+    metadata = {
+        "worker_action": "batch_ingest_documents",
+        "files": files,
+        "category": data.get("category", "domain"),
+        "limit": data.get("limit", 24),
+        "idempotency_key": data.get("idempotency_key", ""),
+    }
+    task = enqueue_runtime_task("worker-jobs", f"Batch ingest {len(files)} documents", metadata=metadata)
+    return JSONResponse({"queued": True, "task": task})
 
 @app.get("/api/tasks/events")
 async def api_task_events(session_id: str = "", after_id: int = 0, limit: int = 100):

@@ -8,8 +8,9 @@ from typing import Any
 class TaskService:
     """Runtime task boundary used by chat, queue, and task API routes."""
 
-    def __init__(self, store: Any):
+    def __init__(self, store: Any, action_handlers: dict[str, Any] | None = None):
         self.store = store
+        self.action_handlers = action_handlers or {}
 
     def require_store(self):
         if not self.store:
@@ -24,6 +25,19 @@ class TaskService:
             title,
             source=source,
             metadata=metadata,
+            idempotency_key=str(metadata.get("idempotency_key", "") or ""),
+            retry_of=metadata.get("retry_of"),
+        )
+
+    def enqueue(self, session_id: str, title: str, source: str = "worker_job", metadata: dict[str, Any] | None = None):
+        store = self.require_store()
+        metadata = metadata or {}
+        return store.start_task(
+            session_id,
+            title,
+            source=source,
+            metadata=metadata,
+            status="pending",
             idempotency_key=str(metadata.get("idempotency_key", "") or ""),
             retry_of=metadata.get("retry_of"),
         )
@@ -89,7 +103,13 @@ class TaskService:
             if self.is_cancelled(task_id):
                 item = store.finish_task(task_id, "canceled", error="canceled before worker execution")
                 return {"ok": True, "claimed": True, "canceled": True, "task": item}
-            result = await self._execute_worker_action(task, action)
+            handler = self.action_handlers.get(action)
+            if handler:
+                result = handler(task, metadata)
+                if asyncio.iscoroutine(result):
+                    result = await result
+            else:
+                result = await self._execute_worker_action(task, action)
             if self.is_cancelled(task_id):
                 item = store.finish_task(task_id, "canceled", error="canceled during worker execution")
                 return {"ok": True, "claimed": True, "canceled": True, "task": item}

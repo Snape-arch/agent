@@ -280,6 +280,68 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("loadTasks", js)
         self.assertIn("task_id", js)
 
+    def test_console_exposes_ops_center_and_business_worker_jobs(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
+        server = self.read_page("../clawos_server.py")
+
+        for token in (
+            "view-ops",
+            "opsReadinessTable",
+            "opsConfigTable",
+            "opsWorkerTable",
+            "opsReportDocumentSelect",
+            "opsBatchFiles",
+            "Ops Center",
+        ):
+            self.assertIn(token, html)
+        for token in (
+            "loadOps",
+            "runConfigCheck",
+            "createBackup",
+            "restoreBackup",
+            "startWorker",
+            "tickWorker",
+            "queueReportJob",
+            "queueOcrJob",
+            "queueBatchIngestJob",
+            "/api/system/readiness",
+            "/api/tasks/jobs/report",
+            "/api/tasks/jobs/ocr-queue",
+            "/api/tasks/jobs/batch-ingest",
+        ):
+            self.assertIn(token, js)
+        for token in (
+            "worker_generate_report",
+            "worker_process_ocr_queue",
+            "worker_batch_ingest_documents",
+            "api_system_readiness",
+            "api_tasks_job_report",
+        ):
+            self.assertIn(token, server)
+        self.assertIn(".ops-workspace", css)
+        self.assertIn(".job-grid", css)
+
+    def test_console_exposes_professional_template_board(self):
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
+
+        for token in (
+            "Professional Template Board",
+            "professionalBoardGrid",
+            "Research Board",
+            "Learning Board",
+            "Code Board",
+            "Office Board",
+            "activateScenarioBoard",
+            "reproducibility gate",
+            "export quality gate",
+        ):
+            self.assertIn(token, js)
+        self.assertIn(".professional-board-grid", css)
+        self.assertIn(".board-card", css)
+
     def test_console_exposes_skill_workbench_controls(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")

@@ -205,6 +205,109 @@ class RuntimeTaskControlTests(unittest.TestCase):
         self.assertEqual(fail_after["status"], "failed")
         self.assertEqual(queued[0]["retry_of"], fail_task["id"])
 
+    def test_task_service_dispatches_real_worker_handler(self):
+        from memoryos.memory_store import MemoryStore
+        from services.task_service import TaskService
+
+        calls = []
+
+        def handler(task, metadata):
+            calls.append((task["id"], metadata["worker_action"]))
+            return {"business_result": metadata["payload"]}
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            service = TaskService(store, action_handlers={"real_job": handler})
+            task = service.enqueue(
+                "s-worker",
+                "Real business job",
+                metadata={"worker_action": "real_job", "payload": "report"},
+            )
+            result = asyncio.run(service.run_worker_once(worker_id="test-worker"))
+            after = store.get_task(task["id"])["task"]
+
+        self.assertEqual(calls, [(task["id"], "real_job")])
+        self.assertTrue(result["ok"])
+        self.assertEqual(after["status"], "succeeded")
+        self.assertEqual(after["metadata"]["response_payload"]["business_result"], "report")
+
+    def test_real_business_job_apis_enqueue_pending_tasks(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_task_service = server.g_task_service
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            server.g_task_service = None
+            try:
+                report = asyncio.run(server.api_tasks_job_report(JsonRequest({"library_document_id": 7})))
+                ocr = asyncio.run(server.api_tasks_job_ocr_queue(JsonRequest({"category": "research", "limit": 2})))
+                batch = asyncio.run(server.api_tasks_job_batch_ingest(JsonRequest({"files": [str(Path(td) / "a.txt")]})))
+                queued = server.g_memory_store.list_task_queue()
+            finally:
+                server.g_memory_store = old_store
+                server.g_task_service = old_task_service
+
+        payloads = [json.loads(item.body.decode("utf-8")) for item in (report, ocr, batch)]
+        self.assertTrue(all(item["queued"] for item in payloads))
+        self.assertEqual([task["status"] for task in queued], ["pending", "pending", "pending"])
+        self.assertEqual(
+            [task["metadata"]["worker_action"] for task in queued],
+            ["generate_report", "process_ocr_queue", "batch_ingest_documents"],
+        )
+
+    def test_worker_runs_batch_ingest_and_ocr_queue_business_jobs(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            input_file = root / "paper_notes.txt"
+            input_file.write_text("Abstract\nThis paper studies agent workbench evaluation.\n" * 20, encoding="utf-8")
+            scan_file = root / "scan.pdf"
+            scan_file.write_bytes(b"%PDF-1.4\n% test placeholder\n")
+            Path(str(scan_file) + ".ocr.txt").write_text("OCR extracted text about knowledge graphs.\n" * 20, encoding="utf-8")
+
+            old_store = server.g_memory_store
+            old_task_service = server.g_task_service
+            old_knowledge_service = server.g_knowledge_service
+            old_security_policy = server.g_security_policy
+            old_vector_store = server.g_vector_store
+            server.g_memory_store = MemoryStore(str(root / "memory.db"))
+            server.g_task_service = None
+            server.g_knowledge_service = None
+            server.g_security_policy = None
+            server.g_vector_store = None
+            try:
+                server.g_memory_store.add_document(
+                    title="Scanned paper",
+                    filename=scan_file.name,
+                    file_path=str(scan_file),
+                    file_hash="scan-hash",
+                    category="research",
+                    status="needs_ocr",
+                    metadata={"ocr_required": True, "ocr_pages": [1]},
+                )
+                asyncio.run(server.api_tasks_job_batch_ingest(JsonRequest({"files": [str(input_file)], "category": "research"})))
+                asyncio.run(server.api_tasks_job_ocr_queue(JsonRequest({"category": "research", "limit": 4})))
+                first = asyncio.run(server.api_tasks_worker_tick(JsonRequest({"worker_id": "biz-worker"})))
+                second = asyncio.run(server.api_tasks_worker_tick(JsonRequest({"worker_id": "biz-worker"})))
+                docs = server.g_memory_store.list_documents("research")
+                queue = server.g_memory_store.list_task_queue()
+            finally:
+                server.g_memory_store = old_store
+                server.g_task_service = old_task_service
+                server.g_knowledge_service = old_knowledge_service
+                server.g_security_policy = old_security_policy
+                server.g_vector_store = old_vector_store
+
+        self.assertTrue(json.loads(first.body.decode("utf-8"))["ok"])
+        self.assertTrue(json.loads(second.body.decode("utf-8"))["ok"])
+        self.assertEqual(queue, [])
+        self.assertTrue(any(doc["title"] == "paper_notes" and doc["status"] == "ready" for doc in docs))
+        self.assertTrue(any(doc["title"] == "Scanned paper" and doc["status"] == "ready" for doc in docs))
+
     def test_background_worker_long_task_honors_cancellation(self):
         import clawos_server as server
         from memoryos.memory_store import MemoryStore
