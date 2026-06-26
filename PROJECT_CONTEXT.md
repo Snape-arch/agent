@@ -739,3 +739,27 @@ Known notes:
 
 Recommended next step:
 - Run a browser visual pass on More -> Ops Center and Scenes -> Professional Template Board, then decide whether to add progress percentages/log tailing for long report/OCR jobs.
+
+### 2026-06-26 - Frontend mojibake cleanup, responsive console polish, and board QA
+
+Completed:
+- Rebuilt the console HTML/JS user-facing copy so core console surfaces no longer expose mojibake or broken Chinese text.
+- Standardized the core console layout around page header, actions, metrics/tables, results, and empty states for chat, knowledge, tasks, Ops, and scenes.
+- Added icon-text treatment and clearer status/action affordances for export, restore, cancel, retry, worker, Ops, and knowledge flows.
+- Upgraded Professional Template Board into scenario workbench cards. Each board now shows input, output, quality gate, and next action for research, learning, code, and office workflows.
+- Fixed small-width layout so the sidebar becomes a compact top navigation, the main work area starts inside the viewport, and dense tables scroll inside their cards instead of crushing text.
+- Updated frontend static tests to assert clean Chinese copy, no common mojibake fragments, model choice placement, report flow, Ops UI, and Professional Board contracts.
+
+Verification:
+- Bundled Node syntax check: `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- Frontend static tests: `python -m unittest clawos.tests.test_frontend_static`: `21 tests OK`.
+- Unicode mojibake scan across `clawos/static/console.html`, `clawos/static/assets/console.js`, and `clawos/static/assets/console.css`: `0` flagged fragments.
+- Browser visual QA with real CSS loaded through an embedded local static server: desktop `1440x980`, laptop `1280x860`, and narrow `390x900`; views checked: chat, knowledge, tasks, Ops, scenes. All reported `issueCount=0`.
+- Narrow follow-up check: Ops/scenes main content begins at `mainLeft=0`, page scroll width equals viewport width `390`, and Ops tables use card-local horizontal scrolling.
+
+Known notes:
+- Browser QA screenshots and JSON reports were written under `output/playwright/` for local inspection and should remain untracked.
+- Existing untracked DeepSeek reports and PDF preview artifacts remain untouched and should not be staged with this frontend commit.
+
+Recommended next step:
+- Run a product-owner review of the live console copy and decide whether to add a dedicated mobile "More" drawer entry so small-width users can reach every secondary module without horizontal nav scrolling.

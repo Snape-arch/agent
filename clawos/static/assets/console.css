@@ -761,8 +761,97 @@
   .app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media(max-width:760px){
-  .aether-console .console-head{left:0}
-  .aether-console .console-main{margin-left:0}
+  .aether-console{
+    display:block;
+    overflow-x:hidden;
+  }
+  .aether-console .side{
+    position:relative;
+    inset:auto;
+    width:100%;
+    min-height:0;
+    height:auto;
+    padding:12px;
+    border-right:0;
+    border-bottom:1px solid rgba(17,24,39,.08);
+  }
+  .aether-console .side-brand{
+    margin-bottom:10px;
+  }
+  .aether-console .side-search{
+    margin:0 0 10px;
+  }
+  .aether-console .side-label,
+  .aether-console .recent-label,
+  .aether-console .sessions{
+    display:none;
+  }
+  .aether-console .side-nav,
+  .aether-console .side-bottom{
+    display:flex;
+    gap:8px;
+    overflow-x:auto;
+    padding:2px 0 4px;
+    margin:0;
+  }
+  .aether-console .side-bottom{
+    margin-top:8px;
+    border-top:0;
+  }
+  .aether-console .side-nav button,
+  .aether-console .side-bottom button{
+    flex:0 0 auto;
+    min-height:38px;
+    padding:8px 12px;
+    white-space:nowrap;
+  }
+  .aether-console .health{
+    flex:0 0 auto;
+    align-self:center;
+    white-space:nowrap;
+  }
+  .aether-console .console-head{
+    position:relative;
+    left:auto;
+    top:auto;
+    min-height:0;
+    padding:16px;
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+    border-bottom:0;
+  }
+  .aether-console .console-head > div:first-child{
+    max-width:none;
+  }
+  .aether-console .console-head h1{
+    font-size:24px;
+  }
+  .aether-console .model-mode-panel{
+    width:100%;
+    max-width:none;
+  }
+  .aether-console .console-main{
+    margin-left:0;
+    height:auto;
+    min-height:0;
+    padding:0 12px 18px;
+  }
+  .aether-console .view.on{
+    min-height:0;
+  }
+  .aether-console .panel-view,
+  .aether-console .workspace{
+    min-height:0;
+    max-height:none;
+  }
+  .aether-console .chat{
+    height:auto;
+    min-height:360px;
+  }
+  .composer{
+    padding:8px 0 18px;
+  }
   .compose-inner{grid-template-columns:42px minmax(0,1fr)}
   .compose-inner .primary{grid-column:1/-1}
   .library-head{display:grid}
@@ -1027,6 +1116,66 @@
   color:#64748b;
   line-height:1.45;
 }
+.board-card dl{
+  display:grid;
+  gap:6px;
+  margin:2px 0 4px;
+  padding:0;
+}
+.board-card dt,
+.board-card dd{
+  margin:0;
+  color:#475569;
+  font-size:12px;
+  line-height:1.45;
+}
+.board-card dd{
+  color:#64748b;
+}
+.icon-text{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+}
+.ui-ico{
+  display:inline-grid;
+  place-items:center;
+  width:18px;
+  height:18px;
+  border-radius:6px;
+  background:rgba(15,23,42,.08);
+  color:#0f172a;
+  font-size:11px;
+  line-height:1;
+}
+.empty-state{
+  padding:16px;
+  border:1px dashed rgba(100,116,139,.28);
+  border-radius:8px;
+  color:#64748b;
+  background:rgba(248,250,252,.72);
+}
+.library-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:18px;
+  margin-bottom:14px;
+}
+.library-head h2{
+  margin:0 0 4px;
+  font-size:20px;
+  letter-spacing:0;
+}
+.library-head p{
+  margin:0;
+}
+.section-block{
+  border-radius:10px;
+}
+.section-block h2{
+  letter-spacing:0;
+}
 @media(max-width:1100px){
   .ops-grid,
   .job-grid,
@@ -1108,4 +1257,40 @@
   .aether-console .head-actions{display:none}
   .report-style-panel{grid-template-columns:repeat(3,minmax(0,1fr))}
   .report-style-panel > div{grid-column:1/-1}
+}
+
+@media(max-width:760px){
+  .aether-console .side{
+    position:relative;
+    width:100%;
+    min-height:0;
+    height:auto;
+    overflow:visible;
+  }
+  .aether-console .side-bottom{
+    margin-top:8px;
+  }
+  .aether-console .console-head,
+  .aether-console .console-main{
+    left:auto;
+    margin-left:0;
+    width:100%;
+  }
+  .aether-console .console-main{
+    display:block;
+    padding:0 12px 18px;
+  }
+  .aether-console .section-block{
+    overflow-x:auto;
+  }
+  .aether-console .table{
+    min-width:560px;
+    table-layout:auto;
+  }
+  .aether-console .table th,
+  .aether-console .table td{
+    white-space:normal;
+    word-break:normal;
+    overflow-wrap:break-word;
+  }
 }

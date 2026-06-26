@@ -15,7 +15,7 @@
         <b>ClawOS 工作台</b>
         <small>Agent Console</small>
       </div>
-      <button class="side-collapse" aria-label="收起侧栏">‹</button>
+      <button class="side-collapse" aria-label="收起侧栏">×</button>
     </div>
 
     <div class="side-search">
@@ -25,19 +25,19 @@
 
     <div class="side-label">工作区</div>
     <div class="side-nav">
-      <button class="on" data-view="chat"><span class="nav-ico">✎</span>新聊天</button>
-      <button data-view="search"><span class="nav-ico">⌕</span>搜索聊天</button>
-      <button data-view="knowledge"><span class="nav-ico">▥</span>知识库</button>
-      <button data-view="projects"><span class="nav-ico">□</span>项目</button>
-      <button type="button" onclick="toggleCommandDrawer()"><span class="nav-ico">⋯</span>更多</button>
+      <button class="on" data-view="chat"><span class="nav-ico">N</span>新聊天</button>
+      <button data-view="search"><span class="nav-ico">S</span>搜索聊天</button>
+      <button data-view="knowledge"><span class="nav-ico">K</span>知识库</button>
+      <button data-view="projects"><span class="nav-ico">P</span>项目</button>
+      <button type="button" onclick="toggleCommandDrawer()"><span class="nav-ico">M</span>更多</button>
     </div>
 
     <div class="side-label recent-label">最近</div>
     <div class="sessions" id="sessions"></div>
 
     <div class="side-bottom">
-      <button onclick="openModelSettings()"><span class="nav-ico">⚙</span>系统设置</button>
-      <button onclick="toggleCommandDrawer()"><span class="nav-ico">⌘</span>工具与评测</button>
+      <button onclick="openModelSettings()"><span class="nav-ico">C</span>系统设置</button>
+      <button onclick="toggleCommandDrawer()"><span class="nav-ico">A</span>工具与评测</button>
       <div class="health"><span class="dot" id="healthDot"></span><span id="healthText">启动中</span></div>
     </div>
   </aside>
@@ -45,18 +45,16 @@
   <header class="console-head">
     <div>
       <h1 id="viewTitle">新聊天</h1>
-      <p id="viewSub">发起任务，连接工具、知识库、本地文件和项目上下文</p>
+      <p id="viewSub">发起任务，连接工具、知识库、文件和项目上下文</p>
     </div>
-    <div class="header-orbit" aria-hidden="true">
-      <span></span><span></span><span></span><span></span>
-    </div>
+    <div class="header-orbit" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
     <div class="model-mode-panel" id="modelModePanel">
       <b id="modelModeLabel">模型模式检测中</b>
       <span id="modelModeDetail">DeepSeek API / Local Qwen / Mock offline</span>
     </div>
     <div class="head-actions">
-      <span class="badge" id="modelBadge">模型：--</span>
-      <span class="badge" id="toolBadge">工具：--</span>
+      <span class="badge" id="modelBadge">模型：-</span>
+      <span class="badge" id="toolBadge">工具：-</span>
       <button class="round-action" aria-label="通知"><span class="notify-dot"></span>·</button>
       <button class="profile-action">C</button>
     </div>
@@ -82,12 +80,12 @@
           <div class="chat-inner" id="chatInner">
             <div class="empty">
               <b>准备好了，随时开始</b>
-              <span>直接提问，或通过知识库、项目和本地文件把上下文交给 ClawOS。</span>
+              <span>直接提问，或把知识库、项目和本地文件作为上下文交给 ClawOS。</span>
               <div class="quick-grid">
-                <button class="quick" onclick="usePrompt('分析当前项目并给出下一步开发计划')">分析项目与开发计划</button>
+                <button class="quick" onclick="usePrompt('分析当前项目，并给出下一步开发计划')">分析项目与开发计划</button>
                 <button class="quick" onclick="usePrompt('检索我的知识库和长期记忆，回答这个问题：')">检索知识库</button>
                 <button class="quick" onclick="usePrompt('列出当前可用工具和固化技能')">探索工具与技能</button>
-                <button class="quick" onclick="usePrompt('复盘最近一次任务并总结改进建议')">运行反思复盘</button>
+                <button class="quick" onclick="usePrompt('复盘最近一次任务，并总结改进建议')">运行反思复盘</button>
               </div>
             </div>
           </div>
@@ -101,7 +99,7 @@
           <div class="attachment-tray" id="attachmentTray" aria-live="polite"></div>
           <div class="compose-inner">
             <button class="attach-button" onclick="chooseLocalFile()" title="添加本地文件">+</button>
-            <textarea id="prompt" placeholder="有问题，尽管问。点 + 添加文件，Agent 会作为上下文自动阅读。" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+            <textarea id="prompt" placeholder="有问题，尽管问。点 + 添加文件，Agent 会作为上下文自动读取。" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
             <button class="primary" id="send" onclick="sendMessage()">发送</button>
             <button class="secondary" id="stop" onclick="stopGeneration()" disabled>停止</button>
             <input id="filePicker" type="file" multiple hidden onchange="handlePickedFiles(event)">
@@ -113,7 +111,7 @@
     <section class="view" id="view-search">
       <div class="panel-view glass-panel search-workspace">
         <div class="library-head">
-          <div><h2>搜索聊天</h2><p class="hint">历史会话会自动提炼主题标签，点击后继续上下文。</p></div>
+          <div><h2>搜索聊天</h2><p class="hint">查找历史会话并继续上下文。</p></div>
           <div class="searchbar compact"><input id="sessionQuery" placeholder="搜索历史会话" oninput="renderSessionSearch()"><button class="secondary" onclick="renderSessionSearch()">搜索</button></div>
         </div>
         <div class="session-results" id="sessionSearchList"></div>
@@ -123,10 +121,7 @@
     <section class="view" id="view-knowledge">
       <div class="panel-view glass-panel knowledge-workspace">
         <div class="library-head">
-          <div>
-            <h2>知识库</h2>
-            <p class="hint">这里是用户主动构建的 RAG 资料库：论文、博客、文档、课程笔记和项目资料。</p>
-          </div>
+          <div><h2>知识库</h2><p class="hint">管理主动构建的 RAG 资料：论文、博客、文档、课程笔记和项目资料。</p></div>
           <div class="library-tabs">
             <button class="on" data-knowledge="all" onclick="setKnowledgeCategory('')">全部</button>
             <button data-knowledge="research" onclick="setKnowledgeCategory('research')">科研库</button>
@@ -139,7 +134,7 @@
           <label class="import-drop" for="knowledgeFilePicker">
             <input id="knowledgeFilePicker" type="file" multiple hidden onchange="handleKnowledgeFiles(event)">
             <b>上传文件到当前库</b>
-            <span>支持 txt、md、csv、json、html 等文本资料；导入后会进入检索和拓扑。</span>
+            <span>支持 txt、md、csv、json、html、PDF、DOCX 等资料；导入后进入检索、引用和图谱。</span>
           </label>
           <div class="session-import">
             <label>从历史会话沉淀<select id="knowledgeSessionSelect"></select></label>
@@ -147,44 +142,38 @@
           </div>
         </div>
         <div class="obsidian-panel">
-          <div>
-            <b>Obsidian 检查与导出</b>
-            <span id="obsidianStatus">检查 frontmatter、标签、双链、反链和图谱关系</span>
-          </div>
+          <div><b>Obsidian 检查与导出</b><span id="obsidianStatus">检查 frontmatter、标签、双链、反链和图谱关系</span></div>
           <label>导出目录<input id="obsidianExportDir" placeholder="默认 output/obsidian/当前库"></label>
           <button class="secondary" onclick="checkObsidianVault()">检查</button>
           <button class="primary" onclick="exportObsidianVault()">导出 Vault</button>
         </div>
         <div class="report-style-panel">
-          <div>
-            <b>&#x751f;&#x6210;&#x8d44;&#x6599;&#x62a5;&#x544a;</b>
-            <span id="reportStyleHint">&#x9009;&#x62e9;&#x5df2;&#x4e0a;&#x4f20;&#x7684; PDF &#x8d44;&#x6599;&#xff0c;&#x76f4;&#x63a5;&#x751f;&#x6210; Markdown &#x548c; PDF &#x62a5;&#x544a;&#x3002;</span>
-          </div>
-          <label>&#x8d44;&#x6599;<select id="reportDocumentSelect"></select></label>
-          <label>&#x6837;&#x5f0f;<select id="reportStylePreset" onchange="applyReportPreset()"><option value="journal">&#x8bba;&#x6587;&#x5206;&#x6790;</option><option value="learning_notes">&#x5b66;&#x4e60;&#x7b14;&#x8bb0;</option><option value="business_brief">&#x5546;&#x4e1a;&#x7b80;&#x62a5;</option><option value="compact">&#x7d27;&#x51d1;&#x7248;</option></select></label>
-          <label>&#x6df1;&#x5ea6;<select id="reportDepthPreset" onchange="applyReportPreset()"><option value="5">&#x6df1;&#x5ea6;</option><option value="3">&#x6807;&#x51c6;</option><option value="2">&#x5feb;&#x901f;</option></select></label>
-          <label>&#x8f93;&#x51fa;&#x76ee;&#x5f55;<input id="reportOutputDir" placeholder="output/reports"></label>
-          <button class="primary" onclick="generateKnowledgeReport()">&#x751f;&#x6210;&#x62a5;&#x544a;</button>
+          <div><b>生成资料报告</b><span id="reportStyleHint">选择已上传的 PDF 资料，直接生成 Markdown 和 PDF 报告。</span></div>
+          <label>资料<select id="reportDocumentSelect"></select></label>
+          <label>样式<select id="reportStylePreset" onchange="applyReportPreset()"><option value="journal">论文分析</option><option value="learning_notes">学习笔记</option><option value="business_brief">商业简报</option><option value="compact">紧凑版</option></select></label>
+          <label>深度<select id="reportDepthPreset" onchange="applyReportPreset()"><option value="5">深度</option><option value="3">标准</option><option value="2">快速</option></select></label>
+          <label>输出目录<input id="reportOutputDir" placeholder="output/reports"></label>
+          <button class="primary" onclick="generateKnowledgeReport()">生成报告</button>
         </div>
-        <div class="section-block compact-block" id="reportResultBlock"><h2>&#x62a5;&#x544a;&#x7ed3;&#x679c;</h2><div class="report-result" id="reportResult">&#x9009;&#x62e9;&#x8d44;&#x6599;&#x540e;&#x751f;&#x6210;&#x62a5;&#x544a;</div></div>
+        <div class="section-block compact-block" id="reportResultBlock"><h2>报告结果</h2><div class="report-result" id="reportResult">选择资料后生成报告</div></div>
         <div class="section-block compact-block" id="obsidianResultBlock"><h2>Obsidian 结果</h2><table class="table" id="obsidianCheckTable"></table></div>
         <div class="knowledge-layout">
           <section class="knowledge-editor">
             <label>标题<input id="knowledgeTitle" placeholder="论文精读：Agent 工具调用评测"></label>
             <label>分类<select id="knowledgeCategory"><option value="research">科研</option><option value="learning">学习</option><option value="writing">写作/博客</option><option value="project">项目资料</option><option value="domain">通用知识</option></select></label>
             <label>来源<input id="knowledgeSource" placeholder="paper / note / chat / manual"></label>
-            <label class="wide">内容<textarea id="knowledgeContent" placeholder="粘贴文献摘要、学习笔记，或让 Agent 凝练对话后存入这里。"></textarea></label>
+            <label class="wide">内容<textarea id="knowledgeContent" placeholder="粘贴资料摘要、学习笔记，或让 Agent 从对话中沉淀。"></textarea></label>
             <div class="action-row"><button class="primary" onclick="saveKnowledge()">保存到知识库</button><button class="secondary" onclick="clearKnowledgeEditor()">清空草稿</button><span class="hint" id="knowledgeStatus">等待导入或编辑</span></div>
           </section>
           <section class="knowledge-map">
-            <div class="map-title"><b>知识拓扑</b><span id="knowledgeMapHint">按分类和访问热度动态排列</span></div>
+            <div class="map-title"><b>知识图谱</b><span id="knowledgeMapHint">按分类、引用和语义关系动态排列</span></div>
             <svg id="knowledgeEdges" aria-hidden="true"></svg>
             <div class="map-nodes" id="knowledgeMap"></div>
           </section>
         </div>
-        <div class="searchbar"><input id="knowledgeQuery" placeholder="搜索知识库、论文摘录、学习笔记" onkeydown="if(event.key==='Enter')searchKnowledge()"><button class="secondary" onclick="searchKnowledge()">检索</button></div>
+        <div class="searchbar"><input id="knowledgeQuery" placeholder="搜索知识库、论文摘要、学习笔记" onkeydown="if(event.key==='Enter')searchKnowledge()"><button class="secondary" onclick="searchKnowledge()">检索</button></div>
         <div class="section-block"><h2>OCR 队列</h2><table class="table" id="ocrQueueTable"></table></div>
-        <div class="section-block"><h2>引用问答</h2><div class="searchbar"><input id="citationQuery" placeholder="输入问题，基于已入库文档 chunk 返回带引用的回答" onkeydown="if(event.key==='Enter')askCitationAnswer()"><button class="secondary" onclick="askCitationAnswer()">引用回答</button></div><table class="table" id="citationAnswerTable"></table></div>
+        <div class="section-block"><h2>引用问答</h2><div class="searchbar"><input id="citationQuery" placeholder="输入问题，基于已入库文档 chunk 返回带引用的答案" onkeydown="if(event.key==='Enter')askCitationAnswer()"><button class="secondary" onclick="askCitationAnswer()">引用回答</button></div><table class="table" id="citationAnswerTable"></table></div>
         <div class="section-block"><h2>知识条目</h2><table class="table" id="knowledgeTable"></table></div>
         <div class="section-block"><h2>检索结果</h2><table class="table" id="knowledgeSearchTable"></table></div>
       </div>
@@ -192,10 +181,7 @@
 
     <section class="view" id="view-memory">
       <div class="panel-view glass-panel">
-        <div class="library-head">
-          <div><h2>记忆治理</h2><p class="hint">这里管理 Agent 自动沉淀的画像、偏好、项目、经验和技能记忆，和用户主动维护的知识库不同。</p></div>
-          <div class="library-tabs"><button class="on" data-mem="profile" onclick="setMemoryType('profile')">画像</button><button data-mem="preference" onclick="setMemoryType('preference')">偏好</button><button data-mem="project" onclick="setMemoryType('project')">项目</button><button data-mem="experience" onclick="setMemoryType('experience')">经验</button><button data-mem="skill" onclick="setMemoryType('skill')">技能</button></div>
-        </div>
+        <div class="library-head"><div><h2>记忆治理</h2><p class="hint">管理 Agent 自动沉淀的画像、偏好、项目、经验和技能记忆。</p></div><div class="library-tabs"><button class="on" data-mem="profile" onclick="setMemoryType('profile')">画像</button><button data-mem="preference" onclick="setMemoryType('preference')">偏好</button><button data-mem="project" onclick="setMemoryType('project')">项目</button><button data-mem="experience" onclick="setMemoryType('experience')">经验</button><button data-mem="skill" onclick="setMemoryType('skill')">技能</button></div></div>
         <div class="form"><label>类型<select id="memType"><option value="profile">用户画像</option><option value="preference">偏好记忆</option><option value="project">项目记忆</option><option value="experience">经验记忆</option><option value="skill">技能记忆</option></select></label><label>键<input id="memKey" placeholder="reply_style"></label><label>内容<input id="memValue" placeholder="偏好简洁、直接、有证据的回答"></label><label>来源<input id="memSource" placeholder="manual"></label><button class="primary" onclick="saveMemory()">保存</button></div>
         <div class="searchbar"><input id="memQuery" placeholder="搜索画像、偏好和长期记忆" onkeydown="if(event.key==='Enter')searchMemory()"><button class="secondary" onclick="searchMemory()">搜索</button></div>
         <div class="section-block"><h2>记忆审查</h2><table class="table" id="memoryReviewTable"></table></div>
@@ -206,35 +192,13 @@
 
     <section class="view" id="view-projects"><div class="panel-view glass-panel project-workspace"><div class="library-head"><div><h2>项目</h2><p class="hint">把本地项目、科研目录和交付任务作为上下文入口。</p></div><button class="primary" onclick="usePrompt('分析当前项目结构、风险和下一步开发计划');setView('chat')">分析当前项目</button></div><div class="project-grid"><button class="quick" onclick="usePrompt('列出当前项目结构并找出最重要的入口文件');setView('chat')">项目结构</button><button class="quick" onclick="usePrompt('对当前项目做一次代码健康检查，包含 TODO、风险和测试建议');setView('chat')">健康检查</button><button class="quick" onclick="usePrompt('为当前项目生成一份工作汇报和交付计划');setView('chat')">交付简报</button><button class="quick" onclick="usePrompt('设计一个可复现实验来评估当前 Agent 的工具命中率和任务完成率');setView('chat')">实验设计</button></div></div></section>
     <section class="view" id="view-reflection"><div class="panel-view glass-panel"><button class="secondary" onclick="triggerReflection()">触发反思</button><div class="section-block"><h2>反思卡片</h2><table class="table" id="reflectionTable"></table></div><div class="section-block"><h2>改进审查</h2><table class="table" id="reflectionReviewTable"></table></div><div class="section-block"><h2>经验记忆</h2><table class="table" id="experienceTable"></table></div></div></section>
-    <section class="view" id="view-skills">
-  <div class="panel-view glass-panel skills-workbench">
-    <div class="library-head">
-      <div><h2>固化技能</h2><p class="hint">筛选、预演和审查可复用工作流。默认只做计划预演，显式点击执行才会运行技能。</p></div>
-      <button class="secondary" onclick="loadSkills()">刷新技能</button>
-    </div>
-    <div class="skill-toolbar">
-      <input id="skillQuery" placeholder="搜索技能、标签、触发词" oninput="renderSkillsWorkbench()">
-      <select id="skillCategory" onchange="renderSkillsWorkbench()"><option value="">全部分类</option></select>
-      <select id="skillStatusFilter" onchange="renderSkillsWorkbench()"><option value="">全部状态</option><option value="active">已发布</option><option value="candidate">候选</option><option value="validated">已验证</option><option value="needs_changes">需修改</option><option value="rejected">已拒绝</option><option value="canary">灰度</option></select>
-    </div>
-    <div class="skill-grid">
-      <div class="section-block"><h2>技能目录</h2><div class="skill-card-list" id="skillsTable"></div></div>
-      <div class="section-block skill-detail"><h2>技能详情</h2><div id="skillDetail" class="skill-detail-box"></div><label>参数 JSON<textarea id="skillParams" spellcheck="false" placeholder='{"path":"D:/Projects/agent"}'></textarea></label><div class="action-row"><button class="secondary" onclick="runSelectedSkill(true)">预演计划</button><button class="primary" onclick="runSelectedSkill(false)">执行技能</button></div><pre id="skillRunResult" class="result-box">选择一个技能查看详情。</pre></div>
-    </div>
-    <div class="section-block"><h2>技能审查</h2><p class="hint">候选技能必须通过冻结评测后才能发布；未达标版本可标记为需修改或拒绝。</p><table class="table" id="skillReviewTable"></table></div>
-    <div class="skill-grid lower">
-      <div class="section-block"><h2>版本记录</h2><table class="table" id="skillVersionTable"></table></div>
-      <div class="section-block"><h2>评测运行</h2><table class="table" id="skillRunTable"></table></div>
-    </div>
-    <div class="section-block"><h2>执行质量</h2><table class="table" id="skillStatsTable"></table></div>
-  </div>
-</section>
+    <section class="view" id="view-skills"><div class="panel-view glass-panel skills-workbench"><div class="library-head"><div><h2>固化技能</h2><p class="hint">筛选、预演和审查可复用工作流。默认只做计划预演，显式点击执行才会运行技能。</p></div><button class="secondary" onclick="loadSkills()">刷新技能</button></div><div class="skill-toolbar"><input id="skillQuery" placeholder="搜索技能、标签、触发词" oninput="renderSkillsWorkbench()"><select id="skillCategory" onchange="renderSkillsWorkbench()"><option value="">全部分类</option></select><select id="skillStatusFilter" onchange="renderSkillsWorkbench()"><option value="">全部状态</option><option value="active">已发布</option><option value="candidate">候选</option><option value="validated">已验证</option><option value="needs_changes">需修改</option><option value="rejected">已拒绝</option><option value="canary">灰度</option></select></div><div class="skill-grid"><div class="section-block"><h2>技能目录</h2><div class="skill-card-list" id="skillsTable"></div></div><div class="section-block skill-detail"><h2>技能详情</h2><div id="skillDetail" class="skill-detail-box"></div><label>参数 JSON<textarea id="skillParams" spellcheck="false" placeholder='{"path":"D:/Projects/agent"}'></textarea></label><div class="action-row"><button class="secondary" onclick="runSelectedSkill(true)">预演计划</button><button class="primary" onclick="runSelectedSkill(false)">执行技能</button></div><pre id="skillRunResult" class="result-box">选择一个技能查看详情。</pre></div></div><div class="section-block"><h2>技能审查</h2><p class="hint">候选技能必须通过冻结评测后才能发布；未达标版本可标记为需修改或拒绝。</p><table class="table" id="skillReviewTable"></table></div><div class="skill-grid lower"><div class="section-block"><h2>版本记录</h2><table class="table" id="skillVersionTable"></table></div><div class="section-block"><h2>评测运行</h2><table class="table" id="skillRunTable"></table></div></div><div class="section-block"><h2>执行质量</h2><table class="table" id="skillStatsTable"></table></div></div></section>
     <section class="view" id="view-tools"><div class="panel-view glass-panel"><div class="searchbar"><input id="toolQuery" placeholder="筛选工具" oninput="renderTools()"><button class="secondary" onclick="renderTools()">筛选</button></div><table class="table" id="toolsTable"></table><div class="section-block"><h2>工具运行轨迹</h2><table class="table" id="toolExecTable"></table></div></div></section>
-    <section class="view" id="view-tasks"><div class="panel-view glass-panel"><div class="action-row"><button class="secondary" onclick="recoverTasks()">恢复中断任务</button><button class="secondary" onclick="loadTaskQueue()">刷新队列</button><button class="primary" onclick="claimTask()">领取下一个任务</button><span class="hint" id="liveTaskState">实时事件：连接中</span></div><div class="section-block"><h2>恢复队列</h2><table class="table" id="taskQueueTable"></table></div><div class="section-block"><h2>任务运行轨迹</h2><table class="table" id="taskTable"></table></div><div class="section-block"><h2>步骤 Trace</h2><table class="table" id="taskStepTable"></table></div><div class="section-block"><h2>事件审计</h2><table class="table" id="taskEventTable"></table></div></div></section>
+    <section class="view" id="view-tasks"><div class="panel-view glass-panel"><div class="action-row"><button class="secondary icon-text" onclick="recoverTasks()"><span class="ui-ico">↺</span>恢复中断任务</button><button class="secondary icon-text" onclick="loadTaskQueue()"><span class="ui-ico">⟳</span>刷新队列</button><button class="primary icon-text" onclick="claimTask()"><span class="ui-ico">▶</span>领取下一个任务</button><span class="hint" id="liveTaskState">实时事件：连接中</span></div><div class="section-block"><h2>恢复队列</h2><table class="table" id="taskQueueTable"></table></div><div class="section-block"><h2>任务运行轨迹</h2><table class="table" id="taskTable"></table></div><div class="section-block"><h2>步骤 Trace</h2><table class="table" id="taskStepTable"></table></div><div class="section-block"><h2>事件审计</h2><table class="table" id="taskEventTable"></table></div></div></section>
     <section class="view" id="view-benchmarks"><div class="panel-view glass-panel"><div class="action-row"><button class="primary" onclick="runScenarioBenchmark()">运行默认冻结基准</button><button class="secondary" onclick="loadBenchmarks()">刷新结果</button><span class="hint">覆盖会议、学习、项目模板、技能和记忆五类低风险场景。</span></div><div class="section-block"><h2>冻结场景套件</h2><table class="table" id="benchmarkSuiteTable"></table></div><div class="section-block"><h2>最近运行结果</h2><table class="table" id="benchmarkRunTable"></table></div></div></section>
-    <section class="view" id="view-scenes"><div class="panel-view glass-panel"><div class="section-block"><h2>本地能力体检</h2><table class="table" id="capabilityTable"></table></div><div class="section-block"><h2>场景交付边界</h2><table class="table" id="sceneBoundaryTable"></table></div></div></section>
+    <section class="view" id="view-scenes"><div class="panel-view glass-panel scenes-workspace"><div class="section-block"><h2>Professional Template Board</h2><div class="professional-board-grid" id="professionalBoardGrid"></div></div><div class="section-block"><h2>本地能力体检</h2><table class="table" id="capabilityTable"></table></div><div class="section-block"><h2>场景交付边界</h2><table class="table" id="sceneBoundaryTable"></table></div></div></section>
     <section class="view" id="view-security"><div class="panel-view glass-panel security-workspace"><div class="library-head"><div><h2>权限中心</h2><p class="hint">统一查看联网、Shell、文件写入、Git、外部 API 的风险分级、审批状态和审计记录。</p></div><button class="secondary" onclick="loadSecurityCenter()">刷新</button></div><div class="security-grid"><div class="section-block"><h2>策略矩阵</h2><table class="table" id="securityPolicyTable"></table></div><div class="section-block"><h2>允许边界</h2><table class="table" id="securityBoundaryTable"></table></div></div><div class="section-block"><h2>细粒度授权</h2><div class="permission-editor"><select id="securityGrantTool"><option value="web_fetch">web_fetch</option><option value="web_search">web_search</option><option value="file_write">file_write</option><option value="shell_exec">shell_exec</option><option value="git_workspace">git_workspace</option><option value="*">全部工具</option></select><select id="securityGrantDecision"><option value="allow">允许</option><option value="confirm">确认</option><option value="deny">拒绝</option></select><select id="securityGrantScopeType"><option value="tool">工具</option><option value="url_host">URL 域名</option><option value="path_prefix">路径前缀</option><option value="command">命令前缀</option></select><input id="securityGrantScopeValue" placeholder="example.com / C:\Users\34712\Desktop / git status"><input id="securityGrantMinutes" type="number" min="1" placeholder="有效分钟"><input id="securityGrantReason" placeholder="授权原因"><button class="primary" onclick="saveSecurityGrant()">保存授权</button></div><table class="table" id="securityGrantTable"></table></div><div class="section-block"><h2>审计事件</h2><table class="table" id="securityAuditTable"></table></div></div></section>
-    <section class="view" id="view-ops"><div class="panel-view glass-panel ops-workspace"><div class="library-head"><div><h2>Ops Center</h2><p class="hint">Backup, restore, configuration checks, worker controls, and real long-running jobs.</p></div><button class="secondary" onclick="loadOps()">Refresh</button></div><div class="ops-score" id="opsReadinessScore">Readiness: --</div><div class="ops-grid"><div class="section-block"><h2>Readiness</h2><table class="table" id="opsReadinessTable"></table></div><div class="section-block"><h2>Config Check</h2><div class="action-row"><button class="primary" onclick="runConfigCheck()">Run check</button><span class="hint" id="opsConfigStatus"></span></div><table class="table" id="opsConfigTable"></table></div></div><div class="ops-grid"><div class="section-block"><h2>Backup / Restore</h2><div class="ops-form"><input id="opsBackupDir" placeholder="output/backups"><input id="opsBackupLabel" placeholder="label"><button class="primary" onclick="createBackup()">Create backup</button><input id="opsRestorePath" class="wide" placeholder="backup file path"><label><input id="opsRestoreConfirm" type="checkbox"> Confirm restore</label><button class="secondary" onclick="restoreBackup()">Restore</button></div><pre class="result-box" id="opsBackupResult"></pre></div><div class="section-block"><h2>Worker</h2><div class="action-row"><button class="primary" onclick="startWorker()">Start</button><button class="secondary" onclick="stopWorker()">Stop</button><button class="secondary" onclick="tickWorker()">Run one tick</button><span class="hint" id="opsWorkerStatus"></span></div><table class="table" id="opsWorkerTable"></table></div></div><div class="section-block"><h2>Business Jobs</h2><div class="job-grid"><div><b>Background report</b><select id="opsReportDocumentSelect"></select><select id="opsReportStyle"><option value="journal">Journal</option><option value="learning_notes">Learning notes</option><option value="business_brief">Business brief</option><option value="compact">Compact</option></select><input id="opsReportOutputDir" placeholder="output/reports"><button class="primary" onclick="queueReportJob()">Queue report job</button></div><div><b>OCR queue</b><select id="opsOcrCategory"><option value="">All libraries</option><option value="research">Research</option><option value="learning">Learning</option><option value="project">Project</option><option value="writing">Writing</option></select><input id="opsOcrLimit" type="number" min="1" max="50" value="12"><button class="primary" onclick="queueOcrJob()">Queue OCR job</button></div><div><b>Batch document parsing</b><textarea id="opsBatchFiles" placeholder="One local file path per line"></textarea><select id="opsBatchCategory"><option value="research">Research</option><option value="learning">Learning</option><option value="project">Project</option><option value="domain">Domain</option></select><button class="primary" onclick="queueBatchIngestJob()">Queue batch job</button></div></div><pre class="result-box" id="opsJobResult"></pre></div></div></section>
+    <section class="view" id="view-ops"><div class="panel-view glass-panel ops-workspace"><div class="library-head"><div><h2>Ops Center</h2><p class="hint">备份、恢复、配置检查、后台 worker 和真实长任务。</p></div><button class="secondary" onclick="loadOps()">刷新</button></div><div class="ops-score" id="opsReadinessScore">Readiness: --</div><div class="ops-grid"><div class="section-block"><h2>Readiness</h2><table class="table" id="opsReadinessTable"></table></div><div class="section-block"><h2>配置检查</h2><div class="action-row"><button class="primary" onclick="runConfigCheck()">运行检查</button><span class="hint" id="opsConfigStatus"></span></div><table class="table" id="opsConfigTable"></table></div></div><div class="ops-grid"><div class="section-block"><h2>备份 / 恢复</h2><div class="ops-form"><input id="opsBackupDir" placeholder="output/backups"><input id="opsBackupLabel" placeholder="label"><button class="primary icon-text" onclick="createBackup()"><span class="ui-ico">↓</span>创建备份</button><input id="opsRestorePath" class="wide" placeholder="backup file path"><label><input id="opsRestoreConfirm" type="checkbox"> 确认恢复</label><button class="secondary icon-text" onclick="restoreBackup()"><span class="ui-ico">↺</span>恢复</button></div><pre class="result-box" id="opsBackupResult"></pre></div><div class="section-block"><h2>Worker</h2><div class="action-row"><button class="primary" onclick="startWorker()">启动</button><button class="secondary" onclick="stopWorker()">停止</button><button class="secondary" onclick="tickWorker()">执行一次</button><span class="hint" id="opsWorkerStatus"></span></div><table class="table" id="opsWorkerTable"></table></div></div><div class="section-block"><h2>业务长任务</h2><div class="job-grid"><div><b>后台生成报告</b><select id="opsReportDocumentSelect"></select><select id="opsReportStyle"><option value="journal">Journal</option><option value="learning_notes">Learning notes</option><option value="business_brief">Business brief</option><option value="compact">Compact</option></select><input id="opsReportOutputDir" placeholder="output/reports"><button class="primary" onclick="queueReportJob()">排队报告任务</button></div><div><b>OCR 队列</b><select id="opsOcrCategory"><option value="">全部库</option><option value="research">Research</option><option value="learning">Learning</option><option value="project">Project</option><option value="writing">Writing</option></select><input id="opsOcrLimit" type="number" min="1" max="50" value="12"><button class="primary" onclick="queueOcrJob()">排队 OCR 任务</button></div><div><b>批量文档解析</b><textarea id="opsBatchFiles" placeholder="每行一个本地文件路径"></textarea><select id="opsBatchCategory"><option value="research">Research</option><option value="learning">Learning</option><option value="project">Project</option><option value="domain">Domain</option></select><button class="primary" onclick="queueBatchIngestJob()">排队解析任务</button></div></div><pre class="result-box" id="opsJobResult"></pre></div></div></section>
   </main>
 
   <div class="floating-actions">
@@ -245,12 +209,9 @@
   <div class="command-drawer" id="commandDrawer" aria-hidden="true">
     <div class="command-backdrop" onclick="closeCommandDrawer()"></div>
     <section class="command-sheet liquid-panel">
-      <div class="settings-head">
-        <div><h2>更多应用</h2><p>低频但专业的运行、评测、治理和系统页面集中在这里。</p></div>
-        <button class="icon-button" onclick="closeCommandDrawer()" aria-label="关闭">×</button>
-      </div>
+      <div class="settings-head"><div><h2>更多应用</h2><p>低频但专业的运行、评测、治理和系统页面集中在这里。</p></div><button class="icon-button" onclick="closeCommandDrawer()" aria-label="关闭">×</button></div>
       <div class="app-grid">
-        <button onclick="openDrawerView('ops')"><b>Ops Center</b><span>Backup, restore, worker jobs</span></button>
+        <button onclick="openDrawerView('ops')"><b>Ops Center</b><span>备份、恢复、worker jobs</span></button>
         <button onclick="openDrawerView('dash')"><b>状态总览</b><span>模型、工具、系统健康</span></button>
         <button onclick="openDrawerView('memory')"><b>记忆治理</b><span>画像、偏好、审查和个人上下文</span></button>
         <button onclick="openDrawerView('tools')"><b>工具路由</b><span>函数清单与调用轨迹</span></button>
@@ -258,7 +219,7 @@
         <button onclick="openDrawerView('reflection')"><b>反思循环</b><span>复盘、改进、回滚</span></button>
         <button onclick="openDrawerView('skills')"><b>固化技能</b><span>Skill 发布与质量</span></button>
         <button onclick="openDrawerView('benchmarks')"><b>冻结基准</b><span>离线基准和 P95</span></button>
-        <button onclick="openDrawerView('scenes')"><b>场景工作流</b><span>会议、科研、办公、学习</span></button>
+        <button onclick="openDrawerView('scenes')"><b>场景工作台</b><span>会议、科研、办公、学习</span></button>
         <button onclick="openDrawerView('security')"><b>权限中心</b><span>联网、Shell、文件、Git 和外部 API 审批</span></button>
         <button onclick="openModelSettings()"><b>模型配置</b><span>DeepSeek/API/本地模型</span></button>
       </div>
@@ -268,31 +229,16 @@
   <div class="settings-modal" id="modelSettings" aria-hidden="true">
     <div class="settings-backdrop" onclick="closeModelSettings()"></div>
     <section class="settings-sheet liquid-panel">
-      <div class="settings-head">
-        <div>
-          <h2>模型 API 配置</h2>
-          <p id="modelConfigHint">配置保存在本地 .env，不会在页面显示完整密钥。</p>
-        </div>
-        <button class="icon-button" onclick="closeModelSettings()" aria-label="关闭">×</button>
-      </div>
+      <div class="settings-head"><div><h2>模型 API 配置</h2><p id="modelConfigHint">配置保存在本地 .env，不会在页面显示完整密钥。</p></div><button class="icon-button" onclick="closeModelSettings()" aria-label="关闭">×</button></div>
       <div class="settings-grid">
         <label>供应商<select id="cfgProvider"><option value="deepseek">DeepSeek API</option><option value="qwen">Local Qwen</option><option value="qwen_api">Qwen API / DashScope</option><option value="glm">GLM / Zhipu API</option><option value="openai_compatible">OpenAI Compatible</option><option value="local_openai">Local OpenAI</option><option value="mock">Mock / Offline Test</option></select></label>
         <label>模型<input id="cfgModel" placeholder="deepseek-chat"></label>
         <label class="wide">Base URL<input id="cfgBaseUrl" placeholder="https://api.deepseek.com/v1"></label>
         <label class="wide">API Key<input id="cfgApiKey" type="password" autocomplete="off" placeholder="留空则保持当前密钥"></label>
       </div>
-      <p class="settings-note" id="localModelNote">启动器会直接打开工作台，不会自动下载本地模型权重。选择 Local Qwen 只保存本地端点；需要离线模型时，请手动运行 download_qwen_model.ps1 / start_qwen_llama_server.ps1。</p>
-      <div class="model-choice-actions" id="modelChoiceActions">
-        <span>Choose model mode here:</span>
-        <button type="button" onclick="chooseFirstRunModel('deepseek')">DeepSeek/API</button>
-        <button type="button" onclick="chooseFirstRunModel('qwen')">Local Qwen</button>
-        <button type="button" onclick="chooseFirstRunModel('mock')">Mock/offline</button>
-      </div>
-      <div class="settings-actions">
-        <span class="hint" id="cfgStatus">等待读取配置</span>
-        <button class="secondary" onclick="closeModelSettings()">取消</button>
-        <button class="primary" onclick="saveModelSettings()">保存配置</button>
-      </div>
+      <p class="settings-note" id="localModelNote">启动器会直接打开工作台，不会自动下载本地模型权重。选择 Local Qwen 只保存本地端点；需要离线模型时，请手动下载/启动。</p>
+      <div class="model-choice-actions" id="modelChoiceActions"><span>Choose model mode here:</span><button type="button" onclick="chooseFirstRunModel('deepseek')">DeepSeek/API</button><button type="button" onclick="chooseFirstRunModel('qwen')">Local Qwen</button><button type="button" onclick="chooseFirstRunModel('mock')">Mock/offline</button></div>
+      <div class="settings-actions"><span class="hint" id="cfgStatus">等待读取配置</span><button class="secondary" onclick="closeModelSettings()">取消</button><button class="primary" onclick="saveModelSettings()">保存配置</button></div>
     </section>
   </div>
 

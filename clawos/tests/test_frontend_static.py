@@ -107,7 +107,7 @@ class FrontendStaticTests(unittest.TestCase):
         css = self.read_page("assets/console.css")
 
         self.assertIn("attachmentTray", html)
-        self.assertIn("Agent 会作为上下文自动阅读", html)
+        self.assertIn("Agent 会作为上下文自动读取", html)
         self.assertIn("chatAttachments", js)
         self.assertIn("clawos_attachments", js)
         self.assertIn("/api/documents/upload", js)
@@ -125,7 +125,7 @@ class FrontendStaticTests(unittest.TestCase):
             for name in ("console.html", "assets/console.js", "assets/console.css")
         )
 
-        for fragment in ("闁", "闂", "鐎", "閿", "鏉", "鐠", "閹"):
+        for fragment in ("\u95c2", "\u95bb", "\u95c1", "\u95ba", "\u934f", "\u93b5", "\u93c2", "\u59af", "\u8133", "\ufffd"):
             self.assertNotIn(fragment, combined)
 
     def test_console_exposes_tool_trace_and_confirmation_ui(self):
@@ -230,7 +230,7 @@ class FrontendStaticTests(unittest.TestCase):
 
         self.assertIn('id="stop"', html)
         self.assertIn("readChatStream", js)
-        self.assertIn("stream:true", js)
+        self.assertIn("stream: true", js)
         self.assertIn("AbortController", js)
         self.assertIn("stopGeneration", js)
         self.assertIn("console stop generation", js)
