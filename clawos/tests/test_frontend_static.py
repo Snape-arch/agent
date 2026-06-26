@@ -46,6 +46,20 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("filePicker", html)
         self.assertIn("commandDrawer", html)
 
+    def test_console_has_dedicated_mobile_more_entry(self):
+        html = self.read_page("console.html")
+        css = self.read_page("assets/console.css")
+
+        self.assertIn('class="mobile-more-entry"', html)
+        self.assertIn("toggleCommandDrawer()", html)
+        self.assertIn("\u66f4\u591a\u5e94\u7528", html)
+        self.assertIn(".aether-console .mobile-more-entry", css)
+        self.assertIn("display:none", css)
+        mobile_css = css.split("@media(max-width:760px)", 1)[1]
+        self.assertIn(".aether-console .mobile-more-entry", mobile_css)
+        self.assertIn("display:flex", mobile_css)
+        self.assertIn("width:100%", mobile_css)
+
     def test_console_exposes_knowledge_library_as_user_rag_surface(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")

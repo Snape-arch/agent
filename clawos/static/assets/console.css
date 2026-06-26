@@ -36,6 +36,9 @@
   border-radius:12px;
   font-size:14px;
 }
+.aether-console .mobile-more-entry{
+  display:none;
+}
 .aether-console .sessions{
   display:grid;
   gap:4px;
@@ -797,6 +800,24 @@
   .aether-console .side-bottom{
     margin-top:8px;
     border-top:0;
+  }
+  .aether-console .mobile-more-entry{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    width:100%;
+    min-height:42px;
+    margin:8px 0 0;
+    border:1px solid rgba(17,24,39,.1);
+    border-radius:14px;
+    background:#111827;
+    color:white;
+    box-shadow:0 10px 26px rgba(17,24,39,.12);
+  }
+  .aether-console .mobile-more-entry .nav-ico{
+    background:rgba(255,255,255,.16);
+    color:white;
   }
   .aether-console .side-nav button,
   .aether-console .side-bottom button{

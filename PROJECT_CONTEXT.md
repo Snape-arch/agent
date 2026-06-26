@@ -763,3 +763,20 @@ Known notes:
 
 Recommended next step:
 - Run a product-owner review of the live console copy and decide whether to add a dedicated mobile "More" drawer entry so small-width users can reach every secondary module without horizontal nav scrolling.
+
+### 2026-06-26 - Dedicated mobile More drawer entry
+
+Completed:
+- Added a dedicated mobile-only `More apps` entry in the console sidebar so narrow-width users can open the command drawer without relying on horizontal nav scrolling.
+- Kept the existing desktop navigation unchanged and scoped the new control to `max-width:760px`.
+- Added frontend static coverage to protect the mobile entry, drawer wiring, and responsive CSS contract.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `22 tests OK`.
+
+Known notes:
+- This was a targeted navigation/accessibility improvement; no backend or report-generation logic changed.
+
+Recommended next step:
+- Run a live browser pass on the first-run path at mobile width: model settings -> upload material -> generate report -> save to knowledge/Obsidian.
