@@ -819,3 +819,25 @@ Known notes:
 
 Recommended next step:
 - Review the model settings modal copy and first-run API/local/offline mode selection at mobile width, then run the targeted routing/workspace tests before a final full-suite pass.
+
+### 2026-06-26 - Model mode chooser cleanup and race fix
+
+Completed:
+- Reworked the model settings modal into three clear user modes: API mode, local mode, and offline mode.
+- Replaced the old English/implementation-facing model chooser buttons with mobile-friendly mode cards and localized provider option labels.
+- Fixed `chooseFirstRunModel()` so choosing local/offline mode no longer races with async config loading and falls back to the previous DeepSeek value.
+- Unified frontend and backend model mode labels to `API mode`, `local mode`, and `offline mode` equivalents in Chinese.
+- Added regression coverage for model mode labels and frontend model settings contracts.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m py_compile clawos\services\model_service.py`: passed.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_model_mode_labels_are_user_facing_modes`: `23 tests OK`.
+- `python -m unittest clawos.tests.test_routing_memory clawos.tests.test_frontend_static`: `46 tests OK`.
+- Browser check before the final backend label fix confirmed the mobile modal layout at `390x900` had no horizontal overflow and that choosing `deepseek`, `qwen`, and `mock` preserved the selected provider/model/base URL.
+
+Known notes:
+- The final browser reload/restart pass could not be completed because the local tool approval layer reported the current usage limit. The source-level and unit/static verification passed; a fresh browser check should be run after tools are available again.
+
+Recommended next step:
+- Restart ClawOS, verify `/health` and the top model badge now show the simplified mode labels, then run a final targeted browser pass for model settings plus the report flow.

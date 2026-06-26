@@ -76,6 +76,15 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 else:
                     os.environ["CLAWOS_MEMORY_DB"] = old_memory_db
 
+    def test_model_mode_labels_are_user_facing_modes(self):
+        from services.model_service import ModelService
+
+        self.assertEqual(ModelService.mode_label("deepseek", True), "API \u6a21\u5f0f")
+        self.assertEqual(ModelService.mode_label("qwen_api", True), "API \u6a21\u5f0f")
+        self.assertEqual(ModelService.mode_label("qwen", True), "\u672c\u5730\u6a21\u5f0f")
+        self.assertEqual(ModelService.mode_label("mock", False), "\u79bb\u7ebf\u6a21\u5f0f")
+        self.assertEqual(ModelService.mode_label("deepseek", False), "API \u5f85\u914d\u7f6e")
+
     def test_rule_based_tool_recognizes_chinese_memory_and_tool_queries(self):
         server = importlib.import_module("clawos_server")
 
