@@ -721,7 +721,9 @@ async function saveGeneratedReportToKnowledge() {
   const doc = lastGeneratedReport.library_document || lastGeneratedReport.document || {};
   const style = report.metadata?.report_style || $("reportStylePreset")?.value || "journal";
   const title = `${doc.title || "资料报告"} · ${style}`;
-  const content = [`# ${title}`, "", `Markdown: ${report.markdown_path || ""}`, `PDF: ${report.pdf_path || ""}`, `Output: ${report.output_dir || ""}`, `Style: ${style}`, "", "## Preview", lastGeneratedReport.preview || ""].join("\n");
+  const sourceTitle = String(doc.title || "").trim();
+  const sourceLink = sourceTitle ? `Related source: [[${sourceTitle} #1]]` : "";
+  const content = [`# ${title}`, "", `Markdown: ${report.markdown_path || ""}`, `PDF: ${report.pdf_path || ""}`, `Output: ${report.output_dir || ""}`, `Style: ${style}`, sourceLink, "", "## Preview", lastGeneratedReport.preview || ""].filter(Boolean).join("\n");
   const saved = await api("/api/knowledge", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1333,12 +1335,12 @@ function closeModelSettings() {
 
 function providerPreset(provider) {
   return {
-    deepseek: { model: "deepseek-chat", base_url: "https://api.deepseek.com/v1", label: "DeepSeek/API 模式" },
-    qwen: { model: "qwen", base_url: "http://127.0.0.1:8000/v1", label: "Local Qwen 模式" },
-    qwen_api: { model: "qwen-plus", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", label: "Qwen API 模式" },
-    glm: { model: "glm-4-flash", base_url: "https://open.bigmodel.cn/api/paas/v4", label: "GLM API 模式" },
-    mock: { model: "mock", base_url: "", label: "Mock/offline test 模式" }
-  }[provider] || { model: "", base_url: "", label: "OpenAI Compatible 模式" };
+    deepseek: { model: "deepseek-chat", base_url: "https://api.deepseek.com/v1", label: "API 模式" },
+    qwen: { model: "qwen", base_url: "http://127.0.0.1:8000/v1", label: "本地模式" },
+    qwen_api: { model: "qwen-plus", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", label: "API 模式" },
+    glm: { model: "glm-4-flash", base_url: "https://open.bigmodel.cn/api/paas/v4", label: "API 模式" },
+    mock: { model: "mock", base_url: "", label: "离线模式" }
+  }[provider] || { model: "", base_url: "", label: "API 模式" };
 }
 
 function modelModeText(provider) {
@@ -1375,9 +1377,14 @@ async function saveModelSettings() {
 }
 
 function chooseFirstRunModel(provider) {
-  openModelSettings();
+  const modal = $("modelSettings");
+  if (modal) {
+    modal.classList.add("on");
+    modal.setAttribute("aria-hidden", "false");
+  }
   if ($("cfgProvider")) $("cfgProvider").value = provider;
   applyProviderPreset(true);
+  if ($("cfgStatus")) $("cfgStatus").textContent = "\u5df2\u9009\u62e9 " + modelModeText(provider);
 }
 
 async function refreshAll() {

@@ -76,6 +76,15 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 else:
                     os.environ["CLAWOS_MEMORY_DB"] = old_memory_db
 
+    def test_model_mode_labels_are_user_facing_modes(self):
+        from services.model_service import ModelService
+
+        self.assertEqual(ModelService.mode_label("deepseek", True), "API \u6a21\u5f0f")
+        self.assertEqual(ModelService.mode_label("qwen_api", True), "API \u6a21\u5f0f")
+        self.assertEqual(ModelService.mode_label("qwen", True), "\u672c\u5730\u6a21\u5f0f")
+        self.assertEqual(ModelService.mode_label("mock", False), "\u79bb\u7ebf\u6a21\u5f0f")
+        self.assertEqual(ModelService.mode_label("deepseek", False), "API \u5f85\u914d\u7f6e")
+
     def test_rule_based_tool_recognizes_chinese_memory_and_tool_queries(self):
         server = importlib.import_module("clawos_server")
 
@@ -391,9 +400,9 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 }))).body)
                 report = generated["report"]
                 saved = json.loads(asyncio.run(server.api_knowledge_save(FakeRequest({
-                    "title": "User Flow Source · compact",
+                    "title": "User Flow Source - compact",
                     "content": "\n".join([
-                        "# User Flow Source · compact",
+                        "# User Flow Source - compact",
                         f"Markdown: {report['markdown_path']}",
                         f"PDF: {report['pdf_path']}",
                         "Style: compact",
@@ -404,6 +413,14 @@ class MemoryAndRoutingTests(unittest.TestCase):
                     "source": report["markdown_path"],
                     "tags": ["report", "compact", "generated"],
                 }))).body)
+                vault_dir = server.resolve_obsidian_output_dir("user-flow-e2e-test", "research")
+                exported = json.loads(asyncio.run(server.api_knowledge_obsidian_export(FakeRequest({
+                    "category": "research",
+                    "output_dir": "user-flow-e2e-test",
+                    "limit": 20,
+                }))).body)
+                note_path = vault_dir / "notes" / "User_Flow_Source_-_compact.md"
+                note_content = note_path.read_text(encoding="utf-8")
                 markdown_exists = Path(report["markdown_path"]).exists()
                 pdf_exists = Path(report["pdf_path"]).exists()
                 listed = json.loads(asyncio.run(server.api_knowledge_list(category="research")).body)
@@ -419,6 +436,12 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertTrue(markdown_exists)
         self.assertTrue(pdf_exists)
         self.assertTrue(any(item["id"] == saved["item"]["id"] for item in listed["items"]))
+        self.assertTrue(exported["exported"])
+        self.assertEqual(exported["output_dir"], str(vault_dir))
+        self.assertTrue(note_path.exists())
+        self.assertIn("Markdown:", note_content)
+        self.assertIn("PDF:", note_content)
+        self.assertIn("compact", note_content)
 
     def test_obsidian_export_output_dir_accepts_repo_relative_path(self):
         import clawos_server as server

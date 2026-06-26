@@ -24,9 +24,9 @@ class ModelService:
     def mode_label(provider: str, configured: bool) -> str:
         provider = str(provider or "").lower()
         if provider == "qwen":
-            return "Local Qwen 模式" if configured else "Local Qwen 待启动"
+            return "本地模式" if configured else "本地服务待启动"
         if provider == "mock":
-            return "Mock/offline test 模式"
+            return "离线模式"
         if provider in {"qwen_api", "glm", "zhipu", "deepseek", "openai_compatible"}:
-            return "DeepSeek/API 模式" if configured else "API 待配置"
+            return "API 模式" if configured else "API 待配置"
         return "模型待配置"

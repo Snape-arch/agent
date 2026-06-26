@@ -763,3 +763,81 @@ Known notes:
 
 Recommended next step:
 - Run a product-owner review of the live console copy and decide whether to add a dedicated mobile "More" drawer entry so small-width users can reach every secondary module without horizontal nav scrolling.
+
+### 2026-06-26 - Dedicated mobile More drawer entry
+
+Completed:
+- Added a dedicated mobile-only `More apps` entry in the console sidebar so narrow-width users can open the command drawer without relying on horizontal nav scrolling.
+- Kept the existing desktop navigation unchanged and scoped the new control to `max-width:760px`.
+- Added frontend static coverage to protect the mobile entry, drawer wiring, and responsive CSS contract.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `22 tests OK`.
+
+Known notes:
+- This was a targeted navigation/accessibility improvement; no backend or report-generation logic changed.
+
+Recommended next step:
+- Run a live browser pass on the first-run path at mobile width: model settings -> upload material -> generate report -> save to knowledge/Obsidian.
+
+### 2026-06-26 - User report-to-Obsidian flow test coverage
+
+Completed:
+- Extended the user-facing report workflow regression so it now covers: choose an uploaded/library PDF, generate Markdown/PDF, save the generated report into the knowledge base, export that saved report to an Obsidian vault, and verify the exported note keeps Markdown/PDF paths and report style.
+- Kept the flow on the real route functions instead of static UI assertions, using the existing output/obsidian safety boundary.
+- Normalized the test report title separator to ASCII to avoid unnecessary encoding fragility in the regression.
+
+Verification:
+- `python -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_user_report_flow_generate_save_and_search_followup`: passed.
+- `python -m unittest clawos.tests.test_routing_memory clawos.tests.test_workspace_services`: `36 tests OK`.
+- `node --check clawos\static\assets\console.js`: passed.
+
+Known notes:
+- The test writes its Obsidian export under `output/obsidian/user-flow-e2e-test`, which is already ignored as a local generated artifact.
+
+Recommended next step:
+- Run the same first-run path through a live browser at mobile width, then decide whether the report result panel needs clearer one-click actions for continuing the conversation from the saved note.
+
+### 2026-06-26 - Mobile browser first-run flow and Obsidian graph link fix
+
+Completed:
+- Ran a live Chrome DevTools mobile viewport pass at 390x900 against the local console. The mobile More entry is visible, the main area starts at x=0, and no horizontal page overflow was detected.
+- Exercised the user flow with a real uploaded PDF document: choose library PDF, generate a business brief Markdown/PDF report, save it into the knowledge base, export to Obsidian, and continue asking from the saved report.
+- Fixed the saved report knowledge content so it includes a source wikilink like `[[source title #1]]`; this gives the Obsidian export a real graph edge/backlink instead of showing failed wikilink/backlink checks after a successful report export.
+- Added `output/playwright/` to `.gitignore` for local browser evidence screenshots/PDFs.
+
+Verification:
+- Mobile browser layout check: viewport `390x900`, `scrollWidth=390`, `clientWidth=390`, `mainLeft=0`, mobile More entry displayed as `flex`, no common mojibake/internal demo fragments.
+- Mobile browser report flow: generated Markdown/PDF under `output/reports/mobile-browser-flow-linked`, saved latest report knowledge item with `Related source: [[mobile-flow-source #1]]`, Obsidian result showed `100 / 100` with wikilinks/backlinks success, and Continue follow-up returned to chat with the saved-report prompt.
+- Browser evidence screenshots: `output/playwright/mobile-console-more-entry.png` and `output/playwright/mobile-report-obsidian-linked.png` (local ignored artifacts).
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `22 tests OK`.
+
+Known notes:
+- The live browser run used a synthetic non-sensitive PDF generated under `output/playwright/`; uploaded/report/Obsidian artifacts are local runtime evidence and ignored by Git.
+
+Recommended next step:
+- Review the model settings modal copy and first-run API/local/offline mode selection at mobile width, then run the targeted routing/workspace tests before a final full-suite pass.
+
+### 2026-06-26 - Model mode chooser cleanup and race fix
+
+Completed:
+- Reworked the model settings modal into three clear user modes: API mode, local mode, and offline mode.
+- Replaced the old English/implementation-facing model chooser buttons with mobile-friendly mode cards and localized provider option labels.
+- Fixed `chooseFirstRunModel()` so choosing local/offline mode no longer races with async config loading and falls back to the previous DeepSeek value.
+- Unified frontend and backend model mode labels to `API mode`, `local mode`, and `offline mode` equivalents in Chinese.
+- Added regression coverage for model mode labels and frontend model settings contracts.
+
+Verification:
+- `node --check clawos\static\assets\console.js`: passed.
+- `python -m py_compile clawos\services\model_service.py`: passed.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_model_mode_labels_are_user_facing_modes`: `23 tests OK`.
+- `python -m unittest clawos.tests.test_routing_memory clawos.tests.test_frontend_static`: `46 tests OK`.
+- Browser check before the final backend label fix confirmed the mobile modal layout at `390x900` had no horizontal overflow and that choosing `deepseek`, `qwen`, and `mock` preserved the selected provider/model/base URL.
+
+Known notes:
+- The final browser reload/restart pass could not be completed because the local tool approval layer reported the current usage limit. The source-level and unit/static verification passed; a fresh browser check should be run after tools are available again.
+
+Recommended next step:
+- Restart ClawOS, verify `/health` and the top model badge now show the simplified mode labels, then run a final targeted browser pass for model settings plus the report flow.

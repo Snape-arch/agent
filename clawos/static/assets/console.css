@@ -36,6 +36,9 @@
   border-radius:12px;
   font-size:14px;
 }
+.aether-console .mobile-more-entry{
+  display:none;
+}
 .aether-console .sessions{
   display:grid;
   gap:4px;
@@ -96,10 +99,10 @@
 
 .model-choice-actions{
   display:grid;
-  grid-template-columns:minmax(180px,1fr) repeat(3,auto);
-  align-items:center;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  align-items:stretch;
   gap:10px;
-  margin:12px 0 0;
+  margin:12px 0 14px;
   padding:12px;
   border:1px solid rgba(17,24,39,.1);
   border-radius:18px;
@@ -107,24 +110,43 @@
   box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 12px 30px rgba(31,35,40,.06);
   text-align:left;
 }
-.model-choice-actions span{
+.model-choice-actions .mode-caption{
+  grid-column:1/-1;
   display:block;
   color:#6b7280;
   font-size:12px;
   line-height:1.45;
 }
-.model-choice-actions button{
-  min-height:36px;
+.model-mode-card{
+  min-height:86px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:flex-start;
+  gap:6px;
   border:1px solid rgba(17,24,39,.1);
-  border-radius:999px;
+  border-radius:12px;
   background:rgba(255,255,255,.8);
   color:#111827;
-  padding:8px 12px;
-  white-space:nowrap;
+  padding:12px;
+  white-space:normal;
+  text-align:left;
 }
-.model-choice-actions button:hover{
+.model-mode-card b{
+  font-size:14px;
+  line-height:1.25;
+}
+.model-mode-card span{
+  color:#6b7280;
+  font-size:12px;
+  line-height:1.45;
+}
+.model-mode-card:hover{
   background:#111827;
   color:white;
+}
+.model-mode-card:hover span{
+  color:#d1d5db;
 }
 .report-style-panel{
   display:grid;
@@ -797,6 +819,24 @@
   .aether-console .side-bottom{
     margin-top:8px;
     border-top:0;
+  }
+  .aether-console .mobile-more-entry{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    width:100%;
+    min-height:42px;
+    margin:8px 0 0;
+    border:1px solid rgba(17,24,39,.1);
+    border-radius:14px;
+    background:#111827;
+    color:white;
+    box-shadow:0 10px 26px rgba(17,24,39,.12);
+  }
+  .aether-console .mobile-more-entry .nav-ico{
+    background:rgba(255,255,255,.16);
+    color:white;
   }
   .aether-console .side-nav button,
   .aether-console .side-bottom button{

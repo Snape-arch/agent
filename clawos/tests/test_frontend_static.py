@@ -46,6 +46,20 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("filePicker", html)
         self.assertIn("commandDrawer", html)
 
+    def test_console_has_dedicated_mobile_more_entry(self):
+        html = self.read_page("console.html")
+        css = self.read_page("assets/console.css")
+
+        self.assertIn('class="mobile-more-entry"', html)
+        self.assertIn("toggleCommandDrawer()", html)
+        self.assertIn("\u66f4\u591a\u5e94\u7528", html)
+        self.assertIn(".aether-console .mobile-more-entry", css)
+        self.assertIn("display:none", css)
+        mobile_css = css.split("@media(max-width:760px)", 1)[1]
+        self.assertIn(".aether-console .mobile-more-entry", mobile_css)
+        self.assertIn("display:flex", mobile_css)
+        self.assertIn("width:100%", mobile_css)
+
     def test_console_exposes_knowledge_library_as_user_rag_surface(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
@@ -151,14 +165,17 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("saveModelSettings", js)
         self.assertIn("modelModeText", js)
         self.assertIn("providerPreset", js)
-        self.assertIn("Local Qwen 模式", js)
-        self.assertIn("Mock/offline test 模式", js)
+        self.assertIn("API \u6a21\u5f0f", html + js)
+        self.assertIn("\u672c\u5730\u6a21\u5f0f", html + js)
+        self.assertIn("\u79bb\u7ebf\u6a21\u5f0f", html + js)
         self.assertIn("localModelNote", html)
         self.assertIn("modelChoiceActions", html)
+        self.assertIn("model-mode-card", html)
+        self.assertIn("\u9009\u62e9\u5f53\u524d\u5de5\u4f5c\u53f0\u4f7f\u7528\u7684\u6a21\u578b\u6765\u6e90", html)
         self.assertIn("chooseFirstRunModel", html + js)
         self.assertNotIn("firstRunModelCard", html)
-        self.assertIn("不会自动下载本地模型权重", html)
-        self.assertIn("手动下载/启动", js)
+        self.assertIn("\u4e0d\u4f1a\u81ea\u52a8\u4e0b\u8f7d\u6a21\u578b\u6743\u91cd", html + js)
+        self.assertIn("\u624b\u52a8\u4e0b\u8f7d\u5e76\u542f\u52a8\u672c\u5730\u670d\u52a1", html + js)
 
     def test_launcher_does_not_auto_download_or_start_local_qwen(self):
         launcher = (REPO_ROOT / "start_clawos.bat").read_text(encoding="utf-8")
@@ -195,6 +212,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("saveGeneratedReportToKnowledge", js)
         self.assertIn("lastGeneratedReport", js)
         self.assertIn("lastSavedReportKnowledgeId", js)
+        self.assertIn("sourceLink", js)
+        self.assertIn("Related source: [[${sourceTitle} #1]]", js)
         self.assertIn("report-flow", js)
         self.assertIn("report-flow-steps", js)
         self.assertIn("报告已生成", js)
@@ -203,6 +222,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("library_document_id", js)
         self.assertIn("/api/workspace/research/learning-analysis", js)
         self.assertIn("business_brief", js)
+        self.assertIn(".model-mode-card", css)
+        self.assertIn("grid-template-columns:repeat(3,minmax(0,1fr))", css)
         self.assertIn(".report-style-panel", css)
         self.assertIn(".report-result", css)
         self.assertIn(".report-flow", css)
