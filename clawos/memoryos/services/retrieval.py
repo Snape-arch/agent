@@ -1,5 +1,6 @@
 """RetrievalService - multi-strategy retrieval with BM25 and re-ranking."""
-import re, math
+import os, re, math, threading
+from pathlib import Path
 from collections import Counter
 
 class BM25Index:
@@ -47,17 +48,78 @@ class BM25Index:
         return [t.lower() for t in re.findall(r"[\w\u4e00-\u9fff]{2,}", text)]
 
 
+def _default_reranker_model_path():
+    return str((Path(__file__).resolve().parents[3] / "tools" / "models" / "qwen3-reranker-0.6b").resolve())
+
+
+class CrossEncoderReranker:
+    """Lazy local sentence-transformers CrossEncoder reranker."""
+
+    def __init__(self, model_path="", provider="qwen3", batch_size=8):
+        self.provider = str(provider or "qwen3").strip().lower()
+        self.model_path = str(Path(model_path or _default_reranker_model_path()).expanduser().resolve())
+        self.batch_size = max(1, int(batch_size or 8))
+        self._model = None
+        self._lock = threading.RLock()
+
+    @property
+    def enabled(self):
+        return self.provider in {"qwen3", "qwen3-reranker", "cross_encoder", "cross-encoder", "local"}
+
+    def _load(self):
+        if not self.enabled:
+            raise RuntimeError(f"Unsupported reranker provider: {self.provider}")
+        with self._lock:
+            if self._model is None:
+                try:
+                    from sentence_transformers import CrossEncoder  # type: ignore
+                except Exception as exc:
+                    raise RuntimeError(f"sentence-transformers is not installed: {exc}") from exc
+                if not Path(self.model_path).exists():
+                    raise RuntimeError(f"reranker model path not found: {self.model_path}")
+                self._model = CrossEncoder(self.model_path, local_files_only=True)
+            return self._model
+
+    def rerank(self, query, candidates, top_k=5):
+        if not candidates:
+            return []
+        model = self._load()
+        pairs = [(query or "", item.get("content") or item.get("text") or "") for item in candidates]
+        scores = model.predict(pairs, batch_size=self.batch_size)
+        ranked = []
+        for score, item in zip(scores, candidates):
+            row = dict(item)
+            row["rerank_score"] = round(float(score), 4)
+            row["strategy"] = "rerank"
+            ranked.append(row)
+        ranked.sort(key=lambda item: item.get("rerank_score", float("-inf")), reverse=True)
+        return ranked[:max(1, int(top_k or 5))]
+
+
 class RetrievalService:
     """Multi-strategy retrieval: keyword (SQLite FTS) + BM25 + re-rank."""
 
-    def __init__(self, store, vector_store=None):
+    def __init__(self, store, vector_store=None, reranker=None):
         self._store = store
         self._vector_store = vector_store
+        self._reranker = reranker or self._build_env_reranker()
         self._bm25 = BM25Index()
         self._bm25_populated = False
 
     def set_vector_store(self, vector_store):
         self._vector_store = vector_store
+
+    def _build_env_reranker(self):
+        provider = (
+            os.environ.get("CLAWOS_RERANKER_PROVIDER")
+            or os.environ.get("RERANKER_PROVIDER")
+            or "none"
+        ).strip().lower()
+        if provider in {"", "none", "off", "false", "0"}:
+            return None
+        model_path = os.environ.get("CLAWOS_RERANKER_MODEL_PATH") or os.environ.get("RERANKER_MODEL_PATH") or ""
+        batch_size = int(os.environ.get("CLAWOS_RERANKER_BATCH_SIZE") or os.environ.get("RERANKER_BATCH_SIZE") or 8)
+        return CrossEncoderReranker(model_path=model_path, provider=provider, batch_size=batch_size)
 
     def _ensure_bm25(self):
         self._bm25 = BM25Index()
@@ -113,9 +175,30 @@ class RetrievalService:
                 ranked.append(r)
         return ranked[:top_k]
 
+    def semantic_rerank(self, query, recall_k=30, top_k=5, min_score=0.0):
+        """Run vector recall first, then local cross-encoder reranking."""
+        if not self._vector_store:
+            return []
+        vector_hits = self._vector_store.search(query, top_k=max(recall_k, top_k), min_score=min_score)
+        candidates = [
+            {
+                "source": "vector",
+                "id": item.get("id"),
+                "title": item.get("metadata", {}).get("title", ""),
+                "content": item.get("text", ""),
+                "score": item.get("score", 0),
+                "strategy": "vector",
+                "metadata": item.get("metadata", {}),
+            }
+            for item in vector_hits
+        ]
+        if not self._reranker:
+            return candidates[:top_k]
+        return self._reranker.rerank(query, candidates, top_k=top_k)
+
     def retrieve_for_context(self, query, max_tokens=1500):
         """Retrieve and format results as context string for LLM."""
-        results = self.retrieve(query, top_k=5)
+        results = self.semantic_rerank(query, recall_k=30, top_k=5) if self._reranker else self.retrieve(query, top_k=5)
         if not results:
             return ""
         parts = ["Relevant knowledge from memory:"]

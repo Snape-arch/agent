@@ -13,10 +13,10 @@ from .services.evaluation import EvaluationService
 class ContextBuilder:
     """Build contextual system prompt from full MemoryOS pipeline."""
 
-    def __init__(self, store: MemoryStore, vector_store=None):
+    def __init__(self, store: MemoryStore, vector_store=None, reranker=None):
         self._store = store
         self._ingestion = IngestionService(store)
-        self._retrieval = RetrievalService(store, vector_store)
+        self._retrieval = RetrievalService(store, vector_store, reranker=reranker)
         self._evaluation = EvaluationService(store)
 
     def build_system_prompt(self, session_id: str) -> str:

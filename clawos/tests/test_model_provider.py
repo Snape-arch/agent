@@ -223,6 +223,10 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(vector["embedding_provider"], "${EMBEDDING_PROVIDER:-hash}")
         self.assertEqual(vector["embedding_model_path"], "${EMBEDDING_MODEL_PATH:-../tools/models/qwen3-embedding-0.6b}")
         self.assertEqual(vector["embedding_dim"], "${EMBEDDING_DIM:-1024}")
+        self.assertEqual(vector["reranker_provider"], "${RERANKER_PROVIDER:-none}")
+        self.assertEqual(vector["reranker_model_path"], "${RERANKER_MODEL_PATH:-../tools/models/qwen3-reranker-0.6b}")
+        self.assertEqual(vector["reranker_recall_k"], "${RERANKER_RECALL_K:-30}")
+        self.assertEqual(vector["reranker_top_k"], "${RERANKER_TOP_K:-5}")
 
     def test_qwen_model_manifest_matches_provider_default(self):
         manifest_path = ROOT / "models" / "qwen3_5_9b_q4_k_m.json"
@@ -242,6 +246,7 @@ class ModelProviderTests(unittest.TestCase):
     def test_qwen3_embedding_manifest_matches_vector_defaults(self):
         config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
         manifest = json.loads((ROOT / "models" / "qwen3_embedding_0_6b.json").read_text(encoding="utf-8"))
+        reranker = json.loads((ROOT / "models" / "qwen3_reranker_0_6b.json").read_text(encoding="utf-8"))
 
         self.assertEqual(manifest["provider"], "qwen3")
         self.assertEqual(manifest["repo_id"], "Qwen/Qwen3-Embedding-0.6B")
@@ -249,6 +254,11 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(manifest["embedding_dim"], 1024)
         self.assertEqual(config["vector_store"]["embedding_model_path"], "${EMBEDDING_MODEL_PATH:-../tools/models/qwen3-embedding-0.6b}")
         self.assertEqual(config["vector_store"]["embedding_dim"], "${EMBEDDING_DIM:-1024}")
+        self.assertEqual(reranker["repo_id"], "Qwen/Qwen3-Reranker-0.6B")
+        self.assertEqual(reranker["local_path"], "tools/models/qwen3-reranker-0.6b")
+        self.assertEqual(reranker["default_recall_k"], 30)
+        self.assertEqual(reranker["default_top_k"], 5)
+        self.assertEqual(config["vector_store"]["reranker_model_path"], "${RERANKER_MODEL_PATH:-../tools/models/qwen3-reranker-0.6b}")
 
     def test_server_normalizes_qwen_defaults_for_local_endpoint(self):
         import os

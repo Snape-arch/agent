@@ -1,0 +1,15 @@
+{
+  "id": "qwen3-reranker-0.6b",
+  "provider": "qwen3",
+  "repo_id": "Qwen/Qwen3-Reranker-0.6B",
+  "local_path": "tools/models/qwen3-reranker-0.6b",
+  "model_name": "Qwen3-Reranker-0.6B",
+  "rerank_contract": "CrossEncoder query-passage scoring after vector recall",
+  "default_recall_k": 30,
+  "default_top_k": 5,
+  "model_safetensors_size_bytes": 1191588280,
+  "total_local_size_bytes": 1207490039,
+  "model_safetensors_sha256": "27CD75A405B9C1B46B59ABFD88AAA209E6FED2A1972CDE9B70E7659537C5E65B",
+  "source_url": "https://huggingface.co/Qwen/Qwen3-Reranker-0.6B",
+  "license": "apache-2.0"
+}

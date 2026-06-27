@@ -941,3 +941,22 @@ Verification:
 Known notes:
 - Runtime report `output\reports\vector_db_acceptance.json` is ignored and should not be committed.
 - Current Qwen3 embedding path is local CPU sentence-transformers. MTTBook/Qwen runtime performance and optional reranker acceptance remain future work.
+
+### 2026-06-27 - Qwen3 Reranker second-stage retrieval acceptance
+
+Completed:
+- Downloaded local `Qwen/Qwen3-Reranker-0.6B` under ignored `tools/models/qwen3-reranker-0.6b`.
+- Added committed metadata manifest `clawos/models/qwen3_reranker_0_6b.json`; model weights remain out of Git.
+- Added `CrossEncoderReranker` to `memoryos.services.retrieval`. The production path is now configurable as Chroma + Qwen3-Embedding top-30 recall followed by Qwen3-Reranker top-5 precision ranking.
+- Wired optional reranker config through `config.json`, `.env.example`, `clawos_server.py`, and `ContextBuilder`. Default remains `RERANKER_PROVIDER=none`, so normal startup does not load the 1.2GB reranker unless explicitly enabled.
+- Extended `vector_db_acceptance.py` to validate reranker file completeness, top-30 vector recall, top-5 reranked recall, and rerank MRR.
+
+Verification:
+- Local reranker smoke: `CrossEncoder('tools/models/qwen3-reranker-0.6b', local_files_only=True)` loaded and scored the relevant office candidate above an unrelated paper candidate.
+- Vector DB acceptance: `python clawos\scripts\vector_db_acceptance.py --out output\reports\vector_db_acceptance.json` returned `ok=True`, `direct_recall_at_30=1.0`, `hybrid_recall_at_5=1.0`, `rerank_recall_at_5=1.0`, `direct_mrr=0.875`, `rerank_mrr=1.0`.
+- `python -m py_compile clawos\memoryos\services\retrieval.py clawos\memoryos\context_builder.py clawos\clawos_server.py clawos\scripts\vector_db_acceptance.py`: passed.
+- `python -m unittest clawos.tests.test_retrieval_reranker clawos.tests.test_model_provider clawos.tests.test_memoryos_mvp`: `36 tests OK`.
+- `python -m unittest discover -s clawos\tests`: `161 tests OK`.
+
+Known notes:
+- Reranker improves ranking quality but adds CPU latency. It should be enabled for high-quality paper/knowledge workflows and left off for lightweight demos unless needed.

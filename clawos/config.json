@@ -39,7 +39,11 @@
     "chroma_dir": "${CHROMA_DIR:-./data/chroma}",
     "embedding_provider": "${EMBEDDING_PROVIDER:-hash}",
     "embedding_model_path": "${EMBEDDING_MODEL_PATH:-../tools/models/qwen3-embedding-0.6b}",
-    "embedding_dim": "${EMBEDDING_DIM:-1024}"
+    "embedding_dim": "${EMBEDDING_DIM:-1024}",
+    "reranker_provider": "${RERANKER_PROVIDER:-none}",
+    "reranker_model_path": "${RERANKER_MODEL_PATH:-../tools/models/qwen3-reranker-0.6b}",
+    "reranker_recall_k": "${RERANKER_RECALL_K:-30}",
+    "reranker_top_k": "${RERANKER_TOP_K:-5}"
   },
   "fr_completion_check": { "enabled": true, "mode": "permissive", "always_true": false },
   "fr_context_history": { "enabled": true },

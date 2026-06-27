@@ -1056,7 +1056,18 @@ async def lifespan(app: FastAPI):
         embedding_dim=int(vector_cfg.get("embedding_dim") or 0),
     )
     g_vector_store.refresh()  # Load existing data
-    g_context_builder = ContextBuilder(g_memory_store, g_vector_store)
+    reranker = None
+    reranker_provider = str(vector_cfg.get("reranker_provider") or "").strip().lower()
+    if reranker_provider and reranker_provider not in {"none", "off", "false", "0"}:
+        from memoryos.services.retrieval import CrossEncoderReranker
+        reranker_model_path = str(vector_cfg.get("reranker_model_path") or "")
+        if reranker_model_path and not Path(reranker_model_path).expanduser().is_absolute():
+            reranker_model_path = str((BASE_DIR / reranker_model_path).resolve())
+        reranker = CrossEncoderReranker(
+            model_path=reranker_model_path,
+            provider=reranker_provider,
+        )
+    g_context_builder = ContextBuilder(g_memory_store, g_vector_store, reranker=reranker)
     from policy_optimizer import PolicyOptimizer
     g_policy_optimizer = PolicyOptimizer(g_memory_store)
     from security import SecretManager, SecurityGrantStore, ToolSecurityPolicy

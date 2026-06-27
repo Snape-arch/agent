@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from memoryos.memory_store import MemoryStore
-from memoryos.services.retrieval import RetrievalService
+from memoryos.services.retrieval import CrossEncoderReranker, RetrievalService
 from memoryos.services.vector_store import MemoryVectorStore
 
 
@@ -134,17 +134,16 @@ CASES: list[dict[str, Any]] = [
 ]
 
 
-def model_file_report(model_path: Path) -> dict[str, Any]:
+def model_file_report(model_path: Path, kind: str = "embedding") -> dict[str, Any]:
     required = [
         "config.json",
         "model.safetensors",
         "tokenizer.json",
         "tokenizer_config.json",
         "vocab.json",
-        "modules.json",
-        "config_sentence_transformers.json",
-        "1_Pooling/config.json",
     ]
+    if kind == "embedding":
+        required.extend(["modules.json", "config_sentence_transformers.json", "1_Pooling/config.json"])
     files = {name: (model_path / name).exists() for name in required}
     total_bytes = sum(item.stat().st_size for item in model_path.rglob("*") if item.is_file()) if model_path.exists() else 0
     return {"path": str(model_path), "required_files": files, "total_bytes": total_bytes, "complete": all(files.values())}
@@ -178,12 +177,21 @@ def normalize_id(value: str) -> set[str]:
 def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
     started = time.perf_counter()
     model_path = Path(args.embedding_model_path).expanduser().resolve()
-    model_files = model_file_report(model_path)
+    reranker_path = Path(args.reranker_model_path).expanduser().resolve()
+    model_files = model_file_report(model_path, "embedding")
+    reranker_files = model_file_report(reranker_path, "reranker")
     if args.embedding_provider != "hash" and not model_files["complete"]:
         return {
             "ok": False,
             "error": "embedding_model_incomplete",
             "model_files": model_files,
+        }
+    if args.reranker_provider != "none" and not reranker_files["complete"]:
+        return {
+            "ok": False,
+            "error": "reranker_model_incomplete",
+            "model_files": model_files,
+            "reranker_files": reranker_files,
         }
 
     temp_dir = tempfile.TemporaryDirectory()
@@ -205,20 +213,30 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
         )
         vectors.refresh()
         stats = vectors.stats()
-        retrieval = RetrievalService(store, vectors)
+        reranker = None
+        if args.reranker_provider != "none":
+            reranker = CrossEncoderReranker(str(reranker_path), provider=args.reranker_provider)
+        retrieval = RetrievalService(store, vectors, reranker=reranker)
 
         for case in CASES:
             expected_id = slug_to_id[case["expected_slug"]]
             started_case = time.perf_counter()
-            direct = vectors.search(case["query"], top_k=args.top_k, min_score=0.0)
+            direct = vectors.search(case["query"], top_k=args.recall_k, min_score=0.0)
             hybrid = retrieval.retrieve(case["query"], top_k=args.top_k)
+            reranked = retrieval.semantic_rerank(case["query"], recall_k=args.recall_k, top_k=args.top_k, min_score=0.0)
             elapsed_ms = round((time.perf_counter() - started_case) * 1000, 3)
             direct_ids = [str(item.get("id")) for item in direct]
             hybrid_ids = [str(item.get("id")) for item in hybrid]
+            rerank_ids = [str(item.get("id")) for item in reranked]
             direct_hit = any(normalize_id(item).intersection({expected_id}) for item in direct_ids)
             hybrid_hit = any(normalize_id(item).intersection({expected_id}) for item in hybrid_ids)
+            rerank_hit = any(normalize_id(item).intersection({expected_id}) for item in rerank_ids)
             rank = next(
                 (index + 1 for index, item in enumerate(direct_ids) if normalize_id(item).intersection({expected_id})),
+                0,
+            )
+            rerank_rank = next(
+                (index + 1 for index, item in enumerate(rerank_ids) if normalize_id(item).intersection({expected_id})),
                 0,
             )
             case_results.append({
@@ -227,9 +245,12 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
                 "expected_id": expected_id,
                 "direct_ids": direct_ids,
                 "hybrid_ids": hybrid_ids,
+                "rerank_ids": rerank_ids,
                 "direct_hit": direct_hit,
                 "hybrid_hit": hybrid_hit,
+                "rerank_hit": rerank_hit,
                 "direct_rank": rank,
+                "rerank_rank": rerank_rank,
                 "latency_ms": elapsed_ms,
                 "top_direct": [
                     {
@@ -238,6 +259,15 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
                         "score": item.get("score"),
                     }
                     for item in direct[:5]
+                ],
+                "top_reranked": [
+                    {
+                        "id": item.get("id"),
+                        "title": item.get("title", ""),
+                        "score": item.get("score"),
+                        "rerank_score": item.get("rerank_score"),
+                    }
+                    for item in reranked[:5]
                 ],
             })
         vectors.close()
@@ -258,12 +288,16 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
 
     direct_hits = [1.0 if item["direct_hit"] else 0.0 for item in case_results]
     hybrid_hits = [1.0 if item["hybrid_hit"] else 0.0 for item in case_results]
+    rerank_hits = [1.0 if item["rerank_hit"] else 0.0 for item in case_results]
     reciprocal = [(1.0 / item["direct_rank"]) if item["direct_rank"] else 0.0 for item in case_results]
+    rerank_reciprocal = [(1.0 / item["rerank_rank"]) if item["rerank_rank"] else 0.0 for item in case_results]
     latencies = sorted(item["latency_ms"] for item in case_results)
     metrics = {
-        f"direct_recall_at_{args.top_k}": round(sum(direct_hits) / len(direct_hits), 4),
+        f"direct_recall_at_{args.recall_k}": round(sum(direct_hits) / len(direct_hits), 4),
         f"hybrid_recall_at_{args.top_k}": round(sum(hybrid_hits) / len(hybrid_hits), 4),
+        f"rerank_recall_at_{args.top_k}": round(sum(rerank_hits) / len(rerank_hits), 4),
         "direct_mrr": round(sum(reciprocal) / len(reciprocal), 4),
+        "rerank_mrr": round(sum(rerank_reciprocal) / len(rerank_reciprocal), 4),
         "latency_p50_ms": latencies[len(latencies) // 2],
         "latency_p95_ms": latencies[-1],
     }
@@ -271,14 +305,16 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
         stats.get("provider") == "chroma"
         and stats.get("embedding_provider") == args.embedding_provider
         and stats.get("embedding_dim") == args.embedding_dim
-        and metrics[f"direct_recall_at_{args.top_k}"] >= args.min_recall
+        and metrics[f"direct_recall_at_{args.recall_k}"] >= args.min_recall
         and metrics[f"hybrid_recall_at_{args.top_k}"] >= args.min_recall
+        and metrics[f"rerank_recall_at_{args.top_k}"] >= args.min_recall
         and persisted_stats.get("vector_count") == stats.get("vector_count")
         and bool(persisted_hits)
     )
     return {
         "ok": ok,
         "model_files": model_files,
+        "reranker_files": reranker_files,
         "stats": stats,
         "persisted_stats": persisted_stats,
         "persisted_probe_ids": [item.get("id") for item in persisted_hits[:5]],
@@ -286,6 +322,7 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
             "name": "vector-db-qwen3-chroma-acceptance",
             "case_count": len(CASES),
             "top_k": args.top_k,
+            "recall_k": args.recall_k,
             "min_recall": args.min_recall,
             "metrics": metrics,
         },
@@ -299,6 +336,9 @@ def main() -> int:
     parser.add_argument("--embedding-provider", default="qwen3")
     parser.add_argument("--embedding-model-path", default=str(REPO_ROOT / "tools" / "models" / "qwen3-embedding-0.6b"))
     parser.add_argument("--embedding-dim", type=int, default=1024)
+    parser.add_argument("--reranker-provider", default="qwen3")
+    parser.add_argument("--reranker-model-path", default=str(REPO_ROOT / "tools" / "models" / "qwen3-reranker-0.6b"))
+    parser.add_argument("--recall-k", type=int, default=30)
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--min-recall", type=float, default=1.0)
     parser.add_argument("--out", default="output/reports/vector_db_acceptance.json")
@@ -319,9 +359,10 @@ def main() -> int:
             f"ok={result.get('ok')} provider={result.get('stats', {}).get('provider')} "
             f"embedding={result.get('stats', {}).get('embedding_provider')} "
             f"dim={result.get('stats', {}).get('embedding_dim')} "
-            f"direct_recall={metrics.get(f'direct_recall_at_{args.top_k}')} "
+            f"direct_recall={metrics.get(f'direct_recall_at_{args.recall_k}')} "
             f"hybrid_recall={metrics.get(f'hybrid_recall_at_{args.top_k}')} "
-            f"mrr={metrics.get('direct_mrr')}"
+            f"rerank_recall={metrics.get(f'rerank_recall_at_{args.top_k}')} "
+            f"rerank_mrr={metrics.get('rerank_mrr')}"
         )
         if args.out:
             print(f"Report: {args.out}")
