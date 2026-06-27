@@ -883,3 +883,23 @@ Known notes:
 
 Recommended next step:
 - Add an offline embedding provider abstraction (`hash`, local bge/e5/qwen embedding) and benchmark Chroma+local embeddings against the current lightweight index on paper reading and note-linking tasks.
+
+### 2026-06-27 - Chroma installed and real offline vector flow accepted
+
+Completed:
+- Installed `chromadb==1.5.9` in the local Python environment.
+- Switched default config examples from lightweight vectors to offline Chroma: `VECTOR_PROVIDER=chroma` and `config.json` default `${VECTOR_PROVIDER:-chroma}`.
+- Moved `chromadb>=1.5.9` into `clawos/requirements.txt` as an installed runtime dependency for the offline vector backend.
+- Disabled Chroma anonymized telemetry through client settings when available.
+- Added explicit vector-store `close()` support so Windows releases Chroma index files before test cleanup.
+- Ran a real Chroma acceptance flow covering SQLite MemoryOS writes, vector refresh, semantic search, context injection, close/reopen persistence, and repeated retrieval from the persisted collection.
+
+Verification:
+- Real Chroma acceptance: `chromadb_version=1.5.9`, `provider=chroma`, `fallback_reason=""`, `vector_count=2`, `context_injected=true`, `persisted_vector_count=2`.
+- `python -m py_compile clawos\memoryos\services\vector_store.py clawos\clawos_server.py`: passed.
+- `python -m unittest clawos.tests.test_memoryos_mvp clawos.tests.test_model_provider clawos.tests.test_frontend_static`: `56 tests OK`.
+- `python -m unittest discover -s clawos\tests`: `156 tests OK`.
+
+Known notes:
+- Chroma is now the configured default path, while direct `MemoryVectorStore(...)` construction still stays lightweight unless provider/env/config requests Chroma. This keeps older deterministic tests and isolated scripts safe.
+- Retrieval persistence is enterprise-demo ready, but semantic quality still depends on the current deterministic hash embeddings. The next quality jump is an offline embedding provider such as bge/e5/qwen embeddings.

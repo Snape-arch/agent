@@ -160,9 +160,12 @@ class MemoryOSMvpTests(unittest.TestCase):
                 confidence=0.9,
             )
             vectors = MemoryVectorStore(str(db_path), provider="chroma", persist_dir=str(root / "chroma"))
-            vectors.refresh()
-            stats = vectors.stats()
-            results = vectors.search("offline Chroma vector retrieval", top_k=5, min_score=0.0)
+            try:
+                vectors.refresh()
+                stats = vectors.stats()
+                results = vectors.search("offline Chroma vector retrieval", top_k=5, min_score=0.0)
+            finally:
+                vectors.close()
 
         self.assertEqual(stats["requested_provider"], "chroma")
         self.assertIn(stats["provider"], {"chroma", "lightweight"})

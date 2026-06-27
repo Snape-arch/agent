@@ -218,7 +218,7 @@ class ModelProviderTests(unittest.TestCase):
         config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
         vector = config["vector_store"]
 
-        self.assertEqual(vector["provider"], "${VECTOR_PROVIDER:-lightweight}")
+        self.assertEqual(vector["provider"], "${VECTOR_PROVIDER:-chroma}")
         self.assertEqual(vector["chroma_dir"], "${CHROMA_DIR:-./data/chroma}")
 
     def test_qwen_model_manifest_matches_provider_default(self):

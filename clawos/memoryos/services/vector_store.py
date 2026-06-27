@@ -131,7 +131,12 @@ class ChromaVectorStore:
         self.persist_path = str(Path(persist_path).expanduser().resolve())
         self.collection_name = collection_name
         self._encoder = VectorStore(dim=dim)
-        self._client = chromadb.PersistentClient(path=self.persist_path)
+        try:
+            from chromadb.config import Settings  # type: ignore
+            settings = Settings(anonymized_telemetry=False)
+        except Exception:
+            settings = None
+        self._client = chromadb.PersistentClient(path=self.persist_path, settings=settings)
         self._collection = self._client.get_or_create_collection(
             name=collection_name,
             metadata={"hnsw:space": "cosine"},
@@ -224,6 +229,12 @@ class ChromaVectorStore:
                 name=self.collection_name,
                 metadata={"hnsw:space": "cosine"},
             )
+
+    def close(self) -> None:
+        with self._lock:
+            close = getattr(self._client, "close", None)
+            if callable(close):
+                close()
 
 
 class MemoryVectorStore:
@@ -349,6 +360,11 @@ class MemoryVectorStore:
     def refresh(self):
         self._store.clear()
         self._loaded = False
+
+    def close(self) -> None:
+        close = getattr(self._store, "close", None)
+        if callable(close):
+            close()
 
     def stats(self) -> dict:
         self._ensure_loaded()

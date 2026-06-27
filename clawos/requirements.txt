@@ -5,5 +5,4 @@ numpy>=1.24.0
 reportlab>=4.0.0
 pypdf>=4.0.0
 python-multipart>=0.0.9
-# Optional offline persistent vector DB. Install from a local wheelhouse to enable VECTOR_PROVIDER=chroma.
-# chromadb>=0.5.0
+chromadb>=1.5.9
