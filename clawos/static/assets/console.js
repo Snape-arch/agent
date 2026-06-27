@@ -90,8 +90,18 @@ function setView(viewName) {
 }
 
 document.querySelectorAll(".side-nav button[data-view]").forEach(button => {
-  button.onclick = () => setView(button.dataset.view);
+  button.onclick = () => {
+    if (button.dataset.action === "new-chat") {
+      newChat();
+      return;
+    }
+    setView(button.dataset.view);
+  };
 });
+
+function toggleSidebar() {
+  document.body.classList.toggle("sidebar-collapsed");
+}
 
 function md(text) {
   return esc(text || "")
@@ -603,19 +613,19 @@ function renderObsidianCheck(data) {
 
 async function checkObsidianVault() {
   const category = knowledgeCategory ? "?category=" + encodeURIComponent(knowledgeCategory) : "";
-  if ($("obsidianStatus")) $("obsidianStatus").textContent = "正在检查 Obsidian 结构";
+  if ($("obsidianStatus")) $("obsidianStatus").textContent = "正在检查双链笔记结构";
   try {
     const data = await api("/api/knowledge/obsidian/check" + category);
     renderObsidianCheck(data);
     await loadKnowledgeGraph();
   } catch (err) {
-    $("obsidianStatus").textContent = "Obsidian 检查失败：" + err.message;
+    $("obsidianStatus").textContent = "笔记库检查失败：" + err.message;
   }
 }
 
 async function exportObsidianVault() {
   const output_dir = ($("obsidianExportDir")?.value || "").trim();
-  if ($("obsidianStatus")) $("obsidianStatus").textContent = "正在导出 Obsidian Vault";
+  if ($("obsidianStatus")) $("obsidianStatus").textContent = "正在导出 Markdown 笔记库";
   try {
     const data = await api("/api/knowledge/obsidian/export", {
       method: "POST",
@@ -626,7 +636,7 @@ async function exportObsidianVault() {
     $("obsidianStatus").textContent = `已导出 ${data.file_count || 0} 个文件：${data.output_dir || ""}`;
     await loadKnowledgeGraph();
   } catch (err) {
-    $("obsidianStatus").textContent = "Obsidian 导出失败：" + err.message;
+    $("obsidianStatus").textContent = "笔记库导出失败：" + err.message;
   }
 }
 
@@ -673,7 +683,7 @@ function renderKnowledgeReportResult(data) {
     ["样式", report.metadata?.report_style || ""],
     ["问题数", report.question_count || 0]
   ];
-  $("reportResult").innerHTML = `<div class="report-flow"><b>报告已生成</b><span>下一步：保存到知识库，然后可导出 Obsidian 或继续追问。</span><div class="report-flow-steps"><span class="done">1 生成报告</span><span>2 保存知识库</span><span>3 导出 Obsidian</span><span>4 继续追问</span></div><div class="action-row"><button class="primary" onclick="saveGeneratedReportToKnowledge()">保存到知识库</button><button class="secondary" onclick="exportObsidianVault()">导出 Obsidian</button></div></div>` + table(["项目", "结果"], rows) + `<div class="report-preview">${md(data.preview || "")}</div>`;
+  $("reportResult").innerHTML = `<div class="report-flow"><b>报告已生成</b><span>下一步：保存到知识库，然后可导出 Markdown 笔记库或继续追问。</span><div class="report-flow-steps"><span class="done">1 生成报告</span><span>2 保存知识库</span><span>3 导出笔记库</span><span>4 继续追问</span></div><div class="action-row"><button class="primary" onclick="saveGeneratedReportToKnowledge()">保存到知识库</button><button class="secondary" onclick="exportObsidianVault()">导出笔记库</button></div></div>` + table(["项目", "结果"], rows) + `<div class="report-preview">${md(data.preview || "")}</div>`;
 }
 
 function reportGenerationError(err) {
@@ -706,7 +716,7 @@ async function generateKnowledgeReport() {
       body: JSON.stringify(body)
     });
     renderKnowledgeReportResult(data);
-    if ($("knowledgeStatus")) $("knowledgeStatus").textContent = "报告已生成，可继续导出 Obsidian Vault 或在聊天中追问。";
+    if ($("knowledgeStatus")) $("knowledgeStatus").textContent = "报告已生成，可继续导出 Markdown 笔记库或在聊天中追问。";
   } catch (err) {
     if ($("reportResult")) $("reportResult").textContent = reportGenerationError(err);
   }
@@ -730,7 +740,7 @@ async function saveGeneratedReportToKnowledge() {
     body: JSON.stringify({ title, content, category: knowledgeCategory || doc.category || "research", source: report.markdown_path || "generated-report", tags: ["report", style, "generated"] })
   });
   lastSavedReportKnowledgeId = saved.item?.id || null;
-  if ($("knowledgeStatus")) $("knowledgeStatus").textContent = "报告已保存到知识库，可继续导出 Obsidian Vault";
+  if ($("knowledgeStatus")) $("knowledgeStatus").textContent = "报告已保存到知识库，可继续导出 Markdown 笔记库";
   await loadKnowledge();
   await loadKnowledgeGraph();
   if (lastSavedReportKnowledgeId) {

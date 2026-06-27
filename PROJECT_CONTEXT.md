@@ -841,3 +841,24 @@ Known notes:
 
 Recommended next step:
 - Restart ClawOS, verify `/health` and the top model badge now show the simplified mode labels, then run a final targeted browser pass for model settings plus the report flow.
+
+### 2026-06-27 - Console UX naming, sidebar behavior, and vector DB assessment
+
+Completed:
+- Fixed the sidebar "新聊天" entry so it creates a fresh session instead of only switching back to the chat view after history/search usage.
+- Replaced letter-like sidebar badges with softer symbolic controls and added a real sidebar collapse toggle for desktop use.
+- Removed user-facing Obsidian naming from the console. The UI now describes the feature as Markdown/双链笔记库 check/export while retaining the existing internal endpoint/function names for compatibility.
+- Added frontend static coverage for new-chat behavior, sidebar toggle presence, and the absence of user-facing "导出 Obsidian" / "Obsidian Vault" copy.
+- Reviewed current vector retrieval: it remains SQLite-backed with an in-memory character n-gram hash vector index. It is good for deterministic offline demos, but not enough for higher-quality paper reading, semantic note linking, or larger knowledge bases.
+
+Verification:
+- Bundled Node syntax check: `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- Frontend static tests: `python -m unittest clawos.tests.test_frontend_static`: `22 tests OK`.
+- Unicode mojibake scan across console HTML/JS/CSS: `0` flagged fragments.
+
+Known notes:
+- Internal API paths still contain `obsidian` for backward compatibility. User-facing text should use "笔记库", "双链笔记", or "Markdown 笔记库".
+- The vector DB upgrade should be implemented behind the existing `MemoryVectorStore` contract so the rest of RAG, graph, report, and context-building code does not churn.
+
+Recommended next step:
+- Add a vector backend abstraction with `lightweight` and `chroma` providers, then run retrieval quality benchmarks on paper-reading, note linking, code search, and office document scenarios before switching defaults.

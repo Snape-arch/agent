@@ -34,10 +34,13 @@ class FrontendStaticTests(unittest.TestCase):
 
     def test_console_has_chat_first_information_architecture(self):
         html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
 
         self.assertIn('href="/assets/site.css"', html)
         self.assertIn('href="/assets/console.css"', html)
         self.assertIn('data-view="chat"', html)
+        self.assertIn('data-action="new-chat"', html)
+        self.assertIn("toggleSidebar", html + js)
         self.assertIn('data-view="search"', html)
         self.assertIn('data-view="knowledge"', html)
         self.assertIn('data-view="projects"', html)
@@ -242,7 +245,11 @@ class FrontendStaticTests(unittest.TestCase):
             self.assertNotIn(token, combined)
         self.assertNotIn("firstRunModelCard", combined)
         self.assertIn("modelChoiceActions", combined)
-        self.assertIn("Obsidian \u68c0\u67e5\u4e0e\u5bfc\u51fa", combined)
+        self.assertIn("笔记库检查与导出", combined)
+        self.assertIn("导出笔记库", combined)
+        self.assertNotIn("Obsidian 检查与导出", combined)
+        self.assertNotIn("导出 Obsidian", combined)
+        self.assertNotIn("Obsidian Vault", combined)
         self.assertIn("\u6700\u8fd1\u8fd0\u884c\u7ed3\u679c", combined)
 
     def test_console_chat_uses_streaming_and_stop_control(self):
