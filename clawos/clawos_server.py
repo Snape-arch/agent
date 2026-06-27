@@ -1044,10 +1044,16 @@ async def lifespan(app: FastAPI):
     chroma_dir = str(vector_cfg.get("chroma_dir") or "")
     if chroma_dir and not Path(chroma_dir).expanduser().is_absolute():
         chroma_dir = str((BASE_DIR / chroma_dir).resolve())
+    embedding_model_path = str(vector_cfg.get("embedding_model_path") or "")
+    if embedding_model_path and not Path(embedding_model_path).expanduser().is_absolute():
+        embedding_model_path = str((BASE_DIR / embedding_model_path).resolve())
     g_vector_store = MemoryVectorStore(
         str(MEMORY_DB),
         provider=str(vector_cfg.get("provider") or ""),
         persist_dir=chroma_dir,
+        embedding_provider=str(vector_cfg.get("embedding_provider") or ""),
+        embedding_model_path=embedding_model_path,
+        embedding_dim=int(vector_cfg.get("embedding_dim") or 0),
     )
     g_vector_store.refresh()  # Load existing data
     g_context_builder = ContextBuilder(g_memory_store, g_vector_store)

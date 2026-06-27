@@ -220,6 +220,9 @@ class ModelProviderTests(unittest.TestCase):
 
         self.assertEqual(vector["provider"], "${VECTOR_PROVIDER:-chroma}")
         self.assertEqual(vector["chroma_dir"], "${CHROMA_DIR:-./data/chroma}")
+        self.assertEqual(vector["embedding_provider"], "${EMBEDDING_PROVIDER:-hash}")
+        self.assertEqual(vector["embedding_model_path"], "${EMBEDDING_MODEL_PATH:-../tools/models/qwen3-embedding-0.6b}")
+        self.assertEqual(vector["embedding_dim"], "${EMBEDDING_DIM:-1024}")
 
     def test_qwen_model_manifest_matches_provider_default(self):
         manifest_path = ROOT / "models" / "qwen3_5_9b_q4_k_m.json"
@@ -235,6 +238,17 @@ class ModelProviderTests(unittest.TestCase):
             manifest["sha256"],
             "03B74727A860A56338E042C4420BB3F04B2FEC5734175F4CB9FA853DAF52B7E8",
         )
+
+    def test_qwen3_embedding_manifest_matches_vector_defaults(self):
+        config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        manifest = json.loads((ROOT / "models" / "qwen3_embedding_0_6b.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["provider"], "qwen3")
+        self.assertEqual(manifest["repo_id"], "Qwen/Qwen3-Embedding-0.6B")
+        self.assertEqual(manifest["local_path"], "tools/models/qwen3-embedding-0.6b")
+        self.assertEqual(manifest["embedding_dim"], 1024)
+        self.assertEqual(config["vector_store"]["embedding_model_path"], "${EMBEDDING_MODEL_PATH:-../tools/models/qwen3-embedding-0.6b}")
+        self.assertEqual(config["vector_store"]["embedding_dim"], "${EMBEDDING_DIM:-1024}")
 
     def test_server_normalizes_qwen_defaults_for_local_endpoint(self):
         import os

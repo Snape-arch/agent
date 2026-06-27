@@ -6,3 +6,5 @@ reportlab>=4.0.0
 pypdf>=4.0.0
 python-multipart>=0.0.9
 chromadb>=1.5.9
+sentence-transformers>=2.7.0
+transformers>=4.51.0

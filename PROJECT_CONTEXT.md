@@ -921,3 +921,23 @@ Verification:
 Known notes:
 - DeepSeek output reports are local evidence only and must not be committed. They do not contain API keys.
 - The current online retrieval quality is strong for the benchmark corpus, but true large-corpus paper-grade semantic recall still needs a native embedding provider or offline embedding model.
+
+### 2026-06-27 - Qwen3 Embedding + Chroma vector DB enterprise acceptance
+
+Completed:
+- Verified the manually downloaded local Qwen3-Embedding-0.6B model under `tools/models/qwen3-embedding-0.6b`. The missing `1_Pooling/config.json` sentence-transformers subfolder config was added locally under `tools/` and remains untracked.
+- Installed local loading dependencies: `sentence-transformers` and `transformers`.
+- Upgraded `MemoryVectorStore` so Chroma can use configurable local embedding backends. Default remains `hash`; setting `EMBEDDING_PROVIDER=qwen3` uses the local Qwen3 model with `EMBEDDING_DIM=1024`.
+- Added `clawos/models/qwen3_embedding_0_6b.json` as a committed metadata manifest only. Model weights remain in ignored `tools/`.
+- Added `clawos/scripts/vector_db_acceptance.py` for explicit enterprise vector DB acceptance covering model files, local embedding load, Chroma indexing, direct vector recall, hybrid retrieval, and close/reopen persistence.
+
+Verification:
+- Local model smoke: `SentenceTransformer('tools/models/qwen3-embedding-0.6b', local_files_only=True)` loaded and encoded 2 texts with shape `[2, 1024]`.
+- Vector DB acceptance: `python clawos\scripts\vector_db_acceptance.py --out output\reports\vector_db_acceptance.json` returned `ok=True`, `provider=chroma`, `embedding=qwen3`, `dim=1024`, `direct_recall_at_5=1.0`, `hybrid_recall_at_5=1.0`, `direct_mrr=0.875`, `vector_count=12`, persisted vector count unchanged after reopen.
+- `python -m py_compile clawos\memoryos\services\vector_store.py clawos\clawos_server.py clawos\scripts\vector_db_acceptance.py`: passed.
+- `python -m unittest clawos.tests.test_model_provider clawos.tests.test_memoryos_mvp`: `35 tests OK`.
+- `python -m unittest discover -s clawos\tests`: `160 tests OK`.
+
+Known notes:
+- Runtime report `output\reports\vector_db_acceptance.json` is ignored and should not be committed.
+- Current Qwen3 embedding path is local CPU sentence-transformers. MTTBook/Qwen runtime performance and optional reranker acceptance remain future work.

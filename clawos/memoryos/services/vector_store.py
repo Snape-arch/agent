@@ -2,8 +2,9 @@
 
 The default backend is a dependency-light character n-gram vector index. When
 ``chromadb`` is installed, ``MemoryVectorStore(provider="chroma")`` uses a local
-persistent Chroma collection with the same deterministic local embeddings, so it
-does not download models or call the network.
+persistent Chroma collection. Embeddings default to deterministic local hash
+vectors, and can be upgraded to a local sentence-transformers model such as
+Qwen3-Embedding-0.6B without changing the MemoryVectorStore contract.
 """
 
 from __future__ import annotations
@@ -107,6 +108,64 @@ class VectorStore:
             self._metadata.clear()
 
 
+class SentenceTransformerEncoder:
+    """Lazy local sentence-transformers encoder."""
+
+    def __init__(self, model_path: str, dim: int = 1024):
+        self.model_path = str(Path(model_path).expanduser().resolve())
+        self.dim = int(dim or 1024)
+        self._model = None
+        self._lock = threading.RLock()
+
+    def _load(self):
+        with self._lock:
+            if self._model is None:
+                try:
+                    from sentence_transformers import SentenceTransformer  # type: ignore
+                except Exception as exc:
+                    raise RuntimeError(f"sentence-transformers is not installed: {exc}") from exc
+                if not Path(self.model_path).exists():
+                    raise RuntimeError(f"embedding model path not found: {self.model_path}")
+                self._model = SentenceTransformer(self.model_path, local_files_only=True)
+            return self._model
+
+    def embed(self, text: str) -> list[float]:
+        model = self._load()
+        vector = model.encode([text or ""], normalize_embeddings=True)[0]
+        return np.asarray(vector, dtype=float).tolist()
+
+
+def _embedding_provider_name(provider: str = "") -> str:
+    return (
+        provider
+        or os.environ.get("CLAWOS_EMBEDDING_PROVIDER")
+        or os.environ.get("EMBEDDING_PROVIDER")
+        or "hash"
+    ).strip().lower()
+
+
+def _default_embedding_model_path() -> str:
+    return str((Path(__file__).resolve().parents[3] / "tools" / "models" / "qwen3-embedding-0.6b").resolve())
+
+
+def _create_encoder(provider: str, dim: int):
+    return _create_encoder_with_model(provider, dim, "")
+
+
+def _create_encoder_with_model(provider: str, dim: int, model_path: str = ""):
+    if provider in {"hash", "local_hash", "ngram", ""}:
+        return VectorStore(dim=dim), dim, ""
+    if provider in {"qwen3", "qwen3-embedding", "sentence_transformers", "sentence-transformers", "local"}:
+        model_path = model_path or (
+            os.environ.get("CLAWOS_EMBEDDING_MODEL_PATH")
+            or os.environ.get("EMBEDDING_MODEL_PATH")
+            or _default_embedding_model_path()
+        )
+        target_dim = int(os.environ.get("CLAWOS_EMBEDDING_DIM") or os.environ.get("EMBEDDING_DIM") or dim or 1024)
+        return SentenceTransformerEncoder(model_path, target_dim), target_dim, model_path
+    raise RuntimeError(f"Unsupported embedding provider: {provider}")
+
+
 def _metadata_for_chroma(metadata: dict | None) -> dict:
     clean: dict[str, str | int | float | bool] = {}
     for key, value in (metadata or {}).items():
@@ -120,9 +179,9 @@ def _metadata_for_chroma(metadata: dict | None) -> dict:
 
 
 class ChromaVectorStore:
-    """Offline Chroma backend using deterministic local embeddings."""
+    """Offline Chroma backend using a local embedding encoder."""
 
-    def __init__(self, persist_path: str, dim: int = 256, collection_name: str = "clawos_memory"):
+    def __init__(self, persist_path: str, dim: int = 256, collection_name: str = "clawos_memory", encoder=None):
         try:
             import chromadb  # type: ignore
         except Exception as exc:  # pragma: no cover - fallback path covers this in tests
@@ -130,7 +189,7 @@ class ChromaVectorStore:
         self.dim = dim
         self.persist_path = str(Path(persist_path).expanduser().resolve())
         self.collection_name = collection_name
-        self._encoder = VectorStore(dim=dim)
+        self._encoder = encoder or VectorStore(dim=dim)
         try:
             from chromadb.config import Settings  # type: ignore
             settings = Settings(anonymized_telemetry=False)
@@ -139,7 +198,7 @@ class ChromaVectorStore:
         self._client = chromadb.PersistentClient(path=self.persist_path, settings=settings)
         self._collection = self._client.get_or_create_collection(
             name=collection_name,
-            metadata={"hnsw:space": "cosine"},
+            metadata={"hnsw:space": "cosine", "embedding_dim": int(dim)},
         )
         self._lock = threading.RLock()
 
@@ -227,7 +286,7 @@ class ChromaVectorStore:
                 pass
             self._collection = self._client.get_or_create_collection(
                 name=self.collection_name,
-                metadata={"hnsw:space": "cosine"},
+                metadata={"hnsw:space": "cosine", "embedding_dim": int(self.dim)},
             )
 
     def close(self) -> None:
@@ -240,8 +299,20 @@ class ChromaVectorStore:
 class MemoryVectorStore:
     """High-level vector store integrated with MemoryOS SQLite."""
 
-    def __init__(self, db_path: str, dim: int = 256, provider: str = "", persist_dir: str = ""):
+    def __init__(
+        self,
+        db_path: str,
+        dim: int = 256,
+        provider: str = "",
+        persist_dir: str = "",
+        embedding_provider: str = "",
+        embedding_model_path: str = "",
+        embedding_dim: int = 0,
+    ):
         self.db_path = db_path
+        self.embedding_provider = _embedding_provider_name(embedding_provider)
+        if self.embedding_provider not in {"hash", "local_hash", "ngram", ""}:
+            dim = int(embedding_dim or os.environ.get("CLAWOS_EMBEDDING_DIM") or os.environ.get("EMBEDDING_DIM") or 1024)
         self.dim = dim
         requested = (
             provider
@@ -258,9 +329,21 @@ class MemoryVectorStore:
             or os.environ.get("CHROMA_DIR")
             or str(Path(db_path).with_name("chroma"))
         )
+        self.embedding_model_path = ""
         if requested == "chroma":
             try:
-                self._store: VectorStore | ChromaVectorStore = ChromaVectorStore(self.persist_dir, dim=dim)
+                encoder, self.dim, self.embedding_model_path = _create_encoder_with_model(
+                    self.embedding_provider,
+                    self.dim,
+                    embedding_model_path,
+                )
+                collection_name = f"clawos_memory_{self.embedding_provider.replace('-', '_')}_{self.dim}"
+                self._store: VectorStore | ChromaVectorStore = ChromaVectorStore(
+                    self.persist_dir,
+                    dim=self.dim,
+                    collection_name=collection_name,
+                    encoder=encoder,
+                )
                 self.provider = "chroma"
             except Exception as exc:
                 self._store = VectorStore(dim=dim)
@@ -373,6 +456,9 @@ class MemoryVectorStore:
             "provider": self.provider,
             "requested_provider": self.requested_provider,
             "fallback_reason": self.fallback_reason,
+            "embedding_provider": self.embedding_provider,
+            "embedding_model_path": self.embedding_model_path if self.embedding_provider not in {"hash", "local_hash", "ngram", ""} else "",
+            "embedding_dim": self.dim,
             "persist_dir": self.persist_dir if self.provider == "chroma" else "",
             "vector_count": self._store.count(),
             "experiences": len([r for r in rows if r.get("metadata", {}).get("type") == "experience"]),

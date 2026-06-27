@@ -1,0 +1,14 @@
+{
+  "id": "qwen3-embedding-0.6b",
+  "provider": "qwen3",
+  "repo_id": "Qwen/Qwen3-Embedding-0.6B",
+  "local_path": "tools/models/qwen3-embedding-0.6b",
+  "model_name": "Qwen3-Embedding-0.6B",
+  "embedding_dim": 1024,
+  "max_sequence_length": 32768,
+  "model_safetensors_size_bytes": 1191586416,
+  "total_local_size_bytes": 1205817488,
+  "model_safetensors_sha256": "0437E45C94563B09E13CB7A64478FC406947A93CB34A7E05870FC8DCD48E23FD",
+  "source_url": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B",
+  "license": "apache-2.0"
+}
