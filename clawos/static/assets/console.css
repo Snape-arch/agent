@@ -17,46 +17,36 @@
   color:#111827;
   background:#f8fafc;
 }
-.sidebar-collapsed.aether-console .side,
-body.sidebar-collapsed .aether-console .side{
-  width:72px;
+.aether-console.sidebar-collapsed .side{
+  width:52px;
+  padding:14px 8px;
 }
-body.sidebar-collapsed .aether-console .console-head{
-  left:72px;
+.aether-console.sidebar-collapsed .console-head{
+  left:52px;
 }
-body.sidebar-collapsed .aether-console .console-main{
-  margin-left:72px;
+.aether-console.sidebar-collapsed .console-main{
+  margin-left:52px;
 }
-body.sidebar-collapsed .aether-console .side-brand b,
-body.sidebar-collapsed .aether-console .side-brand small,
-body.sidebar-collapsed .aether-console .side-search,
-body.sidebar-collapsed .aether-console .side-label,
-body.sidebar-collapsed .aether-console .recent-label,
-body.sidebar-collapsed .aether-console .sessions,
-body.sidebar-collapsed .aether-console .side-nav button:not(.on)::after,
-body.sidebar-collapsed .aether-console .side-bottom button,
-body.sidebar-collapsed .aether-console .health{
+.aether-console.sidebar-collapsed .side-brand b,
+.aether-console.sidebar-collapsed .side-brand small,
+.aether-console.sidebar-collapsed .side-search,
+.aether-console.sidebar-collapsed .side-label,
+.aether-console.sidebar-collapsed .recent-label,
+.aether-console.sidebar-collapsed .sessions,
+.aether-console.sidebar-collapsed .side-nav,
+.aether-console.sidebar-collapsed .side-bottom,
+.aether-console.sidebar-collapsed .health{
   display:none;
 }
-body.sidebar-collapsed .aether-console .side-brand{
+.aether-console.sidebar-collapsed .side-brand{
   justify-content:center;
-  padding-bottom:12px;
+  padding:0;
 }
-body.sidebar-collapsed .aether-console .side-collapse{
+.aether-console.sidebar-collapsed .side-collapse{
   position:absolute;
-  right:6px;
-  top:18px;
+  left:11px;
+  top:58px;
   transform:rotate(180deg);
-}
-body.sidebar-collapsed .aether-console .side-nav button{
-  justify-content:center;
-  padding:10px;
-}
-body.sidebar-collapsed .aether-console .side-nav button{
-  font-size:0;
-}
-body.sidebar-collapsed .aether-console .side-nav .nav-ico{
-  margin:0;
 }
 .aether-console .console-head{
   left:236px;
@@ -852,22 +842,31 @@ body.sidebar-collapsed .aether-console .side-nav .nav-ico{
     border-right:0;
     border-bottom:1px solid rgba(17,24,39,.08);
   }
-  body.sidebar-collapsed .aether-console .side{
+  .aether-console.sidebar-collapsed .side{
     width:100%;
   }
-  body.sidebar-collapsed .aether-console .console-head,
-  body.sidebar-collapsed .aether-console .console-main{
+  .aether-console.sidebar-collapsed .console-head,
+  .aether-console.sidebar-collapsed .console-main{
     left:auto;
     margin-left:0;
   }
-  body.sidebar-collapsed .aether-console .side-brand b,
-  body.sidebar-collapsed .aether-console .side-brand small,
-  body.sidebar-collapsed .aether-console .side-search,
-  body.sidebar-collapsed .aether-console .side-bottom button,
-  body.sidebar-collapsed .aether-console .health{
+  .aether-console.sidebar-collapsed .side-brand b,
+  .aether-console.sidebar-collapsed .side-brand small,
+  .aether-console.sidebar-collapsed .side-search,
+  .aether-console.sidebar-collapsed .side-nav,
+  .aether-console.sidebar-collapsed .side-bottom,
+  .aether-console.sidebar-collapsed .side-bottom button,
+  .aether-console.sidebar-collapsed .health{
     display:block;
   }
-  body.sidebar-collapsed .aether-console .side-nav button{
+  .aether-console.sidebar-collapsed .side-nav{
+    display:flex;
+  }
+  .aether-console.sidebar-collapsed .side-collapse{
+    position:static;
+    transform:none;
+  }
+  .aether-console.sidebar-collapsed .side-nav button{
     font-size:13px;
   }
   .aether-console .side-brand{

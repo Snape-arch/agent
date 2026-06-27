@@ -34,6 +34,10 @@
   "max_tool_rounds": 12,
   "tool_exec_timeout_s": 30,
   "routing_timeout_s": 10.0,
+  "vector_store": {
+    "provider": "${VECTOR_PROVIDER:-lightweight}",
+    "chroma_dir": "${CHROMA_DIR:-./data/chroma}"
+  },
   "fr_completion_check": { "enabled": true, "mode": "permissive", "always_true": false },
   "fr_context_history": { "enabled": true },
   "fr_context_preserve": { "enabled": false },

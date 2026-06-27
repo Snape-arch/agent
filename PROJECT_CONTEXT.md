@@ -862,3 +862,24 @@ Known notes:
 
 Recommended next step:
 - Add a vector backend abstraction with `lightweight` and `chroma` providers, then run retrieval quality benchmarks on paper-reading, note linking, code search, and office document scenarios before switching defaults.
+
+### 2026-06-27 - True collapsed sidebar and offline Chroma vector backend
+
+Completed:
+- Changed the desktop collapsed sidebar from a half-width icon rail into a true compact rail: only the ClawOS mark and the expand arrow remain, while navigation/history/bottom controls are hidden.
+- Added an offline Chroma vector backend behind the existing `MemoryVectorStore` contract. Set `VECTOR_PROVIDER=chroma` to request it; if `chromadb` is unavailable, ClawOS falls back to the lightweight backend and reports the fallback reason in vector stats.
+- Chroma uses deterministic local character n-gram embeddings for now, so it does not download embedding models or require network access. This gives persistent Chroma collections first, with stronger local embedding models left as the next layer.
+- Added `vector_store` config with `provider` and `chroma_dir`, `.env.example` entries, optional `chromadb` requirements note, and ignored `clawos/data/chroma/`.
+- Added tests for Chroma provider request/fallback safety and collapsed sidebar CSS contracts.
+
+Verification:
+- `python -m py_compile clawos/memoryos/services/vector_store.py clawos/clawos_server.py`: passed.
+- `node --check clawos/static/assets/console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_model_provider clawos.tests.test_memoryos_mvp`: `56 tests OK`.
+
+Known notes:
+- Current environment does not have `chromadb` installed, so Chroma mode was verified through the safe fallback path. To use real Chroma offline, install `chromadb` from a local wheelhouse and set `VECTOR_PROVIDER=chroma`.
+- Chroma currently stores local hash embeddings. Retrieval quality will improve further when an offline embedding model is added.
+
+Recommended next step:
+- Add an offline embedding provider abstraction (`hash`, local bge/e5/qwen embedding) and benchmark Chroma+local embeddings against the current lightweight index on paper reading and note-linking tasks.

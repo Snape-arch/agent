@@ -1,50 +1,37 @@
-﻿"""VectorStore — lightweight embedding-based semantic search (no external Chroma needed).
+"""Offline vector search backends for MemoryOS.
 
-Generates fixed-dimension embeddings from text using character n-grams.
-This is a pure-Python vector store that provides semantic search capability
-without requiring any external ML models or network downloads.
+The default backend is a dependency-light character n-gram vector index. When
+``chromadb`` is installed, ``MemoryVectorStore(provider="chroma")`` uses a local
+persistent Chroma collection with the same deterministic local embeddings, so it
+does not download models or call the network.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
-import math
-import re
+import os
 import sqlite3
 import threading
-import hashlib
-from collections import Counter
-from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
 
 import numpy as np
 
 
 class VectorStore:
-    """Pure-Python vector store using character n-gram embeddings.
-
-    The embedding technique uses character n-grams (bigrams, trigrams, 4-grams)
-    hashed into a fixed-dimension vector space, then normalized for cosine similarity.
-    This provides reasonable semantic search without external ML dependencies.
-
-    For a competition/production version, swap this for ChromaDB + sentence-transformers.
-    """
+    """Pure-Python vector store using character n-gram embeddings."""
 
     def __init__(self, dim: int = 256, persist_path: str = ""):
         self.dim = dim
+        self.persist_path = persist_path
         self._vectors: dict[str, np.ndarray] = {}
         self._texts: dict[str, str] = {}
         self._metadata: dict[str, dict] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def _embed(self, text: str) -> np.ndarray:
-        """Generate embedding vector from text using character n-grams.
-
-        Uses counts of overlapping character n-grams (n=2,3,4) hashed into
-        a fixed-dimension vector, then L2-normalized.
-        """
         vec = np.zeros(self.dim)
-        text = text.lower()
+        text = (text or "").lower()
         for n in range(2, 5):
             for i in range(len(text) - n + 1):
                 gram = text[i:i + n]
@@ -56,29 +43,25 @@ class VectorStore:
             vec /= norm
         return vec
 
+    def embed(self, text: str) -> list[float]:
+        return self._embed(text).astype(float).tolist()
+
     def add(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
-        """Add a document with its embedding to the store."""
         with self._lock:
-            self._vectors[doc_id] = self._embed(text)
-            self._texts[doc_id] = text
-            self._metadata[doc_id] = metadata or {}
+            self._vectors[str(doc_id)] = self._embed(text)
+            self._texts[str(doc_id)] = text or ""
+            self._metadata[str(doc_id)] = metadata or {}
 
     def remove(self, doc_id: str) -> None:
-        """Remove a document by ID."""
         with self._lock:
-            self._vectors.pop(doc_id, None)
-            self._texts.pop(doc_id, None)
-            self._metadata.pop(doc_id, None)
+            self._vectors.pop(str(doc_id), None)
+            self._texts.pop(str(doc_id), None)
+            self._metadata.pop(str(doc_id), None)
 
     def update(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
-        """Update a document's text and embedding."""
         self.add(doc_id, text, metadata)
 
     def search(self, query: str, top_k: int = 10, min_score: float = 0.15) -> list[dict]:
-        """Search for semantically similar documents using cosine similarity.
-
-        Returns sorted list of {id, text, score, metadata} dicts.
-        """
         with self._lock:
             if not self._vectors:
                 return []
@@ -100,18 +83,13 @@ class VectorStore:
             ]
 
     def get(self, doc_id: str) -> dict | None:
-        """Get a document by ID."""
         with self._lock:
-            if doc_id not in self._vectors:
+            key = str(doc_id)
+            if key not in self._vectors:
                 return None
-            return {
-                "id": doc_id,
-                "text": self._texts.get(doc_id, ""),
-                "metadata": self._metadata.get(doc_id, {}),
-            }
+            return {"id": key, "text": self._texts.get(key, ""), "metadata": self._metadata.get(key, {})}
 
     def list_all(self) -> list[dict]:
-        """List all documents in the store."""
         with self._lock:
             return [
                 {"id": doc_id, "text": text[:200], "metadata": self._metadata.get(doc_id, {})}
@@ -129,16 +107,155 @@ class VectorStore:
             self._metadata.clear()
 
 
+def _metadata_for_chroma(metadata: dict | None) -> dict:
+    clean: dict[str, str | int | float | bool] = {}
+    for key, value in (metadata or {}).items():
+        if value is None:
+            continue
+        if isinstance(value, (str, int, float, bool)):
+            clean[str(key)] = value
+        else:
+            clean[str(key)] = json.dumps(value, ensure_ascii=False)
+    return clean
+
+
+class ChromaVectorStore:
+    """Offline Chroma backend using deterministic local embeddings."""
+
+    def __init__(self, persist_path: str, dim: int = 256, collection_name: str = "clawos_memory"):
+        try:
+            import chromadb  # type: ignore
+        except Exception as exc:  # pragma: no cover - fallback path covers this in tests
+            raise RuntimeError(f"chromadb is not installed: {exc}") from exc
+        self.dim = dim
+        self.persist_path = str(Path(persist_path).expanduser().resolve())
+        self.collection_name = collection_name
+        self._encoder = VectorStore(dim=dim)
+        self._client = chromadb.PersistentClient(path=self.persist_path)
+        self._collection = self._client.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"},
+        )
+        self._lock = threading.RLock()
+
+    def _embedding(self, text: str) -> list[float]:
+        return self._encoder.embed(text or "")
+
+    def add(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
+        with self._lock:
+            self._collection.upsert(
+                ids=[str(doc_id)],
+                documents=[text or ""],
+                metadatas=[_metadata_for_chroma(metadata)],
+                embeddings=[self._embedding(text or "")],
+            )
+
+    def remove(self, doc_id: str) -> None:
+        with self._lock:
+            try:
+                self._collection.delete(ids=[str(doc_id)])
+            except Exception:
+                return
+
+    def update(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
+        self.add(doc_id, text, metadata)
+
+    def search(self, query: str, top_k: int = 10, min_score: float = 0.15) -> list[dict]:
+        with self._lock:
+            if self.count() <= 0:
+                return []
+            result = self._collection.query(
+                query_embeddings=[self._embedding(query or "")],
+                n_results=max(1, int(top_k or 10)),
+                include=["documents", "metadatas", "distances"],
+            )
+            ids = (result.get("ids") or [[]])[0]
+            docs = (result.get("documents") or [[]])[0]
+            metas = (result.get("metadatas") or [[]])[0]
+            distances = (result.get("distances") or [[]])[0]
+            rows = []
+            for doc_id, text, metadata, distance in zip(ids, docs, metas, distances):
+                score = max(0.0, 1.0 - float(distance or 0.0))
+                if score >= min_score:
+                    rows.append({
+                        "id": str(doc_id),
+                        "text": text or "",
+                        "score": round(score, 4),
+                        "metadata": metadata or {},
+                    })
+            return rows
+
+    def get(self, doc_id: str) -> dict | None:
+        with self._lock:
+            result = self._collection.get(ids=[str(doc_id)], include=["documents", "metadatas"])
+            ids = result.get("ids") or []
+            if not ids:
+                return None
+            return {
+                "id": ids[0],
+                "text": (result.get("documents") or [""])[0] or "",
+                "metadata": (result.get("metadatas") or [{}])[0] or {},
+            }
+
+    def list_all(self) -> list[dict]:
+        with self._lock:
+            result = self._collection.get(include=["documents", "metadatas"])
+            ids = result.get("ids") or []
+            docs = result.get("documents") or []
+            metas = result.get("metadatas") or []
+            return [
+                {"id": doc_id, "text": (text or "")[:200], "metadata": metadata or {}}
+                for doc_id, text, metadata in zip(ids, docs, metas)
+            ]
+
+    def count(self) -> int:
+        try:
+            return int(self._collection.count())
+        except Exception:
+            return 0
+
+    def clear(self) -> None:
+        with self._lock:
+            try:
+                self._client.delete_collection(self.collection_name)
+            except Exception:
+                pass
+            self._collection = self._client.get_or_create_collection(
+                name=self.collection_name,
+                metadata={"hnsw:space": "cosine"},
+            )
+
+
 class MemoryVectorStore:
-    """High-level vector store integrated with MemoryOS SQLite.
+    """High-level vector store integrated with MemoryOS SQLite."""
 
-    Automatically syncs experiences and knowledge entries between
-    SQLite and the in-memory vector index for semantic search.
-    """
-
-    def __init__(self, db_path: str, dim: int = 256):
+    def __init__(self, db_path: str, dim: int = 256, provider: str = "", persist_dir: str = ""):
         self.db_path = db_path
-        self._store = VectorStore(dim=dim)
+        self.dim = dim
+        requested = (
+            provider
+            or os.environ.get("CLAWOS_VECTOR_PROVIDER")
+            or os.environ.get("VECTOR_PROVIDER")
+            or "lightweight"
+        ).strip().lower()
+        self.requested_provider = requested
+        self.provider = "lightweight"
+        self.fallback_reason = ""
+        self.persist_dir = (
+            persist_dir
+            or os.environ.get("CLAWOS_CHROMA_DIR")
+            or os.environ.get("CHROMA_DIR")
+            or str(Path(db_path).with_name("chroma"))
+        )
+        if requested == "chroma":
+            try:
+                self._store: VectorStore | ChromaVectorStore = ChromaVectorStore(self.persist_dir, dim=dim)
+                self.provider = "chroma"
+            except Exception as exc:
+                self._store = VectorStore(dim=dim)
+                self.fallback_reason = str(exc)
+        else:
+            self._store = VectorStore(dim=dim)
         self._lock = threading.Lock()
         self._loaded = False
 
@@ -150,11 +267,9 @@ class MemoryVectorStore:
             self._loaded = True
 
     def _load_from_db(self):
-        """Load existing experiences and knowledge from SQLite into vector index."""
         try:
             conn = sqlite3.connect(self.db_path, timeout=5)
             conn.row_factory = sqlite3.Row
-            # Load experiences
             rows = conn.execute(
                 "SELECT id, task, lesson, context, solution, outcome FROM experiences ORDER BY id"
             ).fetchall()
@@ -166,7 +281,6 @@ class MemoryVectorStore:
                     "outcome": row["outcome"],
                     "task": row["task"][:200],
                 })
-            # Load knowledge
             rows = conn.execute(
                 "SELECT id, title, content, category, source FROM knowledge ORDER BY id"
             ).fetchall()
@@ -203,19 +317,13 @@ class MemoryVectorStore:
 
     def add_experience(self, exp_id: int, task: str, lesson: str = "",
                        context: str = "", solution: str = "", outcome: str = "partial"):
-        """Add an experience to the vector index."""
         self._ensure_loaded()
         doc_id = f"exp_{exp_id}"
         text = f"{task} {lesson} {context} {solution}"
-        self._store.add(doc_id, text, {
-            "type": "experience",
-            "outcome": outcome,
-            "task": task[:200],
-        })
+        self._store.add(doc_id, text, {"type": "experience", "outcome": outcome, "task": task[:200]})
 
     def add_knowledge(self, kw_id: int, title: str, content: str,
                       category: str = "domain", source: str = ""):
-        """Add a knowledge entry to the vector index."""
         self._ensure_loaded()
         doc_id = f"kw_{kw_id}"
         text = f"{title} {content}"
@@ -227,33 +335,31 @@ class MemoryVectorStore:
         })
 
     def search(self, query: str, top_k: int = 10, min_score: float = 0.15) -> list[dict]:
-        """Semantic search across all memories."""
         self._ensure_loaded()
         return self._store.search(query, top_k, min_score)
 
     def search_experiences(self, query: str, top_k: int = 5) -> list[dict]:
-        """Search only experience memories."""
         results = self.search(query, top_k)
         return [r for r in results if r.get("metadata", {}).get("type") == "experience"]
 
     def search_knowledge(self, query: str, top_k: int = 5) -> list[dict]:
-        """Search only knowledge entries."""
         results = self.search(query, top_k)
         return [r for r in results if r.get("metadata", {}).get("type") == "knowledge"]
 
     def refresh(self):
-        """Reload all data from SQLite."""
         self._store.clear()
         self._loaded = False
 
     def stats(self) -> dict:
         self._ensure_loaded()
+        rows = self._store.list_all()
         return {
+            "provider": self.provider,
+            "requested_provider": self.requested_provider,
+            "fallback_reason": self.fallback_reason,
+            "persist_dir": self.persist_dir if self.provider == "chroma" else "",
             "vector_count": self._store.count(),
-            "experiences": len([r for r in self._store.list_all()
-                                if r.get("metadata", {}).get("type") == "experience"]),
-            "knowledge": len([r for r in self._store.list_all()
-                              if r.get("metadata", {}).get("type") == "knowledge"]),
-            "memories": len([r for r in self._store.list_all()
-                             if r.get("id", "").startswith("mem_")]),
+            "experiences": len([r for r in rows if r.get("metadata", {}).get("type") == "experience"]),
+            "knowledge": len([r for r in rows if r.get("metadata", {}).get("type") == "knowledge"]),
+            "memories": len([r for r in rows if r.get("id", "").startswith("mem_")]),
         }

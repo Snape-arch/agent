@@ -214,6 +214,13 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(fallback["model"], "${QWEN_MODEL:-Qwen3.5-9B-Q4_K_M}")
         self.assertFalse(fallback["requires_api_key"])
 
+    def test_default_config_declares_offline_vector_backend_options(self):
+        config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        vector = config["vector_store"]
+
+        self.assertEqual(vector["provider"], "${VECTOR_PROVIDER:-lightweight}")
+        self.assertEqual(vector["chroma_dir"], "${CHROMA_DIR:-./data/chroma}")
+
     def test_qwen_model_manifest_matches_provider_default(self):
         manifest_path = ROOT / "models" / "qwen3_5_9b_q4_k_m.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

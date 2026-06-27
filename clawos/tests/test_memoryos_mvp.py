@@ -144,6 +144,32 @@ class MemoryOSMvpTests(unittest.TestCase):
         self.assertTrue(any(r["id"].startswith("mem_") for r in results))
         self.assertTrue(any("MTT AIBOOK" in m["content"] for m in messages if m["role"] == "system"))
 
+    def test_vector_store_chroma_provider_is_offline_and_fallback_safe(self):
+        from memoryos.memory_store import MemoryStore
+        from memoryos.services.vector_store import MemoryVectorStore
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            db_path = root / "memory.db"
+            store = MemoryStore(str(db_path))
+            store.upsert_memory(
+                "project",
+                "vector_backend",
+                "Chroma offline vector store should persist local knowledge retrieval.",
+                source="unit_test",
+                confidence=0.9,
+            )
+            vectors = MemoryVectorStore(str(db_path), provider="chroma", persist_dir=str(root / "chroma"))
+            vectors.refresh()
+            stats = vectors.stats()
+            results = vectors.search("offline Chroma vector retrieval", top_k=5, min_score=0.0)
+
+        self.assertEqual(stats["requested_provider"], "chroma")
+        self.assertIn(stats["provider"], {"chroma", "lightweight"})
+        if stats["provider"] == "lightweight":
+            self.assertIn("chromadb", stats["fallback_reason"])
+        self.assertTrue(any(r["id"].startswith("mem_") for r in results))
+
     def test_user_knowledge_library_can_be_saved_searched_and_listed(self):
         from memoryos.memory_store import MemoryStore
 

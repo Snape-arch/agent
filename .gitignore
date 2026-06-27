@@ -25,6 +25,7 @@ Desktop.ini
 
 # ClawOS local runtime artifacts
 clawos/uploads/
+clawos/data/chroma/
 output/reports/
 tmp/*.png
 output/obsidian/

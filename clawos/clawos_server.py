@@ -1040,7 +1040,15 @@ async def lifespan(app: FastAPI):
     g_memory_store = MemoryStore(str(MEMORY_DB))
 
     # Init VectorStore before ContextBuilder so retrieval uses the same live index.
-    g_vector_store = MemoryVectorStore(str(MEMORY_DB))
+    vector_cfg = dict(config.get("vector_store") or {})
+    chroma_dir = str(vector_cfg.get("chroma_dir") or "")
+    if chroma_dir and not Path(chroma_dir).expanduser().is_absolute():
+        chroma_dir = str((BASE_DIR / chroma_dir).resolve())
+    g_vector_store = MemoryVectorStore(
+        str(MEMORY_DB),
+        provider=str(vector_cfg.get("provider") or ""),
+        persist_dir=chroma_dir,
+    )
     g_vector_store.refresh()  # Load existing data
     g_context_builder = ContextBuilder(g_memory_store, g_vector_store)
     from policy_optimizer import PolicyOptimizer
@@ -1062,7 +1070,14 @@ async def lifespan(app: FastAPI):
     recovered = g_memory_store.recover_interrupted_tasks(actor_id="lifespan_startup")
     if recovered.get("count"):
         logger.info("Recovered interrupted tasks | count=%s ids=%s", recovered["count"], recovered["recovered"])
-    logger.info(f"VectorStore initialized | dim=256 docs={g_vector_store.stats().get('vector_count', 0)}")
+    vector_stats = g_vector_store.stats()
+    logger.info(
+        "VectorStore initialized | provider=%s requested=%s docs=%s fallback=%s",
+        vector_stats.get("provider"),
+        vector_stats.get("requested_provider"),
+        vector_stats.get("vector_count", 0),
+        vector_stats.get("fallback_reason") or "",
+    )
     logger.info(f"MemoryOS initialized | db={MEMORY_DB}")
     
     global g_reflection_engine

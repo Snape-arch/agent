@@ -35,12 +35,16 @@ class FrontendStaticTests(unittest.TestCase):
     def test_console_has_chat_first_information_architecture(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
 
         self.assertIn('href="/assets/site.css"', html)
         self.assertIn('href="/assets/console.css"', html)
         self.assertIn('data-view="chat"', html)
         self.assertIn('data-action="new-chat"', html)
         self.assertIn("toggleSidebar", html + js)
+        self.assertIn(".aether-console.sidebar-collapsed .side", css)
+        self.assertIn("width:52px", css)
+        self.assertIn(".aether-console.sidebar-collapsed .side-nav", css)
         self.assertIn('data-view="search"', html)
         self.assertIn('data-view="knowledge"', html)
         self.assertIn('data-view="projects"', html)
