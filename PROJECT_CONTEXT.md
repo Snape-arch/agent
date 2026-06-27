@@ -903,3 +903,21 @@ Verification:
 Known notes:
 - Chroma is now the configured default path, while direct `MemoryVectorStore(...)` construction still stays lightweight unless provider/env/config requests Chroma. This keeps older deterministic tests and isolated scripts safe.
 - Retrieval persistence is enterprise-demo ready, but semantic quality still depends on the current deterministic hash embeddings. The next quality jump is an offline embedding provider such as bge/e5/qwen embeddings.
+
+### 2026-06-27 - DeepSeek online API and semantic retrieval benchmark
+
+Completed:
+- Added `clawos/scripts/deepseek_retrieval_benchmark.py` for explicit online DeepSeek retrieval acceptance. It probes `/models`, `/chat/completions`, and `/embeddings`, then runs four recall scenarios: journal paper reading, bidirectional notes, code search, and office documents.
+- Confirmed live DeepSeek chat works with `deepseek-chat`; `/models` returned `deepseek-v4-flash` and `deepseek-v4-pro`; `/embeddings` returned `404`, so the current public compatible API should not be treated as a native embedding provider.
+- Closed the online semantic retrieval path as DeepSeek query understanding + DeepSeek relevance judgment + local Chroma persistent recall. Offline Qwen/local embedding validation remains deferred.
+- Added deterministic helper tests for the DeepSeek retrieval benchmark script and ignored local `output/deepseek_*.json` reports.
+
+Verification:
+- `python clawos\scripts\deepseek_retrieval_benchmark.py --model deepseek-chat --base-url https://api.deepseek.com/v1 --out output\deepseek_retrieval_benchmark.json`: `ok=True`, `chat_ok=True`, `embeddings_status=404`, `recall_at_5=1.0`, `mrr=0.875`, `judge_hit_rate=1.0`.
+- `python clawos\scripts\evaluate_model_acceptance.py --provider deepseek --model deepseek-chat --base-url https://api.deepseek.com/v1 --suite clawos\benchmarks\core_e2e_v1.json --out output\deepseek_core_e2e_report.json`: `passed_count=4 failed_count=0 score=20/20 rate=1.0`.
+- `python clawos\scripts\evaluate_model_acceptance.py --provider deepseek --model deepseek-chat --base-url https://api.deepseek.com/v1 --out output\deepseek_acceptance_report.json`: `passed_count=30 failed_count=0 score=150/150 rate=1.0`.
+- `python -m unittest clawos.tests.test_deepseek_retrieval_benchmark`: `3 tests OK`.
+
+Known notes:
+- DeepSeek output reports are local evidence only and must not be committed. They do not contain API keys.
+- The current online retrieval quality is strong for the benchmark corpus, but true large-corpus paper-grade semantic recall still needs a native embedding provider or offline embedding model.
