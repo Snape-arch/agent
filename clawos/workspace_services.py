@@ -496,7 +496,7 @@ class WorkspaceServices:
         path = self.security.resolve_path(file_path)
         if path.suffix.lower() != ".pdf" or not path.is_file():
             raise ValueError("a readable PDF file is required")
-        text, extractor = self._extract_pdf_text(path)
+        text, extraction_meta = self._extract_pdf_text(path)
         pages = text.split("\f")
         if pages and not pages[-1].strip():
             pages.pop()
@@ -523,7 +523,7 @@ class WorkspaceServices:
                     (
                         title or path.stem, digest, len(pages),
                         json.dumps({
-                            "extractor": extractor,
+                            **extraction_meta,
                             "ocr_status": ocr_status,
                             "ocr_pages": ocr_pages,
                         }, ensure_ascii=False),
@@ -540,7 +540,7 @@ class WorkspaceServices:
                     (
                         title or path.stem, str(path), digest, len(pages),
                         json.dumps({
-                            "extractor": extractor,
+                            **extraction_meta,
                             "ocr_status": ocr_status,
                             "ocr_pages": ocr_pages,
                         }, ensure_ascii=False),
@@ -721,8 +721,10 @@ class WorkspaceServices:
             markdown_path = str(markdown)
         if "pdf" in formats:
             pdf = out / f"{safe_name}.pdf"
-            self._write_learning_analysis_pdf(pdf, document["title"], report)
+            pdf_engine = self._write_learning_analysis_pdf(pdf, document["title"], report)
             pdf_path = str(pdf)
+        else:
+            pdf_engine = ""
         metadata = {
             "formats": formats,
             "source_file": document["file_path"],
@@ -731,6 +733,7 @@ class WorkspaceServices:
             "concept_count": len(concepts),
             "mode": "deterministic_evidence_based",
             "report_style": report_style,
+            "pdf_engine": pdf_engine,
         }
         with self.store._conn() as c:
             cursor = c.execute(
@@ -1129,6 +1132,67 @@ class WorkspaceServices:
         return f"本文围绕“{first['topic']}”展开，核心学习路径应从问题动机、方法机制、实验支撑与边界局限四层理解。"
 
     def _write_learning_analysis_pdf(self, path, title, markdown):
+        if self._write_learning_analysis_typst_pdf(path, title, markdown):
+            return "typst"
+        self._write_learning_analysis_reportlab_pdf(path, title, markdown)
+        return "reportlab"
+
+    def _write_learning_analysis_typst_pdf(self, path, title, markdown):
+        typst = shutil.which("typst")
+        if not typst:
+            return False
+        typ_path = Path(path).with_suffix(".typ")
+        typ_body = self._markdown_to_typst(title, markdown)
+        typ_path.write_text(typ_body, encoding="utf-8")
+        try:
+            proc = subprocess.run(
+                [typst, "compile", str(typ_path), str(path)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            return proc.returncode == 0 and Path(path).is_file() and Path(path).stat().st_size > 1000
+        except Exception:
+            return False
+
+    @staticmethod
+    def _markdown_to_typst(title, markdown):
+        def esc_typ(value):
+            return str(value).replace("\\", "\\\\").replace("#", "\\#").replace("$", "\\$").replace("[", "\\[").replace("]", "\\]")
+        lines = [
+            '#set document(title: "' + esc_typ(title) + '", author: "ClawOS")',
+            "#set page(paper: \"a4\", margin: (x: 22mm, y: 22mm))",
+            "#set text(font: (\"Noto Sans CJK SC\", \"Microsoft YaHei\", \"Arial\"), size: 10.5pt, fill: rgb(\"07111f\"))",
+            "#set par(justify: true, leading: 0.62em)",
+            "#show heading: it => { set text(fill: rgb(\"0b3344\")); it }",
+            "#align(center)[",
+            "#text(size: 9pt, fill: rgb(\"0b3344\"))[Journal-style paper reading dossier]",
+            "#linebreak()",
+            "#text(size: 22pt, weight: \"bold\")[" + esc_typ(title) + "]",
+            "]",
+            "#v(10pt)",
+            "#line(length: 45%, stroke: rgb(\"0b3344\"))",
+            "#v(16pt)",
+        ]
+        for raw in markdown.splitlines():
+            line = raw.strip()
+            if not line:
+                lines.append("")
+            elif line.startswith("# "):
+                lines.append("= " + esc_typ(line[2:]))
+            elif line.startswith("## "):
+                lines.append("== " + esc_typ(line[3:]))
+            elif line.startswith("### "):
+                lines.append("=== " + esc_typ(line[4:]))
+            elif line.startswith("#### "):
+                lines.append("==== " + esc_typ(line[5:]))
+            elif line.startswith("- "):
+                lines.append("- " + esc_typ(line[2:]))
+            else:
+                lines.append(esc_typ(line))
+        return "\n".join(lines) + "\n"
+
+    def _write_learning_analysis_reportlab_pdf(self, path, title, markdown):
         try:
             from reportlab.lib import colors
             from reportlab.lib.pagesizes import A4
@@ -1762,6 +1826,12 @@ class WorkspaceServices:
 
     @staticmethod
     def _extract_pdf_text(path):
+        try:
+            from memoryos.document_ingestion import extract_pdf_text
+            text, meta = extract_pdf_text(path)
+            return text, meta
+        except Exception:
+            pass
         executable = shutil.which("pdftotext")
         if executable:
             proc = subprocess.run(
@@ -1771,13 +1841,13 @@ class WorkspaceServices:
             )
             if proc.returncode != 0:
                 raise RuntimeError(proc.stderr.decode("utf-8", errors="replace")[:500])
-            return proc.stdout.decode("utf-8", errors="replace"), "pdftotext"
+            return proc.stdout.decode("utf-8", errors="replace"), {"extractor": "pdftotext"}
         try:
             from pypdf import PdfReader
         except ImportError as exc:
             raise RuntimeError("pdftotext or pypdf is required for local PDF extraction") from exc
         reader = PdfReader(str(path))
-        return "\f".join((page.extract_text() or "") for page in reader.pages), "pypdf"
+        return "\f".join((page.extract_text() or "") for page in reader.pages), {"extractor": "pypdf"}
 
     @staticmethod
     def _file_hash(path):

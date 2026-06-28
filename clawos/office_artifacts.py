@@ -1,7 +1,8 @@
-"""Self-contained XLSX and PPTX helpers based on OpenXML zip packages.
+"""Office helpers with professional engines and self-contained fallbacks.
 
-These helpers intentionally avoid openpyxl/python-pptx so ClawOS can generate
-and lightly edit Office artifacts on a fresh Python install.
+When openpyxl or python-pptx are installed, ClawOS uses them for richer
+offline artifacts. The stdlib OpenXML path remains as the no-dependency
+fallback for fresh Python installs.
 """
 
 from __future__ import annotations
@@ -53,6 +54,42 @@ def _cell_kind(value):
 
 
 def create_xlsx(path, sheets):
+    professional = _create_xlsx_openpyxl(path, sheets)
+    if professional:
+        return professional
+    return _create_xlsx_stdlib(path, sheets)
+
+
+def _create_xlsx_openpyxl(path, sheets):
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except Exception:
+        return ""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sheets = sheets or [{"name": "Sheet1", "rows": []}]
+    wb = Workbook()
+    default = wb.active
+    wb.remove(default)
+    for sheet in sheets:
+        ws = wb.create_sheet(str(sheet.get("name") or "Sheet1")[:31])
+        for row_index, row in enumerate(sheet.get("rows", []) or [], 1):
+            for col_index, value in enumerate(row, 1):
+                cell = ws.cell(row=row_index, column=col_index, value=value)
+                if row_index == 1:
+                    cell.font = Font(bold=True, color="FFFFFF")
+                    cell.fill = PatternFill("solid", fgColor="1F2937")
+        for col_index in range(1, ws.max_column + 1):
+            width = max(10, min(36, max(len(str(ws.cell(row=row, column=col_index).value or "")) for row in range(1, ws.max_row + 1)) + 2))
+            ws.column_dimensions[get_column_letter(col_index)].width = width
+        ws.freeze_panes = "A2"
+    wb.save(path)
+    return str(path)
+
+
+def _create_xlsx_stdlib(path, sheets):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     sheets = sheets or [{"name": "Sheet1", "rows": []}]
@@ -74,6 +111,30 @@ def create_xlsx(path, sheets):
 
 
 def edit_xlsx(path, updates, output_path=None):
+    professional = _edit_xlsx_openpyxl(path, updates, output_path)
+    if professional:
+        return professional
+    return _edit_xlsx_stdlib(path, updates, output_path)
+
+
+def _edit_xlsx_openpyxl(path, updates, output_path=None):
+    try:
+        from openpyxl import load_workbook
+    except Exception:
+        return ""
+    path = Path(path)
+    output = Path(output_path) if output_path else path
+    wb = load_workbook(path)
+    for item in updates or []:
+        sheet_key = str(item.get("sheet") or wb.sheetnames[0])
+        ws = wb[sheet_key] if sheet_key in wb.sheetnames else wb[wb.sheetnames[0]]
+        ws[str(item.get("cell", "A1")).upper()] = item.get("value", "")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(output)
+    return str(output)
+
+
+def _edit_xlsx_stdlib(path, updates, output_path=None):
     path = Path(path)
     output = Path(output_path) if output_path else path
     files = _read_zip(path)
@@ -87,6 +148,46 @@ def edit_xlsx(path, updates, output_path=None):
 
 
 def create_pptx(path, title="", slides=None):
+    professional = _create_pptx_python_pptx(path, title, slides)
+    if professional:
+        return professional
+    return _create_pptx_stdlib(path, title, slides)
+
+
+def _create_pptx_python_pptx(path, title="", slides=None):
+    try:
+        from pptx import Presentation
+        from pptx.util import Inches, Pt
+    except Exception:
+        return ""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    slides = slides or [{"title": title or "ClawOS Deck", "bullets": []}]
+    prs = Presentation()
+    for slide_payload in slides:
+        layout = prs.slide_layouts[1]
+        slide = prs.slides.add_slide(layout)
+        slide.shapes.title.text = str(slide_payload.get("title") or title or "ClawOS")
+        body = slide.placeholders[1]
+        body.text = ""
+        for bullet in slide_payload.get("bullets", []) or []:
+            paragraph = body.text_frame.add_paragraph()
+            paragraph.text = str(bullet)
+            paragraph.level = 0
+            paragraph.font.size = Pt(20)
+        if slide_payload.get("notes"):
+            box = slide.shapes.add_textbox(Inches(0.6), Inches(6.4), Inches(8.2), Inches(0.4))
+            box.text_frame.text = str(slide_payload["notes"])
+    if len(prs.slides) > len(slides):
+        xml_slides = prs.slides._sldIdLst
+        rel_id = xml_slides[0].rId
+        prs.part.drop_rel(rel_id)
+        xml_slides.remove(xml_slides[0])
+    prs.save(path)
+    return str(path)
+
+
+def _create_pptx_stdlib(path, title="", slides=None):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     slides = slides or [{"title": title or "ClawOS Deck", "bullets": []}]
@@ -111,6 +212,36 @@ def create_pptx(path, title="", slides=None):
 
 
 def replace_pptx_text(path, replacements, output_path=None):
+    professional = _replace_pptx_text_python_pptx(path, replacements, output_path)
+    if professional:
+        return professional
+    return _replace_pptx_text_stdlib(path, replacements, output_path)
+
+
+def _replace_pptx_text_python_pptx(path, replacements, output_path=None):
+    try:
+        from pptx import Presentation
+    except Exception:
+        return ""
+    path = Path(path)
+    output = Path(output_path) if output_path else path
+    prs = Presentation(str(path))
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if not getattr(shape, "has_text_frame", False):
+                continue
+            for paragraph in shape.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    text = run.text
+                    for old, new in (replacements or {}).items():
+                        text = text.replace(str(old), str(new))
+                    run.text = text
+    output.parent.mkdir(parents=True, exist_ok=True)
+    prs.save(str(output))
+    return str(output)
+
+
+def _replace_pptx_text_stdlib(path, replacements, output_path=None):
     path = Path(path)
     output = Path(output_path) if output_path else path
     files = _read_zip(path)

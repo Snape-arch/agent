@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ClawOS Server - Self-contained AI Agent with DeepSeek + Function Router."""
 from __future__ import annotations
-import argparse, asyncio, json, logging, os, re, sys, time, subprocess, shutil
+import argparse, asyncio, importlib.util, json, logging, os, re, sys, time, subprocess, shutil
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any
@@ -2227,6 +2227,8 @@ async def api_system_readiness():
 async def api_workspace_capabilities():
     roots = [str(root) for root in (g_security_policy.allowed_roots if g_security_policy else [])]
     templates = g_workspace_services.list_templates() if g_workspace_services else []
+    has = lambda package: importlib.util.find_spec(package) is not None
+    grobid_url = os.environ.get("GROBID_BASE_URL", "").strip()
     return JSONResponse({
         "local_file_operations": {
             "allowed_roots": roots,
@@ -2240,22 +2242,30 @@ async def api_workspace_capabilities():
             "xlsx": {
                 "create": True,
                 "edit_cells": True,
-                "engine": "stdlib-openxml",
+                "engine": "openpyxl" if has("openpyxl") else "stdlib-openxml",
                 "requires_microsoft_office": False,
-                "requires_extra_python_packages": False,
+                "requires_extra_python_packages": not has("openpyxl"),
             },
             "pptx": {
                 "create": True,
                 "replace_text": True,
-                "engine": "stdlib-openxml",
+                "engine": "python-pptx" if has("pptx") else "stdlib-openxml",
                 "requires_microsoft_office": False,
-                "requires_extra_python_packages": False,
+                "requires_extra_python_packages": not has("pptx"),
             },
         },
         "document_understanding": {
             "txt": True,
-            "pdf_text": shutil.which("pdftotext") is not None,
-            "pdf_ocr": "worker_with_sidecar_or_local_tesseract",
+            "pdf_text": shutil.which("pdftotext") is not None or has("pypdf") or has("fitz"),
+            "pdf_layout": {
+                "pymupdf": has("fitz"),
+                "pdfplumber": has("pdfplumber"),
+                "grobid": bool(grobid_url),
+                "grobid_base_url": grobid_url,
+            },
+            "pdf_ocr": "paddleocr" if has("paddleocr") else "worker_with_sidecar_or_local_tesseract",
+            "paddleocr_available": has("paddleocr"),
+            "typst_available": shutil.which("typst") is not None,
             "citation_validation": True,
             "paper_learning_analysis": ["markdown", "pdf"],
         },

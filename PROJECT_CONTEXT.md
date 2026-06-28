@@ -1023,3 +1023,27 @@ Verification:
 Known notes:
 - Self-evolution still blocks automatic code/source/script changes by design.
 - Worker benchmark evidence is deterministic and closed-loop; future production hardening should add an optional long-running external benchmark mode that invokes full scripts against real user corpora.
+
+### 2026-06-28 - Enterprise document stack: PDF, Typst, PaddleOCR, and Office engines
+
+Completed:
+- Upgraded PDF ingestion from plain text extraction to a layered academic parsing stack: PyMuPDF for layout/page/block extraction, pdfplumber for table-aware text extraction, and optional GROBID TEI parsing through `GROBID_BASE_URL`.
+- Preserved fallback behavior for competition demos: if enhanced parsers are missing or fail, ingestion still falls back to `pdftotext` and then `pypdf`.
+- Added extraction metadata for downstream paper reading quality gates: extractor chain, page count, OCR-required pages, layout awareness, sections, tables, figures, references, title, authors, and abstract when available.
+- Upgraded report PDF generation to prefer Typst when the local `typst` binary is installed. The existing ReportLab journal-style renderer remains as the offline fallback.
+- Added PaddleOCR-first offline OCR resolution for scanned PDFs in `KnowledgeService`, with existing sidecar OCR and Tesseract paths retained as fallbacks.
+- Upgraded Office artifact generation to prefer mature engines: `openpyxl` for XLSX create/edit and `python-pptx` for PPTX create/edit, while keeping the existing stdlib OpenXML implementation as fallback.
+- Extended `/api/workspace/capabilities` so the frontend and Ops checks can report whether PyMuPDF, pdfplumber, GROBID, PaddleOCR, Typst, openpyxl, and python-pptx are actually available on the machine.
+- Added regression coverage for enhanced PDF metadata, Typst-preferred PDF generation, PaddleOCR/layout capability wiring, and professional Office engine fallbacks.
+
+Verification:
+- `python -m py_compile clawos\memoryos\document_ingestion.py clawos\services\knowledge_service.py clawos\workspace_services.py clawos\office_artifacts.py clawos\clawos_server.py`: passed.
+- `python -m unittest clawos.tests.test_memoryos_mvp clawos.tests.test_workspace_services`: `29 tests OK`.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_model_provider clawos.tests.test_runtime_task_control`: `61 tests OK`.
+- `python -m unittest clawos.tests.test_routing_memory clawos.tests.test_retrieval_reranker`: `25 tests OK`.
+- `python -m unittest discover -s clawos\tests`: `174 tests OK`.
+
+Known notes:
+- GROBID is intentionally optional and expects a separately running local service configured with `GROBID_BASE_URL`; this keeps offline deployments deterministic while allowing paper-grade TEI parsing when installed.
+- Typst and PaddleOCR are also local-install dependencies. The code now detects and uses them, but final quality should still be validated on the target Windows machine after installing the binaries/models.
+- This closes the architecture and code path for enterprise document parsing/generation. The next quality jump is a real corpus acceptance run with user papers, scanned Chinese PDFs, and generated Office deliverables.

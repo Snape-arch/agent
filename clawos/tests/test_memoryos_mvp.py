@@ -257,6 +257,36 @@ class MemoryOSMvpTests(unittest.TestCase):
         self.assertEqual(imported["metadata"]["page_count"], 2)
         self.assertTrue(any("#page=2&chunk=1" in chunk["citation"] for chunk in chunks))
 
+    def test_pdf_ingestion_records_enhanced_layout_metadata_when_available(self):
+        import memoryos.document_ingestion as ingestion
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            pdf = root / "paper.pdf"
+            pdf.write_bytes(b"%PDF-1.4\n% fake")
+            old_pymupdf = ingestion._extract_pdf_with_pymupdf
+            old_plumber = ingestion._extract_pdf_with_pdfplumber
+            old_grobid = ingestion._extract_pdf_with_grobid
+            ingestion._extract_pdf_with_pymupdf = lambda path: (
+                ["Abstract\nThis paper studies structured PDF parsing."],
+                {"structure": {"sections": [{"page": 1, "title": "Abstract"}], "figures": [{"page": 1, "index": 1}]}},
+            )
+            ingestion._extract_pdf_with_pdfplumber = lambda path: {"tables": [{"page": 1, "index": 1, "rows": [["A", "B"]]}]}
+            ingestion._extract_pdf_with_grobid = lambda path: {"title": "Structured Paper", "references": ["Ref 1"]}
+            try:
+                store = MemoryStore(str(root / "memory.db"))
+                imported = ingestion.ingest_file(store, root / "uploads", pdf, title="Paper", category="research")
+            finally:
+                ingestion._extract_pdf_with_pymupdf = old_pymupdf
+                ingestion._extract_pdf_with_pdfplumber = old_plumber
+                ingestion._extract_pdf_with_grobid = old_grobid
+
+        self.assertEqual(imported["metadata"]["extractor"], "pymupdf+pdfplumber+grobid")
+        self.assertTrue(imported["metadata"]["layout_aware"])
+        self.assertEqual(imported["metadata"]["structure"]["title"], "Structured Paper")
+        self.assertEqual(imported["metadata"]["structure"]["tables"][0]["rows"][0], ["A", "B"])
+
     def test_scanned_pdf_ingestion_enters_ocr_queue_instead_of_failing(self):
         import memoryos.document_ingestion as ingestion
         from memoryos.memory_store import MemoryStore

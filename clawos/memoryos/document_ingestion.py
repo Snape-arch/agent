@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import os
 import re
 import shutil
 import subprocess
@@ -79,6 +80,10 @@ def extract_text(path: Path) -> tuple[str, dict]:
 
 
 def extract_pdf_text(path: Path) -> tuple[str, dict]:
+    enhanced_text, enhanced_meta = extract_pdf_text_enhanced(path)
+    if enhanced_text.strip():
+        return enhanced_text, enhanced_meta
+
     executable = shutil.which("pdftotext")
     if executable:
         proc = subprocess.run(
@@ -110,6 +115,147 @@ def extract_pdf_text(path: Path) -> tuple[str, dict]:
         "ocr_required": bool(ocr_pages),
         "ocr_pages": ocr_pages,
     }
+
+
+def extract_pdf_text_enhanced(path: Path) -> tuple[str, dict]:
+    """Try structure-aware offline PDF extraction before legacy text fallbacks."""
+    engines: list[str] = []
+    pages: list[str] = []
+    structure: dict = {
+        "sections": [],
+        "tables": [],
+        "figures": [],
+        "references": [],
+    }
+
+    pymupdf_pages, pymupdf_meta = _extract_pdf_with_pymupdf(path)
+    if pymupdf_pages:
+        engines.append("pymupdf")
+        pages = pymupdf_pages
+        structure.update(pymupdf_meta.get("structure") or {})
+
+    plumber_meta = _extract_pdf_with_pdfplumber(path)
+    if plumber_meta:
+        engines.append("pdfplumber")
+        structure["tables"] = plumber_meta.get("tables", [])
+        if not pages and plumber_meta.get("pages"):
+            pages = plumber_meta["pages"]
+
+    grobid_meta = _extract_pdf_with_grobid(path)
+    if grobid_meta:
+        engines.append("grobid")
+        for key in ("title", "authors", "abstract", "sections", "references"):
+            if grobid_meta.get(key):
+                structure[key] = grobid_meta[key]
+
+    if not pages:
+        return "", {}
+    ocr_pages = [i for i, page in enumerate(pages, 1) if len(page.strip()) < 20]
+    return "\f".join(pages), {
+        "extractor": "+".join(engines),
+        "page_count": len(pages),
+        "ocr_required": bool(ocr_pages),
+        "ocr_pages": ocr_pages,
+        "layout_aware": True,
+        "structure": structure,
+    }
+
+
+def _extract_pdf_with_pymupdf(path: Path) -> tuple[list[str], dict]:
+    try:
+        import fitz  # PyMuPDF
+    except Exception:
+        return [], {}
+    pages: list[str] = []
+    figures: list[dict] = []
+    sections: list[dict] = []
+    with fitz.open(str(path)) as doc:
+        for page_index, page in enumerate(doc, 1):
+            blocks = page.get_text("blocks") or []
+            lines: list[str] = []
+            for block in sorted(blocks, key=lambda item: (round(item[1], 1), round(item[0], 1))):
+                text = str(block[4] or "").strip()
+                if not text:
+                    continue
+                lines.append(text)
+                compact = re.sub(r"\s+", " ", text)
+                if len(compact) <= 90 and re.match(r"^(\d+(\.\d+)*\s+)?[A-Z\u4e00-\u9fff][\w\s:：\-]{4,}$", compact):
+                    sections.append({"page": page_index, "title": compact[:120]})
+            for image_index, _image in enumerate(page.get_images(full=True), 1):
+                figures.append({"page": page_index, "index": image_index})
+            pages.append("\n".join(lines))
+    return pages, {"structure": {"sections": sections[:80], "figures": figures[:200]}}
+
+
+def _extract_pdf_with_pdfplumber(path: Path) -> dict:
+    try:
+        import pdfplumber
+    except Exception:
+        return {}
+    pages: list[str] = []
+    tables: list[dict] = []
+    with pdfplumber.open(str(path)) as pdf:
+        for page_index, page in enumerate(pdf.pages, 1):
+            text = page.extract_text(x_tolerance=1, y_tolerance=3) or ""
+            pages.append(text)
+            try:
+                extracted = page.extract_tables() or []
+            except Exception:
+                extracted = []
+            for table_index, table in enumerate(extracted, 1):
+                rows = [[str(cell or "") for cell in row] for row in (table or [])]
+                tables.append({"page": page_index, "index": table_index, "rows": rows[:20]})
+    return {"pages": pages, "tables": tables[:100]}
+
+
+def _extract_pdf_with_grobid(path: Path) -> dict:
+    base_url = os.environ.get("GROBID_BASE_URL", "").strip().rstrip("/")
+    if not base_url:
+        return {}
+    try:
+        import httpx
+        from xml.etree import ElementTree as ET
+    except Exception:
+        return {}
+    try:
+        with path.open("rb") as handle:
+            response = httpx.post(
+                f"{base_url}/api/processFulltextDocument",
+                files={"input": (path.name, handle, "application/pdf")},
+                timeout=30,
+            )
+        if response.status_code >= 400:
+            return {}
+        root = ET.fromstring(response.text)
+    except Exception:
+        return {}
+    ns = {"tei": "http://www.tei-c.org/ns/1.0"}
+    title = _tei_text(root.find(".//tei:titleStmt/tei:title", ns))
+    authors = [_tei_text(node) for node in root.findall(".//tei:sourceDesc//tei:author", ns)]
+    abstract = _tei_text(root.find(".//tei:abstract", ns))
+    sections = [
+        {"title": _tei_text(node)}
+        for node in root.findall(".//tei:body//tei:head", ns)
+        if _tei_text(node)
+    ]
+    references = [
+        _tei_text(node)
+        for node in root.findall(".//tei:listBibl//tei:biblStruct", ns)
+        if _tei_text(node)
+    ]
+    return {
+        "title": title,
+        "authors": authors,
+        "abstract": abstract,
+        "sections": sections[:80],
+        "references": references[:200],
+    }
+
+
+def _tei_text(node) -> str:
+    if node is None:
+        return ""
+    return re.sub(r"\s+", " ", " ".join(node.itertext())).strip()
 
 
 def extract_docx_text(path: Path) -> tuple[str, dict]:

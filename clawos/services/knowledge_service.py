@@ -287,6 +287,9 @@ class KnowledgeService:
                     text = candidate.read_text(encoding="utf-8-sig", errors="replace")
                 return text, f"sidecar:{candidate.name}", "sidecar OCR text loaded"
         if file_path.exists() and file_path.suffix.lower() == ".pdf":
+            text = self._try_paddle_pdf_ocr(file_path)
+            if text.strip():
+                return text, "paddleocr", "local PaddleOCR completed"
             text = self._try_local_pdf_ocr(file_path)
             if text.strip():
                 return text, "tesseract", "local OCR completed"
@@ -320,6 +323,34 @@ class KnowledgeService:
                 text_path = image_path.with_suffix(".txt")
                 if text_path.exists():
                     chunks.append(text_path.read_text(encoding="utf-8", errors="replace"))
+        return "\n\n".join(chunks)
+
+    @staticmethod
+    def _try_paddle_pdf_ocr(file_path: Path) -> str:
+        pdftoppm = shutil.which("pdftoppm")
+        if not pdftoppm:
+            return ""
+        try:
+            from paddleocr import PaddleOCR
+        except Exception:
+            return ""
+        chunks: list[str] = []
+        with tempfile.TemporaryDirectory() as td:
+            prefix = str(Path(td) / "page")
+            subprocess.run([pdftoppm, "-png", "-r", "220", str(file_path), prefix], check=True, capture_output=True, timeout=180)
+            ocr = PaddleOCR(use_angle_cls=True, lang="ch", show_log=False)
+            for image_path in sorted(Path(td).glob("page-*.png")):
+                try:
+                    result = ocr.ocr(str(image_path), cls=True) or []
+                except TypeError:
+                    result = ocr.ocr(str(image_path)) or []
+                lines: list[str] = []
+                for page in result:
+                    for item in page or []:
+                        if len(item) >= 2 and isinstance(item[1], (list, tuple)):
+                            lines.append(str(item[1][0]))
+                if lines:
+                    chunks.append("\n".join(lines))
         return "\n\n".join(chunks)
 
     def _obsidian_note_payload(self, item: dict[str, Any], all_items: list[dict[str, Any]]) -> dict[str, Any]:

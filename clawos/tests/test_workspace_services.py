@@ -209,12 +209,33 @@ class WorkspaceServicesTests(unittest.TestCase):
         self.assertIn("Decision Snapshot", contents["business_brief"])
         self.assertIn("One Page Summary", contents["compact"])
 
+    def test_learning_analysis_pdf_records_pdf_engine(self):
+        from reportlab.pdfgen import canvas
+
+        with tempfile.TemporaryDirectory() as td:
+            _, services = self._services(td)
+            pdf = Path(td) / "paper.pdf"
+            doc = canvas.Canvas(str(pdf))
+            doc.drawString(72, 720, "PDF generation should prefer Typst and fall back safely.")
+            doc.save()
+            imported = services.import_research_pdf(pdf, "Engine Study")
+            result = services.generate_research_learning_analysis(
+                document_id=imported["id"],
+                output_dir=str(Path(td) / "reports"),
+                formats=["pdf"],
+                question_count=6,
+            )
+
+        self.assertIn(result["report"]["metadata"]["pdf_engine"], {"typst", "reportlab"})
+
     def test_learning_analysis_pdf_prefers_mixed_cjk_latin_font(self):
         source = Path(__file__).resolve().parents[1] / "workspace_services.py"
         text = source.read_text(encoding="utf-8")
 
         self.assertLess(text.index("msyh.ttc"), text.index("simhei.ttf"))
         self.assertIn("NotoSansSC-VF.ttf", text)
+        self.assertIn("_write_learning_analysis_typst_pdf", text)
+        self.assertIn('"compile"', text)
 
     def test_office_artifacts_create_and_edit_xlsx_pptx_without_external_packages(self):
         with tempfile.TemporaryDirectory() as td:
@@ -256,6 +277,29 @@ class WorkspaceServicesTests(unittest.TestCase):
         self.assertEqual(edited_deck["action"], "edit")
         self.assertIn("0.98", sheet_xml)
         self.assertIn("Customer Demo", slide_xml)
+
+    def test_office_artifacts_prefer_professional_libraries_with_stdlib_fallbacks(self):
+        source = (Path(__file__).resolve().parents[1] / "office_artifacts.py").read_text(encoding="utf-8")
+
+        self.assertIn("_create_xlsx_openpyxl", source)
+        self.assertIn("_edit_xlsx_openpyxl", source)
+        self.assertIn("_create_pptx_python_pptx", source)
+        self.assertIn("_replace_pptx_text_python_pptx", source)
+        self.assertIn("_create_xlsx_stdlib", source)
+        self.assertIn("_create_pptx_stdlib", source)
+
+    def test_document_stack_declares_paddleocr_and_layout_engines(self):
+        knowledge = (Path(__file__).resolve().parents[1] / "services" / "knowledge_service.py").read_text(encoding="utf-8")
+        ingestion = (Path(__file__).resolve().parents[1] / "memoryos" / "document_ingestion.py").read_text(encoding="utf-8")
+        server = (Path(__file__).resolve().parents[1] / "clawos_server.py").read_text(encoding="utf-8")
+
+        self.assertIn("_try_paddle_pdf_ocr", knowledge)
+        self.assertLess(knowledge.index("_try_paddle_pdf_ocr"), knowledge.index("_try_local_pdf_ocr"))
+        self.assertIn("_extract_pdf_with_pymupdf", ingestion)
+        self.assertIn("_extract_pdf_with_pdfplumber", ingestion)
+        self.assertIn("_extract_pdf_with_grobid", ingestion)
+        self.assertIn("paddleocr_available", server)
+        self.assertIn("typst_available", server)
 
     def test_learning_mastery_requires_evidence(self):
         with tempfile.TemporaryDirectory() as td:
