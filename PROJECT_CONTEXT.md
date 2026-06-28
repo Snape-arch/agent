@@ -980,3 +980,22 @@ Verification:
 Known notes:
 - Stress reports under `output\reports\` are ignored runtime evidence and should not be committed.
 - The current stress corpus is synthetic but exercises real PDF generation, parsing, chunking, Chroma persistence, embedding, reranking, and citation checks. Next step for production evidence is running the same script against user-provided real papers.
+
+### 2026-06-28 - Self-evolution run governance and regression gate
+
+Completed:
+- Added persistent `self_evolution_runs` records so every configuration improvement has baseline payload, candidate payload, benchmark evidence, gate result, conclusion, publish decision, and rollback payload.
+- Added `reflection.self_evolution.SelfEvolutionManager` for low-risk automatic optimization targets only: prompt, retrieval parameters, report templates, and tool-routing policy. Code/source/script/module targets are rejected.
+- Added a forced publish gate requiring all three benchmark families: frozen benchmark, core E2E, and retrieval benchmark. A candidate can publish only when required evidence is present and candidate metrics do not regress against baseline.
+- Added `/api/self-evolution/runs`, create, evaluate, and publish endpoints. Publishing writes the candidate payload to `runtime_policies` only after the gate passes.
+- Added deterministic tests for successful publish, retrieval regression rejection, missing benchmark rejection, and code-target rejection.
+
+Verification:
+- `python -m py_compile clawos\reflection\self_evolution.py clawos\memoryos\memory_store.py clawos\clawos_server.py`: passed.
+- `python -m unittest clawos.tests.test_self_evolution`: `4 tests OK`.
+- `python -m unittest clawos.tests.test_reflection_governance clawos.tests.test_policy_optimizer clawos.tests.test_memoryos_governance`: `9 tests OK`.
+- `python -m unittest discover -s clawos\tests`: `166 tests OK`.
+
+Known notes:
+- The self-evolution gate currently evaluates supplied frozen/core/retrieval benchmark evidence. It does not yet auto-launch the benchmark scripts from a background job.
+- This closes low-risk config self-improvement; automatic code modification remains intentionally blocked.

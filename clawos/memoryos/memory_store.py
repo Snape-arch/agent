@@ -379,6 +379,26 @@ class MemoryStore:
                     updated_at TEXT DEFAULT (datetime('now')),
                     UNIQUE(target_type, target_key)
                 );
+                CREATE TABLE IF NOT EXISTS self_evolution_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL DEFAULT 'Self-evolution run',
+                    target_type TEXT NOT NULL,
+                    target_key TEXT NOT NULL,
+                    baseline_payload TEXT NOT NULL DEFAULT '{}',
+                    candidate_payload TEXT NOT NULL DEFAULT '{}',
+                    benchmarks TEXT NOT NULL DEFAULT '{}',
+                    gate_result TEXT NOT NULL DEFAULT '{}',
+                    conclusion TEXT NOT NULL DEFAULT '',
+                    publish_decision TEXT NOT NULL DEFAULT 'pending',
+                    status TEXT NOT NULL DEFAULT 'candidate',
+                    rollback_payload TEXT NOT NULL DEFAULT '{}',
+                    created_by TEXT NOT NULL DEFAULT 'system',
+                    published_by TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    published_at TEXT DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_self_evolution_runs_status ON self_evolution_runs(status, id DESC);
                 CREATE TABLE IF NOT EXISTS policy_groups (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -1690,6 +1710,148 @@ class MemoryStore:
             )
             return self.get_runtime_policy(target_type, target_key, conn=c)
 
+    # ---- SELF-EVOLUTION RUNS ----
+
+    def create_self_evolution_run(
+        self, title, target_type, target_key, baseline_payload, candidate_payload,
+        benchmarks=None, conclusion="", publish_decision="pending",
+        status="candidate", gate_result=None, created_by="system",
+    ):
+        with self._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO self_evolution_runs
+                    (title, target_type, target_key, baseline_payload,
+                     candidate_payload, benchmarks, gate_result, conclusion,
+                     publish_decision, status, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(title or "Self-evolution run"),
+                    str(target_type or ""),
+                    str(target_key or ""),
+                    json.dumps(baseline_payload or {}, ensure_ascii=False),
+                    json.dumps(candidate_payload or {}, ensure_ascii=False),
+                    json.dumps(benchmarks or {}, ensure_ascii=False),
+                    json.dumps(gate_result or {}, ensure_ascii=False),
+                    str(conclusion or ""),
+                    str(publish_decision or "pending"),
+                    str(status or "candidate"),
+                    str(created_by or "system"),
+                ),
+            )
+            return self.get_self_evolution_run(int(cursor.lastrowid), conn=c)
+
+    def list_self_evolution_runs(self, status="", limit=100):
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 100), 500))
+            if status:
+                rows = c.execute(
+                    "SELECT * FROM self_evolution_runs WHERE status=? ORDER BY id DESC LIMIT ?",
+                    (str(status), limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT * FROM self_evolution_runs ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [self._self_evolution_run_from_row(row) for row in rows]
+
+    def get_self_evolution_run(self, run_id, conn=None):
+        def fetch(c):
+            row = c.execute(
+                "SELECT * FROM self_evolution_runs WHERE id=?", (int(run_id),)
+            ).fetchone()
+            return self._self_evolution_run_from_row(row) if row else None
+        if conn is not None:
+            return fetch(conn)
+        with self._conn() as c:
+            return fetch(c)
+
+    def update_self_evolution_run(
+        self, run_id, status=None, benchmarks=None, gate_result=None,
+        conclusion=None, publish_decision=None, rollback_payload=None,
+        published_by=None, published_at=None,
+    ):
+        allowed = {
+            "status": status,
+            "benchmarks": benchmarks,
+            "gate_result": gate_result,
+            "conclusion": conclusion,
+            "publish_decision": publish_decision,
+            "rollback_payload": rollback_payload,
+            "published_by": published_by,
+            "published_at": published_at,
+        }
+        json_fields = {"benchmarks", "gate_result", "rollback_payload"}
+        assignments = ["updated_at=datetime('now')"]
+        params = []
+        for key, value in allowed.items():
+            if value is None:
+                continue
+            assignments.append(f"{key}=?")
+            params.append(
+                json.dumps(value or {}, ensure_ascii=False)
+                if key in json_fields else str(value)
+            )
+        params.append(int(run_id))
+        with self._conn() as c:
+            c.execute(
+                f"UPDATE self_evolution_runs SET {', '.join(assignments)} WHERE id=?",
+                params,
+            )
+            return self.get_self_evolution_run(run_id, conn=c)
+
+    def publish_self_evolution_run(self, run_id, actor_id="system", reason=""):
+        with self._conn() as c:
+            run = self.get_self_evolution_run(run_id, conn=c)
+            if not run:
+                raise ValueError("self-evolution run not found")
+            if run["status"] != "validated" or run["publish_decision"] != "publish":
+                raise ValueError("only validated publish-approved runs can be published")
+            current = self.get_runtime_policy(run["target_type"], run["target_key"], conn=c)
+            rollback = {
+                "existed": bool(current),
+                "payload": current["payload"] if current else {},
+            }
+            version = int(current["version"]) + 1 if current else 1
+            c.execute(
+                """
+                INSERT INTO runtime_policies
+                    (target_type, target_key, payload, version, active, updated_by, updated_at)
+                VALUES (?, ?, ?, ?, 1, ?, datetime('now'))
+                ON CONFLICT(target_type, target_key) DO UPDATE SET
+                    payload=excluded.payload,
+                    version=excluded.version,
+                    active=1,
+                    updated_by=excluded.updated_by,
+                    updated_at=datetime('now')
+                """,
+                (
+                    run["target_type"], run["target_key"],
+                    json.dumps(run["candidate_payload"], ensure_ascii=False),
+                    version, str(actor_id or "system"),
+                ),
+            )
+            c.execute(
+                """
+                UPDATE self_evolution_runs
+                SET status='published', rollback_payload=?, published_by=?,
+                    published_at=datetime('now'), updated_at=datetime('now')
+                WHERE id=?
+                """,
+                (
+                    json.dumps({
+                        **rollback,
+                        "reason": str(reason or "Regression-gated self-evolution publish"),
+                        "policy_version": version,
+                    }, ensure_ascii=False),
+                    str(actor_id or "system"),
+                    int(run_id),
+                ),
+            )
+            return self.get_self_evolution_run(run_id, conn=c)
+
     def publish_reflection_improvement(self, improvement_id, actor_id="system", reason=""):
         with self._conn() as c:
             improvement = c.execute(
@@ -1828,6 +1990,18 @@ class MemoryStore:
             "regression_result", "rollback_payload",
         ):
             item[key] = self._json_loads(item.get(key), {})
+        return item
+
+    def _self_evolution_run_from_row(self, row):
+        item = dict(row)
+        for key, default in (
+            ("baseline_payload", {}),
+            ("candidate_payload", {}),
+            ("benchmarks", {}),
+            ("gate_result", {}),
+            ("rollback_payload", {}),
+        ):
+            item[key] = self._json_loads(item.get(key), default)
         return item
 
     # ---- POLICY OPTIMIZER ----

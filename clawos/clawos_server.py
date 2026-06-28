@@ -1730,6 +1730,71 @@ async def reflection_improvement_rollback(improvement_id: int, request: Request)
         raise HTTPException(400, str(exc))
     return JSONResponse({"improvement": item})
 
+
+@app.get("/api/self-evolution/runs")
+async def api_self_evolution_runs(status: str = "", limit: int = 100):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    rows = g_memory_store.list_self_evolution_runs(status=status, limit=limit)
+    return JSONResponse({"runs": rows, "count": len(rows)})
+
+
+@app.post("/api/self-evolution/runs")
+async def api_self_evolution_create_run(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.self_evolution import SelfEvolutionManager
+    data = await request.json()
+    try:
+        run = SelfEvolutionManager(g_memory_store).create_run(
+            target_type=data.get("target_type", ""),
+            target_key=data.get("target_key", ""),
+            baseline_payload=data.get("baseline_payload", {}),
+            candidate_payload=data.get("candidate_payload", {}),
+            benchmarks=data.get("benchmarks", {}),
+            title=data.get("title", ""),
+            conclusion=data.get("conclusion", ""),
+            created_by=data.get("actor_id", "system"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"run": run})
+
+
+@app.post("/api/self-evolution/runs/{run_id}/evaluate")
+async def api_self_evolution_evaluate(run_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.self_evolution import SelfEvolutionManager
+    data = await request.json()
+    try:
+        run = SelfEvolutionManager(g_memory_store).evaluate(
+            run_id,
+            benchmarks=data.get("benchmarks"),
+            conclusion=data.get("conclusion", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"run": run})
+
+
+@app.post("/api/self-evolution/runs/{run_id}/publish")
+async def api_self_evolution_publish(run_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.self_evolution import SelfEvolutionManager
+    data = await request.json()
+    try:
+        run = SelfEvolutionManager(g_memory_store).publish(
+            run_id,
+            actor_id=data.get("actor_id", "system"),
+            reason=data.get("reason", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"run": run})
+
+
 @app.get("/api/reflection/stats")
 async def reflection_stats():
     if not g_reflection_engine:
