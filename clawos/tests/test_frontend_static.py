@@ -53,6 +53,27 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("filePicker", html)
         self.assertIn("commandDrawer", html)
 
+    def test_console_adopts_desktop_liquid_glass_reference_style(self):
+        css = self.read_page("assets/console.css")
+
+        for token in (
+            "Sarito-style desktop console pass",
+            "--glass-ink",
+            "--glass-inner",
+            "AI Action Dock",
+            ".aether-console .floating-actions",
+            ".aether-console .header-orbit",
+            "backdrop-filter:blur(28px)",
+            "rgba(18,19,20,.66)",
+            "#ff5f57",
+            "#ffbd2e",
+            "#28c840",
+            "mix-blend-mode:screen",
+            "background-attachment:fixed",
+            "@media(max-width:980px)",
+        ):
+            self.assertIn(token, css)
+
     def test_console_has_dedicated_mobile_more_entry(self):
         html = self.read_page("console.html")
         css = self.read_page("assets/console.css")
