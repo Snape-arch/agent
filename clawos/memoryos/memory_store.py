@@ -391,6 +391,9 @@ class MemoryStore:
                     conclusion TEXT NOT NULL DEFAULT '',
                     publish_decision TEXT NOT NULL DEFAULT 'pending',
                     status TEXT NOT NULL DEFAULT 'candidate',
+                    release_stage TEXT NOT NULL DEFAULT 'candidate',
+                    traffic_percent REAL NOT NULL DEFAULT 0,
+                    quality_signals TEXT NOT NULL DEFAULT '{}',
                     rollback_payload TEXT NOT NULL DEFAULT '{}',
                     created_by TEXT NOT NULL DEFAULT 'system',
                     published_by TEXT DEFAULT '',
@@ -399,6 +402,17 @@ class MemoryStore:
                     published_at TEXT DEFAULT ''
                 );
                 CREATE INDEX IF NOT EXISTS idx_self_evolution_runs_status ON self_evolution_runs(status, id DESC);
+                CREATE TABLE IF NOT EXISTS self_evolution_quality_signals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id INTEGER NOT NULL,
+                    signal_type TEXT NOT NULL,
+                    value REAL NOT NULL DEFAULT 0,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(run_id) REFERENCES self_evolution_runs(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_self_evolution_signals_run ON self_evolution_quality_signals(run_id, id DESC);
                 CREATE TABLE IF NOT EXISTS policy_groups (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -541,6 +555,11 @@ class MemoryStore:
             self._ensure_columns(c, "task_events", {
                 "message": "TEXT DEFAULT ''",
                 "data": "TEXT DEFAULT '{}'",
+            })
+            self._ensure_columns(c, "self_evolution_runs", {
+                "release_stage": "TEXT NOT NULL DEFAULT 'candidate'",
+                "traffic_percent": "REAL NOT NULL DEFAULT 0",
+                "quality_signals": "TEXT NOT NULL DEFAULT '{}'",
             })
             self._ensure_columns(c, "memories", {
                 "source": "TEXT DEFAULT ''",
@@ -1771,7 +1790,8 @@ class MemoryStore:
     def update_self_evolution_run(
         self, run_id, status=None, benchmarks=None, gate_result=None,
         conclusion=None, publish_decision=None, rollback_payload=None,
-        published_by=None, published_at=None,
+        published_by=None, published_at=None, release_stage=None,
+        traffic_percent=None, quality_signals=None,
     ):
         allowed = {
             "status": status,
@@ -1782,8 +1802,11 @@ class MemoryStore:
             "rollback_payload": rollback_payload,
             "published_by": published_by,
             "published_at": published_at,
+            "release_stage": release_stage,
+            "traffic_percent": traffic_percent,
+            "quality_signals": quality_signals,
         }
-        json_fields = {"benchmarks", "gate_result", "rollback_payload"}
+        json_fields = {"benchmarks", "gate_result", "rollback_payload", "quality_signals"}
         assignments = ["updated_at=datetime('now')"]
         params = []
         for key, value in allowed.items():
@@ -1807,8 +1830,10 @@ class MemoryStore:
             run = self.get_self_evolution_run(run_id, conn=c)
             if not run:
                 raise ValueError("self-evolution run not found")
-            if run["status"] != "validated" or run["publish_decision"] != "publish":
-                raise ValueError("only validated publish-approved runs can be published")
+            if run["status"] not in {"validated", "shadow", "canary"}:
+                raise ValueError("only validated, shadow, or canary runs can be activated")
+            if run["publish_decision"] not in {"publish", "shadow_required", "canary"}:
+                raise ValueError("self-evolution run is not approved for activation")
             current = self.get_runtime_policy(run["target_type"], run["target_key"], conn=c)
             rollback = {
                 "existed": bool(current),
@@ -1836,7 +1861,8 @@ class MemoryStore:
             c.execute(
                 """
                 UPDATE self_evolution_runs
-                SET status='published', rollback_payload=?, published_by=?,
+                SET status='published', release_stage='active', traffic_percent=100,
+                    rollback_payload=?, published_by=?,
                     published_at=datetime('now'), updated_at=datetime('now')
                 WHERE id=?
                 """,
@@ -1851,6 +1877,110 @@ class MemoryStore:
                 ),
             )
             return self.get_self_evolution_run(run_id, conn=c)
+
+    def record_self_evolution_quality_signal(
+        self, run_id, signal_type, value, metadata=None, created_by="system",
+    ):
+        with self._conn() as c:
+            if not c.execute("SELECT id FROM self_evolution_runs WHERE id=?", (int(run_id),)).fetchone():
+                raise ValueError("self-evolution run not found")
+            c.execute(
+                """
+                INSERT INTO self_evolution_quality_signals
+                    (run_id, signal_type, value, metadata, created_by)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    int(run_id),
+                    str(signal_type or "quality"),
+                    float(value or 0),
+                    json.dumps(metadata or {}, ensure_ascii=False),
+                    str(created_by or "system"),
+                ),
+            )
+            aggregate = self._aggregate_self_evolution_quality_signals(run_id, conn=c)
+            c.execute(
+                """
+                UPDATE self_evolution_runs
+                SET quality_signals=?, updated_at=datetime('now')
+                WHERE id=?
+                """,
+                (json.dumps(aggregate, ensure_ascii=False), int(run_id)),
+            )
+            return self.get_self_evolution_run(run_id, conn=c)
+
+    def list_self_evolution_quality_signals(self, run_id, limit=100):
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 100), 500))
+            rows = c.execute(
+                """
+                SELECT * FROM self_evolution_quality_signals
+                WHERE run_id=?
+                ORDER BY id DESC LIMIT ?
+                """,
+                (int(run_id), limit),
+            ).fetchall()
+            return [self._self_evolution_signal_from_row(row) for row in rows]
+
+    def runtime_quality_snapshot(self):
+        with self._conn() as c:
+            rows = c.execute("SELECT status, source, metadata FROM tasks").fetchall()
+            tasks = [self._task_row_to_dict(row) for row in rows]
+            total = max(1, len(tasks))
+            retry_count = sum(1 for task in tasks if int(task.get("attempt") or 1) > 1 or task.get("retry_of"))
+            cancel_count = sum(1 for task in tasks if str(task.get("status")) in {"cancel_requested", "canceled", "cancelled"})
+            failed_count = sum(1 for task in tasks if str(task.get("status")) == "failed")
+            long_task_count = sum(1 for task in tasks if str((task.get("metadata") or {}).get("worker_action", "")).strip())
+            report_saved = sum(
+                1 for task in tasks
+                if (task.get("metadata") or {}).get("response_payload", {}).get("report")
+            )
+            citation_rows = c.execute(
+                "SELECT COUNT(*) AS count FROM document_chunks WHERE citation<>''"
+            ).fetchone()
+            retrieval_rows = c.execute(
+                "SELECT metrics FROM retrieval_evaluation_runs ORDER BY id DESC LIMIT 20"
+            ).fetchall()
+            hit_rates = []
+            for row in retrieval_rows:
+                metrics = self._json_loads(row["metrics"], {})
+                if "hit_rate" in metrics:
+                    try:
+                        hit_rates.append(float(metrics["hit_rate"]))
+                    except (TypeError, ValueError):
+                        pass
+            retrieval_hit_rate = round(sum(hit_rates) / len(hit_rates), 4) if hit_rates else 0.0
+            return {
+                "task_count": len(tasks),
+                "user_retry_rate": round(retry_count / total, 4),
+                "cancel_rate": round(cancel_count / total, 4),
+                "long_task_failure_rate": round(failed_count / max(1, long_task_count or len(tasks)), 4),
+                "report_save_count": report_saved,
+                "citation_hit_count": int(citation_rows["count"] or 0) if citation_rows else 0,
+                "retrieval_hit_rate": retrieval_hit_rate,
+            }
+
+    def _aggregate_self_evolution_quality_signals(self, run_id, conn=None):
+        def aggregate(c):
+            rows = c.execute(
+                "SELECT signal_type, value FROM self_evolution_quality_signals WHERE run_id=?",
+                (int(run_id),),
+            ).fetchall()
+            grouped = {}
+            for row in rows:
+                grouped.setdefault(row["signal_type"], []).append(float(row["value"] or 0))
+            return {
+                key: {
+                    "count": len(values),
+                    "average": round(sum(values) / max(1, len(values)), 6),
+                    "latest": round(values[-1], 6),
+                }
+                for key, values in grouped.items()
+            }
+        if conn is not None:
+            return aggregate(conn)
+        with self._conn() as c:
+            return aggregate(c)
 
     def publish_reflection_improvement(self, improvement_id, actor_id="system", reason=""):
         with self._conn() as c:
@@ -1999,9 +2129,17 @@ class MemoryStore:
             ("candidate_payload", {}),
             ("benchmarks", {}),
             ("gate_result", {}),
+            ("quality_signals", {}),
             ("rollback_payload", {}),
         ):
             item[key] = self._json_loads(item.get(key), default)
+        item["traffic_percent"] = float(item.get("traffic_percent") or 0)
+        return item
+
+    def _self_evolution_signal_from_row(self, row):
+        item = dict(row)
+        item["metadata"] = self._json_loads(item.get("metadata"), {})
+        item["value"] = float(item.get("value") or 0)
         return item
 
     # ---- POLICY OPTIMIZER ----

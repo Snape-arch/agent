@@ -999,3 +999,27 @@ Verification:
 Known notes:
 - The self-evolution gate currently evaluates supplied frozen/core/retrieval benchmark evidence. It does not yet auto-launch the benchmark scripts from a background job.
 - This closes low-risk config self-improvement; automatic code modification remains intentionally blocked.
+
+### 2026-06-28 - Self-evolution worker automation, candidate generation, and release board
+
+Completed:
+- Added automatic benchmark execution through the existing background worker. Creating a self-evolution run through `/api/self-evolution/runs` now defaults to queueing a `self_evolution_benchmark` task.
+- Added deterministic candidate generation for low-risk targets: prompt rewrite, retrieval `top_k` / `rerank_top_k`, report template versioning, and tool-routing policy tuning.
+- Added worker-generated frozen, core E2E, and retrieval benchmark evidence. Passing runs now move to `shadow` automatically instead of active runtime publish.
+- Added staged release controls: `shadow`, `canary`, and `activate`. Active runtime policy writes happen only after gate pass and quality-signal checks.
+- Added real quality-signal storage and runtime snapshot aggregation for retry rate, cancel rate, report-save count, citation hit count, retrieval hit rate, and long-task failure rate.
+- Added `/api/self-evolution/board`, candidate generation, quality-signal, quality-snapshot, canary, and activate APIs.
+- Added a console Self-Evolution Board showing candidate runs, release stage, traffic percent, gate checks, quality signals, and actions.
+
+Verification:
+- `python -m py_compile clawos\reflection\self_evolution.py clawos\memoryos\memory_store.py clawos\clawos_server.py`: passed.
+- Bundled Node syntax check for `clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_self_evolution`: `7 tests OK`.
+- `python -m unittest clawos.tests.test_runtime_task_control`: `14 tests OK`.
+- `python -m unittest clawos.tests.test_frontend_static`: `23 tests OK`.
+- Related governance suite: `47 tests OK`.
+- `python -m unittest discover -s clawos\tests`: `170 tests OK`.
+
+Known notes:
+- Self-evolution still blocks automatic code/source/script changes by design.
+- Worker benchmark evidence is deterministic and closed-loop; future production hardening should add an optional long-running external benchmark mode that invokes full scripts against real user corpora.

@@ -37,7 +37,7 @@ class SelfEvolutionTests(unittest.TestCase):
             },
         }
 
-    def test_run_publishes_only_after_all_regression_gates_pass(self):
+    def test_run_moves_through_shadow_canary_before_activation(self):
         from memoryos.memory_store import MemoryStore
         from reflection.self_evolution import SelfEvolutionManager
 
@@ -57,16 +57,98 @@ class SelfEvolutionTests(unittest.TestCase):
                 benchmarks=self._benchmarks(),
             )
             evaluated = manager.evaluate(run["id"])
-            published = manager.publish(run["id"], actor_id="self-evolution")
+            shadow = manager.start_shadow(run["id"])
+            shadow = manager.record_quality_signal(
+                shadow["id"], "user_retry_rate", 0.02, created_by="test"
+            )
+            canary = manager.promote_canary(shadow["id"], traffic_percent=10)
+            published = manager.activate(canary["id"], actor_id="self-evolution")
             active = store.get_runtime_policy("retrieval_params", "default")
 
         self.assertEqual(run["status"], "candidate")
         self.assertEqual(evaluated["status"], "validated")
-        self.assertEqual(evaluated["publish_decision"], "publish")
+        self.assertEqual(evaluated["publish_decision"], "shadow_required")
         self.assertTrue(evaluated["gate_result"]["passed"])
+        self.assertEqual(shadow["status"], "shadow")
+        self.assertEqual(canary["status"], "canary")
+        self.assertEqual(canary["traffic_percent"], 10)
         self.assertEqual(published["status"], "published")
+        self.assertEqual(published["release_stage"], "active")
         self.assertEqual(active["payload"], {"top_k": 30, "rerank_top_k": 5})
         self.assertTrue(published["rollback_payload"]["existed"])
+
+    def test_candidate_generator_covers_low_risk_targets(self):
+        from reflection.self_evolution import SelfEvolutionManager
+
+        prompt = SelfEvolutionManager.generate_candidate("prompt", {"system": "Read papers."})
+        retrieval = SelfEvolutionManager.generate_candidate("retrieval_params", {"top_k": 10, "rerank_top_k": 3})
+        template = SelfEvolutionManager.generate_candidate("report_template", {"version": 1})
+        routing = SelfEvolutionManager.generate_candidate("tool_routing_policy", {})
+
+        self.assertIn("quality check", prompt["system"])
+        self.assertGreaterEqual(retrieval["top_k"], 30)
+        self.assertEqual(template["typography"], "journal")
+        self.assertTrue(routing["confirm_high_risk"])
+
+    def test_worker_generated_benchmarks_enter_shadow(self):
+        from memoryos.memory_store import MemoryStore
+        from reflection.self_evolution import SelfEvolutionManager
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            manager = SelfEvolutionManager(store)
+            run = manager.create_run(
+                "retrieval_params",
+                "default",
+                {"top_k": 10, "rerank_top_k": 3},
+                {},
+            )
+            shadow = manager.run_automatic_benchmarks(run["id"])
+
+        self.assertEqual(shadow["status"], "shadow")
+        self.assertEqual(shadow["release_stage"], "shadow")
+        self.assertTrue(shadow["gate_result"]["passed"])
+        self.assertIn("retrieval_benchmark", shadow["benchmarks"])
+
+    def test_api_creation_auto_queues_worker_and_enters_shadow(self):
+        import asyncio
+        import json
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        class JsonRequest:
+            def __init__(self, payload):
+                self._payload = payload
+
+            async def json(self):
+                return self._payload
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_task_service = server.g_task_service
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            server.g_task_service = None
+            try:
+                response = asyncio.run(server.api_self_evolution_create_run(JsonRequest({
+                    "target_type": "retrieval_params",
+                    "target_key": "default",
+                    "baseline_payload": {"top_k": 10, "rerank_top_k": 3},
+                    "candidate_payload": {},
+                    "auto_queue": True,
+                })))
+                payload = json.loads(response.body.decode("utf-8"))
+                worker = asyncio.run(server.api_tasks_worker_tick(JsonRequest({"worker_id": "evo-worker"})))
+                run = server.g_memory_store.get_self_evolution_run(payload["run"]["id"])
+                queue = server.g_memory_store.list_task_queue()
+            finally:
+                server.g_memory_store = old_store
+                server.g_task_service = old_task_service
+
+        self.assertTrue(payload["queued"])
+        self.assertTrue(json.loads(worker.body.decode("utf-8"))["ok"])
+        self.assertEqual(queue, [])
+        self.assertEqual(run["status"], "shadow")
+        self.assertEqual(run["release_stage"], "shadow")
 
     def test_retrieval_regression_blocks_publish(self):
         from memoryos.memory_store import MemoryStore

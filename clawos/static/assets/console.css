@@ -1174,6 +1174,7 @@
 
 /* Ops and professional scenario boards */
 .ops-workspace,
+.evolution-workspace,
 .scenes-workspace{
   display:grid;
   gap:14px;
@@ -1211,7 +1212,8 @@
 .ops-form .wide{
   grid-column:1/-1;
 }
-.job-grid textarea{
+.job-grid textarea,
+.evolution-workspace textarea{
   min-height:92px;
   resize:vertical;
 }
@@ -1292,6 +1294,7 @@
   .ops-grid,
   .job-grid,
   .professional-board-grid,
+  .evolution-workspace .ops-grid,
   .ops-form{
     grid-template-columns:1fr;
   }

@@ -292,6 +292,41 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("publishReflection", js)
         self.assertIn("rollbackReflection", js)
 
+    def test_console_exposes_self_evolution_board(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
+        server = self.read_page("../clawos_server.py")
+
+        for token in (
+            "view-evolution",
+            "Self-Evolution Board",
+            "evolutionRunTable",
+            "evolutionGateTable",
+            "evolutionQualityTable",
+            "queueEvolutionRun",
+            "shadow → canary → active",
+        ):
+            self.assertIn(token, html)
+        for token in (
+            "/api/self-evolution/board",
+            "/api/self-evolution/runs",
+            "/api/self-evolution/runs/${id}/canary",
+            "/api/self-evolution/runs/${id}/activate",
+            "snapshotEvolutionQuality",
+            "evolutionActions",
+            "loadEvolution",
+        ):
+            self.assertIn(token, js)
+        for token in (
+            "worker_self_evolution_benchmark",
+            "self_evolution_benchmark",
+            "api_self_evolution_board",
+            "api_self_evolution_activate",
+        ):
+            self.assertIn(token, server)
+        self.assertIn(".evolution-workspace", css)
+
     def test_console_exposes_task_trace_panel(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")

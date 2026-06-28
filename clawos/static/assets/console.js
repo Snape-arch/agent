@@ -74,6 +74,7 @@ function setView(viewName) {
     memory: ["记忆治理", "管理画像、偏好、项目、经验和技能等系统记忆"],
     projects: ["项目", "进入本地项目、科研目录和交付任务"],
     reflection: ["反思循环", "审查任务复盘、改进建议、验证结果和回滚记录"],
+    evolution: ["Self-Evolution", "候选生成、自动基准门禁、shadow/canary 灰度和真实质量信号"],
     skills: ["固化技能", "查看可复用工作流、候选版本和执行质量"],
     tools: ["工具路由", "查看本地函数清单、参数结构和调用轨迹"],
     tasks: ["运行轨迹", "跟踪任务取消、重试、恢复、队列领取和事件审计"],
@@ -892,6 +893,102 @@ async function validateReflection(id) { await transitionReflection(id, "validate
 async function publishReflection(id) { await transitionReflection(id, "published"); }
 async function rollbackReflection(id) { await transitionReflection(id, "rolled_back"); }
 
+function evolutionActions(run) {
+  const id = Number(run.id);
+  const status = String(run.status || "");
+  const canShadow = status === "validated";
+  const canCanary = status === "shadow" || status === "canary";
+  const canActivate = status === "shadow" || status === "canary" || status === "validated";
+  return [
+    canShadow ? `<button class="secondary" onclick="shadowEvolutionRun(${id})">Shadow</button>` : "",
+    canCanary ? `<button class="secondary" onclick="canaryEvolutionRun(${id})">Canary</button>` : "",
+    canActivate ? `<button class="primary" onclick="activateEvolutionRun(${id})">Activate</button>` : "",
+    `<button class="secondary" onclick="snapshotEvolutionQuality(${id})">质量快照</button>`
+  ].filter(Boolean).join(" ");
+}
+
+async function loadEvolution() {
+  if (!$("evolutionRunTable")) return;
+  const data = await api("/api/self-evolution/board").catch(() => ({ runs: [], quality_snapshot: {} }));
+  const runs = data.runs || [];
+  if ($("evolutionScore")) $("evolutionScore").textContent = `Evolution readiness: ${data.enterprise_score ?? "--"}% · ${data.enterprise_ready ? "enterprise gate passed" : "needs observation"}`;
+  const quality = data.quality_snapshot || {};
+  if ($("evolutionQualityTable")) {
+    $("evolutionQualityTable").innerHTML = table(["Signal", "Value"], Object.keys(quality).map(key => [key, quality[key]]));
+  }
+  $("evolutionRunTable").innerHTML = table(
+    ["ID", "目标", "阶段", "流量", "门禁", "决策", "结论", "操作"],
+    runs.map(run => [
+      run.id,
+      `${run.target_type}/${run.target_key}`,
+      { html: statusBadge(run.release_stage || run.status) },
+      `${run.traffic_percent || 0}%`,
+      { html: statusBadge((run.gate_result || {}).passed ? "passed" : run.status === "candidate" ? "pending" : "failed") },
+      run.publish_decision || "",
+      run.conclusion || "",
+      { html: evolutionActions(run) }
+    ])
+  );
+  const selected = runs[0] || {};
+  const checks = (selected.gate_result || {}).checks || [];
+  if ($("evolutionGateTable")) {
+    $("evolutionGateTable").innerHTML = table(
+      ["Run", "Benchmark", "Metric", "Baseline", "Candidate", "Result"],
+      checks.map(check => [selected.id || "", check.benchmark, check.metric, check.baseline, check.candidate, { html: statusBadge(check.passed ? "passed" : "failed") }])
+    );
+  }
+}
+
+async function queueEvolutionRun() {
+  let baseline = {};
+  try {
+    baseline = JSON.parse($("evoBaselinePayload")?.value || "{}");
+  } catch (err) {
+    if ($("evolutionResult")) $("evolutionResult").textContent = "Baseline JSON 格式错误";
+    return;
+  }
+  const targetType = $("evoTargetType")?.value || "retrieval_params";
+  const targetKey = $("evoTargetKey")?.value || "default";
+  const data = await api("/api/self-evolution/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      target_type: targetType,
+      target_key: targetKey,
+      baseline_payload: baseline,
+      candidate_payload: {},
+      auto_queue: true,
+      actor_id: "console"
+    })
+  });
+  if ($("evolutionResult")) $("evolutionResult").textContent = JSON.stringify(data, null, 2);
+  await Promise.allSettled([loadEvolution(), loadTasks()]);
+}
+
+async function shadowEvolutionRun(id) {
+  const data = await api(`/api/self-evolution/runs/${id}/publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor_id: "console" }) });
+  if ($("evolutionResult")) $("evolutionResult").textContent = JSON.stringify(data, null, 2);
+  await loadEvolution();
+}
+
+async function canaryEvolutionRun(id) {
+  const data = await api(`/api/self-evolution/runs/${id}/canary`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ traffic_percent: 10, actor_id: "console" }) });
+  if ($("evolutionResult")) $("evolutionResult").textContent = JSON.stringify(data, null, 2);
+  await loadEvolution();
+}
+
+async function activateEvolutionRun(id) {
+  const data = await api(`/api/self-evolution/runs/${id}/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor_id: "console", reason: "console activation after shadow/canary review" }) });
+  if ($("evolutionResult")) $("evolutionResult").textContent = JSON.stringify(data, null, 2);
+  await loadEvolution();
+}
+
+async function snapshotEvolutionQuality(id) {
+  const data = await api(`/api/self-evolution/runs/${id}/quality-snapshot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor_id: "console" }) });
+  if ($("evolutionResult")) $("evolutionResult").textContent = JSON.stringify(data, null, 2);
+  await loadEvolution();
+}
+
 async function loadTools() {
   const target = $("toolsTable");
   if (!target) return;
@@ -1399,7 +1496,7 @@ function chooseFirstRunModel(provider) {
 
 async function refreshAll() {
   ensureProfessionalBoard();
-  await Promise.allSettled([loadHealth(), loadDash(), loadRoutingStrategy(), loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue(), loadMemory(), loadReflection(), loadSkills(), loadTools(), loadToolExecutions(), loadTasks(), loadBenchmarks(), loadCapabilities(), loadSecurityCenter(), loadOps()]);
+  await Promise.allSettled([loadHealth(), loadDash(), loadRoutingStrategy(), loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue(), loadMemory(), loadReflection(), loadEvolution(), loadSkills(), loadTools(), loadToolExecutions(), loadTasks(), loadBenchmarks(), loadCapabilities(), loadSecurityCenter(), loadOps()]);
 }
 
 if ($("cfgProvider")) $("cfgProvider").addEventListener("change", () => applyProviderPreset(true));

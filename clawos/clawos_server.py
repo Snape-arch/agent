@@ -847,6 +847,7 @@ def worker_action_handlers() -> dict[str, Any]:
         "generate_report": worker_generate_report,
         "batch_ingest_documents": worker_batch_ingest_documents,
         "process_ocr_queue": worker_process_ocr_queue,
+        "self_evolution_benchmark": worker_self_evolution_benchmark,
     }
 
 
@@ -939,6 +940,53 @@ def worker_process_ocr_queue(task: dict[str, Any], metadata: dict[str, Any]) -> 
         "failed": len(errors),
         "results": results,
         "errors": errors,
+    }
+
+
+def worker_self_evolution_benchmark(task: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    if not g_memory_store:
+        raise RuntimeError("MemoryOS not initialized")
+    from reflection.self_evolution import SelfEvolutionManager
+
+    task_id = int(task["id"])
+    run_id = int(metadata.get("run_id") or 0)
+    if not run_id:
+        raise ValueError("run_id is required")
+    _worker_require_not_cancelled(task_id)
+    manager = SelfEvolutionManager(g_memory_store)
+    before = g_memory_store.get_self_evolution_run(run_id)
+    if not before:
+        raise ValueError("self-evolution run not found")
+    if g_memory_store:
+        g_memory_store.add_task_event(
+            task_id,
+            "self_evolution_benchmark_started",
+            f"Running self-evolution benchmarks for run #{run_id}",
+            data={"run_id": run_id, "target_type": before.get("target_type")},
+        )
+    after = manager.run_automatic_benchmarks(run_id)
+    after = manager.attach_runtime_quality_snapshot(run_id, created_by="worker")
+    _worker_require_not_cancelled(task_id)
+    if g_memory_store:
+        g_memory_store.add_task_event(
+            task_id,
+            "self_evolution_benchmark_finished",
+            f"Self-evolution run #{run_id} evaluated",
+            data={
+                "run_id": run_id,
+                "status": after.get("status"),
+                "release_stage": after.get("release_stage"),
+                "gate_passed": bool((after.get("gate_result") or {}).get("passed")),
+            },
+        )
+    return {
+        "action": "self_evolution_benchmark",
+        "run_id": run_id,
+        "status": after.get("status"),
+        "release_stage": after.get("release_stage"),
+        "publish_decision": after.get("publish_decision"),
+        "gate_passed": bool((after.get("gate_result") or {}).get("passed")),
+        "run": after,
     }
 
 
@@ -1739,6 +1787,41 @@ async def api_self_evolution_runs(status: str = "", limit: int = 100):
     return JSONResponse({"runs": rows, "count": len(rows)})
 
 
+@app.get("/api/self-evolution/board")
+async def api_self_evolution_board(limit: int = 50):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    runs = g_memory_store.list_self_evolution_runs(limit=limit)
+    snapshot = g_memory_store.runtime_quality_snapshot()
+    stage_counts: dict[str, int] = {}
+    for run in runs:
+        stage = str(run.get("release_stage") or run.get("status") or "candidate")
+        stage_counts[stage] = stage_counts.get(stage, 0) + 1
+    blocked = [
+        run for run in runs
+        if run.get("status") == "rejected"
+        or not (run.get("gate_result") or {}).get("passed", True)
+    ]
+    active = [run for run in runs if run.get("release_stage") == "active"]
+    score = 100
+    if not runs:
+        score -= 25
+    if blocked:
+        score -= min(30, len(blocked) * 5)
+    if snapshot.get("cancel_rate", 0) > 0.15 or snapshot.get("long_task_failure_rate", 0) > 0.10:
+        score -= 20
+    score = max(0, min(100, score))
+    return JSONResponse({
+        "runs": runs,
+        "stage_counts": stage_counts,
+        "quality_snapshot": snapshot,
+        "active_count": len(active),
+        "blocked_count": len(blocked),
+        "enterprise_score": score,
+        "enterprise_ready": score >= 85 and bool(runs),
+    })
+
+
 @app.post("/api/self-evolution/runs")
 async def api_self_evolution_create_run(request: Request):
     if not g_memory_store:
@@ -1756,9 +1839,37 @@ async def api_self_evolution_create_run(request: Request):
             conclusion=data.get("conclusion", ""),
             created_by=data.get("actor_id", "system"),
         )
+        queued = bool(data.get("auto_queue", True))
+        task = {}
+        if queued:
+            task = enqueue_runtime_task(
+                "self-evolution",
+                f"Self-evolution benchmark run {run['id']}",
+                source="self_evolution",
+                metadata={
+                    "worker_action": "self_evolution_benchmark",
+                    "run_id": run["id"],
+                    "idempotency_key": data.get("idempotency_key", ""),
+                },
+            )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return JSONResponse({"run": run})
+    return JSONResponse({"run": run, "queued": queued, "task": task})
+
+
+@app.post("/api/self-evolution/candidates")
+async def api_self_evolution_candidate(request: Request):
+    from reflection.self_evolution import SelfEvolutionManager
+    data = await request.json()
+    try:
+        candidate = SelfEvolutionManager.generate_candidate(
+            data.get("target_type", ""),
+            data.get("baseline_payload", {}),
+            strategy=data.get("strategy", "balanced"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"candidate_payload": candidate})
 
 
 @app.post("/api/self-evolution/runs/{run_id}/evaluate")
@@ -1785,7 +1896,71 @@ async def api_self_evolution_publish(run_id: int, request: Request):
     from reflection.self_evolution import SelfEvolutionManager
     data = await request.json()
     try:
-        run = SelfEvolutionManager(g_memory_store).publish(
+        run = SelfEvolutionManager(g_memory_store).start_shadow(run_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"run": run})
+
+
+@app.post("/api/self-evolution/runs/{run_id}/quality-signal")
+async def api_self_evolution_quality_signal(run_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.self_evolution import SelfEvolutionManager
+    data = await request.json()
+    try:
+        run = SelfEvolutionManager(g_memory_store).record_quality_signal(
+            run_id,
+            data.get("signal_type", "quality"),
+            data.get("value", 0),
+            metadata=data.get("metadata", {}),
+            created_by=data.get("actor_id", "system"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"run": run})
+
+
+@app.post("/api/self-evolution/runs/{run_id}/quality-snapshot")
+async def api_self_evolution_quality_snapshot(run_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.self_evolution import SelfEvolutionManager
+    data = await request.json()
+    try:
+        run = SelfEvolutionManager(g_memory_store).attach_runtime_quality_snapshot(
+            run_id,
+            created_by=data.get("actor_id", "system"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"run": run})
+
+
+@app.post("/api/self-evolution/runs/{run_id}/canary")
+async def api_self_evolution_canary(run_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.self_evolution import SelfEvolutionManager
+    data = await request.json()
+    try:
+        run = SelfEvolutionManager(g_memory_store).promote_canary(
+            run_id,
+            traffic_percent=data.get("traffic_percent", 10),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"run": run})
+
+
+@app.post("/api/self-evolution/runs/{run_id}/activate")
+async def api_self_evolution_activate(run_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.self_evolution import SelfEvolutionManager
+    data = await request.json()
+    try:
+        run = SelfEvolutionManager(g_memory_store).activate(
             run_id,
             actor_id=data.get("actor_id", "system"),
             reason=data.get("reason", ""),
