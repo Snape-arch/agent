@@ -960,3 +960,23 @@ Verification:
 
 Known notes:
 - Reranker improves ranking quality but adds CPU latency. It should be enabled for high-quality paper/knowledge workflows and left off for lightweight demos unless needed.
+
+### 2026-06-28 - Long-paper citation-aware RAG stress acceptance
+
+Completed:
+- Upgraded generic document ingestion so PDF text split by form-feed preserves page-aware chunk citations such as `doc:1#page=4&chunk=1`.
+- Made reranker candidates citation-aware by including title and citation/source metadata in the query-passage scoring input.
+- Added batch embedding/upsert support for vector indexing, so Chroma + local Qwen3 embedding can handle larger corpus acceptance runs without one-by-one encode overhead.
+- Added `clawos/scripts/paper_rag_acceptance.py`, which generates a real multi-page PDF, ingests page-aware chunks, adds a larger distractor corpus, indexes through Chroma/Qwen3 embedding, then validates top-30 recall and top-5 Qwen3 rerank.
+- Added regression coverage for page-aware PDF chunk citations.
+
+Verification:
+- `python clawos\scripts\paper_rag_acceptance.py --out output\reports\paper_rag_acceptance.json`: `ok=True`, `pages=16`, `chunks=32`, `vector_count=352`, `vector_recall_at_30=1.0`, `rerank_recall_at_5=1.0`, `rerank_mrr=1.0`, persisted vector count `352`.
+- `python clawos\scripts\vector_db_acceptance.py --out output\reports\vector_db_acceptance.json`: `ok=True`, `direct_recall_at_30=1.0`, `hybrid_recall_at_5=1.0`, `rerank_recall_at_5=1.0`, `rerank_mrr=1.0`.
+- `python -m py_compile clawos\memoryos\services\vector_store.py clawos\memoryos\document_ingestion.py clawos\memoryos\services\retrieval.py clawos\scripts\paper_rag_acceptance.py`: passed.
+- `python -m unittest clawos.tests.test_memoryos_mvp clawos.tests.test_retrieval_reranker`: `13 tests OK`.
+- `python -m unittest discover -s clawos\tests`: `162 tests OK`.
+
+Known notes:
+- Stress reports under `output\reports\` are ignored runtime evidence and should not be committed.
+- The current stress corpus is synthetic but exercises real PDF generation, parsing, chunking, Chroma persistence, embedding, reranking, and citation checks. Next step for production evidence is running the same script against user-provided real papers.

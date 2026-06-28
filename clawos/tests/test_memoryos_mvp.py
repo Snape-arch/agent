@@ -237,6 +237,26 @@ class MemoryOSMvpTests(unittest.TestCase):
         self.assertTrue(all(str(row["source"]).startswith(f"doc:{second['id']}#") for row in knowledge))
         self.assertTrue(vector_hits)
 
+    def test_document_ingestion_preserves_pdf_page_citations(self):
+        from memoryos.document_ingestion import ingest_file
+        from memoryos.memory_store import MemoryStore
+        from reportlab.pdfgen import canvas
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            pdf = root / "paper.pdf"
+            doc = canvas.Canvas(str(pdf))
+            doc.drawString(72, 720, "Page one discusses overview material.")
+            doc.showPage()
+            doc.drawString(72, 720, "Page two discusses citation fidelity evidence chains.")
+            doc.save()
+            store = MemoryStore(str(root / "memory.db"))
+            imported = ingest_file(store, root / "uploads", pdf, title="Paper", category="research")
+            chunks = store.get_document_chunks(imported["id"], limit=10)
+
+        self.assertEqual(imported["metadata"]["page_count"], 2)
+        self.assertTrue(any("#page=2&chunk=1" in chunk["citation"] for chunk in chunks))
+
     def test_scanned_pdf_ingestion_enters_ocr_queue_instead_of_failing(self):
         import memoryos.document_ingestion as ingestion
         from memoryos.memory_store import MemoryStore

@@ -42,6 +42,26 @@ def chunk_text(text: str, size: int = 1400, overlap: int = 180) -> list[str]:
     return chunks
 
 
+def chunk_text_with_pages(text: str, size: int = 1400, overlap: int = 180) -> list[dict]:
+    """Chunk text while preserving PDF page boundaries when form feeds exist."""
+    pages = str(text or "").split("\f")
+    if len(pages) <= 1:
+        return [
+            {"content": chunk, "page_number": 0, "page_chunk_index": index}
+            for index, chunk in enumerate(chunk_text(text, size=size, overlap=overlap), 1)
+        ]
+    rows: list[dict] = []
+    for page_number, page in enumerate(pages, 1):
+        page_chunks = chunk_text(page, size=size, overlap=overlap)
+        for page_chunk_index, chunk in enumerate(page_chunks, 1):
+            rows.append({
+                "content": chunk,
+                "page_number": page_number,
+                "page_chunk_index": page_chunk_index,
+            })
+    return rows
+
+
 def extract_text(path: Path) -> tuple[str, dict]:
     suffix = path.suffix.lower()
     if suffix == ".pdf":
@@ -119,7 +139,7 @@ def ingest_file(store, upload_dir: Path, source_path: Path, *, title: str = "", 
     if source_path.resolve() != stored_path.resolve():
         shutil.copyfile(source_path, stored_path)
     text, metadata = extract_text(stored_path)
-    chunks = chunk_text(text)
+    chunks = chunk_text_with_pages(text)
     if not chunks:
         if metadata.get("ocr_required"):
             document = store.add_document(
@@ -149,13 +169,16 @@ def ingest_file(store, upload_dir: Path, source_path: Path, *, title: str = "", 
         metadata=metadata,
     )
     knowledge_ids: list[int] = []
-    for index, chunk in enumerate(chunks, 1):
-        citation = f"doc:{document['id']}#chunk={index}"
+    for index, chunk_info in enumerate(chunks, 1):
+        chunk = chunk_info["content"]
+        page_number = int(chunk_info.get("page_number") or 0)
+        page_chunk = int(chunk_info.get("page_chunk_index") or index)
+        citation = f"doc:{document['id']}#page={page_number}&chunk={page_chunk}" if page_number else f"doc:{document['id']}#chunk={index}"
         if index == 1 and hasattr(store, "delete_knowledge_by_source_prefix"):
             store.delete_knowledge_by_source_prefix(f"doc:{document['id']}#")
         store.add_document_chunk(document["id"], index, chunk, citation)
         item = store.add_knowledge(
-            title=f"{document['title']} #{index}",
+            title=f"{document['title']} p.{page_number} #{page_chunk}" if page_number else f"{document['title']} #{index}",
             content=f"{chunk}\n\nSource: {citation}",
             category=category or "domain",
             source=citation,

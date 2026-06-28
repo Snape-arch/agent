@@ -53,6 +53,10 @@ class VectorStore:
             self._texts[str(doc_id)] = text or ""
             self._metadata[str(doc_id)] = metadata or {}
 
+    def add_many(self, rows: list[dict]) -> None:
+        for row in rows:
+            self.add(row["id"], row.get("text", ""), row.get("metadata") or {})
+
     def remove(self, doc_id: str) -> None:
         with self._lock:
             self._vectors.pop(str(doc_id), None)
@@ -134,6 +138,11 @@ class SentenceTransformerEncoder:
         vector = model.encode([text or ""], normalize_embeddings=True)[0]
         return np.asarray(vector, dtype=float).tolist()
 
+    def embed_many(self, texts: list[str]) -> list[list[float]]:
+        model = self._load()
+        vectors = model.encode([text or "" for text in texts], normalize_embeddings=True, batch_size=16)
+        return np.asarray(vectors, dtype=float).tolist()
+
 
 def _embedding_provider_name(provider: str = "") -> str:
     return (
@@ -205,6 +214,12 @@ class ChromaVectorStore:
     def _embedding(self, text: str) -> list[float]:
         return self._encoder.embed(text or "")
 
+    def _embeddings(self, texts: list[str]) -> list[list[float]]:
+        embed_many = getattr(self._encoder, "embed_many", None)
+        if callable(embed_many):
+            return embed_many([text or "" for text in texts])
+        return [self._embedding(text or "") for text in texts]
+
     def add(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
         with self._lock:
             self._collection.upsert(
@@ -212,6 +227,20 @@ class ChromaVectorStore:
                 documents=[text or ""],
                 metadatas=[_metadata_for_chroma(metadata)],
                 embeddings=[self._embedding(text or "")],
+            )
+
+    def add_many(self, rows: list[dict]) -> None:
+        if not rows:
+            return
+        with self._lock:
+            ids = [str(row["id"]) for row in rows]
+            docs = [row.get("text", "") or "" for row in rows]
+            metas = [_metadata_for_chroma(row.get("metadata") or {}) for row in rows]
+            self._collection.upsert(
+                ids=ids,
+                documents=docs,
+                metadatas=metas,
+                embeddings=self._embeddings(docs),
             )
 
     def remove(self, doc_id: str) -> None:
@@ -364,29 +393,30 @@ class MemoryVectorStore:
         try:
             conn = sqlite3.connect(self.db_path, timeout=5)
             conn.row_factory = sqlite3.Row
+            indexed_rows = []
             rows = conn.execute(
                 "SELECT id, task, lesson, context, solution, outcome FROM experiences ORDER BY id"
             ).fetchall()
             for row in rows:
                 doc_id = f"exp_{row['id']}"
                 text = f"{row['task']} {row['lesson']} {row['context']} {row['solution']}"
-                self._store.add(doc_id, text, {
+                indexed_rows.append({"id": doc_id, "text": text, "metadata": {
                     "type": "experience",
                     "outcome": row["outcome"],
                     "task": row["task"][:200],
-                })
+                }})
             rows = conn.execute(
                 "SELECT id, title, content, category, source FROM knowledge ORDER BY id"
             ).fetchall()
             for row in rows:
                 doc_id = f"kw_{row['id']}"
                 text = f"{row['title']} {row['content']}"
-                self._store.add(doc_id, text, {
+                indexed_rows.append({"id": doc_id, "text": text, "metadata": {
                     "type": "knowledge",
                     "category": row["category"],
                     "source": row["source"],
                     "title": row["title"],
-                })
+                }})
             rows = conn.execute(
                 """
                 SELECT id, memory_type, category, key, value, source, confidence
@@ -398,14 +428,20 @@ class MemoryVectorStore:
             for row in rows:
                 doc_id = f"mem_{row['id']}"
                 text = f"{row['memory_type']} {row['category']} {row['key']} {row['value']}"
-                self._store.add(doc_id, text, {
+                indexed_rows.append({"id": doc_id, "text": text, "metadata": {
                     "type": row["memory_type"],
                     "category": row["category"],
                     "source": row["source"],
                     "title": row["key"],
                     "confidence": row["confidence"],
-                })
+                }})
             conn.close()
+            add_many = getattr(self._store, "add_many", None)
+            if callable(add_many):
+                add_many(indexed_rows)
+            else:
+                for item in indexed_rows:
+                    self._store.add(item["id"], item.get("text", ""), item.get("metadata") or {})
         except sqlite3.Error:
             return
 

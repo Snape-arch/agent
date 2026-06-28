@@ -84,7 +84,15 @@ class CrossEncoderReranker:
         if not candidates:
             return []
         model = self._load()
-        pairs = [(query or "", item.get("content") or item.get("text") or "") for item in candidates]
+        pairs = []
+        for item in candidates:
+            citation = item.get("citation") or item.get("source_ref") or item.get("metadata", {}).get("source", "")
+            candidate_text = "\n".join([
+                f"Title: {item.get('title', '')}",
+                f"Citation: {citation}",
+                str(item.get("content") or item.get("text") or ""),
+            ]).strip()
+            pairs.append((query or "", candidate_text))
         scores = model.predict(pairs, batch_size=self.batch_size)
         ranked = []
         for score, item in zip(scores, candidates):
@@ -186,6 +194,7 @@ class RetrievalService:
                 "id": item.get("id"),
                 "title": item.get("metadata", {}).get("title", ""),
                 "content": item.get("text", ""),
+                "citation": item.get("metadata", {}).get("source", ""),
                 "score": item.get("score", 0),
                 "strategy": "vector",
                 "metadata": item.get("metadata", {}),
