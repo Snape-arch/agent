@@ -2163,3 +2163,213 @@
       linear-gradient(120deg,rgba(255,255,255,.06),transparent 42%,rgba(0,0,0,.16));
   }
 }
+
+/* ChatGPT-like conversation flow and calmer knowledge workspace. */
+.aether-console .chat{
+  align-items:center;
+  justify-content:center;
+}
+.aether-console .composer{
+  border-top:1px solid rgba(255,255,255,.72);
+  background:transparent;
+}
+.aether-console .chat-inner{
+  width:min(100%,920px);
+  margin:0 auto;
+  display:flex;
+  flex-direction:column;
+  gap:22px;
+}
+.aether-console .chat-inner:has(.msg){
+  align-self:stretch;
+  justify-content:flex-start;
+}
+.aether-console .msg{
+  display:flex;
+  width:100%;
+  margin:0;
+  grid-template-columns:none;
+  gap:0;
+}
+.aether-console .msg .avatar,
+.aether-console .msg .mh,
+.aether-console .msg .bubble{
+  display:contents;
+}
+.aether-console .message-body{
+  max-width:min(78%,720px);
+  min-width:0;
+}
+.aether-console .msg.user{
+  justify-content:flex-end;
+}
+.aether-console .msg.user .message-body{
+  padding:13px 17px;
+  border-radius:22px 22px 6px 22px;
+  color:#fff;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.2),rgba(255,255,255,.07)),
+    rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.2);
+  box-shadow:
+    inset 1px 1px 0 rgba(255,255,255,.34),
+    inset -1px -1px 0 rgba(0,0,0,.5),
+    0 14px 34px rgba(0,0,0,.24);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+}
+.aether-console .msg.agent{
+  justify-content:flex-start;
+}
+.aether-console .msg.agent .message-body{
+  max-width:min(86%,780px);
+  padding:0 2px;
+  color:#fff;
+  background:transparent;
+  border:0;
+  box-shadow:none;
+}
+.aether-console .msg.agent .mc{
+  font-size:15px;
+  line-height:1.76;
+  color:rgba(255,255,255,.92);
+}
+.aether-console .msg.user .mc{
+  font-size:14px;
+  line-height:1.58;
+  color:#fff;
+}
+.aether-console .msg.agent .mc p,
+.aether-console .msg.user .mc p{
+  margin:0 0 10px;
+}
+.aether-console .msg.agent .mc p:last-child,
+.aether-console .msg.user .mc p:last-child{
+  margin-bottom:0;
+}
+.aether-console .msg.agent .mc code,
+.aether-console .msg.agent .mc pre{
+  color:#fff;
+  background:rgba(255,255,255,.09);
+  border:1px solid rgba(255,255,255,.12);
+}
+.aether-console .tool-row{
+  padding:0 0 8px;
+}
+.aether-console .msg.user .tool-row{
+  justify-content:flex-end;
+}
+.aether-console .tool{
+  color:rgba(255,255,255,.88);
+  background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.14);
+}
+.aether-console .knowledge-workspace{
+  max-width:1180px;
+  padding:22px;
+}
+.aether-console #view-knowledge .library-head{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:18px;
+  align-items:start;
+  margin-bottom:18px;
+  padding-bottom:14px;
+  border-bottom:1px solid rgba(255,255,255,.12);
+}
+.aether-console #view-knowledge .library-head h2{
+  font-size:24px;
+}
+.aether-console #view-knowledge .library-tabs{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:8px;
+}
+.aether-console #view-knowledge .library-tabs button{
+  min-height:34px;
+  padding:7px 11px;
+  border-radius:999px;
+}
+.aether-console #view-knowledge .knowledge-toolbar,
+.aether-console #view-knowledge .obsidian-panel,
+.aether-console #view-knowledge .report-style-panel{
+  margin-bottom:14px;
+}
+.aether-console #view-knowledge .knowledge-layout{
+  grid-template-columns:minmax(0,1.04fr) minmax(300px,.96fr);
+  gap:14px;
+}
+.aether-console #view-knowledge .knowledge-editor,
+.aether-console #view-knowledge .knowledge-map,
+.aether-console #view-knowledge .section-block,
+.aether-console #view-knowledge .report-result,
+.aether-console #view-knowledge .obsidian-panel,
+.aether-console #view-knowledge .report-style-panel,
+.aether-console #view-knowledge .knowledge-toolbar{
+  color:#fff;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.13),rgba(255,255,255,.045)),
+    rgba(11,12,13,.46);
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:
+    inset 1px 1px 0 rgba(255,255,255,.24),
+    inset -1px -1px 0 rgba(0,0,0,.54),
+    0 16px 38px rgba(0,0,0,.22);
+  border-radius:20px;
+}
+.aether-console #view-knowledge .knowledge-editor,
+.aether-console #view-knowledge .knowledge-map{
+  padding:16px;
+}
+.aether-console #view-knowledge .section-block{
+  padding:14px;
+}
+.aether-console #view-knowledge label,
+.aether-console #view-knowledge b,
+.aether-console #view-knowledge h2,
+.aether-console #view-knowledge dt,
+.aether-console #view-knowledge dd,
+.aether-console #view-knowledge .map-title,
+.aether-console #view-knowledge .report-result{
+  color:#fff;
+}
+.aether-console #view-knowledge span,
+.aether-console #view-knowledge p,
+.aether-console #view-knowledge .hint,
+.aether-console #view-knowledge .map-title span,
+.aether-console #view-knowledge .import-drop span{
+  color:rgba(255,255,255,.74);
+}
+.aether-console #view-knowledge input,
+.aether-console #view-knowledge textarea,
+.aether-console #view-knowledge select,
+.aether-console #view-knowledge .searchbar{
+  color:#fff;
+  background:rgba(8,9,10,.42);
+  border-color:rgba(255,255,255,.16);
+}
+.aether-console #view-knowledge .table{
+  background:rgba(8,9,10,.36);
+}
+.aether-console #view-knowledge .table th,
+.aether-console #view-knowledge .table td{
+  color:rgba(255,255,255,.86);
+}
+.aether-console #view-knowledge .compact-block{
+  max-height:260px;
+  overflow:auto;
+}
+@media(max-width:980px){
+  .aether-console .message-body,
+  .aether-console .msg.agent .message-body{
+    max-width:100%;
+  }
+  .aether-console #view-knowledge .library-head,
+  .aether-console #view-knowledge .knowledge-layout{
+    grid-template-columns:1fr;
+  }
+  .aether-console #view-knowledge .library-tabs{
+    justify-content:flex-start;
+  }
+}

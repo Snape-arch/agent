@@ -117,9 +117,10 @@ function addMessage(role, text, tools) {
   if (!inner) return;
   if (inner.querySelector(".empty")) inner.innerHTML = "";
   const div = document.createElement("div");
-  div.className = "msg " + (role === "assistant" ? "agent" : "user");
+  const isAssistant = role === "assistant";
+  div.className = "msg " + (isAssistant ? "agent" : "user");
   const chips = (tools || []).map(t => `<span class="tool ${String(JSON.stringify(t.result || {})).includes("error") ? "err" : ""}">${esc(t.name)}</span>`).join("");
-  div.innerHTML = `<div class="avatar">${role === "assistant" ? "C" : "U"}</div><div class="bubble"><div class="mh">${role === "assistant" ? "ClawOS" : "你"}</div>${chips ? `<div class="tool-row">${chips}</div>` : ""}<div class="mc">${md(text)}</div></div>`;
+  div.innerHTML = `<div class="message-body">${chips ? `<div class="tool-row">${chips}</div>` : ""}<div class="mc">${md(text)}</div></div>`;
   inner.appendChild(div);
   $("chat").scrollTop = $("chat").scrollHeight;
 }
@@ -129,7 +130,7 @@ function addAssistantStream() {
   if (inner.querySelector(".empty")) inner.innerHTML = "";
   const div = document.createElement("div");
   div.className = "msg agent";
-  div.innerHTML = `<div class="avatar">C</div><div class="bubble"><div class="mh">ClawOS</div><div class="mc"></div></div>`;
+  div.innerHTML = `<div class="message-body"><div class="mc"></div></div>`;
   inner.appendChild(div);
   const target = div.querySelector(".mc");
   return text => {

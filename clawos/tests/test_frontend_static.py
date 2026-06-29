@@ -74,6 +74,37 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertIn(token, css)
 
+    def test_console_chat_uses_clean_chatgpt_like_message_layout(self):
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
+
+        self.assertIn("message-body", js)
+        self.assertNotIn('class="avatar"', js)
+        self.assertNotIn('class="mh"', js)
+        self.assertNotIn('?"C":"U"', js.replace(" ", ""))
+        for token in (
+            ".aether-console .msg.user",
+            "justify-content:flex-end",
+            ".aether-console .msg.agent .message-body",
+            "background:transparent",
+            ".aether-console .msg.agent .mc",
+        ):
+            self.assertIn(token, css)
+
+    def test_console_knowledge_workspace_uses_readable_glass_layout(self):
+        css = self.read_page("assets/console.css")
+
+        for token in (
+            ".aether-console #view-knowledge .library-head",
+            ".aether-console #view-knowledge .knowledge-layout",
+            ".aether-console #view-knowledge .knowledge-editor",
+            ".aether-console #view-knowledge .knowledge-map",
+            ".aether-console #view-knowledge .table th",
+            "color:rgba(255,255,255,.86)",
+            ".aether-console #view-knowledge .compact-block",
+        ):
+            self.assertIn(token, css)
+
     def test_console_has_dedicated_mobile_more_entry(self):
         html = self.read_page("console.html")
         css = self.read_page("assets/console.css")
