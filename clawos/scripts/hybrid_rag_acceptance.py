@@ -30,7 +30,7 @@ from providers import create_model_provider
 
 CASES: list[dict[str, Any]] = [
     {
-        "scenario": "paper",
+        "scenario": "research",
         "name": "citation_faithful_paper_brief",
         "user_task": "为论文阅读场景生成有证据链的评审摘要，说明引用漂移、复现实验和局限。",
         "query": "论文阅读里如何验证 RAG 答案的引用忠实度、引用漂移和可复现实验设计？",
@@ -60,7 +60,7 @@ CASES: list[dict[str, Any]] = [
         ],
     },
     {
-        "scenario": "project",
+        "scenario": "competition",
         "name": "enterprise_delivery_room_followup",
         "user_task": "基于项目交付包回答评委问题，说明技术证据、风险和下一步验收。",
         "query": "ClawOS 企业交付室生成的答辩包里，哪些证据能支撑技术可交付性和风险应对？",
@@ -146,6 +146,35 @@ CASES: list[dict[str, Any]] = [
                 "slug": "office_learning",
                 "title": "Learning Self-Test Worksheet",
                 "content": "Study questions, wrong-answer review, mastery score, spaced repetition, and concept dependencies.",
+            },
+        ],
+    },
+    {
+        "scenario": "learning",
+        "name": "learning_mastery_plan_with_mistake_review",
+        "user_task": "为学习场景生成可复盘计划：目标、知识依赖、错题复盘、掌握度评分、间隔复习和下一步练习。",
+        "query": "哪份材料最适合生成学习规划、知识依赖图、错题复盘、掌握度评分和间隔复习安排？",
+        "expected_slug": "learning_mastery_plan",
+        "rubric": "Must retrieve learning workflow material with goals, concept dependencies, mistake review, mastery score, spaced repetition, and next practice.",
+        "items": [
+            {
+                "slug": "learning_mastery_plan",
+                "title": "Learning Mastery Plan and Mistake Review Workflow",
+                "content": (
+                    "A learning workflow creates goals, concept dependency graphs, wrong-answer review, "
+                    "mistake causes, corrected answers, mastery score, spaced repetition intervals, "
+                    "self-test questions, and next practice tasks."
+                ),
+            },
+            {
+                "slug": "learning_delivery",
+                "title": "Competition Delivery Checklist",
+                "content": "Submission checklist, demo video, risk register, judge questions, and package export paths.",
+            },
+            {
+                "slug": "learning_office",
+                "title": "Office Management Weekly Brief",
+                "content": "Weekly meeting summary, action owners, KPI notes, budget updates, and blockers.",
             },
         ],
     },
@@ -384,8 +413,12 @@ def aggregate(case_results: list[dict[str, Any]], recall_k: int, top_k: int) -> 
     citation_hits = [1.0 if item["citation_hit"] else 0.0 for item in case_results]
     grounded = [1.0 if item.get("judge", {}).get("grounded") else 0.0 for item in case_results]
     judged_expected = [1.0 if item.get("judge", {}).get("cites_expected") else 0.0 for item in case_results]
+    case_passes = [1.0 if item.get("pass") else 0.0 for item in case_results]
     latencies = sorted(float(item.get("latency_ms") or 0) for item in case_results)
     return {
+        "pass_rate": avg(case_passes),
+        "passed_count": int(sum(case_passes)),
+        "failed_count": len(case_results) - int(sum(case_passes)),
         f"vector_recall_at_{recall_k}": avg(vector_hits),
         f"rerank_recall_at_{top_k}": avg(rerank_hits),
         "rerank_mrr": avg(rerank_rr),
@@ -442,19 +475,37 @@ async def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
             answer = await generate_grounded_answer(provider, case, reranked)
             citation_hit = any(normalize_id(item).intersection({expected_id}) for item in answer.get("citation_ids", []))
             judge = await judge_answer(provider, case, answer, expected_id)
+            vector_rank = hit_rank(vector_ids, expected_id)
+            rerank_rank = hit_rank(rerank_ids, expected_id)
+            case_pass = bool(vector_rank and rerank_rank and citation_hit and judge.get("grounded"))
             case_results.append({
                 "scenario": case["scenario"],
                 "name": case["name"],
                 "expected_id": expected_id,
+                "pass": case_pass,
                 "rewrite": rewrite,
                 "vector_ids": vector_ids[:args.recall_k],
                 "rerank_ids": rerank_ids[:args.top_k],
-                "vector_rank": hit_rank(vector_ids, expected_id),
-                "rerank_rank": hit_rank(rerank_ids, expected_id),
+                "vector_rank": vector_rank,
+                "rerank_rank": rerank_rank,
                 "citation_hit": citation_hit,
                 "answer": answer,
                 "judge": judge,
                 "latency_ms": round((time.perf_counter() - case_started) * 1000, 3),
+                "reproducible_io": {
+                    "input": {
+                        "scenario": case["scenario"],
+                        "task": case["user_task"],
+                        "query": case["query"],
+                        "expected_slug": case["expected_slug"],
+                    },
+                    "output": {
+                        "rewritten_query": rewrite.get("rewritten_query", ""),
+                        "citation_ids": answer.get("citation_ids", []),
+                        "answer": answer.get("answer", ""),
+                        "judge": judge,
+                    },
+                },
                 "top_reranked": [
                     {
                         "id": str(item.get("id")),
@@ -479,6 +530,7 @@ async def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
         and metrics[f"rerank_recall_at_{args.top_k}"] >= args.min_recall
         and metrics["citation_hit_rate"] >= args.min_citation_hit_rate
         and metrics["judge_grounded_rate"] >= args.min_grounded_rate
+        and metrics["pass_rate"] >= args.min_pass_rate
     )
     return {
         "ok": ok,
@@ -490,7 +542,7 @@ async def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
         "reranker_files": reranker_files,
         "vector_stats": vector_stats,
         "benchmark": {
-            "name": "deepseek-qwen3-hybrid-rag-v1",
+            "name": "deepseek-qwen3-complex-task-acceptance-v2",
             "case_count": len(CASES),
             "recall_k": args.recall_k,
             "top_k": args.top_k,
@@ -498,6 +550,7 @@ async def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
                 "min_recall": args.min_recall,
                 "min_citation_hit_rate": args.min_citation_hit_rate,
                 "min_grounded_rate": args.min_grounded_rate,
+                "min_pass_rate": args.min_pass_rate,
             },
             "metrics": metrics,
         },
@@ -528,6 +581,7 @@ def main() -> int:
     parser.add_argument("--min-recall", type=float, default=1.0)
     parser.add_argument("--min-citation-hit-rate", type=float, default=1.0)
     parser.add_argument("--min-grounded-rate", type=float, default=0.75)
+    parser.add_argument("--min-pass-rate", type=float, default=1.0)
     parser.add_argument("--out", default="output/deepseek_hybrid_rag_acceptance.json")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
@@ -550,7 +604,8 @@ def main() -> int:
             f"rerank_recall={metrics.get(f'rerank_recall_at_{args.top_k}')} "
             f"rerank_mrr={metrics.get('rerank_mrr')} "
             f"citation_hit_rate={metrics.get('citation_hit_rate')} "
-            f"grounded_rate={metrics.get('judge_grounded_rate')}"
+            f"grounded_rate={metrics.get('judge_grounded_rate')} "
+            f"pass_rate={metrics.get('pass_rate')}"
         )
         if args.out:
             print(f"Report: {args.out}")

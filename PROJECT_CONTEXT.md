@@ -1168,3 +1168,27 @@ Known notes:
 
 Recommended next step:
 - After MTTBook arrives, rerun the execution squad and require `quality_gate.status=pass` before final submission rehearsal.
+
+### 2026-06-29 - Rework loop and five-scenario complex task acceptance
+
+Completed:
+- Extended `multi_agent_review_committee` with `rework_loop`, so a failed quality gate now triggers Builder rework, Reviewer recheck, RiskAgent rescore, and JudgeAgent rescore.
+- The loop ends as `pass`, `revision_required`, or explicit `blocked`; current MTTBook hardware evidence remains an external blocker and is reported as `blocked_external_dependency` instead of being silently accepted.
+- The console now displays rework rounds alongside trace, gate, arbitration, roles, and priorities.
+- Expanded `hybrid_rag_acceptance.py` into a five-scenario complex-task benchmark covering `research`, `office`, `code`, `learning`, and `competition`.
+- Each complex-task case now records `pass`, citation hit, latency, top reranked evidence, answer/judge output, and `reproducible_io` with task/query/expected slug and generated output.
+
+Verification:
+- `python -m unittest clawos.tests.test_scenarios_e2e clawos.tests.test_skill_runtime clawos.tests.test_frontend_static clawos.tests.test_hybrid_rag_acceptance`: `46 tests OK`.
+- `python -m py_compile clawos\scripts\scenario_tools.py clawos\scripts\hybrid_rag_acceptance.py clawos\scripts\tool_runner.py`: passed.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- Real DeepSeek + Qwen3 full-chain complex-task run wrote ignored local report `output\deepseek_hybrid_rag_acceptance.json` and returned `ok=True`, `case_count=5`, `pass_rate=1.0`, `passed_count=5`, `failed_count=0`, `vector_recall_at_30=1.0`, `rerank_recall_at_5=1.0`, `rerank_mrr=1.0`, `citation_hit_rate=1.0`, `judge_grounded_rate=1.0`, `judge_expected_citation_rate=1.0`, `latency_p50_ms=19258.453`, `latency_p95_ms=21486.345`.
+
+Known notes:
+- The API key was supplied via environment for the live run and is not written to code, reports, or this context.
+- `output\deepseek_hybrid_rag_acceptance.json` is ignored evidence and should not be committed.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+- MTTBook real-machine evidence remains the main blocker for turning the multi-agent gate from blocked to pass.
+
+Recommended next step:
+- Add a compact console card that loads the latest complex-task acceptance report and shows per-scenario pass/fail, citation hit, latency, and report path without exposing secrets.

@@ -49,6 +49,7 @@ class HybridRagAcceptanceTests(unittest.TestCase):
                 "vector_rank": 2,
                 "rerank_rank": 1,
                 "citation_hit": True,
+                "pass": True,
                 "judge": {"grounded": True, "cites_expected": True},
                 "latency_ms": 120,
             },
@@ -56,6 +57,7 @@ class HybridRagAcceptanceTests(unittest.TestCase):
                 "vector_rank": 1,
                 "rerank_rank": 2,
                 "citation_hit": True,
+                "pass": False,
                 "judge": {"grounded": True, "cites_expected": False},
                 "latency_ms": 240,
             },
@@ -66,6 +68,21 @@ class HybridRagAcceptanceTests(unittest.TestCase):
         self.assertEqual(metrics["citation_hit_rate"], 1.0)
         self.assertEqual(metrics["judge_grounded_rate"], 1.0)
         self.assertEqual(metrics["judge_expected_citation_rate"], 0.5)
+        self.assertEqual(metrics["pass_rate"], 0.5)
+        self.assertEqual(metrics["passed_count"], 1)
+        self.assertEqual(metrics["failed_count"], 1)
+
+    def test_complex_task_suite_covers_five_enterprise_scenarios(self):
+        from scripts.hybrid_rag_acceptance import CASES
+
+        scenarios = {case["scenario"] for case in CASES}
+
+        self.assertEqual(scenarios, {"research", "office", "code", "learning", "competition"})
+        self.assertEqual(len(CASES), 5)
+        for case in CASES:
+            self.assertIn("user_task", case)
+            self.assertIn("query", case)
+            self.assertIn("expected_slug", case)
 
 
 if __name__ == "__main__":
