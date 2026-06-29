@@ -857,6 +857,42 @@ function committeePayload() {
   return lastSelfReviewCommittee?.result || lastSelfReviewCommittee?.data || lastSelfReviewCommittee || {};
 }
 
+function renderCommitteeTimeline(items) {
+  const rows = items || [];
+  if (!rows.length) return "";
+  return `<div class="committee-timeline">${rows.map(item => `
+    <div class="committee-timeline-item ${esc(item.status || "")}">
+      <div class="committee-timeline-dot">${esc(item.order || "")}</div>
+      <div class="committee-timeline-body">
+        <div class="committee-timeline-head"><b>${esc(item.role || "")}</b><span>${esc(item.phase || "")} · ${esc(item.status || "")}</span></div>
+        <dl>
+          <dt>Input</dt><dd>${esc(item.input || "")}</dd>
+          <dt>Action</dt><dd>${esc(item.action || "")}</dd>
+          <dt>Artifact</dt><dd>${esc(item.artifact || "none")}</dd>
+          <dt>Score</dt><dd>${esc(item.score ?? "n/a")}</dd>
+          <dt>Gate</dt><dd>${esc(item.gate || "n/a")}</dd>
+          <dt>Rework</dt><dd>${esc(item.rework_round || "n/a")}</dd>
+        </dl>
+      </div>
+    </div>
+  `).join("")}</div>`;
+}
+
+function renderRubricMatrix(matrix) {
+  if (!matrix?.rows?.length) return "";
+  const rows = matrix.rows.map(item => [
+    item.category,
+    item.weight,
+    `${item.score}/100`,
+    item.owner,
+    item.evidence,
+    item.risk,
+    item.next_action
+  ]);
+  return `<div class="rubric-summary"><b>Enterprise Rubric ${esc(matrix.score ?? "--")}/${esc(matrix.max_score ?? 100)}</b><span>${esc(matrix.status || "")} · ${esc(matrix.summary || "")}</span></div>` +
+    table(["Category", "Weight", "Score", "Owner", "Evidence", "Risk", "Next Action"], rows);
+}
+
 function renderSelfReviewCommitteeResult(data) {
   lastSelfReviewCommittee = data;
   lastCommitteeKnowledgeIds = [];
@@ -867,6 +903,7 @@ function renderSelfReviewCommitteeResult(data) {
     ["Quality gate", payload.quality_gate?.status || ""],
     ["Report", payload.committee_report || ""],
     ["Knowledge items", (payload.knowledge_items || []).length],
+    ["Rubric", payload.rubric_matrix ? `${payload.rubric_matrix.score}/${payload.rubric_matrix.max_score}` : ""],
     ["Roles", (payload.roles || []).map(role => `${role.agent}:${role.score}`).join(", ")]
   ];
   const priorityRows = (payload.priorities || []).map((item, index) => [index + 1, item]);
@@ -907,6 +944,8 @@ function renderSelfReviewCommitteeResult(data) {
     $("committeeResult").innerHTML =
       `<div class="report-flow"><b>自评审委员会已完成</b><span>下一步：保存报告到项目知识库，并用评审问题反压 demo 和提交材料。</span><div class="report-flow-steps"><span class="done">1 固定角色评审</span><span>2 保存知识库</span><span>3 继续追问</span></div><div class="action-row"><button class="primary" onclick="saveSelfReviewCommitteeToKnowledge()">保存到知识库</button><button class="secondary" onclick="askSelfReviewCommitteeQuestion()">继续追问</button></div></div>` +
       table(["Item", "Result"], rows) +
+      renderCommitteeTimeline(payload.timeline || []) +
+      renderRubricMatrix(payload.rubric_matrix) +
       table(["Step", "Agent", "Phase", "Status", "Output"], traceRows) +
       table(["Gate", "Result"], gateRows) +
       table(["Round", "Arbiter", "Status", "Decision", "Required rework"], arbitrationRows) +

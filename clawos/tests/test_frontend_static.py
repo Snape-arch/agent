@@ -328,6 +328,11 @@ class FrontendStaticTests(unittest.TestCase):
             "enterprise-delivery",
             "multi-agent",
             "execution_trace",
+            "timeline",
+            "rubric_matrix",
+            "renderCommitteeTimeline",
+            "renderRubricMatrix",
+            "Enterprise Rubric",
             "quality_gate",
             "arbitration_rounds",
             "rework_loop",
@@ -342,6 +347,8 @@ class FrontendStaticTests(unittest.TestCase):
 
         self.assertIn(".enterprise-delivery-panel", css)
         self.assertIn(".self-review-committee-panel", css)
+        self.assertIn(".committee-timeline", css)
+        self.assertIn(".rubric-summary", css)
         self.assertIn(".aether-console #view-knowledge .enterprise-delivery-panel", css)
 
     def test_console_user_facing_copy_avoids_internal_demo_terms(self):

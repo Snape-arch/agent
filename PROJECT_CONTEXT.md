@@ -1192,3 +1192,25 @@ Known notes:
 
 Recommended next step:
 - Add a compact console card that loads the latest complex-task acceptance report and shows per-scenario pass/fail, citation hit, latency, and report path without exposing secrets.
+
+### 2026-06-29 - Multi-agent timeline and enterprise rubric matrix
+
+Completed:
+- Added `timeline` output to `multi_agent_review_committee`, turning raw trace rows into judge-facing timeline events with role, input, action, artifact, score, gate, status, and rework round.
+- Added `rubric_matrix` with seven enterprise scoring dimensions: Functionality, Evidence Quality, Stability, Security Governance, Business Narrative, Reproducibility, and Demo Determinism.
+- The Markdown committee report now includes `Multi-Agent Trace Timeline` and `Enterprise Rubric Matrix` sections before the raw execution trace.
+- The Knowledge console now renders a visual timeline and enterprise rubric summary/table instead of relying only on raw trace tables.
+
+Verification:
+- `python -m py_compile clawos\scripts\scenario_tools.py clawos\scripts\tool_runner.py`: passed.
+- `python -m unittest clawos.tests.test_scenarios_e2e clawos.tests.test_skill_runtime clawos.tests.test_frontend_static`: `41 tests OK`.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- Real project dry run returned `score=92/100`, `quality_gate.status=revision_required`, `timeline_steps=9`, `rubric_score=87.72/100`, and seven rubric categories.
+
+Known notes:
+- Rubric score is strong, but release remains evidence-gated because MTTBook hardware validation is still missing.
+- Generated committee reports remain under `output/` and should not be committed.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Add a compact console card for the latest DeepSeek+Qwen complex-task acceptance report, then wire rubric categories to per-scenario evidence once the report card exists.

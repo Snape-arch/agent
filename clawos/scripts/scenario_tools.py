@@ -375,6 +375,42 @@ def _trace_step(step_id, agent, phase, task, output, status="done", artifacts=No
     }
 
 
+def _timeline_from_trace(trace, gate, rework_result):
+    timeline = []
+    for index, step in enumerate(trace, start=1):
+        artifacts = [item for item in step.get("artifacts", []) if item]
+        timeline.append({
+            "order": index,
+            "id": step.get("id"),
+            "role": step.get("agent", ""),
+            "phase": step.get("phase", ""),
+            "input": step.get("task", ""),
+            "action": step.get("output", ""),
+            "artifact": artifacts[0] if artifacts else "",
+            "artifacts": artifacts,
+            "score": step.get("score"),
+            "gate": gate.get("status") if step.get("phase") in {"risk_gate", "decision"} else "",
+            "rework_round": step.get("id") if str(step.get("id", "")).startswith("R") else "",
+            "status": step.get("status", "done"),
+        })
+    if rework_result.get("status") != "pass":
+        timeline.append({
+            "order": len(timeline) + 1,
+            "id": "GATE",
+            "role": "QualityGate",
+            "phase": "release_control",
+            "input": "Final enterprise release decision.",
+            "action": f"Release is {rework_result.get('status')} until required evidence closes.",
+            "artifact": "",
+            "artifacts": [],
+            "score": rework_result.get("final_score"),
+            "gate": rework_result.get("final_quality_gate", {}).get("status", ""),
+            "rework_round": "",
+            "status": "blocked" if rework_result.get("status") == "blocked" else rework_result.get("status"),
+        })
+    return timeline
+
+
 def _quality_gate(role_cards, final_score, missing, thresholds):
     scores = {card["agent"]: card["score"] for card in role_cards}
     failures = []
@@ -504,7 +540,104 @@ def _run_rework_rounds(delivery, role_cards, missing, thresholds, priorities, ma
     }
 
 
-def _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, score, trace, gate, arbitration_rounds, rework_result):
+def _rubric_row(category, weight, score, owner, evidence, risk, next_action):
+    return {
+        "category": category,
+        "weight": weight,
+        "score": int(max(0, min(100, score))),
+        "weighted_score": round(weight * score / 100, 2),
+        "owner": owner,
+        "evidence": evidence,
+        "risk": risk,
+        "next_action": next_action,
+    }
+
+
+def _enterprise_rubric_matrix(delivery, role_cards, gate, rework_result):
+    evidence = delivery.get("evidence_counts") or {}
+    checks = delivery.get("checks") or {}
+    files = delivery.get("files") or {}
+    scores = {card["agent"]: card["score"] for card in role_cards}
+    rows = [
+        _rubric_row(
+            "Functionality",
+            18,
+            min(96, int(delivery.get("readiness_score") or 0)),
+            "BuilderAgent",
+            f"{len(files)} delivery artifacts generated or reused.",
+            "Functionality is still demo-path heavy until more real workloads are added.",
+            "Expand v2 rework artifacts and scenario-specific workflows.",
+        ),
+        _rubric_row(
+            "Evidence Quality",
+            18,
+            92 if evidence.get("validation") and evidence.get("capability") else 72,
+            "ResearchAgent",
+            f"capability={evidence.get('capability', 0)}, validation={evidence.get('validation', 0)}, business={evidence.get('business', 0)}.",
+            "Claims weaken when evidence counts or citations are sparse.",
+            "Attach source path/chunk/confidence to every judge-facing claim.",
+        ),
+        _rubric_row(
+            "Stability",
+            14,
+            86 if gate.get("status") in {"pass", "revision_required"} else 76,
+            "ReviewerAgent",
+            f"quality_gate={gate.get('status')}, rework_status={rework_result.get('status')}.",
+            "Hardware-dependent paths remain blocked until MTTBook is available.",
+            "Rerun squad after hardware validation and compare score deltas.",
+        ),
+        _rubric_row(
+            "Security Governance",
+            14,
+            scores.get("RiskAgent", 70),
+            "RiskAgent",
+            "Path-scoped tools, ignored output reports, and explicit tmp/tools staging warnings.",
+            "RiskAgent blocks release while MTTBook evidence is missing.",
+            "Close MTTBook evidence or mark accepted risk with mitigation owner.",
+        ),
+        _rubric_row(
+            "Business Narrative",
+            12,
+            88 if evidence.get("business") and checks.get("materials") else 74,
+            "PlannerAgent",
+            "Business plan, architecture assets, demo runbook, and judge Q&A are available.",
+            "Narrative can sound broad if not tied to measurable acceptance evidence.",
+            "Lead each pitch claim with a trace, artifact, or benchmark number.",
+        ),
+        _rubric_row(
+            "Reproducibility",
+            12,
+            90 if evidence.get("validation") else 72,
+            "ResearchAgent",
+            "Tests, hybrid RAG acceptance, and generated reports use reproducible paths and inputs.",
+            "Live API and local model latency vary by environment.",
+            "Keep frozen fixtures and report JSON summaries for every complex task run.",
+        ),
+        _rubric_row(
+            "Demo Determinism",
+            12,
+            82 if rework_result.get("status") == "blocked" else 90,
+            "JudgeAgent",
+            "Execution timeline, gate status, rework rounds, and report paths are deterministic.",
+            "Final demo pass still depends on external MTTBook availability.",
+            "Prepare API/mock/local fallback scripts and a hardware-ready validation script.",
+        ),
+    ]
+    total = round(sum(row["weighted_score"] for row in rows), 2)
+    return {
+        "score": total,
+        "max_score": 100,
+        "status": "pass" if total >= 85 and rework_result.get("status") == "pass" else "needs_evidence",
+        "rows": rows,
+        "summary": (
+            "Enterprise rubric is strong but release remains evidence-gated."
+            if rework_result.get("status") != "pass"
+            else "Enterprise rubric passes with release-ready evidence."
+        ),
+    }
+
+
+def _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, score, trace, gate, arbitration_rounds, rework_result, timeline, rubric_matrix):
     package_dir = Path(output_dir)
     package_dir.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -517,9 +650,41 @@ def _write_committee_report(output_dir, project_name, focus, delivery, role_card
         f"- quality_gate: {gate['status']}",
         f"- delivery_package: {delivery.get('package_dir', '')}",
         "",
-        "## Execution Trace",
+        "## Multi-Agent Trace Timeline",
         "",
     ]
+    for item in timeline:
+        lines.extend([
+            f"### {item['order']}. {item['role']} - {item['phase']} ({item['status']})",
+            "",
+            f"- input: {item['input']}",
+            f"- action: {item['action']}",
+            f"- artifact: {item['artifact'] or 'none'}",
+            f"- score: {item['score'] if item['score'] is not None else 'n/a'}",
+            f"- gate: {item['gate'] or 'n/a'}",
+            f"- rework_round: {item['rework_round'] or 'n/a'}",
+            "",
+        ])
+    lines.extend([
+        "## Enterprise Rubric Matrix",
+        "",
+        f"- rubric_score: {rubric_matrix['score']}/{rubric_matrix['max_score']}",
+        f"- rubric_status: {rubric_matrix['status']}",
+        f"- summary: {rubric_matrix['summary']}",
+        "",
+        "| Category | Weight | Score | Owner | Evidence | Risk | Next Action |",
+        "| --- | ---: | ---: | --- | --- | --- | --- |",
+    ])
+    for item in rubric_matrix["rows"]:
+        lines.append(
+            f"| {item['category']} | {item['weight']} | {item['score']} | {item['owner']} | "
+            f"{item['evidence']} | {item['risk']} | {item['next_action']} |"
+        )
+    lines.extend([
+        "",
+        "## Execution Trace",
+        "",
+    ])
     for step in trace:
         lines.extend([
             f"### {step['id']} - {step['agent']} / {step['phase']}",
@@ -800,7 +965,24 @@ def multi_agent_review_committee(payload):
                 status=item["status"],
                 score=item["final_score"],
             ))
-    report_path = _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, final_score, trace, gate, arbitration, rework_result)
+    timeline = _timeline_from_trace(trace, gate, rework_result)
+    rubric_matrix = _enterprise_rubric_matrix(delivery, role_cards, gate, rework_result)
+    report_path = _write_committee_report(
+        output_dir,
+        project_name,
+        focus,
+        delivery,
+        role_cards,
+        priorities,
+        questions,
+        final_score,
+        trace,
+        gate,
+        arbitration,
+        rework_result,
+        timeline,
+        rubric_matrix,
+    )
     report_content = _read_doc(report_path, 24000)
     return {
         "project_name": project_name,
@@ -810,6 +992,8 @@ def multi_agent_review_committee(payload):
         "committee_report": report_path,
         "roles": role_cards,
         "execution_trace": trace,
+        "timeline": timeline,
+        "rubric_matrix": rubric_matrix,
         "quality_gate": gate,
         "arbitration_rounds": arbitration,
         "rework_loop": rework_result,

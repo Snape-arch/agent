@@ -177,8 +177,12 @@ class SkillRuntimeTests(unittest.TestCase):
         self.assertIn("quality_gate", committee)
         self.assertIn("arbitration_rounds", committee)
         self.assertIn("rework_loop", committee)
+        self.assertIn("timeline", committee)
+        self.assertIn("rubric_matrix", committee)
         self.assertIn(committee["rework_loop"]["status"], {"pass", "blocked", "revision_required"})
         self.assertGreaterEqual(len(committee["execution_trace"]), 8)
+        self.assertGreaterEqual(len(committee["timeline"]), 8)
+        self.assertEqual(len(committee["rubric_matrix"]["rows"]), 7)
         self.assertTrue(report_exists)
 
 
