@@ -362,7 +362,77 @@ def _committee_score(delivery, role_cards):
     return round(readiness * 0.45 + role_average * 0.55)
 
 
-def _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, score):
+def _trace_step(step_id, agent, phase, task, output, status="done", artifacts=None, score=None):
+    return {
+        "id": step_id,
+        "agent": agent,
+        "phase": phase,
+        "task": task,
+        "output": output,
+        "status": status,
+        "artifacts": list(artifacts or []),
+        "score": score,
+    }
+
+
+def _quality_gate(role_cards, final_score, missing, thresholds):
+    scores = {card["agent"]: card["score"] for card in role_cards}
+    failures = []
+    if scores.get("RiskAgent", 100) < thresholds["risk_min"]:
+        failures.append(f"RiskAgent score {scores.get('RiskAgent')} < {thresholds['risk_min']}")
+    if scores.get("JudgeAgent", 100) < thresholds["judge_min"]:
+        failures.append(f"JudgeAgent score {scores.get('JudgeAgent')} < {thresholds['judge_min']}")
+    if final_score < thresholds["final_min"]:
+        failures.append(f"Final score {final_score} < {thresholds['final_min']}")
+    if missing:
+        failures.append(f"Unclosed delivery checks: {', '.join(missing)}")
+    status = "pass" if not failures else "revision_required"
+    return {
+        "status": status,
+        "thresholds": thresholds,
+        "failures": failures,
+        "blocking_agents": [
+            item.split(" score", 1)[0]
+            for item in failures
+            if item.startswith("RiskAgent") or item.startswith("JudgeAgent")
+        ],
+    }
+
+
+def _arbitration_rounds(gate, role_cards, priorities):
+    if gate["status"] == "pass":
+        return [{
+            "round": 1,
+            "status": "accepted",
+            "arbiter": "JudgeAgent",
+            "decision": "Quality gate passed; delivery can proceed to knowledge-base save and final rehearsal.",
+            "required_rework": [],
+        }]
+    required = [
+        "BuilderAgent must create or update artifacts that answer each gate failure.",
+        "ReviewerAgent must rerun issue checks after rework and attach evidence.",
+        "JudgeAgent cannot approve release until RiskAgent and JudgeAgent scores meet thresholds.",
+    ]
+    required.extend(priorities[:2])
+    return [
+        {
+            "round": 1,
+            "status": "blocked",
+            "arbiter": "RiskAgent",
+            "decision": "Risk gate blocked release and opened a rework ticket.",
+            "required_rework": required,
+        },
+        {
+            "round": 2,
+            "status": "pending_recheck",
+            "arbiter": "JudgeAgent",
+            "decision": "Rework must be reviewed before final approval; no silent pass is allowed.",
+            "required_rework": ["Run the committee again after fixes and compare trace, scores, and evidence counts."],
+        },
+    ]
+
+
+def _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, score, trace, gate, arbitration_rounds):
     package_dir = Path(output_dir)
     package_dir.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -372,11 +442,44 @@ def _write_committee_report(output_dir, project_name, focus, delivery, role_card
         f"- generated_at: {generated_at}",
         f"- focus: {focus}",
         f"- final_score: {score}/100",
+        f"- quality_gate: {gate['status']}",
         f"- delivery_package: {delivery.get('package_dir', '')}",
         "",
-        "## Fixed Role Squad",
+        "## Execution Trace",
         "",
     ]
+    for step in trace:
+        lines.extend([
+            f"### {step['id']} - {step['agent']} / {step['phase']}",
+            "",
+            f"- task: {step['task']}",
+            f"- status: {step['status']}",
+            f"- output: {step['output']}",
+            f"- artifacts: {', '.join(step['artifacts']) if step['artifacts'] else 'none'}",
+            "",
+        ])
+    lines.extend([
+        "## Quality Gate",
+        "",
+        f"- status: {gate['status']}",
+        f"- thresholds: final>={gate['thresholds']['final_min']}, risk>={gate['thresholds']['risk_min']}, judge>={gate['thresholds']['judge_min']}",
+        *[f"- failure: {item}" for item in (gate["failures"] or ["none"])],
+        "",
+        "## Arbitration",
+        "",
+    ])
+    for item in arbitration_rounds:
+        lines.extend([
+            f"### Round {item['round']} - {item['arbiter']} ({item['status']})",
+            "",
+            f"- decision: {item['decision']}",
+            *[f"- required_rework: {work}" for work in item["required_rework"]],
+            "",
+        ])
+    lines.extend([
+        "## Fixed Role Squad",
+        "",
+    ])
     for card in role_cards:
         lines.extend([
             f"### {card['agent']} ({card['score']}/100)",
@@ -424,6 +527,7 @@ def multi_agent_review_committee(payload):
     has_validation = bool(evidence.get("validation"))
     has_business = bool(evidence.get("business"))
     has_architecture = bool(checks.get("materials") or checks.get("architecture_assets"))
+    files = delivery.get("files") or {}
 
     role_cards = [
         _agent_signal(
@@ -451,15 +555,27 @@ def multi_agent_review_committee(payload):
             ],
         ),
         _agent_signal(
-            "ProductWriterAgent",
-            86 if has_business and has_architecture else 70,
+            "BuilderAgent",
+            88 if files and has_architecture else 70,
             [
-                "Business plan and architecture materials are present enough to support a coherent pitch." if has_business and has_architecture else "Business or architecture evidence is incomplete.",
-                "Demo narrative should stay anchored on ClawOS as an executable personal Agent OS.",
+                f"Generated or reused {len(files)} delivery artifacts for the workflow.",
+                "Builder output is traceable through file paths and knowledge_items, not only prose.",
             ],
             [
-                "Record a three-minute golden path: upload knowledge -> run workflow -> inspect evidence -> save to knowledge base.",
-                "Make the first-screen value obvious to judges without requiring them to read the whole plan.",
+                "Keep generated artifacts under output/ and save selected summaries back to the knowledge base.",
+                "Add a visible trace timeline for each artifact-producing step.",
+            ],
+        ),
+        _agent_signal(
+            "ReviewerAgent",
+            86 if has_validation and not missing else 72,
+            [
+                "Review checks compare delivery artifacts, evidence counts, missing gates, and judge-facing questions.",
+                "Reviewer should fail the flow when evidence is too thin or missing gates remain.",
+            ],
+            [
+                "Run issue checks after every BuilderAgent revision.",
+                "Attach explicit recheck evidence before JudgeAgent can approve.",
             ],
         ),
         _agent_signal(
@@ -488,11 +604,16 @@ def multi_agent_review_committee(payload):
         ),
     ]
     final_score = _committee_score(delivery, role_cards)
+    thresholds = {
+        "final_min": int(payload.get("final_min_score") or 85),
+        "risk_min": int(payload.get("risk_min_score") or 80),
+        "judge_min": int(payload.get("judge_min_score") or 85),
+    }
     priorities = [
         "P0: Close MTTBook real-machine acceptance as soon as hardware is available; preserve screenshots, traces, latency, and failure cases.",
-        "P0: Turn fixed-role squad review into a required one-click pre-submit workflow and save its report to the project knowledge base.",
+        "P0: Turn fixed-role squad execution into a required one-click pre-submit workflow and save its trace to the project knowledge base.",
         "P1: Expand complex-task acceptance with DeepSeek reasoning plus Qwen embedding/rerank across research, office, coding, learning, and demo scenarios.",
-        "P1: Add multi-agent trace visualization so judges can see Planner, Researcher, Writer, Risk, and Judge roles reach a committee decision.",
+        "P1: Add multi-agent trace visualization so judges can see Planner, Research, Builder, Reviewer, Risk, and Judge roles reach a gated decision.",
         "P2: Feed committee findings into governed skill evolution candidates with fresh-agent audit, signature, canary, and rollback metadata.",
     ]
     questions = [
@@ -502,7 +623,74 @@ def multi_agent_review_committee(payload):
         "How does the fixed-role squad improve deliverable quality compared with a single agent?",
         "Can generated artifacts be reused as knowledge for later tasks?",
     ]
-    report_path = _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, final_score)
+    trace = [
+        _trace_step(
+            "T1",
+            "PlannerAgent",
+            "plan",
+            "Break final delivery into inspectable work packages.",
+            f"Created {5 + len(missing)} work items; missing gates: {', '.join(missing) if missing else 'none'}.",
+            score=next(card["score"] for card in role_cards if card["agent"] == "PlannerAgent"),
+        ),
+        _trace_step(
+            "T2",
+            "ResearchAgent",
+            "evidence",
+            "Collect capability, validation, risk, and business evidence.",
+            f"Evidence counts capability={evidence.get('capability', 0)}, validation={evidence.get('validation', 0)}, risk={evidence.get('risk', 0)}, business={evidence.get('business', 0)}.",
+            artifacts=list(files.values())[:3],
+            score=next(card["score"] for card in role_cards if card["agent"] == "ResearchAgent"),
+        ),
+        _trace_step(
+            "T3",
+            "BuilderAgent",
+            "build",
+            "Produce or reuse delivery artifacts for the reviewed workflow.",
+            f"Prepared {len(files)} artifacts and {len(delivery.get('knowledge_items') or [])} knowledge-base candidates.",
+            artifacts=list(files.values()),
+            score=next(card["score"] for card in role_cards if card["agent"] == "BuilderAgent"),
+        ),
+        _trace_step(
+            "T4",
+            "ReviewerAgent",
+            "review",
+            "Check generated artifacts for evidence gaps and missing acceptance gates.",
+            "Reviewer found no missing checks." if not missing else f"Reviewer found missing checks: {', '.join(missing)}.",
+            artifacts=[files.get("risk_register", "")] if files.get("risk_register") else [],
+            score=next(card["score"] for card in role_cards if card["agent"] == "ReviewerAgent"),
+        ),
+        _trace_step(
+            "T5",
+            "RiskAgent",
+            "risk_gate",
+            "Evaluate release blockers, security, submission hygiene, and hardware gaps.",
+            "RiskAgent requires rework when hardware or evidence gates remain below threshold.",
+            artifacts=[files.get("risk_register", "")] if files.get("risk_register") else [],
+            score=next(card["score"] for card in role_cards if card["agent"] == "RiskAgent"),
+        ),
+        _trace_step(
+            "T6",
+            "JudgeAgent",
+            "decision",
+            "Decide whether this run can proceed to final delivery.",
+            "JudgeAgent issues final approval only after quality gate passes.",
+            artifacts=[files.get("judge_qa", "")] if files.get("judge_qa") else [],
+            score=next(card["score"] for card in role_cards if card["agent"] == "JudgeAgent"),
+        ),
+    ]
+    gate = _quality_gate(role_cards, final_score, missing, thresholds)
+    arbitration = _arbitration_rounds(gate, role_cards, priorities)
+    if gate["status"] != "pass":
+        trace.append(_trace_step(
+            "T7",
+            "Arbiter",
+            "rework",
+            "Open required rework instead of silently accepting low-scoring delivery.",
+            "; ".join(gate["failures"]),
+            status="revision_required",
+            score=final_score,
+        ))
+    report_path = _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, final_score, trace, gate, arbitration)
     report_content = _read_doc(report_path, 24000)
     return {
         "project_name": project_name,
@@ -511,6 +699,9 @@ def multi_agent_review_committee(payload):
         "delivery_readiness_score": delivery.get("readiness_score"),
         "committee_report": report_path,
         "roles": role_cards,
+        "execution_trace": trace,
+        "quality_gate": gate,
+        "arbitration_rounds": arbitration,
         "priorities": priorities,
         "judge_questions": questions,
         "delivery_package": {

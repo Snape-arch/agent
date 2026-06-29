@@ -864,11 +864,32 @@ function renderSelfReviewCommitteeResult(data) {
   const rows = [
     ["Score", `${payload.score ?? "--"} / 100`],
     ["Delivery readiness", `${payload.delivery_readiness_score ?? "--"} / 100`],
+    ["Quality gate", payload.quality_gate?.status || ""],
     ["Report", payload.committee_report || ""],
     ["Knowledge items", (payload.knowledge_items || []).length],
     ["Roles", (payload.roles || []).map(role => `${role.agent}:${role.score}`).join(", ")]
   ];
   const priorityRows = (payload.priorities || []).map((item, index) => [index + 1, item]);
+  const traceRows = (payload.execution_trace || []).map(step => [
+    step.id || "",
+    step.agent || "",
+    step.phase || "",
+    step.status || "",
+    step.output || ""
+  ]);
+  const gateRows = [
+    ["Status", payload.quality_gate?.status || ""],
+    ["Thresholds", payload.quality_gate?.thresholds ? `final>=${payload.quality_gate.thresholds.final_min}, risk>=${payload.quality_gate.thresholds.risk_min}, judge>=${payload.quality_gate.thresholds.judge_min}` : ""],
+    ["Failures", (payload.quality_gate?.failures || []).join(" | ") || "none"],
+    ["Blocking agents", (payload.quality_gate?.blocking_agents || []).join(", ") || "none"]
+  ];
+  const arbitrationRows = (payload.arbitration_rounds || []).map(item => [
+    item.round,
+    item.arbiter,
+    item.status,
+    item.decision,
+    (item.required_rework || []).join(" | ")
+  ]);
   const roleRows = (payload.roles || []).map(role => [
     role.agent,
     `${role.score}/100`,
@@ -879,6 +900,9 @@ function renderSelfReviewCommitteeResult(data) {
     $("committeeResult").innerHTML =
       `<div class="report-flow"><b>自评审委员会已完成</b><span>下一步：保存报告到项目知识库，并用评审问题反压 demo 和提交材料。</span><div class="report-flow-steps"><span class="done">1 固定角色评审</span><span>2 保存知识库</span><span>3 继续追问</span></div><div class="action-row"><button class="primary" onclick="saveSelfReviewCommitteeToKnowledge()">保存到知识库</button><button class="secondary" onclick="askSelfReviewCommitteeQuestion()">继续追问</button></div></div>` +
       table(["Item", "Result"], rows) +
+      table(["Step", "Agent", "Phase", "Status", "Output"], traceRows) +
+      table(["Gate", "Result"], gateRows) +
+      table(["Round", "Arbiter", "Status", "Decision", "Required rework"], arbitrationRows) +
       table(["Role", "Score", "Findings", "Actions"], roleRows) +
       table(["Priority", "Action"], priorityRows);
   }
@@ -895,7 +919,7 @@ async function runSelfReviewCommittee() {
   const existingDelivery = enterpriseDeliveryPayload();
   if (existingDelivery?.files) params.delivery_package = existingDelivery;
   if ($("committeeStatus")) $("committeeStatus").textContent = "正在运行固定角色自评审委员会";
-  if ($("committeeResult")) $("committeeResult").textContent = "Planner / Research / Writer / Risk / Judge 正在交叉评审交付包...";
+  if ($("committeeResult")) $("committeeResult").textContent = "Planner / Research / Builder / Reviewer / Risk / Judge 正在执行、评审和门禁交付包...";
   try {
     const data = await api("/api/skills/execute", {
       method: "POST",
@@ -904,7 +928,8 @@ async function runSelfReviewCommittee() {
     });
     const result = data?.outputs?.[0]?.result || data?.result || data;
     renderSelfReviewCommitteeResult({ result });
-    if ($("committeeStatus")) $("committeeStatus").textContent = `委员会完成 · score ${result.score ?? "--"}/100`;
+    const gate = result.quality_gate?.status || "unknown";
+    if ($("committeeStatus")) $("committeeStatus").textContent = `执行编队完成 · score ${result.score ?? "--"}/100 · gate ${gate}`;
   } catch (err) {
     if ($("committeeStatus")) $("committeeStatus").textContent = "自评审委员会运行失败：" + err.message;
     if ($("committeeResult")) $("committeeResult").textContent = "运行失败：" + err.message;

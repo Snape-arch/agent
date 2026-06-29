@@ -1143,3 +1143,28 @@ Known notes:
 
 Recommended next step:
 - Add a visible trace timeline for the five fixed roles so judges can inspect how the committee reached the final score and P0/P1/P2 priorities.
+
+### 2026-06-29 - Multi-agent execution squad and quality gate arbitration
+
+Completed:
+- Upgraded `multi_agent_review_committee` from a review-only committee into a fixed-role execution squad.
+- The squad now runs `PlannerAgent`, `ResearchAgent`, `BuilderAgent`, `ReviewerAgent`, `RiskAgent`, and `JudgeAgent`.
+- Added `execution_trace` output so the console can show how roles moved through plan, evidence, build, review, risk gate, judge decision, and rework.
+- Added `quality_gate` thresholds: default final score >= 85, RiskAgent >= 80, JudgeAgent >= 85.
+- Added `arbitration_rounds`; when RiskAgent or JudgeAgent is below threshold, the run becomes `revision_required` and opens required rework instead of silently approving.
+- Updated the Knowledge view panel from review-only wording to a multi-agent execution squad with trace, gate, and arbitration tables.
+
+Verification:
+- `python -m py_compile clawos\scripts\scenario_tools.py clawos\scripts\tool_runner.py clawos\skills\skill_clawos_self_review_committee.py`: passed.
+- `python -m unittest clawos.tests.test_scenarios_e2e clawos.tests.test_skill_runtime`: `14 tests OK`.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_runtime_security`: `33 tests OK`.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- Real project dry run returned `score=92/100`, `quality_gate.status=revision_required`, `RiskAgent score 76 < 80`, `trace_steps=7`, and two arbitration rounds: `blocked` then `pending_recheck`.
+
+Known notes:
+- The gate is intentionally stricter than the final score: current total score is high, but MTTBook hardware evidence keeps RiskAgent below release threshold.
+- Generated reports remain under `output/` and should not be committed.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- After MTTBook arrives, rerun the execution squad and require `quality_gate.status=pass` before final submission rehearsal.

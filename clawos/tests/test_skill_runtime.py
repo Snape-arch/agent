@@ -171,8 +171,12 @@ class SkillRuntimeTests(unittest.TestCase):
 
         self.assertTrue(plan["ok"])
         self.assertTrue(result["ok"])
-        self.assertEqual(len(committee["roles"]), 5)
+        self.assertEqual(len(committee["roles"]), 6)
         self.assertGreaterEqual(committee["score"], 70)
+        self.assertIn("execution_trace", committee)
+        self.assertIn("quality_gate", committee)
+        self.assertIn("arbitration_rounds", committee)
+        self.assertGreaterEqual(len(committee["execution_trace"]), 6)
         self.assertTrue(report_exists)
 
 
