@@ -5,13 +5,15 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEMORYOS_DIR = os.path.join(BASE_DIR, "memoryos")
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 if MEMORYOS_DIR not in sys.path:
-    sys.path.insert(0, MEMORYOS_DIR)
+    sys.path.append(MEMORYOS_DIR)
 
 
 def _memory_db_path():
@@ -71,6 +73,233 @@ def _write_optional_markdown(output_path, title, sections):
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines).rstrip() + "\n")
     return output_path
+
+
+def _safe_slug(value):
+    text = re.sub(r"[^A-Za-z0-9_\-\u4e00-\u9fff]+", "-", str(value or "").strip())
+    return text.strip("-")[:80] or "clawos-delivery"
+
+
+def _read_doc(path, max_chars=12000):
+    path = Path(path)
+    if not path.exists() or not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8-sig", errors="replace")[:max_chars]
+    except OSError:
+        return ""
+
+
+def _first_existing(root, candidates):
+    root = Path(root)
+    for item in candidates:
+        path = root / item
+        if path.exists():
+            return path
+    return None
+
+
+def _extract_evidence(text, keywords, limit=8):
+    evidence = []
+    for line in re.split(r"[\r\n]+", str(text or "")):
+        cleaned = re.sub(r"\s+", " ", line).strip(" -#|\t")
+        if not cleaned or len(cleaned) < 8:
+            continue
+        low = cleaned.lower()
+        if any(str(keyword).lower() in low or str(keyword) in cleaned for keyword in keywords):
+            evidence.append(cleaned[:220])
+        if len(evidence) >= limit:
+            break
+    return evidence
+
+
+def _write_delivery_file(output_dir, filename, title, sections):
+    path = Path(output_dir) / filename
+    lines = [f"# {title}", ""]
+    for heading, body in sections:
+        lines.extend([f"## {heading}", ""])
+        if isinstance(body, str):
+            lines.extend([body.strip() or "未提供。", ""])
+        else:
+            items = list(body or [])
+            if not items:
+                lines.extend(["- 未提供。", ""])
+            else:
+                lines.extend([f"- {item}" for item in items])
+                lines.append("")
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return str(path)
+
+
+def competition_delivery_package(payload):
+    """Build a judge-facing enterprise delivery package from project evidence."""
+    root = Path(payload.get("root") or BASE_DIR).expanduser().resolve()
+    output_root = Path(payload.get("output_dir") or (root / "output" / "delivery")).expanduser().resolve()
+    project_name = str(payload.get("project_name") or "ClawOS").strip() or "ClawOS"
+    scenario = str(payload.get("scenario") or "MTClaw competition enterprise delivery").strip()
+    package_dir = output_root / _safe_slug(project_name)
+    package_dir.mkdir(parents=True, exist_ok=True)
+
+    docs = {
+        "business_plan": _first_existing(root, ["ClawOS_商业计划书.md", "plan_text.txt"]),
+        "architecture": _first_existing(root, ["架构说明.txt"]),
+        "readme": _first_existing(root, ["README.md", "clawos/README.md"]),
+        "context": _first_existing(root, ["PROJECT_CONTEXT.md"]),
+        "roadmap": _first_existing(root, ["PROJECT_ROADMAP.md", "clawos/ROADMAP.md"]),
+        "mtclaw": _first_existing(root, ["clawos/MTCLAW_INTEGRATION.md"]),
+        "enterprise": _first_existing(root, ["clawos/ENTERPRISE_READINESS.md"]),
+    }
+    corpus = {name: _read_doc(path) if path else "" for name, path in docs.items()}
+    combined = "\n".join(corpus.values())
+    architecture_assets = []
+    arch_dir = root / "架构图"
+    if arch_dir.exists():
+        architecture_assets = [str(path) for path in sorted(arch_dir.iterdir()) if path.is_file()]
+    plan_assets = []
+    plan_dir = root / "计划书和题目要求"
+    if plan_dir.exists():
+        plan_assets = [str(path) for path in sorted(plan_dir.iterdir()) if path.is_file()]
+
+    capability_evidence = _extract_evidence(
+        combined,
+        ["MTClaw", "MemoryOS", "Reflection", "RAG", "Skill", "自进化", "工具", "安全", "Qwen", "DeepSeek"],
+        14,
+    )
+    validation_evidence = _extract_evidence(
+        combined,
+        ["tests OK", "passed", "pass_rate", "score=", "验收", "benchmark", "P95", "Chroma", "rerank"],
+        14,
+    )
+    risk_evidence = _extract_evidence(
+        combined,
+        ["风险", "缺口", "尚未", "deferred", "MTT", "mttbook", "AIBOOK", "不要", "not yet"],
+        14,
+    )
+    business_evidence = _extract_evidence(
+        corpus.get("business_plan", ""),
+        ["用户", "市场", "商业", "教育", "科研", "办公", "价值", "模式", "竞争"],
+        12,
+    )
+
+    score_items = {
+        "materials": bool(corpus.get("business_plan") and (corpus.get("architecture") or architecture_assets)),
+        "mtclaw": bool(corpus.get("mtclaw") and "MTClaw" in corpus.get("mtclaw", "")),
+        "validation": bool(validation_evidence),
+        "risk_register": bool(risk_evidence),
+        "business": bool(business_evidence),
+        "architecture_assets": bool(architecture_assets),
+        "plan_assets": bool(plan_assets),
+    }
+    readiness_score = round(100 * sum(1 for ok in score_items.values() if ok) / len(score_items))
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    missing = [name for name, ok in score_items.items() if not ok]
+
+    executive_brief = _write_delivery_file(package_dir, "executive_brief.md", f"{project_name} Executive Brief", [
+        ("定位", [
+            f"{project_name} 是面向 {scenario} 的个人 Agent OS 交付包。",
+            "核心叙事：MTClaw 运行时 + MemoryOS 长期记忆 + RAG 知识库 + Reflection/Skill 自进化 + 安全工具执行。",
+        ]),
+        ("商业与用户证据", business_evidence),
+        ("可展示亮点", capability_evidence[:8]),
+        ("交付成熟度", [
+            f"readiness_score={readiness_score}/100",
+            f"generated_at={generated_at}",
+            "建议现场主线：资料入库 -> 多步骤工具执行 -> 报告产物 -> 证据链 -> 反思复盘 -> 策略改进。",
+        ]),
+    ])
+    technical_evidence = _write_delivery_file(package_dir, "technical_evidence.md", f"{project_name} Technical Evidence", [
+        ("代码与架构材料", [str(path) for path in docs.values() if path] + architecture_assets),
+        ("能力证据摘录", capability_evidence),
+        ("验收证据摘录", validation_evidence),
+        ("建议补充的硬证据", [
+            "目标硬件实机运行截图或录屏。",
+            "同一冻结任务集在 API 模式与本地模式下的成功率、延迟和资源占用对比。",
+            "复杂任务的工具调用时间线和引用溯源截图。",
+        ]),
+    ])
+    demo_runbook = _write_delivery_file(package_dir, "demo_runbook.md", f"{project_name} Demo Runbook", [
+        ("演示目标", [
+            "用一条高价值闭环证明 ClawOS 不是聊天壳，而是可执行、可追踪、可复盘的 Agent 工作台。",
+            "每一步必须能对应工具调用、证据文件或验收指标。",
+        ]),
+        ("推荐 7 步流程", [
+            "1. 打开控制台和健康检查，展示模型、MTClaw、数据库、向量库状态。",
+            "2. 上传/选择项目或论文资料，触发解析、chunk、索引和知识库展示。",
+            "3. 运行超级 Skill 生成交付包或报告。",
+            "4. 展示工具时间线、Trace、引用/证据来源。",
+            "5. 用 Reviewer 视角追问风险、缺口和答辩问题。",
+            "6. 触发 Reflection 或自进化候选，展示门禁、shadow/canary/rollback。",
+            "7. 导出报告/PPT/Markdown 交付物并回到知识库继续追问。",
+        ]),
+        ("现场兜底", [
+            "保留 DeepSeek/API、Mock/offline 和本地模型三种叙事分支。",
+            "所有输出产物放在 output/ 下，不进入 Git 提交。",
+            "提交代码时精确 git add，避免 tmp/ 和 tools/。",
+        ]),
+    ])
+    judge_qa = _write_delivery_file(package_dir, "judge_qa.md", f"{project_name} Judge Q&A", [
+        ("可能被问到的问题", [
+            "你们与普通聊天助手的区别是什么？回答：长期记忆、工具执行、证据链、Skill 固化和自进化门禁。",
+            "如何证明基于 MTClaw？回答：展示 MTClaw Adapter、Function Router、Tool History 和 ClawOS Trace。",
+            "自进化是否危险？回答：只允许低风险策略目标，禁止自动改代码，必须通过冻结/核心/RAG 回归门禁。",
+            "没有实机时如何证明可迁移？回答：展示 OpenAI-compatible 本地模型接口、启动脚本、验收脚本和待补实机指标。",
+            "商业价值是什么？回答：科研、学习、办公、开发和教育场景都能复用个人知识与工作流。",
+        ]),
+        ("答辩姿态", [
+            "承认 MTTBook 实机验收是硬缺口，但强调其余工程闭环、材料和验收脚手架已就绪。",
+            "用数字说话：测试数量、benchmark 通过率、P95、RAG recall、报告产物路径。",
+            "避免空泛企业级宣称，强调可审计、可回滚、可逐步发布。",
+        ]),
+    ])
+    risk_register = _write_delivery_file(package_dir, "risk_register.md", f"{project_name} Risk Register", [
+        ("当前风险证据", risk_evidence),
+        ("P0 关闭项", [
+            "完成目标硬件本地模型和 MTClaw 双服务验收。",
+            "录制一条完整 Demo 主线并保存关键截图。",
+            "冻结提交清单，确认 tmp/、tools/、output/ 产物不进入仓库。",
+        ]),
+        ("P1 增强项", [
+            "加入多 Agent Reviewer 对报告质量、引用覆盖和风险遗漏打分。",
+            "把超级 Skill 产物重新入库，形成资料 -> 产物 -> 追问 -> 反思的闭环。",
+            "建立真实用户任务的质量信号，替代纯规则化自进化候选。",
+        ]),
+    ])
+    index = _write_delivery_file(package_dir, "delivery_index.md", f"{project_name} Delivery Index", [
+        ("交付包文件", [
+            executive_brief,
+            technical_evidence,
+            demo_runbook,
+            judge_qa,
+            risk_register,
+        ]),
+        ("Readiness", [
+            f"score={readiness_score}/100",
+            f"missing={', '.join(missing) if missing else 'none'}",
+            f"source_root={root}",
+        ]),
+    ])
+    return {
+        "project_name": project_name,
+        "scenario": scenario,
+        "readiness_score": readiness_score,
+        "checks": score_items,
+        "missing": missing,
+        "package_dir": str(package_dir),
+        "files": {
+            "index": index,
+            "executive_brief": executive_brief,
+            "technical_evidence": technical_evidence,
+            "demo_runbook": demo_runbook,
+            "judge_qa": judge_qa,
+            "risk_register": risk_register,
+        },
+        "evidence_counts": {
+            "capability": len(capability_evidence),
+            "validation": len(validation_evidence),
+            "risk": len(risk_evidence),
+            "business": len(business_evidence),
+        },
+    }
 
 
 def meeting_action_items(payload):
@@ -358,6 +587,7 @@ HANDLERS = {
     "office_artifact": office_artifact,
     "git_workspace": git_workspace,
     "skill_governance": skill_governance,
+    "competition_delivery_package": competition_delivery_package,
     "template_list": template_list,
     "template_instantiate": template_instantiate,
 }

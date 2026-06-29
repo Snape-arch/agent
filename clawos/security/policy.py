@@ -148,6 +148,7 @@ class ToolSecurityPolicy:
         "research_pdf": ("file_path", "output_path", "output_dir"),
         "office_artifact": ("file_path", "output_path"),
         "git_workspace": ("path",),
+        "competition_delivery_package": ("root", "output_dir"),
         "template_instantiate": ("target_path",),
         "shell_exec": ("workdir",),
     }
@@ -157,6 +158,7 @@ class ToolSecurityPolicy:
         "file_write", "file_organize", "batch_rename", "project_init",
         "note_save", "meeting_template", "template_instantiate",
         "office_artifact", "git_workspace",
+        "competition_delivery_package",
     }
     HIGH_RISK_TOOLS = {"shell_exec", "template_instantiate"}
     ALLOWED_COMMANDS = {

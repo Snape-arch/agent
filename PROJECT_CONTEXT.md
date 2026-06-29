@@ -1047,3 +1047,26 @@ Known notes:
 - GROBID is intentionally optional and expects a separately running local service configured with `GROBID_BASE_URL`; this keeps offline deployments deterministic while allowing paper-grade TEI parsing when installed.
 - Typst and PaddleOCR are also local-install dependencies. The code now detects and uses them, but final quality should still be validated on the target Windows machine after installing the binaries/models.
 - This closes the architecture and code path for enterprise document parsing/generation. The next quality jump is a real corpus acceptance run with user papers, scanned Chinese PDFs, and generated Office deliverables.
+
+### 2026-06-29 - ClawOS Enterprise Delivery Room super Skill
+
+Completed:
+- Added `competition_delivery_package`, a judge-facing delivery-package tool that reads project evidence from the business plan, architecture notes, project context, MTClaw integration docs, roadmap/readiness notes, architecture images, and plan documents.
+- Registered the super Skill `clawos_enterprise_delivery_room`, with a replay script at `clawos/skills/skill_clawos_enterprise_delivery_room.py`.
+- The generated package contains `delivery_index.md`, `executive_brief.md`, `technical_evidence.md`, `demo_runbook.md`, `judge_qa.md`, and `risk_register.md`.
+- Wired the tool into `functions.jsonl`, `tool_runner`, `scenario_tools`, and `ToolSecurityPolicy`; it is path-scoped and treated as a confirmation-required write tool.
+- Fixed a real import-order risk: `scenario_tools.py` and `tool_runner.py` now append `memoryos` to `sys.path` instead of inserting it before the top-level package, preventing `services` import shadowing.
+
+Verification:
+- `python -m py_compile clawos\scripts\scenario_tools.py clawos\scripts\tool_runner.py clawos\security\policy.py`: passed.
+- `python -m unittest clawos.tests.test_skill_runtime clawos.tests.test_scenarios_e2e clawos.tests.test_runtime_security`: `18 tests OK`.
+- `python -m unittest clawos.tests.test_skill_evolution clawos.tests.test_frontend_static`: `34 tests OK`.
+- Final targeted rerun for the new Skill/tool/security tests: `3 tests OK`.
+
+Known notes:
+- `tmp/pdfs/*` still contains local untracked PDF scratch artifacts and must not be added to Git.
+- The super Skill generates delivery artifacts under the requested output directory; runtime artifacts should stay out of commits.
+- MTTBook/MTT AIBOOK real-device validation remains separate and still pending hardware availability.
+
+Recommended next step:
+- Add a visible console action for the Enterprise Delivery Room, then optionally feed its generated package back into the knowledge base for follow-up judge Q&A and presentation generation.

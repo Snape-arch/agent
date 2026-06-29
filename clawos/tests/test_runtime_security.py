@@ -27,6 +27,26 @@ class RuntimeSecurityTests(unittest.TestCase):
         self.assertFalse(denied["allowed"])
         self.assertEqual(denied["decision"], "deny")
 
+    def test_competition_delivery_package_is_path_scoped_and_confirmed(self):
+        from security.policy import ToolSecurityPolicy
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            policy = ToolSecurityPolicy([root])
+            allowed = policy.evaluate(
+                "competition_delivery_package",
+                {"root": str(root), "output_dir": str(root / "out")},
+            )
+            denied = policy.evaluate(
+                "competition_delivery_package",
+                {"root": str(root), "output_dir": str(root.parent / "outside")},
+            )
+
+        self.assertTrue(allowed["allowed"])
+        self.assertEqual(allowed["decision"], "confirm")
+        self.assertEqual(allowed["risk_level"], "medium")
+        self.assertFalse(denied["allowed"])
+
     def test_command_policy_allows_read_only_git_and_blocks_chaining(self):
         from security.policy import ToolSecurityPolicy
 

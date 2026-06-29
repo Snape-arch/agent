@@ -28,7 +28,7 @@ SKILLS_DIR = os.path.join(BASE_DIR, "skills")
 if SKILLS_DIR not in sys.path:
     sys.path.insert(0, SKILLS_DIR)
 if MEMORYOS_DIR not in sys.path:
-    sys.path.insert(0, MEMORYOS_DIR)
+    sys.path.append(MEMORYOS_DIR)
 
 
 def _scenario_tool(name):
@@ -1066,6 +1066,7 @@ handlers = {
     "office_artifact": _scenario_tool("office_artifact"),
     "git_workspace": _scenario_tool("git_workspace"),
     "skill_governance": _scenario_tool("skill_governance"),
+    "competition_delivery_package": _scenario_tool("competition_delivery_package"),
     "template_list": _scenario_tool("template_list"),
     "template_instantiate": _scenario_tool("template_instantiate")
 }

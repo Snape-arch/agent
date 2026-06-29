@@ -130,6 +130,50 @@ class ScenarioEndToEndTests(unittest.TestCase):
         self.assertIn("milestones", brief)
         self.assertIn("results.json", experiment["artifacts"])
 
+    def test_competition_delivery_package_generates_enterprise_artifacts(self):
+        from scripts import tool_runner
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "clawos").mkdir()
+            (root / "架构图").mkdir()
+            (root / "计划书和题目要求").mkdir()
+            (root / "ClawOS_商业计划书.md").write_text(
+                "ClawOS 面向科研、办公、教育和开发用户，具备商业模式和市场价值。\n",
+                encoding="utf-8",
+            )
+            (root / "架构说明.txt").write_text(
+                "MTClaw + MemoryOS + Reflection + RAG + Skill 自进化架构。\n",
+                encoding="utf-8",
+            )
+            (root / "PROJECT_CONTEXT.md").write_text(
+                "Verification: python -m unittest discover -s clawos\\tests: 174 tests OK. "
+                "Known risk: MTTBook hardware validation remains deferred.\n",
+                encoding="utf-8",
+            )
+            (root / "clawos" / "MTCLAW_INTEGRATION.md").write_text(
+                "MTClaw Function Router and Tool History provide trace evidence.\n",
+                encoding="utf-8",
+            )
+            (root / "架构图" / "architecture.png").write_bytes(b"fake")
+            (root / "计划书和题目要求" / "plan.docx").write_bytes(b"fake")
+
+            result = run_tool(tool_runner, "competition_delivery_package", {
+                "root": str(root),
+                "output_dir": str(root / "out"),
+                "project_name": "ClawOS",
+                "scenario": "competition final",
+            })
+            files = result["files"]
+            index = Path(files["index"]).read_text(encoding="utf-8")
+            qa = Path(files["judge_qa"]).read_text(encoding="utf-8")
+            executive_brief_exists = Path(files["executive_brief"]).exists()
+
+        self.assertGreaterEqual(result["readiness_score"], 80)
+        self.assertTrue(executive_brief_exists)
+        self.assertIn("score=", index)
+        self.assertIn("自进化", qa)
+
 
 if __name__ == "__main__":
     unittest.main()
