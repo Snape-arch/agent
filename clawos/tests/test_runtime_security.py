@@ -41,11 +41,22 @@ class RuntimeSecurityTests(unittest.TestCase):
                 "competition_delivery_package",
                 {"root": str(root), "output_dir": str(root.parent / "outside")},
             )
+            committee_allowed = policy.evaluate(
+                "multi_agent_review_committee",
+                {"root": str(root), "output_dir": str(root / "out")},
+            )
+            committee_denied = policy.evaluate(
+                "multi_agent_review_committee",
+                {"root": str(root), "output_dir": str(root.parent / "outside")},
+            )
 
         self.assertTrue(allowed["allowed"])
         self.assertEqual(allowed["decision"], "confirm")
         self.assertEqual(allowed["risk_level"], "medium")
         self.assertFalse(denied["allowed"])
+        self.assertTrue(committee_allowed["allowed"])
+        self.assertEqual(committee_allowed["decision"], "confirm")
+        self.assertFalse(committee_denied["allowed"])
 
     def test_command_policy_allows_read_only_git_and_blocks_chaining(self):
         from security.policy import ToolSecurityPolicy

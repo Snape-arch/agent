@@ -125,6 +125,56 @@ class SkillRuntimeTests(unittest.TestCase):
         self.assertGreaterEqual(package["readiness_score"], 80)
         self.assertTrue(index_exists)
 
+    def test_self_review_committee_skill_runs_fixed_roles(self):
+        from skills.skill_registry import execute_skill_definition, get_skill
+
+        skill = get_skill("clawos_self_review_committee")
+        self.assertIsNotNone(skill)
+        self.assertEqual(
+            [step["tool"] for step in skill["steps"]],
+            ["multi_agent_review_committee"],
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "clawos").mkdir()
+            (root / "架构图").mkdir()
+            (root / "计划书和题目要求").mkdir()
+            (root / "ClawOS_商业计划书.md").write_text(
+                "Commercial plan for research, office, education, and developer users.\n",
+                encoding="utf-8",
+            )
+            (root / "架构说明.txt").write_text(
+                "MTClaw, MemoryOS, Reflection, RAG, Skill, and self-evolution architecture.\n",
+                encoding="utf-8",
+            )
+            (root / "PROJECT_CONTEXT.md").write_text(
+                "Verification: tests OK. Risk: MTTBook validation deferred.\n",
+                encoding="utf-8",
+            )
+            (root / "clawos" / "MTCLAW_INTEGRATION.md").write_text(
+                "MTClaw Function Router and Tool History are execution evidence.\n",
+                encoding="utf-8",
+            )
+            (root / "架构图" / "architecture.png").write_bytes(b"fake")
+            (root / "计划书和题目要求" / "plan.docx").write_bytes(b"fake")
+            params = {
+                "root": str(root),
+                "output_dir": str(root / "out"),
+                "project_name": "ClawOS",
+                "focus": "competition final readiness",
+            }
+            plan = execute_skill_definition(skill, params, plan_only=True)
+            result = execute_skill_definition(skill, params, plan_only=False)
+            committee = result["outputs"][0]["result"]
+            report_exists = Path(committee["committee_report"]).exists()
+
+        self.assertTrue(plan["ok"])
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(committee["roles"]), 5)
+        self.assertGreaterEqual(committee["score"], 70)
+        self.assertTrue(report_exists)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -176,6 +176,49 @@ class ScenarioEndToEndTests(unittest.TestCase):
         self.assertIn("score=", index)
         self.assertIn("自进化", qa)
 
+    def test_multi_agent_review_committee_generates_role_report(self):
+        from scripts import tool_runner
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "clawos").mkdir()
+            (root / "架构图").mkdir()
+            (root / "计划书和题目要求").mkdir()
+            (root / "ClawOS_商业计划书.md").write_text(
+                "ClawOS has a commercial plan for research, office, education, and developer users.\n",
+                encoding="utf-8",
+            )
+            (root / "架构说明.txt").write_text(
+                "MTClaw, MemoryOS, Reflection, RAG, Skill, and self-evolution form the architecture.\n",
+                encoding="utf-8",
+            )
+            (root / "PROJECT_CONTEXT.md").write_text(
+                "Verification: 174 tests OK. Risk: MTTBook hardware validation remains deferred.\n",
+                encoding="utf-8",
+            )
+            (root / "clawos" / "MTCLAW_INTEGRATION.md").write_text(
+                "MTClaw Function Router and Tool History are execution evidence.\n",
+                encoding="utf-8",
+            )
+            (root / "架构图" / "architecture.png").write_bytes(b"fake")
+            (root / "计划书和题目要求" / "plan.docx").write_bytes(b"fake")
+
+            result = run_tool(tool_runner, "multi_agent_review_committee", {
+                "root": str(root),
+                "output_dir": str(root / "out"),
+                "project_name": "ClawOS",
+                "focus": "final submission",
+            })
+            report = Path(result["committee_report"]).read_text(encoding="utf-8")
+
+        self.assertGreaterEqual(result["score"], 70)
+        self.assertEqual(len(result["roles"]), 5)
+        self.assertEqual(result["roles"][0]["agent"], "PlannerAgent")
+        self.assertIn("RiskAgent", report)
+        self.assertIn("JudgeAgent", report)
+        self.assertEqual(len(result["knowledge_items"]), 1)
+        self.assertIn("P0:", "\n".join(result["priorities"]))
+
 
 if __name__ == "__main__":
     unittest.main()

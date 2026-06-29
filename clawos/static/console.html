@@ -165,8 +165,16 @@
           <button class="primary" onclick="runEnterpriseDeliveryRoom()">生成交付包</button>
           <button class="secondary" onclick="saveEnterpriseDeliveryToKnowledge()">保存到知识库</button>
         </div>
+        <div class="enterprise-delivery-panel self-review-committee-panel">
+          <div><b>自评审委员会</b><span id="committeeStatus">固定角色多 Agent 编队：Planner / Research / Writer / Risk / Judge。</span></div>
+          <label>评审焦点<input id="committeeFocus" value="competition final readiness"></label>
+          <label>输出目录<input id="committeeOutputDir" placeholder="output/delivery"></label>
+          <button class="primary" onclick="runSelfReviewCommittee()">运行委员会</button>
+          <button class="secondary" onclick="saveSelfReviewCommitteeToKnowledge()">保存到知识库</button>
+        </div>
         <div class="section-block compact-block" id="reportResultBlock"><h2>报告结果</h2><div class="report-result" id="reportResult">选择资料后生成报告</div></div>
         <div class="section-block compact-block" id="enterpriseDeliveryResultBlock"><h2>企业交付室结果</h2><div class="report-result" id="enterpriseDeliveryResult">点击生成交付包后，可保存到项目知识库继续追问。</div></div>
+        <div class="section-block compact-block" id="committeeResultBlock"><h2>自评审委员会结果</h2><div class="report-result" id="committeeResult">运行固定角色编队后，可保存委员会报告到项目知识库。</div></div>
         <div class="section-block compact-block" id="obsidianResultBlock"><h2>笔记库结果</h2><table class="table" id="obsidianCheckTable"></table></div>
         <div class="knowledge-layout">
           <section class="knowledge-editor">

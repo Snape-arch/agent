@@ -347,6 +347,190 @@ def competition_delivery_package(payload):
     }
 
 
+def _agent_signal(name, score, findings, actions):
+    return {
+        "agent": name,
+        "score": int(max(0, min(100, score))),
+        "findings": list(findings or []),
+        "actions": list(actions or []),
+    }
+
+
+def _committee_score(delivery, role_cards):
+    readiness = int(delivery.get("readiness_score") or 0)
+    role_average = round(sum(card["score"] for card in role_cards) / max(len(role_cards), 1))
+    return round(readiness * 0.45 + role_average * 0.55)
+
+
+def _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, score):
+    package_dir = Path(output_dir)
+    package_dir.mkdir(parents=True, exist_ok=True)
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    lines = [
+        f"# {project_name} Multi-Agent Self-Review Committee",
+        "",
+        f"- generated_at: {generated_at}",
+        f"- focus: {focus}",
+        f"- final_score: {score}/100",
+        f"- delivery_package: {delivery.get('package_dir', '')}",
+        "",
+        "## Fixed Role Squad",
+        "",
+    ]
+    for card in role_cards:
+        lines.extend([
+            f"### {card['agent']} ({card['score']}/100)",
+            "",
+            "Findings:",
+            *[f"- {item}" for item in card["findings"]],
+            "",
+            "Actions:",
+            *[f"- {item}" for item in card["actions"]],
+            "",
+        ])
+    lines.extend([
+        "## Committee Decision",
+        "",
+        *[f"- {item}" for item in priorities],
+        "",
+        "## Judge-Style Questions",
+        "",
+        *[f"- {item}" for item in questions],
+        "",
+    ])
+    path = package_dir / "multi_agent_review.md"
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return str(path)
+
+
+def multi_agent_review_committee(payload):
+    """Run a deterministic fixed-role review squad over the delivery package."""
+    project_name = str(payload.get("project_name") or "ClawOS").strip() or "ClawOS"
+    focus = str(payload.get("focus") or payload.get("scenario") or "competition final readiness").strip()
+    delivery = payload.get("delivery_package")
+    if not isinstance(delivery, dict) or not delivery.get("files"):
+        delivery = competition_delivery_package({
+            "root": payload.get("root"),
+            "output_dir": payload.get("output_dir"),
+            "project_name": project_name,
+            "scenario": focus,
+        })
+    output_dir = Path(delivery.get("package_dir") or payload.get("output_dir") or "output/delivery") / "committee"
+    checks = delivery.get("checks") or {}
+    evidence = delivery.get("evidence_counts") or {}
+    missing = delivery.get("missing") or []
+    has_mtt_risk = "risk_register" in (delivery.get("files") or {}) or bool(evidence.get("risk"))
+    has_knowledge = len(delivery.get("knowledge_items") or []) >= 6
+    has_validation = bool(evidence.get("validation"))
+    has_business = bool(evidence.get("business"))
+    has_architecture = bool(checks.get("materials") or checks.get("architecture_assets"))
+
+    role_cards = [
+        _agent_signal(
+            "PlannerAgent",
+            88 if not missing else max(64, 88 - len(missing) * 6),
+            [
+                "Delivery room produces a structured package with index, brief, evidence, runbook, Q&A, and risks.",
+                f"Current missing gates: {', '.join(missing) if missing else 'none'}.",
+            ],
+            [
+                "Use this squad as the default pre-submit gate before every competition artifact freeze.",
+                "Keep one-click generation as the first workflow and route all generated artifacts back into the knowledge base.",
+            ],
+        ),
+        _agent_signal(
+            "ResearchAgent",
+            90 if has_validation and has_knowledge else 72,
+            [
+                f"Knowledge artifacts available: {len(delivery.get('knowledge_items') or [])}.",
+                f"Validation evidence count: {evidence.get('validation', 0)}; capability evidence count: {evidence.get('capability', 0)}.",
+            ],
+            [
+                "Add scenario traces with inputs, tool calls, citations, latency, and pass/fail labels.",
+                "Prefer evidence-backed claims over broad product language in judge-facing materials.",
+            ],
+        ),
+        _agent_signal(
+            "ProductWriterAgent",
+            86 if has_business and has_architecture else 70,
+            [
+                "Business plan and architecture materials are present enough to support a coherent pitch." if has_business and has_architecture else "Business or architecture evidence is incomplete.",
+                "Demo narrative should stay anchored on ClawOS as an executable personal Agent OS.",
+            ],
+            [
+                "Record a three-minute golden path: upload knowledge -> run workflow -> inspect evidence -> save to knowledge base.",
+                "Make the first-screen value obvious to judges without requiring them to read the whole plan.",
+            ],
+        ),
+        _agent_signal(
+            "RiskAgent",
+            76 if has_mtt_risk else 68,
+            [
+                "MTTBook real-machine acceptance is still the primary hard gap until hardware arrives.",
+                "Keep tmp/, tools/, and output/ artifacts out of Git staging during final submission.",
+            ],
+            [
+                "Freeze a submission checklist that explicitly verifies Git staged files before commit.",
+                "Add a fallback demo path for offline/mock/local-model execution when external services are unstable.",
+            ],
+        ),
+        _agent_signal(
+            "JudgeAgent",
+            88 if has_validation and has_business else 74,
+            [
+                "The strongest story is not chat, but repeatable work execution with memory, tools, RAG, skills, and self-evolution gates.",
+                "Judges will pressure-test proof, reproducibility, and whether self-evolution can be governed safely.",
+            ],
+            [
+                "Lead with quantified acceptance metrics, then show the live workflow.",
+                "Prepare concise answers for hardware validation, model dependency, safety, and business differentiation.",
+            ],
+        ),
+    ]
+    final_score = _committee_score(delivery, role_cards)
+    priorities = [
+        "P0: Close MTTBook real-machine acceptance as soon as hardware is available; preserve screenshots, traces, latency, and failure cases.",
+        "P0: Turn fixed-role squad review into a required one-click pre-submit workflow and save its report to the project knowledge base.",
+        "P1: Expand complex-task acceptance with DeepSeek reasoning plus Qwen embedding/rerank across research, office, coding, learning, and demo scenarios.",
+        "P1: Add multi-agent trace visualization so judges can see Planner, Researcher, Writer, Risk, and Judge roles reach a committee decision.",
+        "P2: Feed committee findings into governed skill evolution candidates with fresh-agent audit, signature, canary, and rollback metadata.",
+    ]
+    questions = [
+        "What evidence proves ClawOS is more than a chat UI?",
+        "How do you prevent self-evolution from changing behavior without review?",
+        "What remains unverified before final competition submission?",
+        "How does the fixed-role squad improve deliverable quality compared with a single agent?",
+        "Can generated artifacts be reused as knowledge for later tasks?",
+    ]
+    report_path = _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, final_score)
+    report_content = _read_doc(report_path, 24000)
+    return {
+        "project_name": project_name,
+        "focus": focus,
+        "score": final_score,
+        "delivery_readiness_score": delivery.get("readiness_score"),
+        "committee_report": report_path,
+        "roles": role_cards,
+        "priorities": priorities,
+        "judge_questions": questions,
+        "delivery_package": {
+            "package_dir": delivery.get("package_dir"),
+            "files": delivery.get("files") or {},
+            "missing": missing,
+            "evidence_counts": evidence,
+        },
+        "knowledge_items": [
+            {
+                "title": f"{project_name} Multi-Agent Self-Review Committee",
+                "content": report_content,
+                "category": "project",
+                "source": report_path,
+                "tags": ["multi-agent", "self-review", "committee", "generated"],
+            }
+        ],
+    }
+
+
 def meeting_action_items(payload):
     transcript = _read_text_input(payload, "transcript", "transcript_path")
     if not transcript:
@@ -633,6 +817,7 @@ HANDLERS = {
     "git_workspace": git_workspace,
     "skill_governance": skill_governance,
     "competition_delivery_package": competition_delivery_package,
+    "multi_agent_review_committee": multi_agent_review_committee,
     "template_list": template_list,
     "template_instantiate": template_instantiate,
 }

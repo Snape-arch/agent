@@ -1067,6 +1067,7 @@ handlers = {
     "git_workspace": _scenario_tool("git_workspace"),
     "skill_governance": _scenario_tool("skill_governance"),
     "competition_delivery_package": _scenario_tool("competition_delivery_package"),
+    "multi_agent_review_committee": _scenario_tool("multi_agent_review_committee"),
     "template_list": _scenario_tool("template_list"),
     "template_instantiate": _scenario_tool("template_instantiate")
 }

@@ -220,6 +220,9 @@
   font-size:12px;
   line-height:1.45;
 }
+.self-review-committee-panel{
+  border-color:rgba(38,120,113,.24);
+}
 .report-style-panel input,
 .report-style-panel select,
 .enterprise-delivery-panel input,

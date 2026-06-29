@@ -15,6 +15,8 @@ let lastGeneratedReport = null;
 let lastSavedReportKnowledgeId = null;
 let lastEnterpriseDelivery = null;
 let lastEnterpriseKnowledgeIds = [];
+let lastSelfReviewCommittee = null;
+let lastCommitteeKnowledgeIds = [];
 let editingKnowledgeId = null;
 let chatAttachments = [];
 let allSkills = [];
@@ -848,6 +850,107 @@ function askEnterpriseDeliveryQuestion() {
   const title = payload.project_name || $("enterpriseProjectName")?.value || "ClawOS";
   const question = `请基于项目知识库中的 ${title} 企业交付包，模拟评委视角提出 5 个最尖锐问题，并给出有证据的答辩回答。`;
   usePrompt(question);
+  setView("chat");
+}
+
+function committeePayload() {
+  return lastSelfReviewCommittee?.result || lastSelfReviewCommittee?.data || lastSelfReviewCommittee || {};
+}
+
+function renderSelfReviewCommitteeResult(data) {
+  lastSelfReviewCommittee = data;
+  lastCommitteeKnowledgeIds = [];
+  const payload = committeePayload();
+  const rows = [
+    ["Score", `${payload.score ?? "--"} / 100`],
+    ["Delivery readiness", `${payload.delivery_readiness_score ?? "--"} / 100`],
+    ["Report", payload.committee_report || ""],
+    ["Knowledge items", (payload.knowledge_items || []).length],
+    ["Roles", (payload.roles || []).map(role => `${role.agent}:${role.score}`).join(", ")]
+  ];
+  const priorityRows = (payload.priorities || []).map((item, index) => [index + 1, item]);
+  const roleRows = (payload.roles || []).map(role => [
+    role.agent,
+    `${role.score}/100`,
+    (role.findings || []).slice(0, 2).join(" | "),
+    (role.actions || []).slice(0, 2).join(" | ")
+  ]);
+  if ($("committeeResult")) {
+    $("committeeResult").innerHTML =
+      `<div class="report-flow"><b>自评审委员会已完成</b><span>下一步：保存报告到项目知识库，并用评审问题反压 demo 和提交材料。</span><div class="report-flow-steps"><span class="done">1 固定角色评审</span><span>2 保存知识库</span><span>3 继续追问</span></div><div class="action-row"><button class="primary" onclick="saveSelfReviewCommitteeToKnowledge()">保存到知识库</button><button class="secondary" onclick="askSelfReviewCommitteeQuestion()">继续追问</button></div></div>` +
+      table(["Item", "Result"], rows) +
+      table(["Role", "Score", "Findings", "Actions"], roleRows) +
+      table(["Priority", "Action"], priorityRows);
+  }
+}
+
+async function runSelfReviewCommittee() {
+  const outputDir = ($("committeeOutputDir")?.value || $("enterpriseOutputDir")?.value || "output/delivery").trim() || "output/delivery";
+  const params = {
+    output_dir: outputDir,
+    project_name: ($("enterpriseProjectName")?.value || "ClawOS").trim() || "ClawOS",
+    scenario: ($("enterpriseScenario")?.value || "MTClaw competition enterprise delivery").trim() || "MTClaw competition enterprise delivery",
+    focus: ($("committeeFocus")?.value || "competition final readiness").trim() || "competition final readiness"
+  };
+  const existingDelivery = enterpriseDeliveryPayload();
+  if (existingDelivery?.files) params.delivery_package = existingDelivery;
+  if ($("committeeStatus")) $("committeeStatus").textContent = "正在运行固定角色自评审委员会";
+  if ($("committeeResult")) $("committeeResult").textContent = "Planner / Research / Writer / Risk / Judge 正在交叉评审交付包...";
+  try {
+    const data = await api("/api/skills/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "clawos_self_review_committee", params, plan_only: false })
+    });
+    const result = data?.outputs?.[0]?.result || data?.result || data;
+    renderSelfReviewCommitteeResult({ result });
+    if ($("committeeStatus")) $("committeeStatus").textContent = `委员会完成 · score ${result.score ?? "--"}/100`;
+  } catch (err) {
+    if ($("committeeStatus")) $("committeeStatus").textContent = "自评审委员会运行失败：" + err.message;
+    if ($("committeeResult")) $("committeeResult").textContent = "运行失败：" + err.message;
+  }
+}
+
+async function saveSelfReviewCommitteeToKnowledge() {
+  const payload = committeePayload();
+  const items = payload.knowledge_items || [];
+  if (!items.length) {
+    if ($("committeeStatus")) $("committeeStatus").textContent = "请先运行自评审委员会";
+    return;
+  }
+  if ($("committeeStatus")) $("committeeStatus").textContent = "正在保存委员会报告到项目知识库";
+  const savedIds = [];
+  for (const item of items) {
+    const saved = await api("/api/knowledge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: item.title,
+        content: item.content,
+        category: item.category || "project",
+        source: item.source || "self-review-committee",
+        tags: item.tags || ["multi-agent", "self-review", "generated"],
+        confidence: 0.92
+      })
+    });
+    if (saved.item?.id) savedIds.push(saved.item.id);
+  }
+  lastCommitteeKnowledgeIds = savedIds;
+  knowledgeCategory = "project";
+  if ($("knowledgeCategory")) $("knowledgeCategory").value = "project";
+  if ($("committeeStatus")) $("committeeStatus").textContent = `已保存 ${savedIds.length} 个委员会条目到项目知识库`;
+  await loadKnowledge();
+  await loadKnowledgeGraph();
+  const flow = $("committeeResult")?.querySelector(".report-flow");
+  if (flow && savedIds.length) {
+    flow.querySelector(".report-flow-steps")?.insertAdjacentHTML("beforeend", `<span class="done">已保存 ${savedIds.length} 条</span>`);
+  }
+}
+
+function askSelfReviewCommitteeQuestion() {
+  const payload = committeePayload();
+  const title = payload.project_name || $("enterpriseProjectName")?.value || "ClawOS";
+  usePrompt(`请基于 ${title} 自评审委员会报告，给出夺冠前最该优先关闭的 5 个问题，并按 P0/P1/P2 排序。`);
   setView("chat");
 }
 

@@ -1119,3 +1119,27 @@ Known notes:
 
 Recommended next step:
 - Add a console/ops entry for running or displaying Hybrid RAG acceptance evidence, then benchmark latency with smaller recall windows or cached rerank batches for demo mode.
+
+### 2026-06-29 - Fixed-role multi-agent self-review committee
+
+Completed:
+- Added `multi_agent_review_committee`, a deterministic fixed-role review squad for ClawOS delivery readiness.
+- The squad roles are `PlannerAgent`, `ResearchAgent`, `ProductWriterAgent`, `RiskAgent`, and `JudgeAgent`; each returns findings, actions, and a score.
+- Registered the Skill `clawos_self_review_committee` plus replay script `clawos/skills/skill_clawos_self_review_committee.py`.
+- Added Knowledge view controls to run the committee, display role/priorities tables, save the committee report back to the project knowledge base, and continue judge-style follow-up questions.
+- Wired the tool into `functions.jsonl`, `tool_runner`, `scenario_tools`, and `ToolSecurityPolicy`; it is path-scoped and confirmation-required like the Enterprise Delivery Room.
+
+Verification:
+- `python -m unittest clawos.tests.test_scenarios_e2e clawos.tests.test_skill_runtime`: `14 tests OK`.
+- `python -m unittest clawos.tests.test_runtime_security clawos.tests.test_frontend_static`: `33 tests OK`.
+- `python -m py_compile clawos\scripts\scenario_tools.py clawos\scripts\tool_runner.py clawos\skills\skill_clawos_self_review_committee.py`: passed.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- Real project dry run returned committee `score=92/100`, delivery readiness `100/100`, and report path `output\delivery\ClawOS\committee\multi_agent_review.md`.
+
+Known notes:
+- MTTBook real-machine validation remains the top P0 blocker until hardware is available.
+- Generated committee reports stay under `output/` and should not be committed.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Add a visible trace timeline for the five fixed roles so judges can inspect how the committee reached the final score and P0/P1/P2 priorities.

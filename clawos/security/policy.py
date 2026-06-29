@@ -149,6 +149,7 @@ class ToolSecurityPolicy:
         "office_artifact": ("file_path", "output_path"),
         "git_workspace": ("path",),
         "competition_delivery_package": ("root", "output_dir"),
+        "multi_agent_review_committee": ("root", "output_dir"),
         "template_instantiate": ("target_path",),
         "shell_exec": ("workdir",),
     }
@@ -159,6 +160,7 @@ class ToolSecurityPolicy:
         "note_save", "meeting_template", "template_instantiate",
         "office_artifact", "git_workspace",
         "competition_delivery_package",
+        "multi_agent_review_committee",
     }
     HIGH_RISK_TOOLS = {"shell_exec", "template_instantiate"}
     ALLOWED_COMMANDS = {

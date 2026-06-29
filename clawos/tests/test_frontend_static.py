@@ -302,25 +302,37 @@ class FrontendStaticTests(unittest.TestCase):
             "enterpriseScenario",
             "enterpriseOutputDir",
             "enterpriseDeliveryResult",
+            "committeeStatus",
+            "committeeFocus",
+            "committeeOutputDir",
+            "committeeResult",
             "runEnterpriseDeliveryRoom",
             "saveEnterpriseDeliveryToKnowledge",
+            "runSelfReviewCommittee",
+            "saveSelfReviewCommitteeToKnowledge",
         ):
             self.assertIn(token, html)
 
         for token in (
             "lastEnterpriseDelivery",
             "lastEnterpriseKnowledgeIds",
+            "lastSelfReviewCommittee",
+            "lastCommitteeKnowledgeIds",
             "clawos_enterprise_delivery_room",
+            "clawos_self_review_committee",
             "/api/skills/execute",
             "plan_only: false",
             "knowledge_items",
             "enterprise-delivery",
+            "multi-agent",
             "askEnterpriseDeliveryQuestion",
+            "askSelfReviewCommitteeQuestion",
             "模拟评委视角",
         ):
             self.assertIn(token, js)
 
         self.assertIn(".enterprise-delivery-panel", css)
+        self.assertIn(".self-review-committee-panel", css)
         self.assertIn(".aether-console #view-knowledge .enterprise-delivery-panel", css)
 
     def test_console_user_facing_copy_avoids_internal_demo_terms(self):
