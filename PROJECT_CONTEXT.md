@@ -1097,3 +1097,25 @@ Known notes:
 
 Recommended next step:
 - Add a browser-level smoke check for the Enterprise Delivery Room panel and then build the multi-agent Reviewer pass on top of the saved delivery package.
+
+### 2026-06-29 - DeepSeek + Qwen3 Hybrid RAG full-chain acceptance
+
+Completed:
+- Added `clawos/scripts/hybrid_rag_acceptance.py` to validate the full chain: DeepSeek query rewrite, Qwen3-Embedding + Chroma vector recall, Qwen3-Reranker top-k precision ranking, DeepSeek grounded answer generation, and DeepSeek answer judging.
+- Added deterministic unit coverage in `clawos/tests/test_hybrid_rag_acceptance.py` for JSON parsing, ID normalization, model file checks, and metric aggregation.
+- The script uses API keys only from the process environment and writes no secret values to the report.
+
+Verification:
+- `python -m py_compile clawos\scripts\hybrid_rag_acceptance.py`: passed.
+- `python -m unittest clawos.tests.test_hybrid_rag_acceptance`: `4 tests OK`.
+- Real full-chain run:
+  `python clawos\scripts\hybrid_rag_acceptance.py --model deepseek-chat --base-url https://api.deepseek.com/v1 --out output\deepseek_hybrid_rag_acceptance.json`
+  returned `ok=True`, `chat_ok=True`, `embedding=qwen3`, `vector_recall_at_30=1.0`, `rerank_recall_at_5=1.0`, `rerank_mrr=1.0`, `citation_hit_rate=1.0`, `judge_grounded_rate=1.0`, `judge_expected_citation_rate=1.0`.
+
+Known notes:
+- DeepSeek `/embeddings` probe still returned `404`; the accepted architecture is DeepSeek for reasoning/query/answer/judge plus local Qwen3 embedding/reranker for knowledge retrieval.
+- The report `output\deepseek_hybrid_rag_acceptance.json` is ignored and should not be committed.
+- Observed case latency is dominated by local Qwen3 reranker + DeepSeek calls; current report p50 was about `17.3s` and p95 about `20.2s` for the synthetic complex cases.
+
+Recommended next step:
+- Add a console/ops entry for running or displaying Hybrid RAG acceptance evidence, then benchmark latency with smaller recall windows or cached rerank batches for demo mode.
