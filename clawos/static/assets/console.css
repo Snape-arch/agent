@@ -193,7 +193,8 @@
 .model-mode-card:hover span{
   color:#d1d5db;
 }
-.report-style-panel{
+.report-style-panel,
+.enterprise-delivery-panel{
   display:grid;
   grid-template-columns:minmax(220px,1.2fr) minmax(180px,1fr) minmax(150px,190px) minmax(110px,140px) minmax(170px,220px) auto;
   align-items:end;
@@ -205,12 +206,14 @@
   background:rgba(255,255,255,.68);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.82),0 10px 24px rgba(31,35,40,.05);
 }
-.report-style-panel b{
+.report-style-panel b,
+.enterprise-delivery-panel b{
   display:block;
   color:#111827;
   font-size:14px;
 }
-.report-style-panel span{
+.report-style-panel span,
+.enterprise-delivery-panel span{
   display:block;
   margin-top:5px;
   color:#4b5563;
@@ -218,10 +221,13 @@
   line-height:1.45;
 }
 .report-style-panel input,
-.report-style-panel select{
+.report-style-panel select,
+.enterprise-delivery-panel input,
+.enterprise-delivery-panel select{
   min-width:0;
 }
-.report-style-panel label{
+.report-style-panel label,
+.enterprise-delivery-panel label{
   display:flex;
   flex-direction:column;
   gap:6px;
@@ -824,6 +830,7 @@
   .knowledge-toolbar{grid-template-columns:1fr}
   .obsidian-panel{grid-template-columns:1fr}
   .report-style-panel{grid-template-columns:1fr}
+  .enterprise-delivery-panel{grid-template-columns:1fr}
   .model-choice-actions{grid-template-columns:1fr}
   .app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
@@ -1356,22 +1363,27 @@
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-.report-style-panel{
+.report-style-panel,
+.enterprise-delivery-panel{
   grid-template-columns:minmax(180px,1.1fr) repeat(4,minmax(120px,1fr)) minmax(116px,auto);
 }
 .report-style-panel > *,
+.enterprise-delivery-panel > *,
 .obsidian-panel > *,
 .knowledge-toolbar > *{
   min-width:0;
 }
-.report-style-panel .primary{
+.report-style-panel .primary,
+.enterprise-delivery-panel .primary{
   min-width:116px;
   white-space:nowrap;
 }
 @media(max-width:1280px){
   .aether-console .head-actions{display:none}
   .report-style-panel{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .report-style-panel > div{grid-column:1/-1}
+  .enterprise-delivery-panel{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .report-style-panel > div,
+  .enterprise-delivery-panel > div{grid-column:1/-1}
 }
 
 @media(max-width:760px){
@@ -1814,6 +1826,7 @@
 .aether-console .settings-note,
 .aether-console .model-choice-actions,
 .aether-console .report-style-panel,
+.aether-console .enterprise-delivery-panel,
 .aether-console .obsidian-panel,
 .aether-console .knowledge-toolbar,
 .aether-console .import-drop{
@@ -1826,6 +1839,7 @@
 }
 .aether-console .model-mode-card span,
 .aether-console .report-style-panel span,
+.aether-console .enterprise-delivery-panel span,
 .aether-console .import-drop span,
 .aether-console .app-grid span,
 .aether-console .board-card span{
@@ -1833,6 +1847,7 @@
 }
 .aether-console .model-mode-card b,
 .aether-console .report-style-panel b,
+.aether-console .enterprise-delivery-panel b,
 .aether-console .import-drop b,
 .aether-console .app-grid b,
 .aether-console .board-card b{
@@ -2065,6 +2080,7 @@
 .aether-console .recent-label,
 .aether-console .settings-grid label,
 .aether-console .report-style-panel label,
+.aether-console .enterprise-delivery-panel label,
 .aether-console .knowledge-editor label,
 .aether-console .session-import label,
 .aether-console .permission-editor label{
@@ -2293,7 +2309,8 @@
 }
 .aether-console #view-knowledge .knowledge-toolbar,
 .aether-console #view-knowledge .obsidian-panel,
-.aether-console #view-knowledge .report-style-panel{
+.aether-console #view-knowledge .report-style-panel,
+.aether-console #view-knowledge .enterprise-delivery-panel{
   margin-bottom:14px;
 }
 .aether-console #view-knowledge .knowledge-layout{
@@ -2306,6 +2323,7 @@
 .aether-console #view-knowledge .report-result,
 .aether-console #view-knowledge .obsidian-panel,
 .aether-console #view-knowledge .report-style-panel,
+.aether-console #view-knowledge .enterprise-delivery-panel,
 .aether-console #view-knowledge .knowledge-toolbar{
   color:#fff;
   background:

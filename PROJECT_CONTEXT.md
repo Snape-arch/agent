@@ -1070,3 +1070,30 @@ Known notes:
 
 Recommended next step:
 - Add a visible console action for the Enterprise Delivery Room, then optionally feed its generated package back into the knowledge base for follow-up judge Q&A and presentation generation.
+
+### 2026-06-29 - Enterprise Delivery Room console loop and DeepSeek acceptance
+
+Completed:
+- Added a Knowledge view `企业交付室` panel that runs `clawos_enterprise_delivery_room` as a one-click workflow.
+- The console now displays package directory, readiness score, missing checks, evidence counts, and generated artifact paths.
+- `competition_delivery_package` now returns `knowledge_items` for the generated index, executive brief, technical evidence, demo runbook, judge Q&A, and risk register.
+- Added `保存到知识库` support for Enterprise Delivery Room outputs; saved items enter the project knowledge library and can be used for follow-up judge Q&A prompts.
+- Added frontend/static and scenario regression coverage for the new workflow.
+
+Verification:
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_scenarios_e2e.ScenarioEndToEndTests.test_competition_delivery_package_generates_enterprise_artifacts clawos.tests.test_skill_runtime.SkillRuntimeTests.test_enterprise_delivery_room_skill_generates_package`: `29 tests OK`.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m py_compile clawos\scripts\scenario_tools.py`: passed.
+
+DeepSeek acceptance:
+- `evaluate_model_acceptance.py --provider deepseek --model deepseek-chat --suite clawos\benchmarks\core_e2e_v1.json --out output\deepseek_core_e2e_report.json`: `passed_count=4 failed_count=0 score=20/20 rate=1.0`.
+- `evaluate_model_acceptance.py --provider deepseek --model deepseek-chat --out output\deepseek_acceptance_report.json`: `passed_count=30 failed_count=0 score=150/150 rate=1.0`.
+- `deepseek_retrieval_benchmark.py --model deepseek-chat --out output\deepseek_retrieval_benchmark.json`: `ok=True`, `chat_ok=True`, `embeddings_status=404`, `recall=1.0`, `mrr=0.875`, `judge_hit_rate=1.0`.
+
+Known notes:
+- DeepSeek reports under `output\deepseek_*.json` are local ignored evidence and must not be committed.
+- DeepSeek public compatible API did not expose embeddings in this run (`404`), so the retrieval benchmark remains DeepSeek query/judgment plus local vector recall.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Add a browser-level smoke check for the Enterprise Delivery Room panel and then build the multi-agent Reviewer pass on top of the saved delivery package.

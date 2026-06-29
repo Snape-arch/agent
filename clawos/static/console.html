@@ -157,7 +157,16 @@
           <label>输出目录<input id="reportOutputDir" placeholder="output/reports"></label>
           <button class="primary" onclick="generateKnowledgeReport()">生成报告</button>
         </div>
+        <div class="enterprise-delivery-panel">
+          <div><b>企业交付室</b><span id="enterpriseDeliveryStatus">一键生成比赛/企业交付包，并保存回项目知识库。</span></div>
+          <label>项目名<input id="enterpriseProjectName" value="ClawOS"></label>
+          <label>场景<input id="enterpriseScenario" value="MTClaw competition enterprise delivery"></label>
+          <label>输出目录<input id="enterpriseOutputDir" placeholder="output/delivery"></label>
+          <button class="primary" onclick="runEnterpriseDeliveryRoom()">生成交付包</button>
+          <button class="secondary" onclick="saveEnterpriseDeliveryToKnowledge()">保存到知识库</button>
+        </div>
         <div class="section-block compact-block" id="reportResultBlock"><h2>报告结果</h2><div class="report-result" id="reportResult">选择资料后生成报告</div></div>
+        <div class="section-block compact-block" id="enterpriseDeliveryResultBlock"><h2>企业交付室结果</h2><div class="report-result" id="enterpriseDeliveryResult">点击生成交付包后，可保存到项目知识库继续追问。</div></div>
         <div class="section-block compact-block" id="obsidianResultBlock"><h2>笔记库结果</h2><table class="table" id="obsidianCheckTable"></table></div>
         <div class="knowledge-layout">
           <section class="knowledge-editor">

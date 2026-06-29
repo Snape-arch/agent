@@ -27,6 +27,7 @@ Desktop.ini
 clawos/uploads/
 clawos/data/chroma/
 output/reports/
+output/delivery/
 output/deepseek_*.json
 tmp/*.png
 output/obsidian/

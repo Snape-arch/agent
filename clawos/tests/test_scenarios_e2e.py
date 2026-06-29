@@ -171,6 +171,8 @@ class ScenarioEndToEndTests(unittest.TestCase):
 
         self.assertGreaterEqual(result["readiness_score"], 80)
         self.assertTrue(executive_brief_exists)
+        self.assertEqual(len(result["knowledge_items"]), 6)
+        self.assertTrue(all(item["category"] == "project" for item in result["knowledge_items"]))
         self.assertIn("score=", index)
         self.assertIn("自进化", qa)
 

@@ -133,7 +133,8 @@ def _write_delivery_file(output_dir, filename, title, sections):
 
 def competition_delivery_package(payload):
     """Build a judge-facing enterprise delivery package from project evidence."""
-    root = Path(payload.get("root") or BASE_DIR).expanduser().resolve()
+    default_root = Path(BASE_DIR).parent if (Path(BASE_DIR).parent / "PROJECT_CONTEXT.md").exists() else Path(BASE_DIR)
+    root = Path(payload.get("root") or default_root).expanduser().resolve()
     output_root = Path(payload.get("output_dir") or (root / "output" / "delivery")).expanduser().resolve()
     project_name = str(payload.get("project_name") or "ClawOS").strip() or "ClawOS"
     scenario = str(payload.get("scenario") or "MTClaw competition enterprise delivery").strip()
@@ -293,6 +294,50 @@ def competition_delivery_package(payload):
             "judge_qa": judge_qa,
             "risk_register": risk_register,
         },
+        "knowledge_items": [
+            {
+                "title": f"{project_name} 交付索引",
+                "content": _read_doc(index, 16000),
+                "category": "project",
+                "source": index,
+                "tags": ["enterprise-delivery", "index", "generated"],
+            },
+            {
+                "title": f"{project_name} 执行摘要",
+                "content": _read_doc(executive_brief, 16000),
+                "category": "project",
+                "source": executive_brief,
+                "tags": ["enterprise-delivery", "brief", "generated"],
+            },
+            {
+                "title": f"{project_name} 技术证据",
+                "content": _read_doc(technical_evidence, 20000),
+                "category": "project",
+                "source": technical_evidence,
+                "tags": ["enterprise-delivery", "technical-evidence", "generated"],
+            },
+            {
+                "title": f"{project_name} 演示脚本",
+                "content": _read_doc(demo_runbook, 16000),
+                "category": "project",
+                "source": demo_runbook,
+                "tags": ["enterprise-delivery", "demo-runbook", "generated"],
+            },
+            {
+                "title": f"{project_name} 评委问答",
+                "content": _read_doc(judge_qa, 16000),
+                "category": "project",
+                "source": judge_qa,
+                "tags": ["enterprise-delivery", "judge-qa", "generated"],
+            },
+            {
+                "title": f"{project_name} 风险清单",
+                "content": _read_doc(risk_register, 16000),
+                "category": "project",
+                "source": risk_register,
+                "tags": ["enterprise-delivery", "risk-register", "generated"],
+            },
+        ],
         "evidence_counts": {
             "capability": len(capability_evidence),
             "validation": len(validation_evidence),

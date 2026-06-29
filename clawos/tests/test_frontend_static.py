@@ -291,6 +291,38 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".report-style-panel .primary", css)
         self.assertIn("@media(max-width:1280px)", css)
 
+    def test_console_exposes_enterprise_delivery_room_workflow(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
+
+        for token in (
+            "enterpriseDeliveryStatus",
+            "enterpriseProjectName",
+            "enterpriseScenario",
+            "enterpriseOutputDir",
+            "enterpriseDeliveryResult",
+            "runEnterpriseDeliveryRoom",
+            "saveEnterpriseDeliveryToKnowledge",
+        ):
+            self.assertIn(token, html)
+
+        for token in (
+            "lastEnterpriseDelivery",
+            "lastEnterpriseKnowledgeIds",
+            "clawos_enterprise_delivery_room",
+            "/api/skills/execute",
+            "plan_only: false",
+            "knowledge_items",
+            "enterprise-delivery",
+            "askEnterpriseDeliveryQuestion",
+            "模拟评委视角",
+        ):
+            self.assertIn(token, js)
+
+        self.assertIn(".enterprise-delivery-panel", css)
+        self.assertIn(".aether-console #view-knowledge .enterprise-delivery-panel", css)
+
     def test_console_user_facing_copy_avoids_internal_demo_terms(self):
         combined = "\n".join(
             self.read_page(name)
