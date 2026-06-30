@@ -534,6 +534,31 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".rubric-summary", css)
         self.assertIn(".aether-console #view-knowledge .enterprise-delivery-panel", css)
 
+    def test_console_runtime_modules_are_split_from_main_bundle(self):
+        html = self.read_page("console.html")
+        css = self.read_page("assets/console.css")
+        module_js = self.read_page("assets/console.modules.js")
+
+        for token in (
+            "runtimeRecordPanel",
+            "runtimeRecordGrid",
+            "/assets/console.modules.js",
+        ):
+            self.assertIn(token, html)
+        for token in (
+            "ClawOSConsoleModules",
+            "runtime-records",
+            "/api/runtime/schema",
+            "/api/runtime/runs/latest",
+            "/api/runtime/failure-cases",
+            "loadRuntimeRecords",
+            "Failure Library",
+            "Run / Artifact / Evidence",
+        ):
+            self.assertIn(token, module_js)
+        self.assertIn(".runtime-record-panel", css)
+        self.assertIn(".runtime-record-grid", css)
+
     def test_console_user_facing_copy_avoids_internal_demo_terms(self):
         combined = "\n".join(
             self.read_page(name)

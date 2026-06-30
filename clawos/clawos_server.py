@@ -12,7 +12,18 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from providers import create_model_provider
-from services import KnowledgeService, MaintenanceService, ModelService, SecurityService, TaskService, ToolService
+from services import (
+    AgentOrchestrationService,
+    EvaluationService,
+    KnowledgeService,
+    MaintenanceService,
+    ModelService,
+    SecurityService,
+    TaskService,
+    ToolService,
+    WorkflowEngine,
+)
+from services.runtime_records import RUN_SCHEMA_VERSION, run_from_task
 
 # ---- PATHS ----
 BASE_DIR = Path(__file__).parent.resolve()
@@ -61,6 +72,9 @@ g_knowledge_service: KnowledgeService | None = None
 g_security_service: SecurityService | None = None
 g_task_service: TaskService | None = None
 g_maintenance_service: MaintenanceService | None = None
+g_evaluation_service: EvaluationService | None = None
+g_workflow_engine: WorkflowEngine | None = None
+g_agent_orchestration_service: AgentOrchestrationService | None = None
 g_background_worker_task: asyncio.Task | None = None
 g_background_worker_status: dict[str, Any] = {
     "running": False,
@@ -762,6 +776,28 @@ def get_maintenance_service() -> MaintenanceService:
     ):
         g_maintenance_service = MaintenanceService(store=g_memory_store, db_path=MEMORY_DB, base_dir=BASE_DIR, config=config)
     return g_maintenance_service
+
+
+def get_workflow_engine() -> WorkflowEngine:
+    global g_workflow_engine
+    if not g_workflow_engine:
+        g_workflow_engine = WorkflowEngine()
+    return g_workflow_engine
+
+
+def get_evaluation_service() -> EvaluationService:
+    global g_evaluation_service
+    output_root = (BASE_DIR.parent / "output").resolve()
+    if not g_evaluation_service or getattr(g_evaluation_service, "output_root", None) != output_root:
+        g_evaluation_service = EvaluationService(output_root)
+    return g_evaluation_service
+
+
+def get_agent_orchestration_service() -> AgentOrchestrationService:
+    global g_agent_orchestration_service
+    if not g_agent_orchestration_service:
+        g_agent_orchestration_service = AgentOrchestrationService(get_workflow_engine())
+    return g_agent_orchestration_service
 
 
 def list_memory_items(
@@ -2825,52 +2861,55 @@ async def api_knowledge_search(q: str = "", category: str = "", limit: int = 10)
 
 @app.get("/api/acceptance/deepseek-qwen/latest")
 async def api_latest_deepseek_qwen_acceptance():
-    report_path = (BASE_DIR.parent / "output" / "deepseek_hybrid_rag_acceptance.json").resolve()
-    output_root = (BASE_DIR.parent / "output").resolve()
-    if output_root not in report_path.parents:
-        raise HTTPException(status_code=403, detail="Report path outside output")
-    if not report_path.exists():
-        return JSONResponse({
-            "found": False,
-            "report_path": str(report_path),
-            "message": "No DeepSeek+Qwen acceptance report found under output.",
-        })
     try:
-        data = json.loads(report_path.read_text(encoding="utf-8"))
+        return JSONResponse(get_evaluation_service().latest_deepseek_qwen())
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to read report: {type(exc).__name__}") from exc
-    benchmark = data.get("benchmark") or {}
-    metrics = benchmark.get("metrics") or {}
-    cases = []
-    for case in data.get("cases") or []:
-        cases.append({
-            "scenario": case.get("scenario", ""),
-            "name": case.get("name", ""),
-            "pass": bool(case.get("pass")),
-            "citation_hit": bool(case.get("citation_hit")),
-            "latency_ms": case.get("latency_ms", 0),
-            "vector_rank": case.get("vector_rank", 0),
-            "rerank_rank": case.get("rerank_rank", 0),
-        })
+
+
+@app.get("/api/runtime/schema")
+async def api_runtime_schema():
+    workflow = get_workflow_engine().start("schema-preview", "runtime schema preview").to_dict()
     return JSONResponse({
-        "found": True,
-        "report_path": str(report_path),
-        "ok": bool(data.get("ok")),
-        "model": data.get("model", ""),
-        "benchmark": {
-            "name": benchmark.get("name", ""),
-            "case_count": benchmark.get("case_count", len(cases)),
-            "metrics": {
-                "pass_rate": metrics.get("pass_rate", 0),
-                "passed_count": metrics.get("passed_count", 0),
-                "failed_count": metrics.get("failed_count", 0),
-                "citation_hit_rate": metrics.get("citation_hit_rate", 0),
-                "judge_grounded_rate": metrics.get("judge_grounded_rate", 0),
-                "latency_p50_ms": metrics.get("latency_p50_ms", 0),
-                "latency_p95_ms": metrics.get("latency_p95_ms", 0),
-            },
-        },
-        "cases": cases,
+        "schema": RUN_SCHEMA_VERSION,
+        "service_boundaries": [
+            "server_api",
+            "workflow_engine",
+            "agent_orchestration",
+            "artifact_storage",
+            "evaluation_service",
+        ],
+        "run_entities": ["Run", "Artifact", "Evidence", "FailureCase"],
+        "workflow_states": workflow["states"],
+        "workflow_transitions": workflow["transitions"],
+    })
+
+
+@app.get("/api/runtime/runs/latest")
+async def api_runtime_runs_latest(limit: int = 12):
+    runs = []
+    if g_memory_store:
+        for task in get_task_service().list(limit=max(1, min(int(limit or 12), 50))):
+            runs.append(run_from_task(task))
+    acceptance = get_evaluation_service().latest_deepseek_qwen()
+    if acceptance.get("run_record"):
+        runs.insert(0, acceptance["run_record"])
+    return JSONResponse({"schema": RUN_SCHEMA_VERSION, "runs": runs[: max(1, min(int(limit or 12), 50))], "count": len(runs)})
+
+
+@app.get("/api/runtime/failure-cases")
+async def api_runtime_failure_cases(limit: int = 50):
+    failures = []
+    acceptance = get_evaluation_service().latest_deepseek_qwen()
+    failures.extend(acceptance.get("failure_library") or [])
+    if g_memory_store:
+        for task in get_task_service().list(limit=50):
+            run = run_from_task(task)
+            failures.extend(run.get("failure_cases") or [])
+    return JSONResponse({
+        "schema": RUN_SCHEMA_VERSION,
+        "failure_cases": failures[: max(1, min(int(limit or 50), 200))],
+        "count": len(failures),
     })
 
 

@@ -1403,3 +1403,29 @@ Known notes:
 
 Recommended next step:
 - Do a visible screenshot pass on the busiest backend spaces (`任务`, `权限`, `运维`) to tune individual column priorities if any real production payload still feels too dense.
+
+### 2026-06-30 - Runtime service split and unified Run schema
+
+Completed:
+- Added service-layer boundaries for `workflow_engine`, `agent_orchestration_service`, `artifact_storage`, `evaluation_service`, and `runtime_records`.
+- Introduced unified `clawos.run.v1` Run / Artifact / Evidence / FailureCase records for runtime tasks, multi-agent committee results, and DeepSeek+Qwen acceptance reports.
+- Added a generic workflow state machine for multi-agent rework gates, report generation, acceptance execution, artifact saving, and pass/fail/blocked outcomes.
+- DeepSeek+Qwen latest acceptance API now returns previous compact-card fields plus `run_record` and `failure_library` for failed, misjudged, low-quality, or citation-miss samples.
+- Multi-agent committee output now includes normalized `run_record` evidence with artifacts, quality-gate failures, disagreements, and state-machine rework status.
+- Added `/api/runtime/schema`, `/api/runtime/runs/latest`, and `/api/runtime/failure-cases`.
+- Split `clawos/static/assets/console.modules.js` from the main console bundle and added a compact Run/Artifact/Evidence card to the Task Trace space.
+
+Verification:
+- `python -m py_compile clawos\services\runtime_records.py clawos\services\workflow_engine.py clawos\services\artifact_storage.py clawos\services\evaluation_service.py clawos\services\agent_orchestration_service.py clawos\clawos_server.py clawos\scripts\scenario_tools.py`: passed.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.modules.js`: passed.
+- `python -m unittest clawos.tests.test_runtime_records clawos.tests.test_frontend_static clawos.tests.test_scenarios_e2e`: `44 tests OK`.
+- `python -m unittest discover -s clawos\tests`: `200 tests OK`.
+
+Known notes:
+- Browser smoke on a temporary static localhost URL was not completed because the in-app browser security policy rejected `http://127.0.0.1:8791`; no workaround was attempted. Static tests and the full unit suite passed.
+- The new runtime record layer is a normalized service boundary, not yet a full database migration for all historical run artifacts.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Persist Run/Artifact/Evidence/FailureCase records into durable tables and route every artifact-producing workflow through `ArtifactStorage` instead of direct ad hoc output paths.

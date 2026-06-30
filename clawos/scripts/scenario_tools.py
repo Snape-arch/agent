@@ -1395,7 +1395,7 @@ def multi_agent_review_committee(payload):
         rubric_matrix,
     )
     report_content = _read_doc(report_path, 24000)
-    return {
+    result = {
         "project_name": project_name,
         "focus": focus,
         "score": final_score,
@@ -1430,6 +1430,13 @@ def multi_agent_review_committee(payload):
             builder_execution.get("knowledge_item", {}),
         ],
     }
+    try:
+        from services.agent_orchestration_service import AgentOrchestrationService
+
+        result["run_record"] = AgentOrchestrationService().normalize_committee_result(result)
+    except Exception as exc:
+        result["run_record_error"] = f"{type(exc).__name__}: {exc}"
+    return result
 
 
 def meeting_action_items(payload):

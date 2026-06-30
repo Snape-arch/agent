@@ -1967,6 +1967,7 @@ function chooseFirstRunModel(provider) {
 async function refreshAll() {
   ensureProfessionalBoard();
   await Promise.allSettled([loadHealth(), loadDash(), loadRoutingStrategy(), loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue(), loadMemory(), loadReflection(), loadEvolution(), loadSkills(), loadTools(), loadToolExecutions(), loadTasks(), loadBenchmarks(), loadCapabilities(), loadSecurityCenter(), loadOps()]);
+  if (window.loadRuntimeRecords) window.loadRuntimeRecords();
 }
 
 if ($("cfgProvider")) $("cfgProvider").addEventListener("change", () => applyProviderPreset(true));
