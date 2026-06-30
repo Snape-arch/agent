@@ -1341,3 +1341,24 @@ Known notes:
 
 Recommended next step:
 - Add a small reusable static/browser smoke script for the product shell so pre-demo checks can verify all six product capability links, not just the MemoryOS path.
+
+### 2026-06-30 - Home hero polish and console product navigation
+
+Completed:
+- Replaced the home scan-wall labels from literal `* Agent` names with lifestyle/narrative labels (`Urban Signal`, `Archive Mode`, `Study Drift`, `Memory Club`, `Patch Culture`, `Desk Ritual`, `Skill Drop`) so the portrait imagery reads as a trend/culture sequence rather than mismatched agent avatars.
+- Adjusted the home hero composition: the robotic arm now sits higher and slightly right with a stable static opacity, while the title stack sits lower with more visual breathing room.
+- Fixed a browser-observed hero animation issue where the robotic arm opacity could remain at the animation start value; opacity is now controlled by static CSS and the animation only moves/scales the arm.
+- Added an explicit console sidebar product navigation strip with direct links to `首页` and `产品页`, plus an active `控制台` state, so users can leave the console without relying on the subtle header layer strip.
+- Added frontend static coverage for the new lifestyle labels, hero placement tokens, and console product navigation.
+
+Verification:
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `30 tests OK`.
+- Browser smoke with an in-session static server: home scan labels rendered as the new lifestyle labels; hero arm transform was offset right and final opacity was `0.94`; console product nav exposed `首页 -> /`, `产品页 -> /product`, and active `控制台`.
+
+Known notes:
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+- Current branch already includes the previous unpushed product-shell commit.
+
+Recommended next step:
+- Take one visual screenshot pass on desktop and mobile before pushing, focusing on hero overlap, console side navigation density, and product page card scanning.

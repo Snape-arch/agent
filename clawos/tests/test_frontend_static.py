@@ -37,9 +37,14 @@ class FrontendStaticTests(unittest.TestCase):
             self.assertIn("Console", page)
 
         self.assertIn("console-layer-strip", console)
+        self.assertIn("console-product-nav", console)
         self.assertIn("Overview", console)
         self.assertIn("Product Map", console)
         self.assertIn("Console", console)
+        self.assertIn('href="/"', console)
+        self.assertIn('href="/product"', console)
+        self.assertIn("首页", console)
+        self.assertIn("产品页", console)
         for token in (
             "--claw-card-radius",
             "--claw-pill-radius",
@@ -50,6 +55,7 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertIn(token, site_css)
         self.assertIn(".aether-console .console-layer-strip", console_css)
+        self.assertIn(".aether-console .console-product-nav", console_css)
 
         expected_links = {
             "/console#memory": "MemoryOS",
@@ -63,6 +69,33 @@ class FrontendStaticTests(unittest.TestCase):
             self.assertIn(f'href="{href}"', product)
             self.assertIn(label, product)
         self.assertNotIn('class="tab-bar"', product)
+
+    def test_home_scan_wall_uses_lifestyle_narrative_labels(self):
+        home = self.read_page("index.html")
+        css = self.read_page("assets/site.css")
+
+        for label in (
+            "Urban Signal",
+            "Archive Mode",
+            "Study Drift",
+            "Memory Club",
+            "Patch Culture",
+            "Desk Ritual",
+            "Skill Drop",
+        ):
+            self.assertIn(label, home)
+        for old_label in (
+            "Meeting Agent",
+            "Research Agent",
+            "Learning Agent",
+            "Knowledge Agent",
+            "Code Agent",
+            "Workspace Agent",
+            "Skill Agent",
+        ):
+            self.assertNotIn(old_label, home)
+        self.assertIn("transform:translateX(8vw)", css)
+        self.assertIn("opacity:.42", css)
 
     def test_pages_use_clawos_assets_and_motion(self):
         home = self.read_page("index.html")
