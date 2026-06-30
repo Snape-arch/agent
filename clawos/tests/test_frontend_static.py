@@ -338,8 +338,10 @@ class FrontendStaticTests(unittest.TestCase):
             "renderRoleSwimlanes",
             "renderDisputeCards",
             "renderArtifactDiff",
+            "renderBuilderExecution",
             "roleAvatar",
             "Multi-Agent Audit Board",
+            "Builder Execution",
             "renderRubricMatrix",
             "Enterprise Rubric",
             "quality_gate",
@@ -378,6 +380,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".committee-audit-board", css)
         self.assertIn(".audit-swimlanes", css)
         self.assertIn(".audit-timeline-rail", css)
+        self.assertIn(".audit-builder-execution", css)
+        self.assertIn(".audit-builder-grid", css)
+        self.assertIn(".audit-builder-task", css)
         self.assertIn(".audit-dispute-card", css)
         self.assertIn(".audit-artifact-diff", css)
         self.assertIn(".audit-diff-pair", css)

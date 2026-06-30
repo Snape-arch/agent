@@ -1278,3 +1278,25 @@ Known notes:
 
 Recommended next step:
 - Start the local console and browser-smoke `/console` after running the multi-agent workflow to visually verify the audit board with a real payload.
+
+### 2026-06-30 - BuilderAgent executable subtask workbench
+
+Completed:
+- Upgraded `BuilderAgent` from delivery-package writer to deterministic subtask executor inside `multi_agent_review_committee`.
+- Builder now executes six Planner subtasks with tool evidence: RAG retrieval, report generation, code analysis, DeepSeek+Qwen benchmark summary, knowledge-base save candidate, and demo runbook generation.
+- Builder writes `builder_execution_report.md` and `builder_demo_runbook.md` under the committee output directory and returns structured `builder_execution` plus `builder_review`.
+- Reviewer/Risk/Judge findings now explicitly review Builder execution evidence; trace/timeline includes B1-B6 Builder tool execution steps.
+- Console audit board now shows Builder Execution task cards with task/tool/status/output/artifact before the broader timeline and dispute panels.
+
+Verification:
+- `python -m py_compile clawos\scripts\scenario_tools.py`: passed.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_scenarios_e2e clawos.tests.test_skill_runtime clawos.tests.test_frontend_static`: `41 tests OK`.
+
+Known notes:
+- Builder benchmark evidence uses the latest ignored report if present, otherwise records a fallback summary; no live API run is started by this committee tool.
+- `output\deepseek_hybrid_rag_acceptance.json` remains ignored local evidence and should not be committed.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Browser-smoke the Knowledge console multi-agent flow with a real committee payload, then consider wiring Builder execution cards to expandable raw evidence snippets.

@@ -214,6 +214,7 @@ class ScenarioEndToEndTests(unittest.TestCase):
             v2_paths = list(first_rework["v2_artifacts"].values())
             v2_files_exist = all(Path(path).exists() for path in v2_paths)
             v2_contents = [Path(path).read_text(encoding="utf-8") for path in v2_paths]
+            builder_report_exists = Path(result["builder_execution"]["artifacts"]["report"]).exists()
 
         self.assertGreaterEqual(result["score"], 70)
         self.assertEqual(len(result["roles"]), 6)
@@ -228,6 +229,7 @@ class ScenarioEndToEndTests(unittest.TestCase):
         self.assertIn("Quality Gate", report)
         self.assertIn("Rework And Recheck Loop", report)
         self.assertIn("Conflict Debate And Arbitration Log", report)
+        self.assertIn("Builder Execution Workbench", report)
         self.assertIn("v2_artifact:", report)
         self.assertEqual(result["quality_gate"]["status"], "revision_required")
         self.assertIn("RiskAgent", result["quality_gate"]["blocking_agents"])
@@ -255,7 +257,22 @@ class ScenarioEndToEndTests(unittest.TestCase):
         self.assertTrue(any(item["objector"] == "RiskAgent" for item in result["disagreement_log"]))
         self.assertTrue(any(item["requires_rework"] for item in result["disagreement_log"]))
         self.assertTrue(all("arbitration_decision" in item for item in result["disagreement_log"]))
-        self.assertEqual(len(result["knowledge_items"]), 1)
+        self.assertIn("builder_execution", result)
+        self.assertIn("builder_review", result)
+        self.assertEqual(result["builder_execution"]["task_count"], 6)
+        self.assertEqual(result["builder_review"]["status"], "pass")
+        builder_tools = {item["tool"] for item in result["builder_execution"]["tasks"]}
+        self.assertEqual(builder_tools, {
+            "knowledge_search",
+            "builder_report_generator",
+            "code_stats",
+            "deepseek_qwen_acceptance_summary",
+            "knowledge_item_candidate",
+            "demo_runbook_builder",
+        })
+        self.assertTrue(builder_report_exists)
+        self.assertTrue(any(step["id"] == "B3" and step["agent"] == "BuilderAgent" for step in result["execution_trace"]))
+        self.assertEqual(len(result["knowledge_items"]), 2)
         self.assertIn("P0:", "\n".join(result["priorities"]))
 
 

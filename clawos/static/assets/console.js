@@ -1017,6 +1017,23 @@ function renderArtifactDiff(reworkLoop) {
   }).join("")}</div>`;
 }
 
+function renderBuilderExecution(builderExecution) {
+  const tasks = builderExecution?.tasks || [];
+  if (!tasks.length) return "";
+  return `<div class="audit-builder-execution">
+    <div class="audit-builder-head"><b>Builder Execution</b><span>${esc(builderExecution.status || "")} · ${esc(builderExecution.done_count ?? 0)}/${esc(builderExecution.task_count ?? tasks.length)} done</span></div>
+    <div class="audit-builder-grid">${tasks.map(item => `
+      <div class="audit-builder-task ${esc(item.status || "")}">
+        <span>${esc(item.id || "")}</span>
+        <b>${esc(item.planner_task || "")}</b>
+        <small>${esc(item.tool || "")} · ${esc(item.status || "")}</small>
+        <p>${esc(item.output || "")}</p>
+        <code>${esc(item.artifact || "no artifact")}</code>
+      </div>
+    `).join("")}</div>
+  </div>`;
+}
+
 function renderCommitteeAuditBoard(payload) {
   const gate = payload.quality_gate || {};
   const rework = payload.rework_loop || {};
@@ -1032,6 +1049,7 @@ function renderCommitteeAuditBoard(payload) {
       </div>
     </div>
     ${renderRoleSwimlanes(payload)}
+    ${renderBuilderExecution(payload.builder_execution)}
     ${renderAuditTimeline(payload.timeline || [])}
     <div class="audit-board-columns">
       <div><h3>争议点与仲裁</h3>${renderDisputeCards(disagreements) || '<div class="empty-state">No disagreement recorded.</div>'}</div>
