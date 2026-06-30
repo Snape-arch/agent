@@ -1382,3 +1382,24 @@ Known notes:
 
 Recommended next step:
 - Do one visible desktop/mobile screenshot review of the product hero before push, focusing on crop, tilt, and whether the console image remains readable enough beside the headline.
+
+### 2026-06-30 - Console structure and anti-compression cleanup
+
+Completed:
+- Split the console space switcher into two explicit groups: `工作前台` for user-facing workspaces and `系统后台` for runtime, governance, evaluation, security, and ops spaces.
+- Renamed the sidebar main label to `前台工作` and added a `后台系统` label above system settings/tool evaluation so the left rail matches the same information architecture.
+- Added an anti-compression CSS layer for all console tables: dense data tables now use horizontal overflow, `table-layout:auto`, horizontal writing mode, and normal word breaking instead of squeezing Chinese into vertical-looking columns.
+- Added wider minimum widths for task, tool, security, ops, evolution, and benchmark tables so runtime records can breathe instead of forcing unreadable narrow columns.
+- Added frontend static coverage for the前台/后台 grouping and anti-compression table rules.
+
+Verification:
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `31 tests OK`.
+- Browser smoke with an in-session static server on `/console#tasks`: active view was `view-tasks`, top groups showed `工作前台` and `系统后台`, sidebar labels showed `前台工作` / `后台系统`, and task table computed styles were `table-layout:auto`, `min-width:920px`, `writing-mode:horizontal-tb`, with horizontal overflow enabled.
+
+Known notes:
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+- Current branch already includes three previous unpushed frontend commits.
+
+Recommended next step:
+- Do a visible screenshot pass on the busiest backend spaces (`任务`, `权限`, `运维`) to tune individual column priorities if any real production payload still feels too dense.

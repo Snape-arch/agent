@@ -29,7 +29,7 @@
       <input id="consoleSearch" placeholder="搜索会话、知识或任务">
     </div>
 
-    <div class="side-label">工作区</div>
+    <div class="side-label">前台工作</div>
     <div class="side-nav">
       <button class="on" data-view="chat" data-action="new-chat"><span class="nav-ico">＋</span>新聊天</button>
       <button data-view="search"><span class="nav-ico">⌕</span>搜索聊天</button>
@@ -44,6 +44,7 @@
     <div class="sessions" id="sessions"></div>
 
     <div class="side-bottom">
+      <div class="side-label side-bottom-label">后台系统</div>
       <button onclick="openModelSettings()"><span class="nav-ico">⚙</span>系统设置</button>
       <button onclick="toggleCommandDrawer()"><span class="nav-ico">◇</span>工具与评测</button>
       <div class="health"><span class="dot" id="healthDot"></span><span id="healthText">启动中</span></div>
@@ -74,21 +75,27 @@
   </header>
 
   <nav class="space-switcher" id="spaceSwitcher" aria-label="Console spaces">
-    <button data-view="chat" data-action="new-chat">新聊天</button>
-    <button data-view="search">搜索</button>
-    <button data-view="knowledge">知识库</button>
-    <button data-view="projects">项目</button>
-    <button data-view="dash">状态</button>
-    <button data-view="memory">记忆</button>
-    <button data-view="tools">工具</button>
-    <button data-view="tasks">任务</button>
-    <button data-view="reflection">反思</button>
-    <button data-view="evolution">自进化</button>
-    <button data-view="skills">技能</button>
-    <button data-view="benchmarks">基准</button>
-    <button data-view="scenes">场景</button>
-    <button data-view="security">权限</button>
-    <button data-view="ops">运维</button>
+    <div class="space-group work-front">
+      <span class="space-group-label">工作前台</span>
+      <button data-view="chat" data-action="new-chat">新聊天</button>
+      <button data-view="search">搜索</button>
+      <button data-view="knowledge">知识库</button>
+      <button data-view="projects">项目</button>
+      <button data-view="scenes">场景</button>
+    </div>
+    <div class="space-group system-back">
+      <span class="space-group-label">系统后台</span>
+      <button data-view="dash">状态</button>
+      <button data-view="memory">记忆</button>
+      <button data-view="tools">工具</button>
+      <button data-view="tasks">任务</button>
+      <button data-view="reflection">反思</button>
+      <button data-view="evolution">自进化</button>
+      <button data-view="skills">技能</button>
+      <button data-view="benchmarks">基准</button>
+      <button data-view="security">权限</button>
+      <button data-view="ops">运维</button>
+    </div>
   </nav>
 
   <main class="console-main">

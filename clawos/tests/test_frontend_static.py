@@ -38,6 +38,8 @@ class FrontendStaticTests(unittest.TestCase):
 
         self.assertIn("console-layer-strip", console)
         self.assertIn("console-product-nav", console)
+        self.assertIn("前台工作", console)
+        self.assertIn("后台系统", console)
         self.assertIn("Overview", console)
         self.assertIn("Product Map", console)
         self.assertIn("Console", console)
@@ -56,6 +58,9 @@ class FrontendStaticTests(unittest.TestCase):
             self.assertIn(token, site_css)
         self.assertIn(".aether-console .console-layer-strip", console_css)
         self.assertIn(".aether-console .console-product-nav", console_css)
+        self.assertIn(".aether-console .space-group", console_css)
+        self.assertIn(".aether-console .work-front", console_css)
+        self.assertIn(".aether-console .system-back", console_css)
 
         expected_links = {
             "/console#memory": "MemoryOS",
@@ -77,6 +82,26 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".product-page .visual-glyph", site_css)
         hero_section = product.split('<section class="product-hero">', 1)[1].split("</section>", 1)[0]
         self.assertNotIn("217661e1279b044bf39afd172106ea06.jpg", hero_section)
+
+    def test_console_prevents_vertical_compressed_table_text(self):
+        html = self.read_page("console.html")
+        css = self.read_page("assets/console.css")
+
+        self.assertIn("space-group work-front", html)
+        self.assertIn("space-group system-back", html)
+        self.assertIn("工作前台", html)
+        self.assertIn("系统后台", html)
+        for token in (
+            "Anti-compression layer",
+            "writing-mode:horizontal-tb",
+            "text-orientation:mixed",
+            "word-break:normal",
+            "table-layout:auto",
+            "#view-tasks .table",
+            "min-width:920px",
+            "overflow-x:auto",
+        ):
+            self.assertIn(token, css)
 
     def test_home_scan_wall_uses_lifestyle_narrative_labels(self):
         home = self.read_page("index.html")

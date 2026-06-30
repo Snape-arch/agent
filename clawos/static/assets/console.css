@@ -2044,6 +2044,35 @@
   -webkit-backdrop-filter:blur(24px) saturate(1.1);
   scrollbar-width:none;
 }
+.aether-console .space-group{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  flex:0 0 auto;
+  min-width:max-content;
+}
+.aether-console .space-group + .space-group{
+  padding-left:10px;
+  border-left:1px solid rgba(255,255,255,.16);
+}
+.aether-console .space-group-label{
+  flex:0 0 auto;
+  min-height:30px;
+  display:inline-flex;
+  align-items:center;
+  padding:0 7px;
+  border-radius:999px;
+  color:rgba(255,255,255,.58);
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.aether-console .work-front .space-group-label{
+  background:rgba(0,201,255,.12);
+}
+.aether-console .system-back .space-group-label{
+  background:rgba(139,92,246,.12);
+}
 .aether-console .space-switcher::-webkit-scrollbar{
   display:none;
 }
@@ -2087,6 +2116,9 @@
 .aether-console .side-brand{
   padding:2px 6px 14px;
   gap:12px;
+}
+.aether-console .side-bottom-label{
+  padding:0 12px 8px;
 }
 .aether-console .side-brand > div:not(.aether-logo){
   min-width:0;
@@ -2970,4 +3002,50 @@
   .aether-console #view-knowledge .library-tabs{
     justify-content:flex-start;
   }
+}
+
+/* Anti-compression layer: keep Chinese UI text horizontal and let dense data tables scroll. */
+.aether-console .section-block{
+  overflow-x:auto;
+}
+.aether-console .table{
+  width:100%;
+  min-width:720px;
+  table-layout:auto;
+}
+.aether-console .table th,
+.aether-console .table td{
+  writing-mode:horizontal-tb;
+  text-orientation:mixed;
+  word-break:normal;
+  overflow-wrap:break-word;
+  line-height:1.45;
+}
+.aether-console .table th{
+  white-space:nowrap;
+}
+.aether-console #view-tasks .table,
+.aether-console #view-tools .table,
+.aether-console #view-security .table,
+.aether-console #view-ops .table,
+.aether-console #view-evolution .table,
+.aether-console #view-benchmarks .table{
+  min-width:920px;
+}
+.aether-console #view-tasks .section-block,
+.aether-console #view-tools .section-block,
+.aether-console #view-security .section-block,
+.aether-console #view-ops .section-block,
+.aether-console #view-evolution .section-block,
+.aether-console #view-benchmarks .section-block{
+  scrollbar-width:thin;
+}
+.aether-console .state,
+.aether-console .tool,
+.aether-console .badge,
+.aether-console .hint,
+.aether-console button,
+.aether-console .space-group-label{
+  writing-mode:horizontal-tb;
+  text-orientation:mixed;
 }
