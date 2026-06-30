@@ -334,6 +334,12 @@ class FrontendStaticTests(unittest.TestCase):
             "timeline",
             "rubric_matrix",
             "renderCommitteeTimeline",
+            "renderCommitteeAuditBoard",
+            "renderRoleSwimlanes",
+            "renderDisputeCards",
+            "renderArtifactDiff",
+            "roleAvatar",
+            "Multi-Agent Audit Board",
             "renderRubricMatrix",
             "Enterprise Rubric",
             "quality_gate",
@@ -348,6 +354,7 @@ class FrontendStaticTests(unittest.TestCase):
             "Dispute",
             "Objector",
             "Opposes",
+            "V1 / V2 产物对比",
             "Blocker / Next",
             "Required rework",
             "lastComplexAcceptanceReport",
@@ -368,6 +375,12 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".acceptance-report-card", css)
         self.assertIn(".acceptance-metric-grid", css)
         self.assertIn(".committee-timeline", css)
+        self.assertIn(".committee-audit-board", css)
+        self.assertIn(".audit-swimlanes", css)
+        self.assertIn(".audit-timeline-rail", css)
+        self.assertIn(".audit-dispute-card", css)
+        self.assertIn(".audit-artifact-diff", css)
+        self.assertIn(".audit-diff-pair", css)
         self.assertIn(".rubric-summary", css)
         self.assertIn(".aether-console #view-knowledge .enterprise-delivery-panel", css)
 

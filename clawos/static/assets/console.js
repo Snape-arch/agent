@@ -935,6 +935,111 @@ function renderCommitteeTimeline(items) {
   `).join("")}</div>`;
 }
 
+function roleAvatar(agent) {
+  const map = {
+    PlannerAgent: "PL",
+    ResearchAgent: "RS",
+    BuilderAgent: "BD",
+    ReviewerAgent: "RV",
+    RiskAgent: "RK",
+    JudgeAgent: "JD",
+    QualityGate: "QG",
+    Arbiter: "AR",
+  };
+  return map[agent] || String(agent || "?").slice(0, 2).toUpperCase();
+}
+
+function renderRoleSwimlanes(payload) {
+  const roles = payload.roles || [];
+  if (!roles.length) return "";
+  const trace = payload.execution_trace || [];
+  return `<div class="audit-swimlanes">${roles.map(role => {
+    const roleSteps = trace.filter(step => String(step.agent || "").includes(role.agent));
+    const latest = roleSteps[roleSteps.length - 1] || {};
+    return `<div class="audit-lane ${esc(role.agent)}">
+      <div class="audit-avatar">${esc(roleAvatar(role.agent))}</div>
+      <div class="audit-lane-main">
+        <div class="audit-lane-head"><b>${esc(role.agent)}</b><span>${esc(role.score ?? "--")}/100</span></div>
+        <p>${esc((role.findings || [])[0] || latest.output || "No finding recorded.")}</p>
+        <small>${esc(latest.phase || "role")} · ${esc(latest.status || "ready")}</small>
+      </div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function renderAuditTimeline(items) {
+  const rows = items || [];
+  if (!rows.length) return "";
+  return `<div class="audit-timeline-rail">${rows.map(item => `
+    <div class="audit-timeline-node ${esc(item.status || "")}">
+      <div class="audit-avatar">${esc(roleAvatar(item.role))}</div>
+      <b>${esc(item.role || "")}</b>
+      <span>${esc(item.phase || "")}</span>
+      <small>${esc(item.gate || item.status || "")}</small>
+    </div>
+  `).join("")}</div>`;
+}
+
+function renderDisputeCards(disagreements) {
+  const rows = disagreements || [];
+  if (!rows.length) return "";
+  return `<div class="audit-dispute-grid">${rows.map(item => `
+    <article class="audit-dispute-card ${item.requires_rework ? "needs-rework" : "accepted"}">
+      <div class="audit-dispute-top"><span>${esc(item.id || "D")}</span><b>${esc(item.objector || "")}</b></div>
+      <dl>
+        <dt>Opposes</dt><dd>${esc(item.opposes || "")}</dd>
+        <dt>Evidence</dt><dd>${esc(item.evidence || "")}</dd>
+        <dt>裁决</dt><dd>${esc(item.decision_owner || "")}: ${esc(item.arbitration_decision || "")}</dd>
+        <dt>返工</dt><dd>${item.requires_rework ? "required" : "not required"}${item.linked_rework_round ? ` · ${esc(item.linked_rework_round)}` : ""}</dd>
+      </dl>
+    </article>
+  `).join("")}</div>`;
+}
+
+function renderArtifactDiff(reworkLoop) {
+  const rounds = reworkLoop?.rounds || [];
+  if (!rounds.length) return "";
+  return `<div class="audit-artifact-diff">${rounds.map(item => {
+    const diff = item.reviewer_diff || {};
+    const v1 = diff.v1_sources || {};
+    const v2 = item.v2_artifacts || diff.v2_artifacts || {};
+    const keys = [...new Set([...Object.keys(v1), ...Object.keys(v2)])];
+    return `<div class="audit-diff-round">
+      <div class="audit-diff-head"><b>Round ${esc(item.round)} · ${esc(item.status || "")}</b><span>${esc(item.judge_decision || "")}</span></div>
+      <div class="audit-diff-grid">${keys.map(key => `
+        <div class="audit-diff-pair">
+          <span>${esc(key)}</span>
+          <code>v1: ${esc(v1[key] || "none")}</code>
+          <code>v2: ${esc(v2[key] || "none")}</code>
+        </div>
+      `).join("")}</div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function renderCommitteeAuditBoard(payload) {
+  const gate = payload.quality_gate || {};
+  const rework = payload.rework_loop || {};
+  const disagreements = payload.disagreement_log || [];
+  return `<section class="committee-audit-board">
+    <div class="audit-board-head">
+      <div><b>Multi-Agent Audit Board</b><span>Role lanes, timeline, disputes, arbitration, rework, and V1/V2 artifact diff.</span></div>
+      <div class="audit-board-kpis">
+        <span>Score <b>${esc(payload.score ?? "--")}</b></span>
+        <span>Gate <b>${esc(gate.status || "--")}</b></span>
+        <span>Rework <b>${esc(rework.status || "--")}</b></span>
+        <span>Disputes <b>${esc(disagreements.length)}</b></span>
+      </div>
+    </div>
+    ${renderRoleSwimlanes(payload)}
+    ${renderAuditTimeline(payload.timeline || [])}
+    <div class="audit-board-columns">
+      <div><h3>争议点与仲裁</h3>${renderDisputeCards(disagreements) || '<div class="empty-state">No disagreement recorded.</div>'}</div>
+      <div><h3>V1 / V2 产物对比</h3>${renderArtifactDiff(rework) || '<div class="empty-state">No rework artifact diff recorded.</div>'}</div>
+    </div>
+  </section>`;
+}
+
 function renderRubricMatrix(matrix) {
   if (!matrix?.rows?.length) return "";
   const rows = matrix.rows.map(item => [
@@ -1012,6 +1117,7 @@ function renderSelfReviewCommitteeResult(data) {
     $("committeeResult").innerHTML =
       `<div class="report-flow"><b>自评审委员会已完成</b><span>下一步：保存报告到项目知识库，并用评审问题反压 demo 和提交材料。</span><div class="report-flow-steps"><span class="done">1 固定角色评审</span><span>2 保存知识库</span><span>3 继续追问</span></div><div class="action-row"><button class="primary" onclick="saveSelfReviewCommitteeToKnowledge()">保存到知识库</button><button class="secondary" onclick="askSelfReviewCommitteeQuestion()">继续追问</button></div></div>` +
       table(["Item", "Result"], rows) +
+      renderCommitteeAuditBoard(payload) +
       renderCommitteeTimeline(payload.timeline || []) +
       renderRubricMatrix(payload.rubric_matrix) +
       table(["Step", "Agent", "Phase", "Status", "Output"], traceRows) +

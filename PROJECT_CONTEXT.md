@@ -1258,3 +1258,23 @@ Known notes:
 
 Recommended next step:
 - Run the 25-case DeepSeek+Qwen acceptance once quota and local model time are acceptable, then update the console report card from the new report and compare latency against the previous 5-case baseline.
+
+### 2026-06-30 - Multi-agent audit board visualization
+
+Completed:
+- Upgraded the Knowledge console multi-agent result from table-first output to a visual audit board.
+- Added role avatar swimlanes for Planner, Research, Builder, Reviewer, Risk, and Judge with score and latest role status.
+- Added horizontal audit timeline, dispute cards for objector/evidence/decision/rework, and V1/V2 artifact diff cards for rework rounds.
+- Kept raw trace, gate, arbitration, rework, role, rubric, and priority tables below the visual board for detailed audit drill-down.
+
+Verification:
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `27 tests OK`.
+
+Known notes:
+- This block is frontend visualization only; no new live API run was executed.
+- `output\deepseek_hybrid_rag_acceptance.json` remains ignored local evidence and should not be committed.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Start the local console and browser-smoke `/console` after running the multi-agent workflow to visually verify the audit board with a real payload.
