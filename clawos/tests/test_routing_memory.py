@@ -134,10 +134,10 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 "model": "deepseek-chat",
                 "benchmark": {
                     "name": "deepseek-qwen3-complex-task-acceptance-v2",
-                    "case_count": 5,
+                    "case_count": 25,
                     "metrics": {
                         "pass_rate": 1.0,
-                        "passed_count": 5,
+                        "passed_count": 25,
                         "failed_count": 0,
                         "citation_hit_rate": 1.0,
                         "judge_grounded_rate": 1.0,
@@ -167,7 +167,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
 
         self.assertTrue(payload["found"])
         self.assertTrue(payload["ok"])
-        self.assertEqual(payload["benchmark"]["case_count"], 5)
+        self.assertEqual(payload["benchmark"]["case_count"], 25)
         self.assertEqual(payload["benchmark"]["metrics"]["citation_hit_rate"], 1.0)
         self.assertEqual(payload["cases"][0]["scenario"], "research")
         self.assertIn("deepseek_hybrid_rag_acceptance.json", payload["report_path"])

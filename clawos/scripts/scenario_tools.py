@@ -468,6 +468,63 @@ def _arbitration_rounds(gate, role_cards, priorities):
     ]
 
 
+def _disagreement_log(gate, role_cards, arbitration_rounds, rework_result):
+    scores = {card["agent"]: card["score"] for card in role_cards}
+    failures = gate.get("failures") or []
+    hard_blockers = rework_result.get("hard_blockers") or []
+    if gate.get("status") == "pass":
+        return [{
+            "id": "D1",
+            "round": 1,
+            "objector": "ReviewerAgent",
+            "opposes": "Unnecessary rework after passing gate",
+            "evidence": "Quality gate passed and no blocking failures were found.",
+            "decision_owner": "JudgeAgent",
+            "arbitration_decision": "accepted: proceed to final rehearsal",
+            "requires_rework": False,
+            "linked_rework_round": "",
+        }]
+    log = [
+        {
+            "id": "D1",
+            "round": 1,
+            "objector": "ReviewerAgent",
+            "opposes": "BuilderAgent release-ready claim",
+            "evidence": "; ".join(failures or ["Reviewer requires explicit gate evidence before approval."]),
+            "decision_owner": "JudgeAgent",
+            "arbitration_decision": "sustain objection: BuilderAgent must produce V2 artifacts and ReviewerAgent must compare V1 to V2.",
+            "requires_rework": True,
+            "linked_rework_round": "R1",
+        },
+        {
+            "id": "D2",
+            "round": 1,
+            "objector": "RiskAgent",
+            "opposes": "JudgeAgent final approval before risk score threshold is met",
+            "evidence": f"RiskAgent score {scores.get('RiskAgent')} with blockers: {', '.join(hard_blockers or failures or ['risk threshold not met'])}.",
+            "decision_owner": "JudgeAgent",
+            "arbitration_decision": "sustain objection: final pass is blocked until risk evidence closes or is explicitly accepted.",
+            "requires_rework": True,
+            "linked_rework_round": "R1",
+        },
+        {
+            "id": "D3",
+            "round": 2,
+            "objector": "JudgeAgent",
+            "opposes": "Silent pass after partial rework",
+            "evidence": f"Rework status={rework_result.get('status')}; arbitration={'; '.join(item.get('decision', '') for item in arbitration_rounds)}",
+            "decision_owner": "JudgeAgent",
+            "arbitration_decision": (
+                "blocked_external_dependency: require MTTBook evidence before pass"
+                if hard_blockers else "retry_required: require another Builder/Reviewer/Risk/Judge round"
+            ),
+            "requires_rework": rework_result.get("status") != "pass",
+            "linked_rework_round": "R1",
+        },
+    ]
+    return log
+
+
 def _rework_score(role_cards, agent, delta):
     updated = []
     for card in role_cards:
@@ -716,7 +773,7 @@ def _enterprise_rubric_matrix(delivery, role_cards, gate, rework_result):
     }
 
 
-def _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, score, trace, gate, arbitration_rounds, rework_result, timeline, rubric_matrix):
+def _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, score, trace, gate, arbitration_rounds, disagreement_log, rework_result, timeline, rubric_matrix):
     package_dir = Path(output_dir)
     package_dir.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -790,6 +847,22 @@ def _write_committee_report(output_dir, project_name, focus, delivery, role_card
             "",
             f"- decision: {item['decision']}",
             *[f"- required_rework: {work}" for work in item["required_rework"]],
+            "",
+        ])
+    lines.extend([
+        "## Conflict Debate And Arbitration Log",
+        "",
+    ])
+    for item in disagreement_log:
+        lines.extend([
+            f"### {item['id']} - {item['objector']} objects",
+            "",
+            f"- opposes: {item['opposes']}",
+            f"- evidence: {item['evidence']}",
+            f"- decision_owner: {item['decision_owner']}",
+            f"- arbitration_decision: {item['arbitration_decision']}",
+            f"- requires_rework: {item['requires_rework']}",
+            f"- linked_rework_round: {item['linked_rework_round'] or 'none'}",
             "",
         ])
     lines.extend([
@@ -1028,6 +1101,7 @@ def multi_agent_review_committee(payload):
         output_dir,
         max_rounds=int(payload.get("max_rework_rounds") or 2),
     )
+    disagreement_log = _disagreement_log(gate, role_cards, arbitration, rework_result)
     if gate["status"] != "pass":
         trace.append(_trace_step(
             "T7",
@@ -1063,6 +1137,7 @@ def multi_agent_review_committee(payload):
         trace,
         gate,
         arbitration,
+        disagreement_log,
         rework_result,
         timeline,
         rubric_matrix,
@@ -1080,6 +1155,7 @@ def multi_agent_review_committee(payload):
         "rubric_matrix": rubric_matrix,
         "quality_gate": gate,
         "arbitration_rounds": arbitration,
+        "disagreement_log": disagreement_log,
         "rework_loop": rework_result,
         "priorities": priorities,
         "judge_questions": questions,

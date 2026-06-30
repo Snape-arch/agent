@@ -181,6 +181,243 @@ CASES: list[dict[str, Any]] = [
 ]
 
 
+def _extra_case(
+    scenario: str,
+    name: str,
+    user_task: str,
+    query: str,
+    expected_slug: str,
+    rubric: str,
+    title: str,
+    content: str,
+) -> dict[str, Any]:
+    return {
+        "scenario": scenario,
+        "name": name,
+        "user_task": user_task,
+        "query": query,
+        "expected_slug": expected_slug,
+        "rubric": rubric,
+        "items": [
+            {"slug": expected_slug, "title": title, "content": content},
+            {
+                "slug": f"{expected_slug}_distractor_ui",
+                "title": f"{title} UI Distractor",
+                "content": "Visual polish notes, spacing, color tokens, responsive layout, and navigation labels.",
+            },
+            {
+                "slug": f"{expected_slug}_distractor_ops",
+                "title": f"{title} Operations Distractor",
+                "content": "Generic operations cadence, budget notes, team rituals, and status update templates.",
+            },
+        ],
+    }
+
+
+CASES.extend([
+    _extra_case(
+        "research",
+        "systematic_review_evidence_matrix",
+        "Build a reproducible systematic-review evidence matrix with inclusion criteria, quality scoring, and cited limitations.",
+        "Which material supports a systematic review evidence matrix with inclusion criteria, quality scores, citations, and limitations?",
+        "research_systematic_review_matrix",
+        "Must retrieve evidence matrix material covering inclusion criteria, exclusion criteria, quality score, citations, limitations, and reproducibility.",
+        "Systematic Review Evidence Matrix",
+        "The systematic review matrix records inclusion criteria, exclusion criteria, study quality score, citation anchors, limitations, reproducibility notes, disagreement resolution, and final synthesis confidence.",
+    ),
+    _extra_case(
+        "research",
+        "dataset_methodology_audit",
+        "Audit a dataset methodology section for sampling, annotation quality, leakage risk, and reproducible splits.",
+        "Find evidence for dataset sampling, annotation quality, leakage risk, train test split reproducibility, and methodology audit.",
+        "research_dataset_methodology_audit",
+        "Must retrieve dataset methodology audit material with sampling, annotation quality, leakage, reproducible splits, and risk notes.",
+        "Dataset Methodology Audit",
+        "A dataset methodology audit checks sampling frame, annotation protocol, inter-annotator agreement, leakage risk, reproducible train validation test splits, metadata quality, and known bias limitations.",
+    ),
+    _extra_case(
+        "research",
+        "literature_gap_map",
+        "Create a literature gap map that separates established findings, weak evidence, open questions, and next experiments.",
+        "Which source explains literature gap mapping with established findings, weak evidence, open questions, and next experiments?",
+        "research_literature_gap_map",
+        "Must retrieve literature gap map material with established findings, weak evidence, open questions, and experiment proposals.",
+        "Literature Gap Map",
+        "The literature gap map separates established findings, weak evidence, contradicted claims, open questions, next experiments, confidence levels, and citation-backed rationale for every gap.",
+    ),
+    _extra_case(
+        "research",
+        "grant_proposal_risk_evidence",
+        "Draft a grant proposal evidence section with novelty, feasibility, evaluation metrics, and risk mitigation.",
+        "Retrieve grant proposal evidence for novelty, feasibility, evaluation metrics, risk mitigation, and cited prior work.",
+        "research_grant_evidence",
+        "Must retrieve grant proposal material with novelty, feasibility, metrics, mitigation, and prior work citations.",
+        "Grant Proposal Evidence Pack",
+        "A grant proposal evidence pack states novelty, feasibility, prior work citations, evaluation metrics, expected impact, risk mitigation, milestones, and reproducible validation artifacts.",
+    ),
+    _extra_case(
+        "competition",
+        "judge_cross_exam_packet",
+        "Prepare a judge cross-examination packet with sharp questions, evidence-backed answers, and unresolved blockers.",
+        "Find the competition packet for judge questions, evidence-backed answers, unresolved blockers, and owner-ready next steps.",
+        "competition_judge_cross_exam",
+        "Must retrieve judge cross-exam material with sharp questions, evidence-backed answers, blockers, owners, and next steps.",
+        "Competition Judge Cross-Exam Packet",
+        "The judge cross-exam packet lists adversarial judge questions, evidence-backed answers, unresolved blockers, owner-ready next steps, demo fallback paths, and final acceptance criteria.",
+    ),
+    _extra_case(
+        "competition",
+        "demo_failure_recovery_plan",
+        "Create a competition demo failure recovery plan covering offline fallback, API fallback, screenshots, and timed rehearsal.",
+        "Which evidence covers demo failure recovery with offline fallback, API fallback, screenshots, timing, and rehearsal?",
+        "competition_demo_recovery",
+        "Must retrieve demo recovery material with fallback modes, screenshots, rehearsal timing, and failure handling.",
+        "Competition Demo Failure Recovery Plan",
+        "The demo recovery plan defines offline mock fallback, DeepSeek API fallback, local model fallback, screenshot evidence, timed rehearsal checkpoints, failure handling, and spokesperson handoff.",
+    ),
+    _extra_case(
+        "competition",
+        "submission_hygiene_gate",
+        "Check submission hygiene so ignored output, tmp, tools, secrets, and generated model artifacts do not enter Git.",
+        "Find submission hygiene rules for tmp, tools, output, secrets, model artifacts, and Git staging safety.",
+        "competition_submission_hygiene",
+        "Must retrieve submission hygiene material covering tmp/tools/output exclusion, secrets, generated artifacts, and staging checks.",
+        "Competition Submission Hygiene Gate",
+        "The submission hygiene gate checks Git staged files, excludes tmp, tools, output, secrets, model weights, generated reports, local databases, and requires a final status audit before commit.",
+    ),
+    _extra_case(
+        "competition",
+        "business_plan_defense",
+        "Defend the business plan with target users, pricing, moat, go-to-market, and measurable adoption evidence.",
+        "Which material supports business plan defense with target users, pricing, moat, go to market, and adoption evidence?",
+        "competition_business_defense",
+        "Must retrieve business defense material with users, pricing, moat, GTM, adoption evidence, and risks.",
+        "Competition Business Plan Defense",
+        "The business plan defense covers target users, pricing model, technical moat, go-to-market channels, adoption metrics, commercial risks, investor objections, and evidence-backed responses.",
+    ),
+    _extra_case(
+        "code",
+        "security_policy_review",
+        "Analyze a security policy module for grants, revocation, audit trail, high-risk tools, and least privilege.",
+        "Retrieve code evidence about permission grants, revocation, audit trail, high risk tools, and least privilege enforcement.",
+        "code_security_policy_review",
+        "Must retrieve security policy code material with grants, revocation, audit logs, high-risk tools, and least privilege.",
+        "Security Policy Review Notes",
+        "The security policy review covers scoped grants, revocation, high-risk tool confirmation, audit trail persistence, least privilege defaults, path boundaries, and denied operation reporting.",
+    ),
+    _extra_case(
+        "code",
+        "rag_pipeline_debugging",
+        "Debug a RAG pipeline with chunking, vector refresh, embedding provider selection, rerank thresholds, and citation IDs.",
+        "Find engineering notes for chunking, vector refresh, embedding provider, rerank threshold, and citation ID debugging.",
+        "code_rag_pipeline_debugging",
+        "Must retrieve RAG pipeline code material with chunking, vector refresh, embeddings, rerank thresholds, and citation IDs.",
+        "RAG Pipeline Debugging Notes",
+        "RAG pipeline debugging checks document chunking, vector refresh, embedding provider selection, Chroma persistence, rerank threshold, citation ID normalization, and retrieval trace logging.",
+    ),
+    _extra_case(
+        "code",
+        "skill_runtime_contract",
+        "Review skill runtime contracts for parameter references, cross-step outputs, plan-only mode, and replay scripts.",
+        "Which code material explains skill runtime parameter references, cross-step outputs, plan-only execution, and replay scripts?",
+        "code_skill_runtime_contract",
+        "Must retrieve skill runtime contract material with parameters, cross-step references, plan-only, replay scripts, and validation.",
+        "Skill Runtime Contract",
+        "The skill runtime contract validates required parameters, resolves cross-step outputs, supports plan-only execution, records run metadata, generates replay scripts, and fails fast on unknown tools.",
+    ),
+    _extra_case(
+        "code",
+        "frontend_console_regression",
+        "Analyze frontend console regression risk for static anchors, compact cards, timeline rendering, and responsive overflow.",
+        "Find frontend regression evidence for static anchors, compact cards, timeline rendering, tables, and responsive overflow.",
+        "code_frontend_console_regression",
+        "Must retrieve frontend regression material with static anchors, report cards, timeline rendering, and responsive overflow.",
+        "Frontend Console Regression Checklist",
+        "The frontend console regression checklist protects static anchors, compact report cards, timeline rendering, table overflow, responsive breakpoints, copy labels, and button action wiring.",
+    ),
+    _extra_case(
+        "office",
+        "quarterly_business_review_pack",
+        "Generate a quarterly business review pack with KPI narrative, risks, budget deltas, owners, and next actions.",
+        "Which office material supports a quarterly business review with KPI narrative, budget deltas, risks, owners, and next actions?",
+        "office_qbr_pack",
+        "Must retrieve QBR material with KPI narrative, budget deltas, risks, owners, executive summary, and next actions.",
+        "Quarterly Business Review Pack",
+        "The quarterly business review pack includes KPI narrative, budget deltas, risk table, owner assignments, executive summary, decisions, blockers, and next action tracking.",
+    ),
+    _extra_case(
+        "office",
+        "board_memo_synthesis",
+        "Draft a board memo from project evidence with decision asks, financial impact, operating risks, and appendix citations.",
+        "Retrieve office memo material for board decision asks, financial impact, operating risks, appendix citations, and summary.",
+        "office_board_memo",
+        "Must retrieve board memo material with decision asks, financial impact, operating risks, appendix citations, and summary.",
+        "Board Memo Synthesis Workflow",
+        "The board memo workflow turns project evidence into decision asks, financial impact, operating risks, strategic options, appendix citations, executive summary, and follow-up owners.",
+    ),
+    _extra_case(
+        "office",
+        "contract_review_tracker",
+        "Create a contract review tracker with clauses, owners, red flags, due dates, and escalation status.",
+        "Which material supports contract clause tracking, owners, red flags, due dates, escalation, and status reporting?",
+        "office_contract_tracker",
+        "Must retrieve contract tracker material with clauses, owners, red flags, due dates, escalation, and reporting.",
+        "Contract Review Tracker",
+        "The contract review tracker records clause IDs, business owners, legal red flags, due dates, escalation status, negotiation notes, approval gates, and final signoff evidence.",
+    ),
+    _extra_case(
+        "office",
+        "customer_escalation_brief",
+        "Build a customer escalation brief with timeline, impact, root cause, mitigation, accountable owner, and reply draft.",
+        "Find office escalation material with timeline, customer impact, root cause, mitigation, owner, and reply draft.",
+        "office_customer_escalation",
+        "Must retrieve customer escalation material with timeline, impact, root cause, mitigation, owner, and response draft.",
+        "Customer Escalation Brief",
+        "The customer escalation brief includes incident timeline, customer impact, root cause, mitigation plan, accountable owner, communication draft, SLA risk, and follow-up checkpoint.",
+    ),
+    _extra_case(
+        "learning",
+        "exam_cram_strategy",
+        "Create an exam cram strategy with topic triage, practice schedule, weak points, and timed self-tests.",
+        "Which learning material supports exam cram strategy, topic triage, practice schedule, weak points, and timed self tests?",
+        "learning_exam_cram",
+        "Must retrieve exam cram material with topic triage, schedule, weak points, timed tests, and review loop.",
+        "Exam Cram Strategy",
+        "The exam cram strategy prioritizes topic triage, weak point diagnosis, timed self-tests, practice schedule, formula review, error log, and final-day confidence checks.",
+    ),
+    _extra_case(
+        "learning",
+        "course_project_roadmap",
+        "Plan a course project roadmap with milestones, dependencies, rubric mapping, peer feedback, and demo checklist.",
+        "Retrieve learning project material for milestones, dependencies, rubric mapping, peer feedback, and demo checklist.",
+        "learning_course_project_roadmap",
+        "Must retrieve course project roadmap material with milestones, dependencies, rubric mapping, feedback, and demo checklist.",
+        "Course Project Roadmap",
+        "The course project roadmap defines milestones, dependency map, rubric mapping, peer feedback checkpoints, demo checklist, reflection notes, and final submission evidence.",
+    ),
+    _extra_case(
+        "learning",
+        "language_learning_feedback_loop",
+        "Design a language learning feedback loop with vocabulary, speaking drills, correction notes, and spaced review.",
+        "Find learning evidence for vocabulary, speaking drills, correction notes, spaced review, and progress scoring.",
+        "learning_language_feedback",
+        "Must retrieve language feedback material with vocabulary, speaking drills, corrections, spaced review, and progress scoring.",
+        "Language Learning Feedback Loop",
+        "The language learning feedback loop tracks vocabulary clusters, speaking drills, correction notes, pronunciation issues, spaced review intervals, progress score, and next practice prompts.",
+    ),
+    _extra_case(
+        "learning",
+        "career_skill_gap_plan",
+        "Create a career skill gap plan with target role, missing skills, practice projects, evidence portfolio, and weekly review.",
+        "Which material supports career skill gap planning with target role, missing skills, projects, portfolio evidence, and weekly review?",
+        "learning_career_skill_gap",
+        "Must retrieve career skill gap material with target role, missing skills, projects, evidence portfolio, and weekly review.",
+        "Career Skill Gap Plan",
+        "The career skill gap plan maps target role requirements, missing skills, practice projects, evidence portfolio, weekly review cadence, mentor feedback, and measurable readiness score.",
+    ),
+])
+
+
 def parse_json_object(text: str) -> dict[str, Any]:
     text = str(text or "").strip()
     if not text:
@@ -403,6 +640,23 @@ def hit_rank(ids: list[str], expected_id: str) -> int:
     return 0
 
 
+def failure_reason(vector_rank: int, rerank_rank: int, citation_hit: bool, judge: dict[str, Any]) -> str:
+    reasons = []
+    if not vector_rank:
+        reasons.append("expected evidence missing from vector recall")
+    if not rerank_rank:
+        reasons.append("expected evidence missing from rerank top-k")
+    if not citation_hit:
+        reasons.append("answer did not cite expected evidence")
+    if not judge.get("grounded"):
+        reasons.append("judge marked answer as not grounded")
+    if not judge.get("cites_expected"):
+        reasons.append("judge did not confirm expected citation")
+    if judge.get("error"):
+        reasons.append(f"judge_error={judge.get('error')}")
+    return "; ".join(reasons) if reasons else ""
+
+
 def aggregate(case_results: list[dict[str, Any]], recall_k: int, top_k: int) -> dict[str, Any]:
     def avg(values: list[float]) -> float:
         return round(sum(values) / len(values), 4) if values else 0.0
@@ -415,6 +669,17 @@ def aggregate(case_results: list[dict[str, Any]], recall_k: int, top_k: int) -> 
     judged_expected = [1.0 if item.get("judge", {}).get("cites_expected") else 0.0 for item in case_results]
     case_passes = [1.0 if item.get("pass") else 0.0 for item in case_results]
     latencies = sorted(float(item.get("latency_ms") or 0) for item in case_results)
+    scenarios = sorted({str(item.get("scenario") or "") for item in case_results})
+    by_scenario = {}
+    for scenario in scenarios:
+        rows = [item for item in case_results if str(item.get("scenario") or "") == scenario]
+        passed = sum(1 for item in rows if item.get("pass"))
+        by_scenario[scenario] = {
+            "case_count": len(rows),
+            "passed_count": passed,
+            "failed_count": len(rows) - passed,
+            "pass_rate": round(passed / len(rows), 4) if rows else 0,
+        }
     return {
         "pass_rate": avg(case_passes),
         "passed_count": int(sum(case_passes)),
@@ -427,6 +692,7 @@ def aggregate(case_results: list[dict[str, Any]], recall_k: int, top_k: int) -> 
         "judge_expected_citation_rate": avg(judged_expected),
         "latency_p50_ms": latencies[len(latencies) // 2] if latencies else 0,
         "latency_p95_ms": latencies[-1] if latencies else 0,
+        "by_scenario": by_scenario,
     }
 
 
@@ -478,6 +744,7 @@ async def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
             vector_rank = hit_rank(vector_ids, expected_id)
             rerank_rank = hit_rank(rerank_ids, expected_id)
             case_pass = bool(vector_rank and rerank_rank and citation_hit and judge.get("grounded"))
+            case_failure_reason = failure_reason(vector_rank, rerank_rank, citation_hit, judge)
             case_results.append({
                 "scenario": case["scenario"],
                 "name": case["name"],
@@ -489,6 +756,7 @@ async def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
                 "vector_rank": vector_rank,
                 "rerank_rank": rerank_rank,
                 "citation_hit": citation_hit,
+                "failure_reason": case_failure_reason,
                 "answer": answer,
                 "judge": judge,
                 "latency_ms": round((time.perf_counter() - case_started) * 1000, 3),

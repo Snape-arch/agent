@@ -984,6 +984,15 @@ function renderSelfReviewCommitteeResult(data) {
     item.decision,
     (item.required_rework || []).join(" | ")
   ]);
+  const disagreementRows = (payload.disagreement_log || []).map(item => [
+    item.id || "",
+    item.objector || "",
+    item.opposes || "",
+    item.evidence || "",
+    item.decision_owner || "",
+    item.arbitration_decision || "",
+    item.requires_rework ? "yes" : "no"
+  ]);
   const reworkRows = (payload.rework_loop?.rounds || []).map(item => [
     item.round,
     item.status,
@@ -1008,6 +1017,7 @@ function renderSelfReviewCommitteeResult(data) {
       table(["Step", "Agent", "Phase", "Status", "Output"], traceRows) +
       table(["Gate", "Result"], gateRows) +
       table(["Round", "Arbiter", "Status", "Decision", "Required rework"], arbitrationRows) +
+      table(["Dispute", "Objector", "Opposes", "Evidence", "Owner", "Decision", "Rework"], disagreementRows) +
       table(["Rework", "Status", "Score", "Rescore", "Judge", "V2 Artifacts", "Blocker / Next"], reworkRows) +
       table(["Role", "Score", "Findings", "Actions"], roleRows) +
       table(["Priority", "Action"], priorityRows);

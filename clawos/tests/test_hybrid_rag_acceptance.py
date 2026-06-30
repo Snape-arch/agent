@@ -71,18 +71,32 @@ class HybridRagAcceptanceTests(unittest.TestCase):
         self.assertEqual(metrics["pass_rate"], 0.5)
         self.assertEqual(metrics["passed_count"], 1)
         self.assertEqual(metrics["failed_count"], 1)
+        self.assertEqual(metrics["by_scenario"][""]["case_count"], 2)
+
+    def test_failure_reason_names_failed_gate(self):
+        from scripts.hybrid_rag_acceptance import failure_reason
+
+        reason = failure_reason(0, 0, False, {"grounded": False, "cites_expected": False})
+
+        self.assertIn("vector recall", reason)
+        self.assertIn("rerank top-k", reason)
+        self.assertIn("answer did not cite", reason)
+        self.assertIn("not grounded", reason)
 
     def test_complex_task_suite_covers_five_enterprise_scenarios(self):
         from scripts.hybrid_rag_acceptance import CASES
 
         scenarios = {case["scenario"] for case in CASES}
+        counts = {scenario: sum(1 for case in CASES if case["scenario"] == scenario) for scenario in scenarios}
 
         self.assertEqual(scenarios, {"research", "office", "code", "learning", "competition"})
-        self.assertEqual(len(CASES), 5)
+        self.assertEqual(len(CASES), 25)
+        self.assertEqual(set(counts.values()), {5})
         for case in CASES:
             self.assertIn("user_task", case)
             self.assertIn("query", case)
             self.assertIn("expected_slug", case)
+            self.assertEqual(len(case["items"]), 3)
 
 
 if __name__ == "__main__":

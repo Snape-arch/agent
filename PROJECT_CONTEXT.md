@@ -1236,3 +1236,25 @@ Known notes:
 
 Recommended next step:
 - Add a browser smoke test or screenshot check for the Knowledge console acceptance card, then wire the rubric matrix to the latest scenario-level evidence for even stronger judge-facing traceability.
+
+### 2026-06-30 - 25-case Hybrid RAG acceptance and multi-agent disagreement log
+
+Completed:
+- Expanded `hybrid_rag_acceptance.py` from 5 complex cases to 25 cases: `research`, `office`, `code`, `learning`, and `competition` now each have 5 cases.
+- The hybrid report still preserves reproducible input/output, citation hit, latency, answer, judge result, top reranked evidence, and now adds explicit `failure_reason` plus per-scenario aggregate counts.
+- Added structured `disagreement_log` to `multi_agent_review_committee` so ReviewerAgent, RiskAgent, and JudgeAgent can object, cite evidence, assign a decision owner, record arbitration, and mark whether rework is required.
+- The committee Markdown report now includes `Conflict Debate And Arbitration Log`, and the console renders the dispute table next to arbitration and rework rounds.
+
+Verification:
+- `python -m py_compile clawos\scripts\hybrid_rag_acceptance.py clawos\scripts\scenario_tools.py clawos\clawos_server.py`: passed.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_hybrid_rag_acceptance clawos.tests.test_scenarios_e2e clawos.tests.test_skill_runtime clawos.tests.test_frontend_static clawos.tests.test_routing_memory`: `72 tests OK`.
+
+Known notes:
+- The 25-case suite is implemented but a new live DeepSeek+Qwen run has not been executed in this block, to avoid consuming API/model time by default.
+- `output\deepseek_hybrid_rag_acceptance.json` remains ignored local evidence and should not be committed.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+- MTTBook real-machine evidence remains the blocker for final pass.
+
+Recommended next step:
+- Run the 25-case DeepSeek+Qwen acceptance once quota and local model time are acceptable, then update the console report card from the new report and compare latency against the previous 5-case baseline.
