@@ -17,6 +17,7 @@ let lastEnterpriseDelivery = null;
 let lastEnterpriseKnowledgeIds = [];
 let lastSelfReviewCommittee = null;
 let lastCommitteeKnowledgeIds = [];
+let lastComplexAcceptanceReport = null;
 let editingKnowledgeId = null;
 let chatAttachments = [];
 let allSkills = [];
@@ -853,6 +854,62 @@ function askEnterpriseDeliveryQuestion() {
   setView("chat");
 }
 
+function formatMs(value) {
+  const number = Number(value || 0);
+  return `${Math.round(number)} ms`;
+}
+
+function renderComplexAcceptanceReport(data) {
+  lastComplexAcceptanceReport = data;
+  const target = $("acceptanceReportResult");
+  if (!target) return;
+  if (!data?.found) {
+    target.innerHTML = `<div class="acceptance-report-card"><b>未找到验收报告</b><span>${esc(data?.message || "output 下还没有 DeepSeek+Qwen 验收报告。")}</span><code>${esc(data?.report_path || "")}</code></div>`;
+    return;
+  }
+  const benchmark = data.benchmark || {};
+  const metrics = benchmark.metrics || {};
+  const caseRows = (data.cases || []).map(item => [
+    item.scenario || item.name || "",
+    { html: statusBadge(item.pass ? "pass" : "fail") },
+    item.citation_hit ? "hit" : "miss",
+    formatMs(item.latency_ms),
+    `v${item.vector_rank || "-"} / r${item.rerank_rank || "-"}`
+  ]);
+  const metricRows = [
+    ["Pass rate", `${Math.round(Number(metrics.pass_rate || 0) * 100)}%`],
+    ["Citation hit", `${Math.round(Number(metrics.citation_hit_rate || 0) * 100)}%`],
+    ["Latency P50", formatMs(metrics.latency_p50_ms)],
+    ["Latency P95", formatMs(metrics.latency_p95_ms)],
+    ["Judge grounded", `${Math.round(Number(metrics.judge_grounded_rate || 0) * 100)}%`],
+    ["Cases", benchmark.case_count || (data.cases || []).length]
+  ];
+  target.innerHTML =
+    `<div class="acceptance-report-card">
+      <div><b>${esc(benchmark.name || "deepseek-qwen acceptance")}</b><span>${statusBadge(data.ok ? "pass" : "fail")} ${esc(data.model || "")}</span></div>
+      <code>${esc(data.report_path || "")}</code>
+    </div>` +
+    `<div class="acceptance-metric-grid">${metricRows.map(row => `<div class="acceptance-metric"><span>${esc(row[0])}</span><b>${esc(row[1])}</b></div>`).join("")}</div>` +
+    table(["Scenario", "Pass", "Citation", "Latency", "Retrieval"], caseRows);
+}
+
+async function loadComplexAcceptanceReport() {
+  if ($("acceptanceReportStatus")) $("acceptanceReportStatus").textContent = "正在读取最新 DeepSeek + Qwen 复杂任务验收报告...";
+  try {
+    const data = await api("/api/acceptance/deepseek-qwen/latest");
+    renderComplexAcceptanceReport(data);
+    const metrics = data.benchmark?.metrics || {};
+    if ($("acceptanceReportStatus")) {
+      $("acceptanceReportStatus").textContent = data.found
+        ? `5 类任务 ${metrics.passed_count || 0}/${data.benchmark?.case_count || 0} pass · citation ${Math.round(Number(metrics.citation_hit_rate || 0) * 100)}% · P95 ${formatMs(metrics.latency_p95_ms)}`
+        : data.message || "未找到验收报告";
+    }
+  } catch (err) {
+    if ($("acceptanceReportStatus")) $("acceptanceReportStatus").textContent = "验收卡片读取失败：" + err.message;
+    if ($("acceptanceReportResult")) $("acceptanceReportResult").textContent = "读取失败：" + err.message;
+  }
+}
+
 function committeePayload() {
   return lastSelfReviewCommittee?.result || lastSelfReviewCommittee?.data || lastSelfReviewCommittee || {};
 }
@@ -932,7 +989,9 @@ function renderSelfReviewCommitteeResult(data) {
     item.status,
     `${item.final_score}/100`,
     `risk ${item.risk_score} / judge ${item.judge_score}`,
-    (item.hard_blockers || []).join(" | ") || (item.required_next || []).join(" | ")
+    item.judge_decision || "",
+    Object.values(item.v2_artifacts || {}).join(" | "),
+    (item.reviewer_diff?.unresolved || item.hard_blockers || []).join(" | ") || (item.required_next || []).join(" | ")
   ]);
   const roleRows = (payload.roles || []).map(role => [
     role.agent,
@@ -949,7 +1008,7 @@ function renderSelfReviewCommitteeResult(data) {
       table(["Step", "Agent", "Phase", "Status", "Output"], traceRows) +
       table(["Gate", "Result"], gateRows) +
       table(["Round", "Arbiter", "Status", "Decision", "Required rework"], arbitrationRows) +
-      table(["Rework", "Status", "Score", "Rescore", "Blocker / Next"], reworkRows) +
+      table(["Rework", "Status", "Score", "Rescore", "Judge", "V2 Artifacts", "Blocker / Next"], reworkRows) +
       table(["Role", "Score", "Findings", "Actions"], roleRows) +
       table(["Priority", "Action"], priorityRows);
   }

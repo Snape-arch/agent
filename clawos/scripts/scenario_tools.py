@@ -479,7 +479,78 @@ def _rework_score(role_cards, agent, delta):
     return updated
 
 
-def _run_rework_rounds(delivery, role_cards, missing, thresholds, priorities, max_rounds=2):
+def _write_rework_v2_artifacts(output_dir, round_no, gate, hard_blockers, priorities, delivery):
+    rework_dir = Path(output_dir) / "rework_v2"
+    rework_dir.mkdir(parents=True, exist_ok=True)
+    failures = gate.get("failures") or []
+    files = delivery.get("files") or {}
+    sections = [
+        ("Gate Failures", failures or ["none"]),
+        ("Hard Blockers", hard_blockers or ["none"]),
+        ("Required Mitigations", priorities[:3]),
+        ("Source Artifacts", [value for value in files.values() if value]),
+    ]
+    risk_path = _write_delivery_file(
+        rework_dir,
+        f"v2_risk_register_round_{round_no}.md",
+        "V2 Risk Register Rework",
+        sections + [("Risk Owner Decision", [
+            "RiskAgent blocks final release when hardware evidence is missing.",
+            "Accepted mitigations must name owner, evidence path, and rerun command.",
+        ])],
+    )
+    qa_path = _write_delivery_file(
+        rework_dir,
+        f"v2_judge_qa_round_{round_no}.md",
+        "V2 Judge Q&A Rework",
+        sections + [("Judge Response Upgrade", [
+            "Open with the blocked dependency, then show what is already verified.",
+            "MTTBook evidence is still required before final pass.",
+            "Tie every claim to a report path, trace step, rubric row, or benchmark metric.",
+        ])],
+    )
+    runbook_path = _write_delivery_file(
+        rework_dir,
+        f"v2_demo_runbook_round_{round_no}.md",
+        "V2 Demo Runbook Rework",
+        sections + [("Demo Rehearsal Changes", [
+            "Show the quality gate and explain why release cannot pass without MTTBook evidence.",
+            "Use the DeepSeek+Qwen acceptance report as the fallback proof path.",
+        ])],
+    )
+    index_path = _write_delivery_file(
+        rework_dir,
+        f"v2_rework_index_round_{round_no}.md",
+        "V2 Rework Index",
+        [("Generated V2 Artifacts", [risk_path, qa_path, runbook_path])],
+    )
+    return {
+        "risk_register_v2": risk_path,
+        "judge_qa_v2": qa_path,
+        "demo_runbook_v2": runbook_path,
+        "index_v2": index_path,
+    }
+
+
+def _reviewer_v2_diff(delivery, artifacts, gate, hard_blockers):
+    files = delivery.get("files") or {}
+    return {
+        "v1_sources": {
+            "risk_register": files.get("risk_register", ""),
+            "judge_qa": files.get("judge_qa", ""),
+            "demo_runbook": files.get("demo_runbook", ""),
+        },
+        "v2_artifacts": artifacts,
+        "resolved": [
+            "V2 artifacts explicitly name gate failures.",
+            "V2 artifacts add owner-ready next actions and evidence paths.",
+            "V2 demo runbook now explains blocked release rather than hiding the gate.",
+        ],
+        "unresolved": hard_blockers or gate.get("failures") or [],
+    }
+
+
+def _run_rework_rounds(delivery, role_cards, missing, thresholds, priorities, output_dir, max_rounds=2):
     rounds = []
     current_cards = [dict(card) for card in role_cards]
     current_score = _committee_score(delivery, current_cards)
@@ -507,6 +578,8 @@ def _run_rework_rounds(delivery, role_cards, missing, thresholds, priorities, ma
         else:
             risk_delta = 8
             judge_delta = 5
+        artifacts = _write_rework_v2_artifacts(output_dir, round_no, current_gate, hard_blockers, priorities, delivery)
+        reviewer_diff = _reviewer_v2_diff(delivery, artifacts, current_gate, hard_blockers)
         current_cards = _rework_score(current_cards, "RiskAgent", risk_delta)
         current_cards = _rework_score(current_cards, "JudgeAgent", judge_delta)
         current_score = _committee_score(delivery, current_cards)
@@ -521,6 +594,12 @@ def _run_rework_rounds(delivery, role_cards, missing, thresholds, priorities, ma
             "judge_score": next(card["score"] for card in current_cards if card["agent"] == "JudgeAgent"),
             "final_score": current_score,
             "quality_gate": current_gate,
+            "v2_artifacts": artifacts,
+            "reviewer_diff": reviewer_diff,
+            "judge_decision": (
+                "blocked_external_dependency: V2 artifacts are improved, but MTTBook evidence is still required."
+                if hard_blockers else "rechecked: V2 artifacts improved enough for another gate attempt."
+            ),
             "hard_blockers": hard_blockers,
             "required_next": (
                 ["Attach real-device MTTBook run logs, screenshots, latency, and failure cases, then rerun the squad."]
@@ -728,8 +807,11 @@ def _write_committee_report(output_dir, project_name, focus, delivery, role_card
             f"- risk_score: {item['risk_score']}",
             f"- judge_score: {item['judge_score']}",
             f"- final_score: {item['final_score']}",
+            f"- judge_decision: {item.get('judge_decision', '')}",
             *[f"- builder: {text}" for text in item["builder_output"]],
             *[f"- reviewer: {text}" for text in item["reviewer_output"]],
+            *[f"- v2_artifact: {path}" for path in item.get("v2_artifacts", {}).values()],
+            *[f"- unresolved: {text}" for text in item.get("reviewer_diff", {}).get("unresolved", [])],
             *[f"- next: {text}" for text in item["required_next"]],
             "",
         ])
@@ -943,6 +1025,7 @@ def multi_agent_review_committee(payload):
         missing,
         thresholds,
         priorities,
+        output_dir,
         max_rounds=int(payload.get("max_rework_rounds") or 2),
     )
     if gate["status"] != "pass":
@@ -963,6 +1046,7 @@ def multi_agent_review_committee(payload):
                 "Execute rework, reviewer recheck, risk rescore, and judge rescore.",
                 f"status={item['status']} final_score={item['final_score']} risk={item['risk_score']} judge={item['judge_score']}",
                 status=item["status"],
+                artifacts=list((item.get("v2_artifacts") or {}).values()),
                 score=item["final_score"],
             ))
     timeline = _timeline_from_trace(trace, gate, rework_result)

@@ -121,6 +121,57 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertIn("duration_ms", result)
         self.assertFalse(result["requires_confirmation"])
 
+    def test_latest_deepseek_qwen_acceptance_api_summarizes_report(self):
+        server = importlib.import_module("clawos_server")
+
+        with tempfile.TemporaryDirectory() as td:
+            fake_base = Path(td) / "clawos"
+            report_dir = fake_base.parent / "output"
+            fake_base.mkdir()
+            report_dir.mkdir()
+            (report_dir / "deepseek_hybrid_rag_acceptance.json").write_text(json.dumps({
+                "ok": True,
+                "model": "deepseek-chat",
+                "benchmark": {
+                    "name": "deepseek-qwen3-complex-task-acceptance-v2",
+                    "case_count": 5,
+                    "metrics": {
+                        "pass_rate": 1.0,
+                        "passed_count": 5,
+                        "failed_count": 0,
+                        "citation_hit_rate": 1.0,
+                        "judge_grounded_rate": 1.0,
+                        "latency_p50_ms": 1200.5,
+                        "latency_p95_ms": 1800.25,
+                    },
+                },
+                "cases": [
+                    {
+                        "scenario": "research",
+                        "name": "Research synthesis",
+                        "pass": True,
+                        "citation_hit": True,
+                        "latency_ms": 1100,
+                        "vector_rank": 1,
+                        "rerank_rank": 1,
+                    }
+                ],
+            }), encoding="utf-8")
+            old_base = server.BASE_DIR
+            server.BASE_DIR = fake_base
+            try:
+                response = asyncio.run(server.api_latest_deepseek_qwen_acceptance())
+                payload = json.loads(response.body.decode("utf-8"))
+            finally:
+                server.BASE_DIR = old_base
+
+        self.assertTrue(payload["found"])
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["benchmark"]["case_count"], 5)
+        self.assertEqual(payload["benchmark"]["metrics"]["citation_hit_rate"], 1.0)
+        self.assertEqual(payload["cases"][0]["scenario"], "research")
+        self.assertIn("deepseek_hybrid_rag_acceptance.json", payload["report_path"])
+
     def test_chat_attachments_become_hidden_context(self):
         server = importlib.import_module("clawos_server")
         context, meta = server._build_attachment_context([

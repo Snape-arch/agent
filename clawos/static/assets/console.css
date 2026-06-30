@@ -223,6 +223,60 @@
 .self-review-committee-panel{
   border-color:rgba(38,120,113,.24);
 }
+.acceptance-report-panel{
+  grid-template-columns:minmax(240px,1fr) minmax(150px,190px);
+  border-color:rgba(14,116,144,.24);
+}
+.acceptance-report-card{
+  display:grid;
+  gap:8px;
+  padding:12px;
+  border:1px solid rgba(17,24,39,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.78);
+}
+.acceptance-report-card > div{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.acceptance-report-card b{
+  color:#111827;
+  font-size:14px;
+}
+.acceptance-report-card code{
+  display:block;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#0f766e;
+  font-size:12px;
+}
+.acceptance-metric-grid{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:8px;
+}
+.acceptance-metric{
+  min-height:58px;
+  display:grid;
+  align-content:center;
+  gap:4px;
+  padding:10px;
+  border:1px solid rgba(17,24,39,.08);
+  border-radius:10px;
+  background:rgba(248,250,252,.82);
+}
+.acceptance-metric span{
+  color:#64748b;
+  font-size:11px;
+}
+.acceptance-metric b{
+  color:#0f172a;
+  font-size:14px;
+}
 .report-style-panel input,
 .report-style-panel select,
 .enterprise-delivery-panel input,
@@ -924,6 +978,7 @@
   .obsidian-panel{grid-template-columns:1fr}
   .report-style-panel{grid-template-columns:1fr}
   .enterprise-delivery-panel{grid-template-columns:1fr}
+  .acceptance-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .model-choice-actions{grid-template-columns:1fr}
   .app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }

@@ -210,6 +210,10 @@ class ScenarioEndToEndTests(unittest.TestCase):
                 "focus": "final submission",
             })
             report = Path(result["committee_report"]).read_text(encoding="utf-8")
+            first_rework = result["rework_loop"]["rounds"][0]
+            v2_paths = list(first_rework["v2_artifacts"].values())
+            v2_files_exist = all(Path(path).exists() for path in v2_paths)
+            v2_contents = [Path(path).read_text(encoding="utf-8") for path in v2_paths]
 
         self.assertGreaterEqual(result["score"], 70)
         self.assertEqual(len(result["roles"]), 6)
@@ -223,13 +227,21 @@ class ScenarioEndToEndTests(unittest.TestCase):
         self.assertIn("Enterprise Rubric Matrix", report)
         self.assertIn("Quality Gate", report)
         self.assertIn("Rework And Recheck Loop", report)
+        self.assertIn("v2_artifact:", report)
         self.assertEqual(result["quality_gate"]["status"], "revision_required")
         self.assertIn("RiskAgent", result["quality_gate"]["blocking_agents"])
         self.assertTrue(any(item["status"] == "blocked" for item in result["arbitration_rounds"]))
         self.assertIn("rework_loop", result)
         self.assertEqual(result["rework_loop"]["status"], "blocked")
         self.assertTrue(result["rework_loop"]["rounds"])
-        self.assertEqual(result["rework_loop"]["rounds"][0]["status"], "blocked_external_dependency")
+        self.assertEqual(first_rework["status"], "blocked_external_dependency")
+        self.assertIn("v2_artifacts", first_rework)
+        self.assertIn("reviewer_diff", first_rework)
+        self.assertIn("judge_decision", first_rework)
+        self.assertTrue(v2_files_exist)
+        self.assertGreaterEqual(len(v2_paths), 4)
+        self.assertTrue(any("Gate Failures" in content for content in v2_contents))
+        self.assertTrue(any("MTTBook evidence is still required" in content for content in v2_contents))
         self.assertGreaterEqual(len(result["execution_trace"]), 8)
         self.assertGreaterEqual(len(result["timeline"]), 8)
         self.assertEqual(len(result["rubric_matrix"]["rows"]), 7)

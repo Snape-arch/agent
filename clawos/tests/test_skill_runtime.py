@@ -168,6 +168,9 @@ class SkillRuntimeTests(unittest.TestCase):
             result = execute_skill_definition(skill, params, plan_only=False)
             committee = result["outputs"][0]["result"]
             report_exists = Path(committee["committee_report"]).exists()
+            first_rework = committee["rework_loop"]["rounds"][0]
+            v2_paths = list(first_rework["v2_artifacts"].values())
+            v2_files_exist = all(Path(path).exists() for path in v2_paths)
 
         self.assertTrue(plan["ok"])
         self.assertTrue(result["ok"])
@@ -180,6 +183,10 @@ class SkillRuntimeTests(unittest.TestCase):
         self.assertIn("timeline", committee)
         self.assertIn("rubric_matrix", committee)
         self.assertIn(committee["rework_loop"]["status"], {"pass", "blocked", "revision_required"})
+        self.assertIn("v2_artifacts", first_rework)
+        self.assertIn("reviewer_diff", first_rework)
+        self.assertIn("judge_decision", first_rework)
+        self.assertTrue(v2_files_exist)
         self.assertGreaterEqual(len(committee["execution_trace"]), 8)
         self.assertGreaterEqual(len(committee["timeline"]), 8)
         self.assertEqual(len(committee["rubric_matrix"]["rows"]), 7)

@@ -2823,6 +2823,57 @@ async def api_knowledge_search(q: str = "", category: str = "", limit: int = 10)
     return JSONResponse({"items": rows, "count": len(rows)})
 
 
+@app.get("/api/acceptance/deepseek-qwen/latest")
+async def api_latest_deepseek_qwen_acceptance():
+    report_path = (BASE_DIR.parent / "output" / "deepseek_hybrid_rag_acceptance.json").resolve()
+    output_root = (BASE_DIR.parent / "output").resolve()
+    if output_root not in report_path.parents:
+        raise HTTPException(status_code=403, detail="Report path outside output")
+    if not report_path.exists():
+        return JSONResponse({
+            "found": False,
+            "report_path": str(report_path),
+            "message": "No DeepSeek+Qwen acceptance report found under output.",
+        })
+    try:
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read report: {type(exc).__name__}") from exc
+    benchmark = data.get("benchmark") or {}
+    metrics = benchmark.get("metrics") or {}
+    cases = []
+    for case in data.get("cases") or []:
+        cases.append({
+            "scenario": case.get("scenario", ""),
+            "name": case.get("name", ""),
+            "pass": bool(case.get("pass")),
+            "citation_hit": bool(case.get("citation_hit")),
+            "latency_ms": case.get("latency_ms", 0),
+            "vector_rank": case.get("vector_rank", 0),
+            "rerank_rank": case.get("rerank_rank", 0),
+        })
+    return JSONResponse({
+        "found": True,
+        "report_path": str(report_path),
+        "ok": bool(data.get("ok")),
+        "model": data.get("model", ""),
+        "benchmark": {
+            "name": benchmark.get("name", ""),
+            "case_count": benchmark.get("case_count", len(cases)),
+            "metrics": {
+                "pass_rate": metrics.get("pass_rate", 0),
+                "passed_count": metrics.get("passed_count", 0),
+                "failed_count": metrics.get("failed_count", 0),
+                "citation_hit_rate": metrics.get("citation_hit_rate", 0),
+                "judge_grounded_rate": metrics.get("judge_grounded_rate", 0),
+                "latency_p50_ms": metrics.get("latency_p50_ms", 0),
+                "latency_p95_ms": metrics.get("latency_p95_ms", 0),
+            },
+        },
+        "cases": cases,
+    })
+
+
 @app.post("/api/documents/upload")
 async def api_document_upload(
     files: list[UploadFile] = File(...),

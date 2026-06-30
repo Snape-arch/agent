@@ -306,12 +306,15 @@ class FrontendStaticTests(unittest.TestCase):
             "committeeFocus",
             "committeeOutputDir",
             "committeeResult",
+            "acceptanceReportStatus",
+            "acceptanceReportResult",
             "多 Agent 执行编队",
             "评分门禁",
             "runEnterpriseDeliveryRoom",
             "saveEnterpriseDeliveryToKnowledge",
             "runSelfReviewCommittee",
             "saveSelfReviewCommitteeToKnowledge",
+            "loadComplexAcceptanceReport",
         ):
             self.assertIn(token, html)
 
@@ -336,9 +339,19 @@ class FrontendStaticTests(unittest.TestCase):
             "quality_gate",
             "arbitration_rounds",
             "rework_loop",
+            "v2_artifacts",
+            "reviewer_diff",
+            "judge_decision",
             "Rework",
+            "V2 Artifacts",
             "Blocker / Next",
             "Required rework",
+            "lastComplexAcceptanceReport",
+            "/api/acceptance/deepseek-qwen/latest",
+            "citation_hit_rate",
+            "latency_p95_ms",
+            "loadComplexAcceptanceReport",
+            "renderComplexAcceptanceReport",
             "askEnterpriseDeliveryQuestion",
             "askSelfReviewCommitteeQuestion",
             "模拟评委视角",
@@ -347,6 +360,9 @@ class FrontendStaticTests(unittest.TestCase):
 
         self.assertIn(".enterprise-delivery-panel", css)
         self.assertIn(".self-review-committee-panel", css)
+        self.assertIn(".acceptance-report-panel", css)
+        self.assertIn(".acceptance-report-card", css)
+        self.assertIn(".acceptance-metric-grid", css)
         self.assertIn(".committee-timeline", css)
         self.assertIn(".rubric-summary", css)
         self.assertIn(".aether-console #view-knowledge .enterprise-delivery-panel", css)
