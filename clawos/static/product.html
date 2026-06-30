@@ -7,20 +7,20 @@
   <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body class="product-page">
-  <nav class="site-nav light">
-    <a class="brand" href="/"><span class="mark">C</span><span><b>ClawOS</b><small>Agent OS</small></span></a>
+  <nav class="site-nav light claw-layer-nav" aria-label="ClawOS product navigation">
+    <a class="brand" href="/"><span class="mark">C</span><span><b>ClawOS</b><small>Personal Agent OS</small></span></a>
     <div class="nav-links">
-      <a href="/">首页</a>
-      <a class="active" href="/product">产品</a>
-      <a href="/console">控制台</a>
+      <a href="/">Overview</a>
+      <a class="active" href="/product">Product Map</a>
+      <a href="/console">Console</a>
     </div>
-    <a class="pill solid dark" href="/console">打开控制台</a>
+    <a class="pill solid dark" href="/console">Open Console</a>
   </nav>
 
   <main>
     <section class="product-hero">
       <div>
-        <div class="eyebrow dark"><i></i> Product Layer</div>
+        <div class="eyebrow dark"><i></i> Product Map</div>
         <h1>把 Agent 的每次行动，变成可观测的产品系统。</h1>
         <p>ClawOS 不是一个聊天框，而是一套本地 Agent 操作系统：它把用户请求、工具执行、长期记忆、反思改进和技能进化收束成可追踪、可审计、可回滚的工作流。</p>
       </div>
@@ -29,17 +29,32 @@
       </div>
     </section>
 
-    <section class="white-panel">
-      <div class="tab-bar">
-        <span class="active">MemoryOS</span><span>Reflection</span><span>Tool Router</span><span>Task Trace</span><span>Skill Evolution</span>
+    <section class="white-panel capability-index-panel" id="capability-index">
+      <div class="capability-index-head">
+        <span>Console Capability Index</span>
+        <h2>从产品能力直接进入控制台真实空间。</h2>
+        <p>每张能力卡片都对应一个可打开、可验收、可继续操作的控制台分区，避免产品页停留在宣传层。</p>
       </div>
-      <div class="orb-row">
-        <div class="soft-orb"></div>
-        <div class="soft-orb main"><span></span></div>
-        <div class="soft-orb green"></div>
+      <div class="capability-index-grid">
+        <a class="capability-link-card" href="/console#memory">
+          <i>01</i><b>MemoryOS</b><span>画像、偏好、项目、经验和记忆审查。</span><em>Open /console#memory</em>
+        </a>
+        <a class="capability-link-card" href="/console#tools">
+          <i>02</i><b>Tool Router</b><span>工具清单、参数结构、调用轨迹和确认状态。</span><em>Open /console#tools</em>
+        </a>
+        <a class="capability-link-card" href="/console#tasks">
+          <i>03</i><b>Task Trace</b><span>任务恢复、队列领取、步骤 Trace 和事件审计。</span><em>Open /console#tasks</em>
+        </a>
+        <a class="capability-link-card" href="/console#skills">
+          <i>04</i><b>Skill Evolution</b><span>固化技能、候选版本、评测运行和发布审查。</span><em>Open /console#skills</em>
+        </a>
+        <a class="capability-link-card" href="/console#security">
+          <i>05</i><b>Security</b><span>联网、Shell、文件、Git 和外部 API 的权限治理。</span><em>Open /console#security</em>
+        </a>
+        <a class="capability-link-card" href="/console#ops">
+          <i>06</i><b>Ops</b><span>备份恢复、配置检查、worker 和业务长任务。</span><em>Open /console#ops</em>
+        </a>
       </div>
-      <h2>把复杂的智能体能力，收进一个清楚、克制、可操作的界面。</h2>
-      <p>用户看到的是简洁入口，系统内部保留任务、记忆、反思、工具和技能的完整闭环。每次执行都能被解释，每次改进都能被验证。</p>
     </section>
 
     <section class="evidence-section">

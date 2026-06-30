@@ -23,6 +23,47 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("Runtime Map", product)
         self.assertIn('class="console-page aether-console"', console)
 
+    def test_product_shell_unifies_navigation_tokens_and_console_links(self):
+        home = self.read_page("index.html")
+        product = self.read_page("product.html")
+        console = self.read_page("console.html")
+        site_css = self.read_page("assets/site.css")
+        console_css = self.read_page("assets/console.css")
+
+        for page in (home, product):
+            self.assertIn("claw-layer-nav", page)
+            self.assertIn("Personal Agent OS", page)
+            self.assertIn("Product Map", page)
+            self.assertIn("Console", page)
+
+        self.assertIn("console-layer-strip", console)
+        self.assertIn("Overview", console)
+        self.assertIn("Product Map", console)
+        self.assertIn("Console", console)
+        for token in (
+            "--claw-card-radius",
+            "--claw-pill-radius",
+            "--claw-glass",
+            ".claw-layer-nav",
+            ".capability-index-grid",
+            ".capability-link-card",
+        ):
+            self.assertIn(token, site_css)
+        self.assertIn(".aether-console .console-layer-strip", console_css)
+
+        expected_links = {
+            "/console#memory": "MemoryOS",
+            "/console#tools": "Tool Router",
+            "/console#tasks": "Task Trace",
+            "/console#skills": "Skill Evolution",
+            "/console#security": "Security",
+            "/console#ops": "Ops",
+        }
+        for href, label in expected_links.items():
+            self.assertIn(f'href="{href}"', product)
+            self.assertIn(label, product)
+        self.assertNotIn('class="tab-bar"', product)
+
     def test_pages_use_clawos_assets_and_motion(self):
         home = self.read_page("index.html")
         product = self.read_page("product.html")

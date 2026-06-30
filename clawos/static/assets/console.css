@@ -1963,6 +1963,36 @@
   padding:176px 18px 116px 0;
   height:100vh;
 }
+.aether-console .console-layer-strip{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:7px;
+  font:700 10px/1 var(--mono);
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:rgba(255,255,255,.5);
+}
+.aether-console .console-layer-strip a,
+.aether-console .console-layer-strip span{
+  display:inline-flex;
+  align-items:center;
+  min-height:22px;
+  border-radius:999px;
+  padding:0 9px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.08);
+  white-space:nowrap;
+}
+.aether-console .console-layer-strip a:hover{
+  color:#fff;
+  background:rgba(255,255,255,.16);
+}
+.aether-console .console-layer-strip span{
+  border-color:rgba(255,255,255,.38);
+  background:rgba(255,255,255,.86);
+  color:#111827;
+}
 .aether-console .space-switcher{
   position:fixed;
   z-index:46;

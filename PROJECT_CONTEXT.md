@@ -1320,3 +1320,24 @@ Known notes:
 
 Recommended next step:
 - Add a lightweight automated browser smoke script for `/console` space navigation so the 15-space click check can run in CI or pre-demo validation without manual browser control.
+
+### 2026-06-30 - Product shell unification and capability index
+
+Completed:
+- Unified the home and product top navigation around the same product hierarchy: `ClawOS / Personal Agent OS`, `Overview`, `Product Map`, and `Console`.
+- Added a compact console layer strip (`Overview -> Product Map -> Console`) so the operating console clearly reads as the final action layer of the same product.
+- Added shared visual tokens in `site.css` for card radius, pill radius, glass surfaces, brand/accent colors, and reused them across shell navigation, CTA buttons, and product capability cards.
+- Reworked the product page from a static tab-like explanation block into a real Console Capability Index with six cards linking to true console spaces: MemoryOS, Tool Router, Task Trace, Skill Evolution, Security, and Ops.
+- Added frontend static coverage for shared navigation, visual token selectors, product capability links, and removal of the fake product tab bar.
+
+Verification:
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `29 tests OK`.
+- Browser smoke with an in-session static server: home shows `Personal Agent OS` and `View Product Map`; product shows 6 capability cards and no `.tab-bar`; clicking `MemoryOS` navigates to `/console#memory`, and console opens `view-memory` with title `记忆治理` plus the layer strip.
+
+Known notes:
+- FastAPI smoke was not used for final visual validation because the bundled Python lacks `httpx`; a static browser smoke covered the requested shell/navigation behavior.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Add a small reusable static/browser smoke script for the product shell so pre-demo checks can verify all six product capability links, not just the MemoryOS path.
