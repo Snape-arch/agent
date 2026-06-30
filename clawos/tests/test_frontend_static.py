@@ -70,6 +70,14 @@ class FrontendStaticTests(unittest.TestCase):
             self.assertIn(label, product)
         self.assertNotIn('class="tab-bar"', product)
 
+        self.assertIn("product-console-visual", product)
+        self.assertIn("console-preview-frame", product)
+        self.assertIn("clawos-console-product.jpg", product)
+        self.assertIn(".product-page .product-console-visual", site_css)
+        self.assertIn(".product-page .visual-glyph", site_css)
+        hero_section = product.split('<section class="product-hero">', 1)[1].split("</section>", 1)[0]
+        self.assertNotIn("217661e1279b044bf39afd172106ea06.jpg", hero_section)
+
     def test_home_scan_wall_uses_lifestyle_narrative_labels(self):
         home = self.read_page("index.html")
         css = self.read_page("assets/site.css")

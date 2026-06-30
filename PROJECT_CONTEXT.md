@@ -1362,3 +1362,23 @@ Known notes:
 
 Recommended next step:
 - Take one visual screenshot pass on desktop and mobile before pushing, focusing on hero overlap, console side navigation density, and product page card scanning.
+
+### 2026-06-30 - Product hero console visual replacement
+
+Completed:
+- Replaced the product page hero right-side fluid/abstract image with a real ClawOS console screenshot supplied from the current UI.
+- Compressed the supplied console screenshot into `clawos/static/assets/hero/clawos-console-product.jpg` for web use, reducing the asset to about 112 KB while preserving the interface signal.
+- Removed text-like decorative content from the product hero visual area; the right side now contains the console preview plus three purely visual glyph layers.
+- Added static coverage to ensure the product hero uses the console preview, includes non-text visual glyphs, and no longer references the old fluid image inside the hero section.
+
+Verification:
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `30 tests OK`.
+- Browser smoke with an in-session static server: product hero had `product-console-visual`, three `.visual-glyph` elements, loaded `/assets/hero/clawos-console-product.jpg` at natural width 1600, had no visual text, and did not reference the old `217661...jpg` image in the hero.
+
+Known notes:
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+- Current branch already includes two previous unpushed frontend commits.
+
+Recommended next step:
+- Do one visible desktop/mobile screenshot review of the product hero before push, focusing on crop, tilt, and whether the console image remains readable enough beside the headline.

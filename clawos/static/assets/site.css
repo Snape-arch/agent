@@ -89,12 +89,79 @@
 .product-page .product-hero{padding:150px 0 82px}.product-page .eyebrow.dark{background:rgba(255,255,255,.58);border-color:rgba(0,0,0,.06);color:rgba(0,0,0,.38);backdrop-filter:blur(18px);box-shadow:0 10px 34px rgba(15,23,42,.05)}.product-page .eyebrow.dark i{background:#5b6ef5;box-shadow:0 0 16px rgba(91,110,245,.42)}
 .product-page .product-hero h1{color:#0a0a0a;font-weight:820;letter-spacing:-.06em}.product-page .product-hero p{color:rgba(0,0,0,.42);line-height:1.75}
 .product-page .product-orb{position:relative;background:#f1f3f8;border:1px solid rgba(255,255,255,.68);box-shadow:0 30px 90px rgba(31,41,55,.12),inset 0 0 0 1px rgba(255,255,255,.6)}.product-page .product-orb:after{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.34),transparent 46%,rgba(91,110,245,.08));pointer-events:none}.product-page .product-orb img{filter:grayscale(.08) saturate(.86) contrast(1.02) brightness(1.04)}
+.product-page .product-console-visual{
+  position:relative;
+  min-height:540px;
+  isolation:isolate;
+}
+.product-page .console-preview-frame{
+  position:absolute;
+  inset:64px 0 28px 18px;
+  z-index:3;
+  margin:0;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.62);
+  border-radius:34px;
+  background:#111827;
+  box-shadow:0 36px 100px rgba(15,23,42,.22),inset 0 0 0 1px rgba(255,255,255,.2);
+  transform:rotate(-2deg) translateX(10px);
+}
+.product-page .console-preview-frame img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+  object-position:left center;
+  filter:grayscale(.12) saturate(.76) contrast(1.08) brightness(.96);
+}
+.product-page .console-preview-frame:after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(120deg,rgba(255,255,255,.28),transparent 28%,transparent 70%,rgba(91,110,245,.18));
+  pointer-events:none;
+}
+.product-page .visual-glyph{
+  position:absolute;
+  z-index:1;
+  border:1px solid rgba(91,110,245,.2);
+  background:rgba(255,255,255,.42);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+  box-shadow:0 24px 80px rgba(31,41,55,.1);
+}
+.product-page .glyph-a{
+  width:210px;
+  height:210px;
+  right:4%;
+  top:2%;
+  border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.9),rgba(91,110,245,.22) 55%,rgba(0,201,255,.16));
+}
+.product-page .glyph-b{
+  width:190px;
+  height:300px;
+  left:0;
+  bottom:6%;
+  border-radius:999px;
+  transform:rotate(18deg);
+  background:linear-gradient(160deg,rgba(255,255,255,.76),rgba(91,110,245,.12));
+}
+.product-page .glyph-c{
+  width:160px;
+  height:160px;
+  right:10%;
+  bottom:0;
+  border-radius:28px;
+  transform:rotate(-14deg);
+  background:linear-gradient(135deg,rgba(10,10,10,.08),rgba(255,255,255,.58));
+}
 .product-page .white-panel,.product-page .evidence-grid article{background:rgba(255,255,255,.68);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border-color:rgba(255,255,255,.72);box-shadow:0 24px 80px rgba(31,41,55,.08),inset 0 0 0 1px rgba(255,255,255,.5)}
 .product-page .tab-bar{border-bottom-color:rgba(0,0,0,.06);color:rgba(0,0,0,.42)}.product-page .tab-bar .active{background:#0a0a0a;color:white;box-shadow:none}.product-page .tab-bar span{font-size:12px}
 .product-page .soft-orb{background:radial-gradient(circle at 38% 34%,#eef7ff,#e8ecff 64%,#f8f9fc);box-shadow:0 22px 60px rgba(91,110,245,.08)}.product-page .soft-orb.main{background:radial-gradient(circle at 36% 35%,#f5f7ff,#dfe7ff 45%,#bfc8ff 78%)}.product-page .soft-orb.green{background:radial-gradient(circle at 36% 35%,#e9fbff,#e9edff 62%,#f8f9fc)}
 .product-page .white-panel h2,.product-page .section-title h2,.product-page .compile-section h2{color:#0a0a0a;font-weight:820}.product-page .white-panel p,.product-page .evidence-grid p,.product-page .compile-section p{color:rgba(0,0,0,.42);line-height:1.75}.product-page .section-title span,.product-page .compile-section span{color:rgba(91,110,245,.82)}
 .product-page .evidence-grid b{color:#5b6ef5}.product-page .line-art{background:repeating-linear-gradient(0deg,rgba(91,110,245,.34) 0 1px,transparent 1px 8px),radial-gradient(circle at 35% 45%,rgba(0,201,255,.12),transparent 34%),linear-gradient(135deg,#fff,#eef2ff);border-color:rgba(255,255,255,.72);box-shadow:0 24px 70px rgba(31,41,55,.08)}
-@media(max-width:760px){.product-page .site-nav.light{padding:12px 18px;height:auto;border-radius:0}.product-page .brand{min-width:0}.product-page .product-hero{padding-top:128px}}
+@media(max-width:760px){.product-page .site-nav.light{padding:12px 18px;height:auto;border-radius:0}.product-page .brand{min-width:0}.product-page .product-hero{padding-top:128px}.product-page .product-console-visual{min-height:360px}.product-page .console-preview-frame{inset:42px 4px 30px;transform:rotate(-1deg)}.product-page .glyph-a{width:140px;height:140px}.product-page .glyph-b{width:120px;height:210px}.product-page .glyph-c{width:110px;height:110px}}
 
 /* Shared ClawOS product shell: overview -> product map -> console. */
 .claw-layer-nav{
