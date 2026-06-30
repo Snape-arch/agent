@@ -27,6 +27,23 @@ let skillReviews = [];
 let selectedSkillName = "";
 
 const $ = id => document.getElementById(id);
+const VIEW_META = {
+  chat: ["新聊天", "发起任务，连接工具、知识库、文件和项目上下文"],
+  search: ["搜索聊天", "查找历史会话并继续上下文"],
+  knowledge: ["知识库", "管理用户主动构建的 RAG 资料、文档和学习沉淀"],
+  dash: ["状态总览", "查看模型、工具、任务和记忆系统的运行状态"],
+  memory: ["记忆治理", "管理画像、偏好、项目、经验和技能等系统记忆"],
+  projects: ["项目", "进入本地项目、科研目录和交付任务"],
+  reflection: ["反思循环", "审查任务复盘、改进建议、验证结果和回滚记录"],
+  evolution: ["Self-Evolution", "候选生成、自动基准门禁、shadow/canary 灰度和真实质量信号"],
+  skills: ["固化技能", "查看可复用工作流、候选版本和执行质量"],
+  tools: ["工具路由", "查看本地函数清单、参数结构和调用轨迹"],
+  tasks: ["运行轨迹", "跟踪任务取消、重试、恢复、队列领取和事件审计"],
+  ops: ["Ops Center", "备份恢复、配置检查、后台 worker 和真实业务长任务"],
+  benchmarks: ["冻结基准", "运行离线基准套件，查看通过率和 P95 延迟"],
+  scenes: ["场景工作台", "核对会议、科研、办公、学习、Git 和技能治理的交付边界"],
+  security: ["权限中心", "查看审批、授权、风险策略和安全审计"]
+};
 const esc = value => {
   const node = document.createElement("div");
   node.textContent = value ?? "";
@@ -65,37 +82,24 @@ function table(headers, rows) {
 }
 
 function setView(viewName) {
-  document.querySelectorAll(".side-nav button[data-view]").forEach(button => {
-    button.classList.toggle("on", button.dataset.view === viewName);
+  if (!$("view-" + viewName)) viewName = "chat";
+  document.querySelectorAll("button[data-view]").forEach(button => {
+    const isActive = button.dataset.view === viewName;
+    button.classList.toggle("on", isActive);
+    button.setAttribute("aria-current", isActive ? "page" : "false");
   });
   document.querySelectorAll(".view").forEach(view => view.classList.remove("on"));
   const view = $("view-" + viewName);
   if (view) view.classList.add("on");
-  const names = {
-    chat: ["新聊天", "发起任务，连接工具、知识库、文件和项目上下文"],
-    search: ["搜索聊天", "查找历史会话并继续上下文"],
-    knowledge: ["知识库", "管理用户主动构建的 RAG 资料、文档和学习沉淀"],
-    dash: ["状态总览", "查看模型、工具、任务和记忆系统的运行状态"],
-    memory: ["记忆治理", "管理画像、偏好、项目、经验和技能等系统记忆"],
-    projects: ["项目", "进入本地项目、科研目录和交付任务"],
-    reflection: ["反思循环", "审查任务复盘、改进建议、验证结果和回滚记录"],
-    evolution: ["Self-Evolution", "候选生成、自动基准门禁、shadow/canary 灰度和真实质量信号"],
-    skills: ["固化技能", "查看可复用工作流、候选版本和执行质量"],
-    tools: ["工具路由", "查看本地函数清单、参数结构和调用轨迹"],
-    tasks: ["运行轨迹", "跟踪任务取消、重试、恢复、队列领取和事件审计"],
-    ops: ["Ops Center", "备份恢复、配置检查、后台 worker 和真实业务长任务"],
-    benchmarks: ["冻结基准", "运行离线基准套件，查看通过率和 P95 延迟"],
-    scenes: ["场景工作台", "核对会议、科研、办公、学习、Git 和技能治理的交付边界"],
-    security: ["权限中心", "查看审批、授权、风险策略和安全审计"]
-  };
   if (viewName === "scenes") ensureProfessionalBoard();
-  $("viewTitle").textContent = (names[viewName] || names.chat)[0];
-  $("viewSub").textContent = (names[viewName] || names.chat)[1];
+  $("viewTitle").textContent = (VIEW_META[viewName] || VIEW_META.chat)[0];
+  $("viewSub").textContent = (VIEW_META[viewName] || VIEW_META.chat)[1];
+  if (location.hash !== "#" + viewName) history.replaceState(null, "", "#" + viewName);
   closeCommandDrawer();
   refreshAll();
 }
 
-document.querySelectorAll(".side-nav button[data-view]").forEach(button => {
+document.querySelectorAll("button[data-view]").forEach(button => {
   button.onclick = () => {
     if (button.dataset.action === "new-chat") {
       newChat();
@@ -1969,7 +1973,8 @@ if ($("cfgProvider")) $("cfgProvider").addEventListener("change", () => applyPro
 applyReportPreset();
 loadSessions();
 startTaskStream();
-refreshAll();
+const initialView = (location.hash || "").replace("#", "");
+setView(initialView);
 setInterval(loadHealth, 30000);
 setInterval(() => {
   if (!taskStream) loadTasks();

@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 
 
@@ -52,6 +53,43 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("view-memory", html)
         self.assertIn("filePicker", html)
         self.assertIn("commandDrawer", html)
+
+    def test_console_spaces_are_real_navigation_targets(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
+
+        expected_spaces = {
+            "chat",
+            "search",
+            "knowledge",
+            "projects",
+            "dash",
+            "memory",
+            "tools",
+            "tasks",
+            "reflection",
+            "evolution",
+            "skills",
+            "benchmarks",
+            "scenes",
+            "security",
+            "ops",
+        }
+        view_ids = set(re.findall(r'id="view-([^"]+)"', html))
+        data_views = set(re.findall(r'data-view="([^"]+)"', html))
+
+        self.assertTrue(expected_spaces <= view_ids)
+        self.assertTrue(expected_spaces <= data_views)
+        self.assertFalse(data_views - view_ids)
+        self.assertIn('id="spaceSwitcher"', html)
+        self.assertIn(".aether-console .space-switcher", css)
+        self.assertIn('document.querySelectorAll("button[data-view]")', js)
+        self.assertIn("VIEW_META", js)
+        self.assertIn("aria-current", js)
+        self.assertIn("history.replaceState", js)
+        self.assertIn("location.hash", js)
+        self.assertNotIn('document.querySelectorAll(".side-nav button[data-view]")', js)
 
     def test_console_adopts_desktop_liquid_glass_reference_style(self):
         css = self.read_page("assets/console.css")

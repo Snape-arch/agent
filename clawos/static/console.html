@@ -62,6 +62,24 @@
     </div>
   </header>
 
+  <nav class="space-switcher" id="spaceSwitcher" aria-label="Console spaces">
+    <button data-view="chat" data-action="new-chat">新聊天</button>
+    <button data-view="search">搜索</button>
+    <button data-view="knowledge">知识库</button>
+    <button data-view="projects">项目</button>
+    <button data-view="dash">状态</button>
+    <button data-view="memory">记忆</button>
+    <button data-view="tools">工具</button>
+    <button data-view="tasks">任务</button>
+    <button data-view="reflection">反思</button>
+    <button data-view="evolution">自进化</button>
+    <button data-view="skills">技能</button>
+    <button data-view="benchmarks">基准</button>
+    <button data-view="scenes">场景</button>
+    <button data-view="security">权限</button>
+    <button data-view="ops">运维</button>
+  </nav>
+
   <main class="console-main">
     <section class="view" id="view-dash">
       <div class="dashboard-stack">
@@ -236,17 +254,17 @@
     <section class="command-sheet liquid-panel">
       <div class="settings-head"><div><h2>更多应用</h2><p>低频但专业的运行、评测、治理和系统页面集中在这里。</p></div><button class="icon-button" onclick="closeCommandDrawer()" aria-label="关闭">×</button></div>
       <div class="app-grid">
-        <button onclick="openDrawerView('ops')"><b>Ops Center</b><span>备份、恢复、worker jobs</span></button>
-        <button onclick="openDrawerView('dash')"><b>状态总览</b><span>模型、工具、系统健康</span></button>
-        <button onclick="openDrawerView('memory')"><b>记忆治理</b><span>画像、偏好、审查和个人上下文</span></button>
-        <button onclick="openDrawerView('tools')"><b>工具路由</b><span>函数清单与调用轨迹</span></button>
-        <button onclick="openDrawerView('tasks')"><b>运行轨迹</b><span>任务、队列、事件审计</span></button>
-        <button onclick="openDrawerView('reflection')"><b>反思循环</b><span>复盘、改进、回滚</span></button>
-        <button onclick="openDrawerView('evolution')"><b>Self-Evolution</b><span>候选生成、回归门禁、灰度发布</span></button>
-        <button onclick="openDrawerView('skills')"><b>固化技能</b><span>Skill 发布与质量</span></button>
-        <button onclick="openDrawerView('benchmarks')"><b>冻结基准</b><span>离线基准和 P95</span></button>
-        <button onclick="openDrawerView('scenes')"><b>场景工作台</b><span>会议、科研、办公、学习</span></button>
-        <button onclick="openDrawerView('security')"><b>权限中心</b><span>联网、Shell、文件、Git 和外部 API 审批</span></button>
+        <button data-view="ops"><b>Ops Center</b><span>备份、恢复、worker jobs</span></button>
+        <button data-view="dash"><b>状态总览</b><span>模型、工具、系统健康</span></button>
+        <button data-view="memory"><b>记忆治理</b><span>画像、偏好、审查和个人上下文</span></button>
+        <button data-view="tools"><b>工具路由</b><span>函数清单与调用轨迹</span></button>
+        <button data-view="tasks"><b>运行轨迹</b><span>任务、队列、事件审计</span></button>
+        <button data-view="reflection"><b>反思循环</b><span>复盘、改进、回滚</span></button>
+        <button data-view="evolution"><b>Self-Evolution</b><span>候选生成、回归门禁、灰度发布</span></button>
+        <button data-view="skills"><b>固化技能</b><span>Skill 发布与质量</span></button>
+        <button data-view="benchmarks"><b>冻结基准</b><span>离线基准和 P95</span></button>
+        <button data-view="scenes"><b>场景工作台</b><span>会议、科研、办公、学习</span></button>
+        <button data-view="security"><b>权限中心</b><span>联网、Shell、文件、Git 和外部 API 审批</span></button>
         <button onclick="openModelSettings()"><b>模型配置</b><span>DeepSeek/API/本地模型</span></button>
       </div>
     </section>

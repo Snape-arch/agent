@@ -1300,3 +1300,23 @@ Known notes:
 
 Recommended next step:
 - Browser-smoke the Knowledge console multi-agent flow with a real committee payload, then consider wiring Builder execution cards to expandable raw evidence snippets.
+
+### 2026-06-30 - Console space navigation audit and fix
+
+Completed:
+- Added a real top-level `spaceSwitcher` navigation strip for all 15 console spaces: chat, search, knowledge, projects, dash, memory, tools, tasks, reflection, evolution, skills, benchmarks, scenes, security, and ops.
+- Unified all `button[data-view]` navigation through one controller so side nav, space switcher, and More Apps drawer update the active button state, page title/subtitle, URL hash, and visible `view-*` panel consistently.
+- Converted More Apps drawer entries from ad hoc inline navigation calls to the shared `data-view` contract, so low-frequency spaces are no longer fake or disconnected sections.
+- Added a frontend static regression test that checks every `data-view` has a matching real `view-*` target and prevents future side-nav-only binding regressions.
+
+Verification:
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `28 tests OK`.
+- Local `/console` browser smoke on `127.0.0.1:8765`: clicked all 15 space switcher entries; every entry updated hash, active title, active switcher button, and real visible panel. Also clicked More Apps -> Ops Center and confirmed the drawer closed while `view-ops` became active.
+
+Known notes:
+- The first plain `node --check` attempt failed because `node` is not on PATH; the bundled Codex Node executable passed.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Add a lightweight automated browser smoke script for `/console` space navigation so the 15-space click check can run in CI or pre-demo validation without manual browser control.
