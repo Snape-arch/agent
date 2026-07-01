@@ -2,6 +2,7 @@
 
 from .knowledge_service import KnowledgeService
 from .maintenance_service import MaintenanceService
+from .meeting_audio_service import MeetingAudioService
 from .model_service import ModelService
 from .security_service import SecurityService
 from .task_service import TaskService
@@ -17,6 +18,7 @@ __all__ = [
     "EvaluationService",
     "KnowledgeService",
     "MaintenanceService",
+    "MeetingAudioService",
     "ModelService",
     "SecurityService",
     "TaskService",

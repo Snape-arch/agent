@@ -14,6 +14,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
 from office_artifacts import create_pptx, create_xlsx, edit_xlsx, replace_pptx_text
+from services.meeting_audio_service import MeetingAudioService
 
 
 class WorkspaceServices:
@@ -405,26 +406,36 @@ class WorkspaceServices:
                 })
         return decisions, risks, actions
 
-    def import_meeting_audio(self, audio_path, transcript_path="", transcript="", title="", meeting_id=None):
+    def import_meeting_audio(self, audio_path, transcript_path="", transcript="", title="", meeting_id=None, output_dir=""):
         audio = self.security.resolve_path(audio_path)
         if audio.suffix.lower() not in {".wav", ".mp3", ".m4a", ".flac", ".ogg"} or not audio.is_file():
             raise ValueError("a readable local audio file is required")
-        transcript_text = str(transcript or "")
-        transcript_file = ""
         if transcript_path:
             path = self.security.resolve_path(transcript_path)
             if path.suffix.lower() not in {".txt", ".md", ".srt", ".vtt"} or not path.is_file():
                 raise ValueError("transcript_path must point to a readable text transcript")
-            transcript_text = path.read_text(encoding="utf-8", errors="replace")
             transcript_file = str(path)
+        else:
+            transcript_file = ""
         if meeting_id:
             meeting = self.get_meeting(meeting_id)
             if not meeting:
                 raise ValueError("meeting not found")
         else:
             meeting = self.create_meeting(title or audio.stem)
-        diarization = self._parse_speaker_turns(transcript_text)
-        status = "transcript_imported" if transcript_text.strip() else "audio_registered_requires_transcription"
+        artifact_root = self.security.resolve_path(output_dir) if output_dir else audio.parent / "clawos_meeting_artifacts"
+        audio_result = MeetingAudioService(self.store, artifact_root).process(
+            audio_path=audio,
+            transcript=transcript,
+            transcript_path=transcript_path,
+            title=title or audio.stem,
+            meeting_id=int(meeting["id"]),
+            extract_items=self._extract_meeting_items,
+            summarize=self._summarize_text,
+        )
+        transcript_text = audio_result["transcript"]
+        diarization = audio_result["diarization"]
+        status = audio_result["transcript_status"]
         with self.store._conn() as c:
             c.execute(
                 """
@@ -438,7 +449,10 @@ class WorkspaceServices:
                     json.dumps({
                         "size_bytes": audio.stat().st_size,
                         "speaker_count": len({turn["speaker"] for turn in diarization}),
-                        "transcription_engine": "external_or_sidecar",
+                        "transcription_engine": audio_result["transcription"]["engine"],
+                        "voice_segment_count": len(audio_result["segments"]),
+                        "meeting_card": audio_result["artifacts"]["meeting_card"]["path"],
+                        "run_id": audio_result["run_record"]["run_id"],
                     }, ensure_ascii=False),
                 ),
             )
@@ -448,12 +462,19 @@ class WorkspaceServices:
             "meeting": self.get_meeting(meeting["id"]),
             "audio_path": str(audio),
             "transcript_status": status,
+            "transcription": audio_result["transcription"],
+            "segments": audio_result["segments"],
             "diarization": diarization,
+            "meeting_card": audio_result["meeting_card"],
+            "artifacts": audio_result["artifacts"],
+            "run_record": audio_result["run_record"],
+            "knowledge_item": audio_result["knowledge_item"],
             "capabilities": {
                 "audio_registered": True,
                 "sidecar_transcript_supported": True,
-                "speaker_separation": "label_based",
-                "local_whisper": shutil.which("whisper") is not None,
+                "vad_silence_splitting": True,
+                "speaker_separation": "label_or_heuristic",
+                "local_whisper": shutil.which("whisper") is not None or shutil.which("whisper-cli") is not None,
             },
         }
 

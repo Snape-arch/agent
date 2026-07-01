@@ -4,14 +4,17 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .artifact_storage import ArtifactStorage
 from .runtime_records import run_from_acceptance_report
+from .workflow_engine import WorkflowEngine
 
 
 class EvaluationService:
     """Evaluation boundary for complex-task reports and failure-case capture."""
 
-    def __init__(self, output_root: str | Path):
+    def __init__(self, output_root: str | Path, store: Any | None = None):
         self.output_root = Path(output_root).expanduser().resolve()
+        self.store = store
 
     def latest_deepseek_qwen(self) -> dict[str, Any]:
         report_path = (self.output_root / "deepseek_hybrid_rag_acceptance.json").resolve()
@@ -41,6 +44,37 @@ class EvaluationService:
                 "failure_reason": case.get("failure_reason", ""),
             })
         run_record = run_from_acceptance_report(data, str(report_path))
+        artifact = ArtifactStorage(self.output_root / "runtime_artifacts").write_json(
+            "deepseek_qwen_acceptance_summary.json",
+            {
+                "report_path": str(report_path),
+                "ok": bool(data.get("ok")),
+                "benchmark": benchmark,
+                "case_count": len(cases),
+                "failure_count": len(run_record.get("failure_cases") or []),
+            },
+        )
+        workflow = WorkflowEngine().gate_rework_until_done(
+            workflow_id=run_record["run_id"],
+            name="complex_task_acceptance",
+            gate_statuses=[{
+                "name": "acceptance_gate",
+                "status": "pass" if data.get("ok") else "failed",
+                "score": metrics.get("pass_rate", 0),
+                "failures": [item.get("reason", "") for item in run_record.get("failure_cases") or []],
+            }],
+            artifact_saves=[artifact],
+        )
+        run_record["artifacts"].append({
+            "artifact_id": f"art-{len(run_record.get('artifacts') or []) + 1:03d}",
+            "kind": "evaluation_summary",
+            "title": "Normalized acceptance summary",
+            "uri": artifact["path"],
+            "metadata": {"storage": artifact},
+        })
+        run_record["workflow"] = {**run_record.get("workflow", {}), "state_machine": workflow}
+        if self.store:
+            run_record = self.store.save_run_record(run_record)
         return {
             "found": True,
             "report_path": str(report_path),

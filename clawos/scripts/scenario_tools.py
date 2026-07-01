@@ -62,17 +62,11 @@ def _write_optional_markdown(output_path, title, sections):
     dirname = os.path.dirname(output_path)
     if dirname:
         os.makedirs(dirname, exist_ok=True)
-    lines = [f"# {title}", ""]
-    for heading, items in sections:
-        lines.extend([f"## {heading}", ""])
-        if isinstance(items, str):
-            lines.extend([items, ""])
-        else:
-            lines.extend([f"- {item}" for item in (items or ["None"])])
-            lines.append("")
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines).rstrip() + "\n")
-    return output_path
+    from services.artifact_storage import ArtifactStorage
+
+    target = Path(output_path).expanduser().resolve()
+    ArtifactStorage(target.parent).write_markdown(target.name, title, sections)
+    return str(target)
 
 
 def _safe_slug(value):
@@ -114,21 +108,10 @@ def _extract_evidence(text, keywords, limit=8):
 
 
 def _write_delivery_file(output_dir, filename, title, sections):
-    path = Path(output_dir) / filename
-    lines = [f"# {title}", ""]
-    for heading, body in sections:
-        lines.extend([f"## {heading}", ""])
-        if isinstance(body, str):
-            lines.extend([body.strip() or "未提供。", ""])
-        else:
-            items = list(body or [])
-            if not items:
-                lines.extend(["- 未提供。", ""])
-            else:
-                lines.extend([f"- {item}" for item in items])
-                lines.append("")
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-    return str(path)
+    from services.artifact_storage import ArtifactStorage
+
+    artifact = ArtifactStorage(output_dir).write_markdown(filename, title, sections)
+    return artifact["path"]
 
 
 def competition_delivery_package(payload):
@@ -1138,9 +1121,14 @@ def _write_committee_report(output_dir, project_name, focus, delivery, role_card
         *[f"- {item}" for item in questions],
         "",
     ])
-    path = package_dir / "multi_agent_review.md"
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-    return str(path)
+    from services.artifact_storage import ArtifactStorage
+
+    artifact = ArtifactStorage(package_dir).write_markdown(
+        "multi_agent_review.md",
+        f"{project_name} Multi-Agent Review",
+        [("Report", "\n".join(lines[2:]).rstrip())],
+    )
+    return artifact["path"]
 
 
 def multi_agent_review_committee(payload):
@@ -1433,7 +1421,10 @@ def multi_agent_review_committee(payload):
     try:
         from services.agent_orchestration_service import AgentOrchestrationService
 
-        result["run_record"] = AgentOrchestrationService().normalize_committee_result(result)
+        from memoryos.memory_store import MemoryStore
+
+        store = MemoryStore(_memory_db_path())
+        result["run_record"] = AgentOrchestrationService(store=store).normalize_committee_result(result)
     except Exception as exc:
         result["run_record_error"] = f"{type(exc).__name__}: {exc}"
     return result
@@ -1603,7 +1594,7 @@ def meeting_workflow(payload):
     if action == "get":
         return {"meeting": services.get_meeting(payload.get("meeting_id"))}
     if action == "audio_import":
-        return {"meeting": services.import_meeting_audio(payload.get("audio_path", ""), transcript_path=payload.get("transcript_path", ""), transcript=payload.get("transcript", ""), title=payload.get("title", ""), meeting_id=payload.get("meeting_id"))}
+        return {"meeting": services.import_meeting_audio(payload.get("audio_path", ""), transcript_path=payload.get("transcript_path", ""), transcript=payload.get("transcript", ""), title=payload.get("title", ""), meeting_id=payload.get("meeting_id"), output_dir=payload.get("output_dir", ""))}
     if action == "connector_draft":
         return {"meeting": services.draft_meeting_connectors(payload.get("meeting_id"), payload.get("output_dir", ""), calendar=bool(payload.get("calendar", True)), email=bool(payload.get("email", True)), recipients=payload.get("recipients", []))}
     return {"meeting": {"error": f"unknown action: {action}"}}

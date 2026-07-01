@@ -47,7 +47,7 @@ class WorkspaceServicesTests(unittest.TestCase):
 
     def test_meeting_audio_sidecar_diarization_and_connector_drafts(self):
         with tempfile.TemporaryDirectory() as td:
-            _, services = self._services(td)
+            store, services = self._services(td)
             audio = Path(td) / "sync.wav"
             audio.write_bytes(b"RIFF....WAVE")
             transcript = Path(td) / "sync.txt"
@@ -60,9 +60,11 @@ class WorkspaceServicesTests(unittest.TestCase):
                 encoding="utf-8",
             )
             result = services.import_meeting_audio(
-                audio, transcript_path=transcript, title="Audio sync"
+                audio, transcript_path=transcript, title="Audio sync", output_dir=Path(td) / "artifacts"
             )
             meeting = services.get_meeting(result["meeting"]["id"])
+            run = store.get_run_record(result["run_record"]["run_id"])
+            card_exists = Path(result["artifacts"]["meeting_card"]["path"]).exists()
             drafts = services.draft_meeting_connectors(
                 result["meeting"]["id"],
                 Path(td) / "drafts",
@@ -74,8 +76,29 @@ class WorkspaceServicesTests(unittest.TestCase):
         self.assertEqual({turn["speaker"] for turn in result["diarization"]}, {"Alice", "Bob"})
         self.assertIn("Use local deployment", meeting["decisions"])
         self.assertIn("audio model may be unavailable", meeting["risks"])
+        self.assertEqual(result["meeting_card"]["transcript_status"], "transcript_imported")
+        self.assertTrue(card_exists)
+        self.assertEqual(run["run_type"], "meeting_audio")
+        self.assertTrue(result["knowledge_item"])
         self.assertTrue(any(d["connector_type"] == "calendar_ics" for d in drafts["drafts"]))
         self.assertTrue(draft_exists)
+
+    def test_meeting_audio_acceptance_suite_covers_six_cases(self):
+        from scripts.meeting_audio_acceptance import run_suite
+
+        report = run_suite()
+
+        self.assertEqual(report["case_count"], 6)
+        self.assertEqual(report["failed_count"], 0)
+        self.assertEqual(report["pass_rate"], 1.0)
+        self.assertTrue({item["name"] for item in report["cases"]}.issuperset({
+            "two_speaker_clean_sync",
+            "noisy_room_sidecar",
+            "long_meeting_vad_chunks",
+            "bilingual_cn_en",
+            "overlap_interruption",
+            "silence_then_voice",
+        }))
 
     def test_research_pdf_import_preserves_page_citations(self):
         from reportlab.pdfgen import canvas
@@ -213,7 +236,7 @@ class WorkspaceServicesTests(unittest.TestCase):
         from reportlab.pdfgen import canvas
 
         with tempfile.TemporaryDirectory() as td:
-            _, services = self._services(td)
+            store, services = self._services(td)
             pdf = Path(td) / "paper.pdf"
             doc = canvas.Canvas(str(pdf))
             doc.drawString(72, 720, "PDF generation should prefer Typst and fall back safely.")

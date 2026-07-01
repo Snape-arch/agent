@@ -1,0 +1,12 @@
+{
+  "name": "meeting-audio-acceptance-v1",
+  "description": "Offline meeting audio acceptance covering clean speakers, noisy sidecar transcripts, long VAD chunking, bilingual content, interruptions, and leading silence.",
+  "cases": [
+    {"name": "two_speaker_clean_sync", "checks": ["transcribed", "diarization", "meeting_card", "knowledge_item", "run_record"]},
+    {"name": "noisy_room_sidecar", "checks": ["sidecar_transcript", "risk_extraction", "speaker_turns"]},
+    {"name": "long_meeting_vad_chunks", "checks": ["vad_segments", "timeout_safe", "action_items"]},
+    {"name": "bilingual_cn_en", "checks": ["mixed_language_transcript", "decision_extraction"]},
+    {"name": "overlap_interruption", "checks": ["speaker_attribution", "risk_extraction"]},
+    {"name": "silence_then_voice", "checks": ["leading_silence", "voice_segment_detection"]}
+  ]
+}

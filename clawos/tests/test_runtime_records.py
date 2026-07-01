@@ -106,6 +106,49 @@ class RuntimeRecordTests(unittest.TestCase):
         self.assertIn("workflow_engine", payload["service_boundaries"])
         self.assertIn("FailureCase", payload["run_entities"])
 
+    def test_run_record_persists_to_durable_tables(self):
+        from memoryos.memory_store import MemoryStore
+        from services.runtime_records import RunRecord
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            run = RunRecord("run-1", "evaluation", "Eval", status="failed")
+            run.add_artifact("report", "Report", "output/report.json")
+            run.add_evidence("case", "citation miss", citation="doc:1", score=0)
+            run.add_failure_case("citation_miss", "expected citation was not hit", severity="high")
+            saved = store.save_run_record(run.to_dict())
+            loaded = store.get_run_record("run-1")
+            failures = store.list_failure_cases()
+
+        self.assertEqual(saved["run_id"], "run-1")
+        self.assertEqual(loaded["artifacts"][0]["uri"], "output/report.json")
+        self.assertEqual(loaded["evidence"][0]["citation"], "doc:1")
+        self.assertEqual(failures[0]["category"], "citation_miss")
+
+    def test_artifact_storage_and_workflow_back_run_record(self):
+        from memoryos.memory_store import MemoryStore
+        from services.artifact_storage import ArtifactStorage
+        from services.runtime_records import RunRecord
+        from services.workflow_engine import WorkflowEngine
+
+        with tempfile.TemporaryDirectory() as td:
+            artifact = ArtifactStorage(td).write_markdown("reports/demo.md", "Demo", [("Result", ["ok"])])
+            workflow = WorkflowEngine().gate_rework_until_done(
+                workflow_id="wf-artifact",
+                name="artifact_write",
+                gate_statuses=[{"name": "review", "status": "pass", "failures": []}],
+                artifact_saves=[artifact],
+            )
+            run = RunRecord("wf-artifact", "report", "Artifact write", status="pass", workflow={"state_machine": workflow})
+            run.add_artifact("markdown", "Demo report", artifact["path"], storage=artifact)
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            saved = store.save_run_record(run.to_dict())
+            artifact_exists = Path(artifact["path"]).exists()
+
+        self.assertTrue(artifact_exists)
+        self.assertEqual(saved["workflow"]["state_machine"]["state"], "passed")
+        self.assertEqual(saved["artifacts"][0]["metadata"]["storage"]["kind"], "markdown")
+
 
 if __name__ == "__main__":
     unittest.main()

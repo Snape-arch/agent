@@ -788,16 +788,39 @@ def get_workflow_engine() -> WorkflowEngine:
 def get_evaluation_service() -> EvaluationService:
     global g_evaluation_service
     output_root = (BASE_DIR.parent / "output").resolve()
-    if not g_evaluation_service or getattr(g_evaluation_service, "output_root", None) != output_root:
-        g_evaluation_service = EvaluationService(output_root)
+    if (
+        not g_evaluation_service
+        or getattr(g_evaluation_service, "output_root", None) != output_root
+        or getattr(g_evaluation_service, "store", None) is not g_memory_store
+    ):
+        g_evaluation_service = EvaluationService(output_root, g_memory_store)
     return g_evaluation_service
 
 
 def get_agent_orchestration_service() -> AgentOrchestrationService:
     global g_agent_orchestration_service
-    if not g_agent_orchestration_service:
-        g_agent_orchestration_service = AgentOrchestrationService(get_workflow_engine())
+    if (
+        not g_agent_orchestration_service
+        or getattr(g_agent_orchestration_service, "store", None) is not g_memory_store
+    ):
+        g_agent_orchestration_service = AgentOrchestrationService(get_workflow_engine(), g_memory_store)
     return g_agent_orchestration_service
+
+
+def local_asr_capability() -> dict[str, Any]:
+    try:
+        import faster_whisper  # noqa: F401
+        faster_available = True
+    except Exception:
+        faster_available = False
+    whisper_cli = shutil.which("whisper")
+    whisper_cpp = shutil.which("whisper-cli") or shutil.which("main")
+    return {
+        "faster_whisper": faster_available,
+        "whisper_cli": bool(whisper_cli),
+        "whisper_cpp": bool(whisper_cpp),
+        "available": bool(faster_available or whisper_cli or whisper_cpp),
+    }
 
 
 def list_memory_items(
@@ -2308,9 +2331,13 @@ async def api_workspace_capabilities():
         "meeting_audio": {
             "audio_file_registration": True,
             "sidecar_transcript_import": True,
-            "speaker_diarization": "label_based",
-            "local_whisper_available": shutil.which("whisper") is not None,
-            "auto_transcription": shutil.which("whisper") is not None,
+            "vad_silence_splitting": True,
+            "speaker_diarization": "label_or_heuristic",
+            "structured_meeting_card": True,
+            "knowledge_evidence_save": True,
+            "local_asr": local_asr_capability(),
+            "local_whisper_available": local_asr_capability()["available"],
+            "auto_transcription": local_asr_capability()["available"],
         },
         "connectors": {
             "calendar": "ics_draft",
@@ -2420,6 +2447,7 @@ async def api_meeting_audio_import(request: Request):
             transcript=data.get("transcript", ""),
             title=data.get("title", ""),
             meeting_id=data.get("meeting_id"),
+            output_dir=data.get("output_dir", ""),
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
@@ -2887,18 +2915,26 @@ async def api_runtime_schema():
 
 @app.get("/api/runtime/runs/latest")
 async def api_runtime_runs_latest(limit: int = 12):
+    capped = max(1, min(int(limit or 12), 50))
+    runs = g_memory_store.list_run_records(limit=capped) if g_memory_store else []
+    if runs:
+        return JSONResponse({"schema": RUN_SCHEMA_VERSION, "runs": runs, "count": len(runs), "durable": True})
     runs = []
     if g_memory_store:
-        for task in get_task_service().list(limit=max(1, min(int(limit or 12), 50))):
+        for task in get_task_service().list(limit=capped):
             runs.append(run_from_task(task))
     acceptance = get_evaluation_service().latest_deepseek_qwen()
     if acceptance.get("run_record"):
         runs.insert(0, acceptance["run_record"])
-    return JSONResponse({"schema": RUN_SCHEMA_VERSION, "runs": runs[: max(1, min(int(limit or 12), 50))], "count": len(runs)})
+    return JSONResponse({"schema": RUN_SCHEMA_VERSION, "runs": runs[:capped], "count": len(runs), "durable": False})
 
 
 @app.get("/api/runtime/failure-cases")
 async def api_runtime_failure_cases(limit: int = 50):
+    capped = max(1, min(int(limit or 50), 200))
+    failures = g_memory_store.list_failure_cases(limit=capped) if g_memory_store else []
+    if failures:
+        return JSONResponse({"schema": RUN_SCHEMA_VERSION, "failure_cases": failures, "count": len(failures), "durable": True})
     failures = []
     acceptance = get_evaluation_service().latest_deepseek_qwen()
     failures.extend(acceptance.get("failure_library") or [])
@@ -2908,8 +2944,9 @@ async def api_runtime_failure_cases(limit: int = 50):
             failures.extend(run.get("failure_cases") or [])
     return JSONResponse({
         "schema": RUN_SCHEMA_VERSION,
-        "failure_cases": failures[: max(1, min(int(limit or 50), 200))],
+        "failure_cases": failures[:capped],
         "count": len(failures),
+        "durable": False,
     })
 
 

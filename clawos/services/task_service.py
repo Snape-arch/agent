@@ -57,7 +57,15 @@ class TaskService:
     def finish(self, task_id: int | None, status: str, error: str = "", result_payload: dict[str, Any] | None = None):
         if not task_id:
             return {}
-        return self.require_store().finish_task(task_id, status, error=error, result_payload=result_payload)
+        store = self.require_store()
+        task = store.finish_task(task_id, status, error=error, result_payload=result_payload)
+        try:
+            from .runtime_records import run_from_task
+
+            store.save_run_record(run_from_task({**task, "error": error}))
+        except Exception:
+            pass
+        return task
 
     def cancel(self, task_id: int, reason: str = "", actor_id: str = "user"):
         return self.require_store().cancel_task(task_id, reason=reason, actor_id=actor_id)

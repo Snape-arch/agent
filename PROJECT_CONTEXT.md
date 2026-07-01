@@ -1429,3 +1429,31 @@ Known notes:
 
 Recommended next step:
 - Persist Run/Artifact/Evidence/FailureCase records into durable tables and route every artifact-producing workflow through `ArtifactStorage` instead of direct ad hoc output paths.
+
+### 2026-07-01 - Durable runtime tables and meeting audio workflow
+
+Completed:
+- Added durable `run_records`, `run_artifacts`, `run_evidence`, and `run_failure_cases` tables in MemoryOS, with read/list helpers for latest runs and failure samples.
+- Routed task completion, multi-agent committee normalization, DeepSeek+Qwen acceptance summaries, report files, and delivery artifacts through the unified Run/Artifact/Evidence/FailureCase model where this service layer owns the workflow result.
+- Wired `ArtifactStorage` and `WorkflowEngine` into evaluation, multi-agent orchestration, scenario report generation, and task persistence so new artifacts carry traceable run evidence instead of only ad hoc files.
+- Added `MeetingAudioService` with optional local ASR via `faster-whisper` first and whisper.cpp/whisper CLI fallback, plus PCM-WAV energy VAD splitting, label/heuristic diarization, structured meeting cards, knowledge save, and durable Evidence/Artifact creation.
+- Extended workspace meeting audio import so audio plus sidecar/provided transcript produces a meeting card, transcript artifact, knowledge item, durable run record, and workflow gate result.
+- Added a deterministic meeting-audio acceptance suite covering two speakers, noisy room, long meeting/VAD, Chinese-English mix, interruptions, and leading silence.
+
+Verification:
+- `python -m py_compile clawos\memoryos\memory_store.py clawos\services\runtime_records.py clawos\services\artifact_storage.py clawos\services\workflow_engine.py clawos\services\evaluation_service.py clawos\services\agent_orchestration_service.py clawos\services\meeting_audio_service.py clawos\workspace_services.py clawos\clawos_server.py clawos\scripts\scenario_tools.py clawos\scripts\meeting_audio_acceptance.py`: passed.
+- `python -m unittest clawos.tests.test_runtime_records clawos.tests.test_workspace_services`: `24 tests OK`.
+- `python clawos\scripts\meeting_audio_acceptance.py`: `6/6 passed`, `pass_rate=1.0`.
+- `python -m unittest clawos.tests.test_scenarios_e2e clawos.tests.test_scenario_benchmarks clawos.tests.test_runtime_records clawos.tests.test_workspace_services clawos.tests.test_frontend_static`: `70 tests OK`.
+- Bundled Node syntax checks for `clawos\static\assets\console.js` and `clawos\static\assets\console.modules.js`: passed.
+- `python -m unittest discover -s clawos\tests`: `203 tests OK`.
+
+Known notes:
+- True ASR depends on locally installed `faster-whisper` or a whisper.cpp/whisper CLI binary and a model file; this block wires the engine detection/fallback but did not benchmark real model inference.
+- Current VAD is a lightweight offline PCM-WAV energy splitter, not Silero/WebRTC-grade VAD.
+- Current diarization is speaker-label based with a deterministic heuristic fallback, not pyannote-style embedding clustering.
+- Meeting audio acceptance uses generated WAV plus sidecar transcripts for deterministic CI-like closure; add real meeting files before claiming production ASR quality.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Install and benchmark one real local ASR path (`faster-whisper` small/medium or whisper.cpp quantized model), then add real noisy/long meeting fixtures with WER, diarization error rate, and action-item extraction accuracy.

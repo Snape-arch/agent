@@ -9,8 +9,9 @@ from .workflow_engine import WorkflowEngine
 class AgentOrchestrationService:
     """Boundary for fixed-role squads and their quality-gate lifecycle."""
 
-    def __init__(self, workflow_engine: WorkflowEngine | None = None):
+    def __init__(self, workflow_engine: WorkflowEngine | None = None, store: Any | None = None):
         self.workflow_engine = workflow_engine or WorkflowEngine()
+        self.store = store
 
     def normalize_committee_result(self, result: dict[str, Any]) -> dict[str, Any]:
         run_record = run_from_multi_agent_result(result)
@@ -36,4 +37,6 @@ class AgentOrchestrationService:
             artifact_saves=run_record["artifacts"],
         )
         run_record["workflow"] = {**run_record.get("workflow", {}), "state_machine": workflow}
+        if self.store:
+            run_record = self.store.save_run_record(run_record)
         return run_record

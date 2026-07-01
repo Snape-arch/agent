@@ -508,6 +508,69 @@ class MemoryStore:
                     created_at TEXT DEFAULT (datetime('now')),
                     updated_at TEXT DEFAULT (datetime('now'))
                 );
+                CREATE TABLE IF NOT EXISTS run_records (
+                    run_id TEXT PRIMARY KEY,
+                    schema TEXT NOT NULL DEFAULT 'clawos.run.v1',
+                    run_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'created',
+                    actor TEXT DEFAULT 'system',
+                    scenario TEXT DEFAULT '',
+                    started_at TEXT DEFAULT '',
+                    completed_at TEXT DEFAULT '',
+                    inputs TEXT NOT NULL DEFAULT '{}',
+                    outputs TEXT NOT NULL DEFAULT '{}',
+                    metrics TEXT NOT NULL DEFAULT '{}',
+                    workflow TEXT NOT NULL DEFAULT '{}',
+                    parent_run_id TEXT DEFAULT '',
+                    tags TEXT NOT NULL DEFAULT '[]',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_run_records_type_status ON run_records(run_type, status, updated_at DESC);
+                CREATE TABLE IF NOT EXISTS run_artifacts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    artifact_id TEXT NOT NULL,
+                    kind TEXT NOT NULL DEFAULT 'file',
+                    title TEXT NOT NULL DEFAULT '',
+                    uri TEXT DEFAULT '',
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(run_id) REFERENCES run_records(run_id) ON DELETE CASCADE,
+                    UNIQUE(run_id, artifact_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_run_artifacts_run ON run_artifacts(run_id, id);
+                CREATE TABLE IF NOT EXISTS run_evidence (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    evidence_id TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT '',
+                    claim TEXT NOT NULL DEFAULT '',
+                    citation TEXT DEFAULT '',
+                    score REAL,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(run_id) REFERENCES run_records(run_id) ON DELETE CASCADE,
+                    UNIQUE(run_id, evidence_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_run_evidence_run ON run_evidence(run_id, id);
+                CREATE TABLE IF NOT EXISTS run_failure_cases (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    failure_id TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT '',
+                    reason TEXT NOT NULL DEFAULT '',
+                    severity TEXT NOT NULL DEFAULT 'medium',
+                    input_summary TEXT DEFAULT '',
+                    output_summary TEXT DEFAULT '',
+                    remediation TEXT DEFAULT '',
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(run_id) REFERENCES run_records(run_id) ON DELETE CASCADE,
+                    UNIQUE(run_id, failure_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_run_failure_cases_category ON run_failure_cases(category, severity, id DESC);
             """)
             self._ensure_columns(c, "experiences", {
                 "solution": "TEXT DEFAULT ''",
@@ -555,6 +618,20 @@ class MemoryStore:
             self._ensure_columns(c, "task_events", {
                 "message": "TEXT DEFAULT ''",
                 "data": "TEXT DEFAULT '{}'",
+            })
+            self._ensure_columns(c, "run_records", {
+                "schema": "TEXT NOT NULL DEFAULT 'clawos.run.v1'",
+                "actor": "TEXT DEFAULT 'system'",
+                "scenario": "TEXT DEFAULT ''",
+                "started_at": "TEXT DEFAULT ''",
+                "completed_at": "TEXT DEFAULT ''",
+                "inputs": "TEXT NOT NULL DEFAULT '{}'",
+                "outputs": "TEXT NOT NULL DEFAULT '{}'",
+                "metrics": "TEXT NOT NULL DEFAULT '{}'",
+                "workflow": "TEXT NOT NULL DEFAULT '{}'",
+                "parent_run_id": "TEXT DEFAULT ''",
+                "tags": "TEXT NOT NULL DEFAULT '[]'",
+                "updated_at": "TEXT DEFAULT ''",
             })
             self._ensure_columns(c, "self_evolution_runs", {
                 "release_stage": "TEXT NOT NULL DEFAULT 'candidate'",
@@ -1092,6 +1169,188 @@ class MemoryStore:
                 "steps": [self._step_row_to_dict(row) for row in steps],
                 "events": [self._event_row_to_dict(row) for row in events],
             }
+
+    def save_run_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        run_id = str(record.get("run_id") or "").strip()
+        if not run_id:
+            raise ValueError("run_id is required")
+        artifacts = list(record.get("artifacts") or [])
+        evidence = list(record.get("evidence") or [])
+        failures = list(record.get("failure_cases") or [])
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO run_records
+                    (run_id, schema, run_type, title, status, actor, scenario, started_at,
+                     completed_at, inputs, outputs, metrics, workflow, parent_run_id, tags, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(run_id) DO UPDATE SET
+                    schema=excluded.schema,
+                    run_type=excluded.run_type,
+                    title=excluded.title,
+                    status=excluded.status,
+                    actor=excluded.actor,
+                    scenario=excluded.scenario,
+                    started_at=excluded.started_at,
+                    completed_at=excluded.completed_at,
+                    inputs=excluded.inputs,
+                    outputs=excluded.outputs,
+                    metrics=excluded.metrics,
+                    workflow=excluded.workflow,
+                    parent_run_id=excluded.parent_run_id,
+                    tags=excluded.tags,
+                    updated_at=datetime('now')
+                """,
+                (
+                    run_id,
+                    str(record.get("schema") or "clawos.run.v1"),
+                    str(record.get("run_type") or "generic"),
+                    str(record.get("title") or run_id),
+                    str(record.get("status") or "created"),
+                    str(record.get("actor") or "system"),
+                    str(record.get("scenario") or ""),
+                    str(record.get("started_at") or ""),
+                    str(record.get("completed_at") or ""),
+                    json.dumps(record.get("inputs") or {}, ensure_ascii=False),
+                    json.dumps(record.get("outputs") or {}, ensure_ascii=False),
+                    json.dumps(record.get("metrics") or {}, ensure_ascii=False),
+                    json.dumps(record.get("workflow") or {}, ensure_ascii=False),
+                    str(record.get("parent_run_id") or ""),
+                    json.dumps(record.get("tags") or [], ensure_ascii=False),
+                ),
+            )
+            c.execute("DELETE FROM run_artifacts WHERE run_id=?", (run_id,))
+            c.execute("DELETE FROM run_evidence WHERE run_id=?", (run_id,))
+            c.execute("DELETE FROM run_failure_cases WHERE run_id=?", (run_id,))
+            for index, item in enumerate(artifacts, 1):
+                c.execute(
+                    """
+                    INSERT INTO run_artifacts
+                        (run_id, artifact_id, kind, title, uri, metadata, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        run_id,
+                        str(item.get("artifact_id") or f"art-{index:03d}"),
+                        str(item.get("kind") or "file"),
+                        str(item.get("title") or ""),
+                        str(item.get("uri") or item.get("path") or ""),
+                        json.dumps(item.get("metadata") or {}, ensure_ascii=False),
+                        str(item.get("created_at") or datetime.now(timezone.utc).replace(microsecond=0).isoformat()),
+                    ),
+                )
+            for index, item in enumerate(evidence, 1):
+                c.execute(
+                    """
+                    INSERT INTO run_evidence
+                        (run_id, evidence_id, source, claim, citation, score, metadata, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    """,
+                    (
+                        run_id,
+                        str(item.get("evidence_id") or f"ev-{index:03d}"),
+                        str(item.get("source") or ""),
+                        str(item.get("claim") or ""),
+                        str(item.get("citation") or ""),
+                        item.get("score"),
+                        json.dumps(item.get("metadata") or {}, ensure_ascii=False),
+                    ),
+                )
+            for index, item in enumerate(failures, 1):
+                c.execute(
+                    """
+                    INSERT INTO run_failure_cases
+                        (run_id, failure_id, category, reason, severity, input_summary,
+                         output_summary, remediation, metadata, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        run_id,
+                        str(item.get("failure_id") or f"fc-{index:03d}"),
+                        str(item.get("category") or ""),
+                        str(item.get("reason") or ""),
+                        str(item.get("severity") or "medium"),
+                        str(item.get("input_summary") or ""),
+                        str(item.get("output_summary") or ""),
+                        str(item.get("remediation") or ""),
+                        json.dumps(item.get("metadata") or {}, ensure_ascii=False),
+                        str(item.get("created_at") or datetime.now(timezone.utc).replace(microsecond=0).isoformat()),
+                    ),
+                )
+        return self.get_run_record(run_id)
+
+    def get_run_record(self, run_id: str) -> dict[str, Any]:
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM run_records WHERE run_id=?", (str(run_id),)).fetchone()
+            if not row:
+                return {}
+            artifacts = c.execute("SELECT * FROM run_artifacts WHERE run_id=? ORDER BY id", (str(run_id),)).fetchall()
+            evidence = c.execute("SELECT * FROM run_evidence WHERE run_id=? ORDER BY id", (str(run_id),)).fetchall()
+            failures = c.execute("SELECT * FROM run_failure_cases WHERE run_id=? ORDER BY id", (str(run_id),)).fetchall()
+            return self._run_record_from_rows(row, artifacts, evidence, failures)
+
+    def list_run_records(self, run_type="", status="", limit=50) -> list[dict[str, Any]]:
+        where, params = [], []
+        if run_type:
+            where.append("run_type=?")
+            params.append(str(run_type))
+        if status:
+            where.append("status=?")
+            params.append(str(status))
+        clause = " WHERE " + " AND ".join(where) if where else ""
+        with self._conn() as c:
+            rows = c.execute(
+                f"SELECT * FROM run_records{clause} ORDER BY updated_at DESC, created_at DESC LIMIT ?",
+                (*params, max(1, min(int(limit or 50), 200))),
+            ).fetchall()
+            return [self._run_record_from_rows(row, [], [], []) for row in rows]
+
+    def list_failure_cases(self, category="", severity="", limit=50) -> list[dict[str, Any]]:
+        where, params = [], []
+        if category:
+            where.append("category=?")
+            params.append(str(category))
+        if severity:
+            where.append("severity=?")
+            params.append(str(severity))
+        clause = " WHERE " + " AND ".join(where) if where else ""
+        with self._conn() as c:
+            rows = c.execute(
+                f"SELECT * FROM run_failure_cases{clause} ORDER BY id DESC LIMIT ?",
+                (*params, max(1, min(int(limit or 50), 200))),
+            ).fetchall()
+            return [self._failure_case_row_to_dict(row) for row in rows]
+
+    def _run_record_from_rows(self, row, artifacts, evidence, failures) -> dict[str, Any]:
+        item = dict(row)
+        for key, default in (
+            ("inputs", {}),
+            ("outputs", {}),
+            ("metrics", {}),
+            ("workflow", {}),
+            ("tags", []),
+        ):
+            item[key] = self._json_loads(item.get(key), default)
+        item["artifacts"] = [self._artifact_row_to_dict(row) for row in artifacts]
+        item["evidence"] = [self._run_evidence_row_to_dict(row) for row in evidence]
+        item["failure_cases"] = [self._failure_case_row_to_dict(row) for row in failures]
+        return item
+
+    def _artifact_row_to_dict(self, row) -> dict[str, Any]:
+        item = dict(row)
+        item["metadata"] = self._json_loads(item.get("metadata"), {})
+        return item
+
+    def _run_evidence_row_to_dict(self, row) -> dict[str, Any]:
+        item = dict(row)
+        item["metadata"] = self._json_loads(item.get("metadata"), {})
+        return item
+
+    def _failure_case_row_to_dict(self, row) -> dict[str, Any]:
+        item = dict(row)
+        item["metadata"] = self._json_loads(item.get("metadata"), {})
+        item["source_run_id"] = item.get("run_id", "")
+        return item
 
     def upsert_memory(
         self,
