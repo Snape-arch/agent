@@ -16,6 +16,7 @@ clawos_todo.json
 clawos_timer.json
 models/asr/
 uploads/meeting_audio/
+data/search_evidence/
 
 # IDE
 .vscode/

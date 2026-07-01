@@ -10,6 +10,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPT_DIR)
 TODO_FILE = os.path.join(BASE_DIR, "clawos_todo.json")
 NOTES_DIR = os.path.join(BASE_DIR, "notes")
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
 
 def _memory_db_path():
@@ -172,6 +174,62 @@ def _clean_html_text(value):
     return re.sub(r"\s+", " ", value).strip()
 
 
+def _search_engine():
+    from services.search_evidence import SearchEvidenceEngine
+    data_dir = os.path.join(BASE_DIR, "data", "search_evidence")
+    os.makedirs(data_dir, exist_ok=True)
+    return SearchEvidenceEngine(
+        os.path.join(data_dir, "cache.json"),
+        os.path.join(data_dir, "rate_limits.json"),
+        cache_ttl_seconds=int(os.environ.get("CLAWOS_SEARCH_CACHE_TTL", "3600") or 3600),
+        max_per_minute=int(os.environ.get("CLAWOS_SEARCH_RATE_PER_MINUTE", "30") or 30),
+    )
+
+
+def _save_web_run(kind, title, payload):
+    try:
+        from memoryos.memory_store import MemoryStore
+        from services.runtime_records import RunRecord
+        run_id = f"{kind}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+        ok = not payload.get("error") and (bool(payload.get("results")) or bool(payload.get("text")) or payload.get("failed_count", 0) == 0)
+        run = RunRecord(
+            run_id=run_id,
+            run_type="web_evidence",
+            title=title,
+            status="pass" if ok else "blocked",
+            actor="search-evidence-engine",
+            scenario="web_research",
+            inputs={"kind": kind, "query": payload.get("query", ""), "url": payload.get("url", "")},
+            outputs=payload,
+            metrics={
+                "result_count": len(payload.get("results", []) or []),
+                "attempt_count": len(payload.get("attempts", []) or []),
+                "cache_hit": bool(payload.get("cache_hit")),
+                "pass_rate": payload.get("pass_rate", 1.0 if ok else 0.0),
+            },
+            tags=["web", "search", "evidence", kind],
+        )
+        for item in (payload.get("results") or [])[:8]:
+            run.add_evidence(
+                "web_source",
+                item.get("title") or item.get("url") or "source",
+                citation=item.get("url", ""),
+                score=float(item.get("scores", {}).get("source_score", 0) or 0),
+                metadata={"domain": item.get("domain", ""), "credibility": item.get("credibility", "")},
+            )
+        if payload.get("final_url"):
+            run.add_evidence("web_fetch", payload.get("title") or payload.get("final_url"), citation=payload.get("final_url"), score=float((payload.get("source_quality") or {}).get("source_score", 0) or 0))
+        for case in payload.get("cases", []) or []:
+            if not case.get("pass", True):
+                run.add_failure_case("web_search_acceptance_failure", case.get("failure_reason", "case failed"), severity="high", input_summary=case.get("name", ""))
+        if payload.get("error"):
+            run.add_failure_case("web_evidence_error", payload.get("error"), severity="medium", input_summary=title, remediation="Check provider keys, network policy, cache state, and rate limits.")
+        saved = MemoryStore(_memory_db_path()).save_run_record(run.to_dict())
+        return saved
+    except Exception as exc:
+        return {"error": f"run_record_save_failed: {str(exc)[:160]}"}
+
+
 def _search_tavily(query, limit):
     import urllib.request
     key = os.environ.get("TAVILY_API_KEY", "")
@@ -280,25 +338,24 @@ def tool_web_search():
     if not query: print(json.dumps({"error": "missing query"})); sys.exit(1)
     limit = max(1, min(int(input_data.get("limit", 5) or 5), 10))
     providers = input_data.get("providers") or ["tavily", "serpapi", "bing", "duckduckgo"]
-    attempts = []
-    for provider in providers:
-        try:
-            fn = {
-                "tavily": _search_tavily,
-                "serpapi": _search_serpapi,
-                "bing": _search_bing,
-                "duckduckgo": _search_duckduckgo,
-            }.get(str(provider).lower())
-            if not fn:
-                continue
-            rows, error_type = fn(query, limit)
-            attempts.append({"provider": provider, "ok": bool(rows), "error_type": error_type})
-            if rows:
-                print(json.dumps({"query": query, "provider": provider, "results": rows[:limit], "attempts": attempts}, ensure_ascii=False))
-                return
-        except Exception as e:
-            attempts.append({"provider": provider, "ok": False, "error_type": type(e).__name__, "message": str(e)[:200]})
-    print(json.dumps({"error": "Search failed across providers", "error_type": "all_providers_failed", "query": query, "results": [], "attempts": attempts}, ensure_ascii=False)); sys.exit(1)
+    engine = _search_engine()
+    payload = engine.search(
+        query,
+        limit,
+        [str(item).lower() for item in providers],
+        {
+            "tavily": _search_tavily,
+            "serpapi": _search_serpapi,
+            "bing": _search_bing,
+            "duckduckgo": _search_duckduckgo,
+        },
+        retries=max(1, min(int(input_data.get("retries", 2) or 2), 4)),
+        use_cache=bool(input_data.get("use_cache", True)),
+    )
+    payload["run_record"] = _save_web_run("web_search", query, payload)
+    print(json.dumps(payload, ensure_ascii=False))
+    if payload.get("error"):
+        sys.exit(1)
 
 
 def tool_web_fetch():
@@ -306,64 +363,36 @@ def tool_web_fetch():
     max_chars = int(input_data.get("max_chars", 4000) or 4000)
     ingest = bool(input_data.get("ingest", False))
     category = str(input_data.get("category", "web") or "web")
+    render_js = bool(input_data.get("render_js", False))
     if not url:
         print(json.dumps({"error": "missing url"})); sys.exit(1)
     if not re.match(r"^https?://", url, re.I):
         print(json.dumps({"error": "only http(s) URLs are supported"})); sys.exit(1)
     try:
-        import urllib.request
-        import urllib.parse
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ClawOS/1.0",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
-        })
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read(2_000_000)
-            final_url = resp.geturl()
-            status = getattr(resp, "status", 200)
-            content_type = resp.headers.get("content-type", "")
-        charset_match = re.search(r"charset=([\w.-]+)", content_type, re.I)
-        charset = charset_match.group(1) if charset_match else "utf-8"
-        html_text = raw.decode(charset, errors="replace")
-        title_match = re.search(r"<title[^>]*>(.*?)</title>", html_text, re.I | re.S)
-        title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", title_match.group(1))).strip() if title_match else ""
-        links = []
-        for href, label in re.findall(r"<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", html_text, re.I | re.S)[:80]:
-            clean_label = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", label)).strip()
-            abs_url = urllib.parse.urljoin(final_url, href)
-            if clean_label and abs_url.startswith(("http://", "https://")):
-                links.append({"text": clean_label[:120], "url": abs_url})
-            if len(links) >= 20:
-                break
-        text = re.sub(r"<(script|style|noscript|svg|canvas)[\s\S]*?</\1>", " ", html_text, flags=re.I)
-        text = re.sub(r"<[^>]+>", " ", text)
-        import html as html_lib
-        text = html_lib.unescape(text)
-        text = re.sub(r"\s+", " ", text).strip()
-        result = {
-            "url": url,
-            "final_url": final_url,
-            "status": status,
-            "content_type": content_type,
-            "title": title,
-            "text": text[:max(500, min(max_chars, 12000))],
-            "text_length": len(text),
-            "links": links,
-            "truncated": len(text) > max_chars,
-        }
+        engine = _search_engine()
+        result = engine.fetch(
+            url,
+            max_chars=max_chars,
+            render_js=render_js,
+            use_cache=bool(input_data.get("use_cache", True)),
+            retries=max(1, min(int(input_data.get("retries", 2) or 2), 4)),
+        )
+        if result.get("error"):
+            print(json.dumps(result, ensure_ascii=False)); sys.exit(1)
         if ingest:
             from pathlib import Path
             import hashlib
             from memoryos.memory_store import MemoryStore
             from memoryos.document_ingestion import ingest_file, safe_filename
+            final_url = result.get("final_url") or url
             digest = hashlib.sha256(final_url.encode("utf-8")).hexdigest()[:12]
             upload_dir = Path(BASE_DIR) / "uploads" / "web"
             upload_dir.mkdir(parents=True, exist_ok=True)
-            name = safe_filename((title or "web_page") + ".html")
+            name = safe_filename((result.get("title") or "web_page") + ".html")
             page_path = upload_dir / f"{digest}_{name}"
-            page_path.write_text(html_text, encoding="utf-8", errors="replace")
+            page_path.write_text(result.get("text", ""), encoding="utf-8", errors="replace")
             store = MemoryStore(_memory_db_path())
-            doc = ingest_file(store, upload_dir, page_path, title=title or final_url, category=category)
+            doc = ingest_file(store, upload_dir, page_path, title=result.get("title") or final_url, category=category)
             result["document"] = {
                 "id": doc.get("id"),
                 "title": doc.get("title"),
@@ -373,9 +402,90 @@ def tool_web_fetch():
             result["ingested"] = True
         else:
             result["ingested"] = False
+        result["run_record"] = _save_web_run("web_fetch", url, result)
         print(json.dumps(result, ensure_ascii=False))
     except Exception as e:
         print(json.dumps({"error": f"Fetch failed: {str(e)}"})); sys.exit(1)
+
+
+def tool_web_citation_check():
+    from services.search_evidence import citation_consistency
+    answer = str(input_data.get("answer", "") or "")
+    sources = input_data.get("sources") or input_data.get("results") or []
+    if not answer:
+        print(json.dumps({"error": "missing answer"})); sys.exit(1)
+    if not isinstance(sources, list) or not sources:
+        print(json.dumps({"error": "sources must be a non-empty list"})); sys.exit(1)
+    result = citation_consistency(answer, sources, min_overlap=float(input_data.get("min_overlap", 0.34) or 0.34))
+    print(json.dumps(result, ensure_ascii=False))
+
+
+def tool_web_search_benchmark():
+    from services.search_evidence import SearchEvidenceEngine, citation_consistency
+    engine = _search_engine()
+    cases = [
+        {
+            "name": "official_docs_rank",
+            "query": "Python datetime timezone official documentation",
+            "expected_domain": "python.org",
+            "mock_results": [
+                {"title": "Python docs datetime", "url": "https://docs.python.org/3/library/datetime.html", "snippet": "Official documentation for aware and naive datetime objects.", "source": "mock", "rank": 1, "published_at": "2026-01-01"},
+                {"title": "Random blog", "url": "https://example.net/blog/date", "snippet": "A short post about dates.", "source": "mock", "rank": 2, "published_at": "2020-01-01"},
+            ],
+        },
+        {
+            "name": "freshness_rank",
+            "query": "ClawOS release notes July 2026",
+            "expected_domain": "docs.clawos.local",
+            "mock_results": [
+                {"title": "Release notes 2026", "url": "https://docs.clawos.local/releases/2026-07", "snippet": "July 2026 release notes.", "source": "mock", "rank": 2, "published_at": "2026-07-01"},
+                {"title": "Old release", "url": "https://mirror.example.com/releases/2021", "snippet": "Old release notes.", "source": "mock", "rank": 1, "published_at": "2021-01-01"},
+            ],
+        },
+        {
+            "name": "citation_gate",
+            "query": "retrieval augmented generation citations",
+            "expected_domain": "arxiv.org",
+            "mock_results": [
+                {"title": "RAG citation paper", "url": "https://arxiv.org/abs/2401.00001", "snippet": "Retrieval augmented generation requires citations and evidence grounding.", "source": "mock", "rank": 1, "published_at": "2024-01-01"},
+            ],
+            "answer": "Retrieval augmented generation requires citations and evidence grounding.",
+        },
+    ]
+    results = []
+    for case in cases:
+        ranked = [engine.score_source(case["query"], item) for item in case["mock_results"]]
+        ranked.sort(key=lambda item: item["scores"]["source_score"], reverse=True)
+        top_domain = ranked[0]["domain"] if ranked else ""
+        citation = citation_consistency(case.get("answer", ranked[0]["snippet"] if ranked else ""), ranked)
+        passed = case["expected_domain"] in top_domain and citation["status"] == "pass"
+        results.append({
+            "name": case["name"],
+            "pass": passed,
+            "top_domain": top_domain,
+            "source_score": ranked[0]["scores"]["source_score"] if ranked else 0,
+            "citation_status": citation["status"],
+            "failure_reason": "" if passed else "ranking_or_citation_gate_failed",
+        })
+    report = {
+        "name": "search-evidence-acceptance-v1",
+        "case_count": len(results),
+        "passed_count": sum(1 for item in results if item["pass"]),
+        "failed_count": sum(1 for item in results if not item["pass"]),
+        "pass_rate": round(sum(1 for item in results if item["pass"]) / max(1, len(results)), 4),
+        "cases": results,
+    }
+    try:
+        from services.artifact_storage import ArtifactStorage
+        artifact = ArtifactStorage(os.path.join(BASE_DIR, "..", "output", "search_evidence")).write_json(
+            "search_evidence_acceptance.json",
+            report,
+        )
+        report["artifact"] = artifact
+    except Exception as exc:
+        report["artifact_error"] = str(exc)[:160]
+    report["run_record"] = _save_web_run("web_search_benchmark", report["name"], report)
+    print(json.dumps(report, ensure_ascii=False))
 
 
 
@@ -1035,7 +1145,9 @@ handlers = {
     "weather": tool_weather, "time_now": tool_time_now, "calc": tool_calc,
     "todo_list": tool_todo_list, "note_save": tool_note_save,
     "note_read": tool_note_read, "note_list": tool_note_list,
-    "web_search": tool_web_search, "web_fetch": tool_web_fetch, "tools_list": tool_tools_list,
+    "web_search": tool_web_search, "web_fetch": tool_web_fetch,
+    "web_citation_check": tool_web_citation_check, "web_search_benchmark": tool_web_search_benchmark,
+    "tools_list": tool_tools_list,
     "skill_register": tool_skill_register, "skill_list": tool_skill_list,
     "skill_execute": tool_skill_execute, "skill_delete": tool_skill_delete,
     "file_organize": tool_file_organize, "text_stats": tool_text_stats,

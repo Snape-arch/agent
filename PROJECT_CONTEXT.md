@@ -1485,3 +1485,29 @@ Known notes:
 
 Recommended next step:
 - Add 5-10 real human-recorded meeting clips, including noisy rooms and speaker overlap, then track WER, diarization error rate, and action extraction accuracy against human labels.
+
+### 2026-07-02 - Enterprise Search Evidence Engine
+
+Completed:
+- Added `services/search_evidence.py` as the shared Search/Evidence layer for provider retry, local cache, file-backed rate limiting, source ranking, credibility scoring, freshness scoring, JS-render fetch fallback, and citation consistency checks.
+- Upgraded `web_search` to use provider fallback plus retry/cache/rate-limit/source scoring and to persist a durable `web_evidence` Run with source Evidence.
+- Upgraded `web_fetch` to use shared fetch/cache/retry/rate-limit logic, optional `render_js=true` Playwright browser rendering, source quality scoring, and durable Run/Evidence persistence.
+- Added `web_citation_check` for claim-to-source support checks and anti-hallucination gates with required rework for unsupported claims.
+- Added `web_search_benchmark` offline acceptance suite covering official-source ranking, freshness ranking, citation gate, artifact output, and durable Run recording.
+- Exposed `web_research` capability metadata in `/api/workspace/capabilities` and the console capability table: provider router, cache, retry, rate limit, source ranking, credibility, freshness, citation gate, anti-hallucination, benchmark, and browser rendering availability.
+
+Verification:
+- `python -m py_compile clawos\services\search_evidence.py clawos\scripts\tool_runner.py clawos\clawos_server.py`: passed.
+- `python -m unittest clawos.tests.test_search_evidence clawos.tests.test_frontend_static clawos.tests.test_routing_memory`: `60 tests OK`.
+- `web_search_benchmark` tool smoke: `3/3` passed, artifact created, durable run type `web_evidence`.
+- Bundled Node checks for `clawos\static\assets\console.js` and `clawos\static\assets\console.modules.js`: passed.
+- `python -m unittest discover -s clawos\tests`: `206 tests OK`.
+
+Known notes:
+- Real search coverage still depends on configured provider keys and runtime network permission; the new layer records provider attempts, failures, cache hits, and rate-limit status instead of hiding those constraints.
+- JS-heavy rendering uses optional Playwright. If Playwright/browsers are unavailable, `render_js=true` reports an explicit `playwright_unavailable` fetch failure.
+- Search cache, rate limit files, and benchmark artifacts are ignored under `clawos\data\search_evidence` and `output\search_evidence`.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Add live provider smoke tests behind explicit network approval, then expand the offline search suite from 3 cases to 30-50 cases across news freshness, docs, papers, policy, product pages, Chinese pages, and JS-rendered pages.

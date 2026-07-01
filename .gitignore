@@ -30,6 +30,7 @@ output/reports/
 output/delivery/
 output/deepseek_*.json
 output/asr_real_eval/
+output/search_evidence/
 tmp/*.png
 output/obsidian/
 clawos/backups/

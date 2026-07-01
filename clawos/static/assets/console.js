@@ -1667,6 +1667,7 @@ async function loadCapabilities() {
       ["自带 XLSX 表格", { html: statusBadge(caps.office_artifacts?.xlsx?.create && caps.office_artifacts?.xlsx?.edit_cells ? "success" : "failed") }, "标准库 OpenXML，可生成表格并编辑单元格"],
       ["自带 PPTX 演示文稿", { html: statusBadge(caps.office_artifacts?.pptx?.create && caps.office_artifacts?.pptx?.replace_text ? "success" : "failed") }, "标准库 OpenXML，可生成幻灯片并替换文本"],
       ["联网搜索/网页抓取", { html: statusBadge("wait") }, "提供 web_search 和 web_fetch 工具；真实联网取决于运行环境网络权限"],
+      ["搜索证据引擎", { html: statusBadge(caps.web_research?.source_ranking && caps.web_research?.citation_consistency_check ? "success" : "failed") }, `Provider ${(caps.web_research?.provider_router || []).join(" / ")}；缓存/重试/限流/可信度/时效性/引用门禁已接入`],
       ["PDF 文本识别", { html: statusBadge(caps.document_understanding?.pdf_text ? "success" : "failed") }, "依赖 pdftotext；低文本页标记为 OCR required"],
       ["论文学习解析文件", { html: statusBadge(caps.document_understanding?.paper_learning_analysis?.length ? "success" : "failed") }, `可生成 ${(caps.document_understanding?.paper_learning_analysis || []).join(" / ")} 自我提问式报告`],
       ["音频会议", { html: statusBadge(caps.meeting_audio?.audio_file_registration ? "success" : "failed") }, `Whisper ${caps.meeting_audio?.local_whisper_available ? "可用" : "未检测到"}`],

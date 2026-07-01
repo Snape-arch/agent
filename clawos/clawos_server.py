@@ -2337,6 +2337,22 @@ async def api_workspace_capabilities():
             "citation_validation": True,
             "paper_learning_analysis": ["markdown", "pdf"],
         },
+        "web_research": {
+            "provider_router": ["tavily", "serpapi", "bing", "duckduckgo"],
+            "search_cache": True,
+            "failure_retry": True,
+            "rate_limit": True,
+            "source_ranking": True,
+            "credibility_scoring": True,
+            "freshness_scoring": True,
+            "citation_consistency_check": True,
+            "anti_hallucination_gate": True,
+            "search_acceptance_suite": "web_search_benchmark",
+            "browser_render_fetch": {
+                "playwright_available": has("playwright"),
+                "mode": "optional_render_js",
+            },
+        },
         "meeting_audio": {
             "audio_file_registration": True,
             "sidecar_transcript_import": True,
