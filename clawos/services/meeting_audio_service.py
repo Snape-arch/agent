@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
+import time
 import wave
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,11 @@ from .workflow_engine import WorkflowEngine
 
 
 SUPPORTED_AUDIO_SUFFIXES = {".wav", ".mp3", ".m4a", ".flac", ".ogg"}
+
+
+def default_asr_model_dir() -> Path:
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(base).expanduser() / "ClawOS" / "asr_models"
 
 
 class MeetingAudioService:
@@ -38,8 +45,10 @@ class MeetingAudioService:
         audio = Path(audio_path).expanduser().resolve()
         if audio.suffix.lower() not in SUPPORTED_AUDIO_SUFFIXES or not audio.is_file():
             raise ValueError("a readable local audio file is required")
+        started = time.perf_counter()
         segments = self.detect_voice_segments(audio)
         transcript_text, transcript_meta = self.transcribe(audio, transcript=transcript, transcript_path=transcript_path)
+        transcript_meta["latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
         transcript_status = self._transcript_status(transcript_text, transcript_meta)
         diarization = self.diarize(transcript_text, segments)
         decisions, risks, actions = extract_items(transcript_text) if extract_items else ([], [], [])
@@ -103,6 +112,7 @@ class MeetingAudioService:
                 "voice_segment_count": len(segments),
                 "speaker_count": len({turn.get("speaker") for turn in diarization if turn.get("speaker")}),
                 "transcript_chars": len(transcript_text),
+                "latency_ms": transcript_meta.get("latency_ms", 0),
             },
             workflow={"state_machine": workflow},
             tags=["meeting", "audio", "asr", transcript_meta["engine"]],
@@ -169,16 +179,45 @@ class MeetingAudioService:
             from faster_whisper import WhisperModel
         except Exception:
             return "", {"engine": "faster-whisper", "available": False}
-        model_name = "base"
+        model_name = os.environ.get("CLAWOS_ASR_MODEL", "small").strip() or "small"
+        cache_dir = os.environ.get("CLAWOS_ASR_MODEL_DIR", str(default_asr_model_dir())).strip()
+        model_kwargs = {
+            "device": os.environ.get("CLAWOS_ASR_DEVICE", "cpu").strip() or "cpu",
+            "compute_type": os.environ.get("CLAWOS_ASR_COMPUTE_TYPE", "int8").strip() or "int8",
+        }
+        if cache_dir:
+            Path(cache_dir).expanduser().mkdir(parents=True, exist_ok=True)
+            model_kwargs["download_root"] = str(Path(cache_dir).expanduser().resolve())
         try:
-            model = WhisperModel(model_name, device="cpu", compute_type="int8")
+            model = WhisperModel(model_name, **model_kwargs)
             segments, info = model.transcribe(str(audio), vad_filter=True)
-            lines = []
-            for index, segment in enumerate(segments, 1):
-                lines.append(f"[{segment.start:.2f}-{segment.end:.2f}] Speaker {((index - 1) % 2) + 1}: {segment.text.strip()}")
-            return "\n".join(lines), {"engine": "faster-whisper", "available": True, "model": model_name, "language": getattr(info, "language", "")}
+            lines = self._format_asr_segments(segments)
+            vad_retry = False
+            if not "\n".join(lines).strip():
+                segments, info = model.transcribe(str(audio), vad_filter=False)
+                lines = self._format_asr_segments(segments)
+                vad_retry = True
+            return "\n".join(lines), {
+                "engine": "faster-whisper",
+                "available": True,
+                "model": model_name,
+                "language": getattr(info, "language", ""),
+                "device": model_kwargs["device"],
+                "compute_type": model_kwargs["compute_type"],
+                "model_cache": str(Path(cache_dir).expanduser().resolve()) if cache_dir else "",
+                "vad_retry_without_filter": vad_retry,
+            }
         except Exception as exc:
-            return "", {"engine": "faster-whisper", "available": True, "error": str(exc)[:300]}
+            return "", {"engine": "faster-whisper", "available": True, "model": model_name, "error": str(exc)[:300]}
+
+    @staticmethod
+    def _format_asr_segments(segments: Any) -> list[str]:
+        lines = []
+        for index, segment in enumerate(segments, 1):
+            text = str(getattr(segment, "text", "") or "").strip()
+            if text:
+                lines.append(f"[{segment.start:.2f}-{segment.end:.2f}] Speaker {((index - 1) % 2) + 1}: {text}")
+        return lines
 
     def _transcribe_whisper_cli(self, audio: Path) -> tuple[str, dict[str, Any]]:
         candidates = [

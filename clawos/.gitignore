@@ -14,6 +14,8 @@ build/
 .deps_installed
 clawos_todo.json
 clawos_timer.json
+models/asr/
+uploads/meeting_audio/
 
 # IDE
 .vscode/

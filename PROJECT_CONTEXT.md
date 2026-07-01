@@ -1457,3 +1457,31 @@ Known notes:
 
 Recommended next step:
 - Install and benchmark one real local ASR path (`faster-whisper` small/medium or whisper.cpp quantized model), then add real noisy/long meeting fixtures with WER, diarization error rate, and action-item extraction accuracy.
+
+### 2026-07-02 - Real faster-whisper small ASR and console one-click meeting workflow
+
+Completed:
+- Installed `faster-whisper` in the local Python environment and warmed the `small` model for offline reuse.
+- Changed ClawOS local ASR default to `faster-whisper small` with CPU/int8 and model cache under user-local cache (`%LOCALAPPDATA%\ClawOS\asr_models`) so model files do not slow repo scans or enter Git.
+- Added `clawos/scripts/install_local_asr_small.py` for reproducible setup and `clawos/scripts/meeting_audio_real_asr_eval.py` for real ASR acceptance with generated meeting speech.
+- Added multipart `/api/workspace/meetings/audio/upload` so the console can upload an audio file, optionally include a transcript file/text, run ASR/VAD/diarization, save a meeting card to knowledge, and return Artifact/Run evidence.
+- Added a Scene Workbench meeting-audio panel with file picker, optional transcript input, one-click processing, and compact meeting card / artifact / run result display.
+- `WorkspaceServices.import_meeting_audio` now returns `transcript`, enabling frontend display and ASR evaluation metrics.
+
+Verification:
+- `python clawos\scripts\install_local_asr_small.py --model small --skip-pip`: model ready in `C:\Users\34712\AppData\Local\ClawOS\asr_models`.
+- `python clawos\scripts\meeting_audio_real_asr_eval.py --out output\asr_real_eval`: `6/6 transcribed`, `avg_wer=0.0714`, `action_hit=0.9583`, `p95=7567.55ms`; report path `output\asr_real_eval\meeting_audio_real_asr_report.json`.
+- Multipart upload smoke via FastAPI TestClient: HTTP `200`, `transcript_imported`, meeting card created, knowledge item saved, artifact returned, transcript returned.
+- `python -m py_compile clawos\clawos_server.py clawos\services\meeting_audio_service.py clawos\workspace_services.py clawos\scripts\meeting_audio_real_asr_eval.py clawos\scripts\install_local_asr_small.py`: passed.
+- `python -m unittest clawos.tests.test_workspace_services clawos.tests.test_frontend_static`: `49 tests OK`.
+- Bundled Node checks for `clawos\static\assets\console.js` and `clawos\static\assets\console.modules.js`: passed.
+- `python -m unittest discover -s clawos\tests`: `203 tests OK`.
+
+Known notes:
+- Real ASR evidence is stored under ignored `output\asr_real_eval`; do not commit the generated audio, report DB, or model cache.
+- HF Hub emitted unauthenticated download and Windows symlink-cache warnings during model warmup; inference still worked.
+- Current diarization remains label/heuristic, not speaker-embedding clustering.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Add 5-10 real human-recorded meeting clips, including noisy rooms and speaker overlap, then track WER, diarization error rate, and action extraction accuracy against human labels.

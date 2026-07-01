@@ -462,6 +462,7 @@ class WorkspaceServices:
             "meeting": self.get_meeting(meeting["id"]),
             "audio_path": str(audio),
             "transcript_status": status,
+            "transcript": transcript_text,
             "transcription": audio_result["transcription"],
             "segments": audio_result["segments"],
             "diarization": diarization,

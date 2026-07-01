@@ -29,6 +29,7 @@ clawos/data/chroma/
 output/reports/
 output/delivery/
 output/deepseek_*.json
+output/asr_real_eval/
 tmp/*.png
 output/obsidian/
 clawos/backups/

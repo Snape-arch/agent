@@ -914,6 +914,71 @@ async function loadComplexAcceptanceReport() {
   }
 }
 
+function renderMeetingAudioResult(data) {
+  const target = $("meetingAsrResult");
+  if (!target) return;
+  const card = data?.meeting_card || {};
+  const transcription = data?.transcription || {};
+  const artifacts = data?.artifacts || {};
+  const actionRows = (card.actions || []).map(item => [
+    item.owner || "unassigned",
+    item.description || "",
+    item.due_date || "",
+    item.evidence || ""
+  ]);
+  target.innerHTML =
+    `<div class="acceptance-report-card">
+      <div><b>${esc(card.title || data?.meeting?.title || "Meeting card")}</b><span>${statusBadge(data?.transcript_status || card.transcript_status || "pending")} ${esc(transcription.engine || "")} ${esc(transcription.model || "")}</span></div>
+      <code>${esc(artifacts.meeting_card?.path || "")}</code>
+    </div>` +
+    `<div class="acceptance-metric-grid">
+      <div class="acceptance-metric"><span>Speakers</span><b>${esc(card.speaker_count ?? 0)}</b></div>
+      <div class="acceptance-metric"><span>Segments</span><b>${esc((data?.segments || []).length)}</b></div>
+      <div class="acceptance-metric"><span>Latency</span><b>${formatMs(transcription.latency_ms)}</b></div>
+      <div class="acceptance-metric"><span>Knowledge</span><b>${esc(data?.knowledge_item?.id ? "saved" : "pending")}</b></div>
+    </div>` +
+    table(["Field", "Value"], [
+      ["Summary", card.summary || ""],
+      ["Decisions", (card.decisions || []).join(" / ")],
+      ["Risks", (card.risks || []).join(" / ")],
+      ["Run ID", data?.run_record?.run_id || ""],
+      ["Transcript JSON", artifacts.transcript?.path || ""]
+    ]) +
+    table(["Owner", "Action", "Due", "Evidence"], actionRows);
+}
+
+async function runMeetingAudioUpload() {
+  const audioInput = $("meetingAudioPicker");
+  const transcriptInput = $("meetingTranscriptPicker");
+  const status = $("meetingAsrStatus");
+  const result = $("meetingAsrResult");
+  const audio = audioInput?.files?.[0];
+  if (!audio) {
+    if (status) status.textContent = "请选择一个音频文件。";
+    return;
+  }
+  const form = new FormData();
+  form.append("audio", audio);
+  form.append("title", ($("meetingAsrTitle")?.value || audio.name || "Meeting audio").trim());
+  const transcriptText = ($("meetingTranscriptText")?.value || "").trim();
+  if (transcriptText) form.append("transcript", transcriptText);
+  if (transcriptInput?.files?.[0]) form.append("transcript_file", transcriptInput.files[0]);
+  if (status) status.textContent = "正在上传并调用本地 ASR/VAD/会议卡片流水线...";
+  if (result) result.textContent = "处理中，首次运行 small 模型可能需要更久。";
+  try {
+    const response = await fetch(API + "/api/workspace/meetings/audio/upload", { method: "POST", body: form });
+    if (!response.ok) throw new Error("upload " + response.status);
+    const data = await response.json();
+    renderMeetingAudioResult(data);
+    if (status) status.textContent = `已生成会议卡片，知识库 ${data.knowledge_item?.id ? "已保存" : "未保存"}，Run ${data.run_record?.run_id || "--"}`;
+    await loadKnowledge().catch(() => {});
+    await loadRuntimeRecords().catch(() => {});
+  } catch (err) {
+    if (status) status.textContent = "会议音频处理失败：" + err.message;
+    if (result) result.textContent = "处理失败：" + err.message;
+  }
+}
+
 function committeePayload() {
   return lastSelfReviewCommittee?.result || lastSelfReviewCommittee?.data || lastSelfReviewCommittee || {};
 }

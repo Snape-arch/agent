@@ -774,13 +774,22 @@ class FrontendStaticTests(unittest.TestCase):
     def test_console_exposes_scene_capability_check(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
 
         self.assertIn("capabilityTable", html)
         self.assertIn("sceneBoundaryTable", html)
+        self.assertIn("meetingAsrTitle", html)
+        self.assertIn("meetingAudioPicker", html)
+        self.assertIn("meetingTranscriptPicker", html)
+        self.assertIn("meetingAsrResult", html)
         self.assertIn("modelHealthTable", html)
         self.assertIn("toolAccuracyTable", html)
         self.assertIn("routingPolicyTable", html)
         self.assertIn("/api/workspace/capabilities", js)
+        self.assertIn("/api/workspace/meetings/audio/upload", js)
+        self.assertIn("runMeetingAudioUpload", js)
+        self.assertIn("renderMeetingAudioResult", js)
+        self.assertIn("new FormData", js)
         self.assertIn("/api/model/health", js)
         self.assertIn("/api/tools/accuracy", js)
         self.assertIn("/api/routing/policy", js)
@@ -789,6 +798,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("document_understanding", js)
         self.assertIn("office_artifacts", js)
         self.assertIn("meeting_audio", js)
+        self.assertIn(".meeting-asr-panel", css)
+        self.assertIn(".meeting-asr-form", css)
 
     def test_console_exposes_permission_center_and_graph_backplane(self):
         html = self.read_page("console.html")

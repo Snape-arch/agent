@@ -2896,6 +2896,40 @@
   max-width:1180px;
   padding:22px;
 }
+.meeting-asr-panel{
+  display:grid;
+  gap:14px;
+}
+.meeting-asr-form{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  align-items:end;
+}
+.meeting-asr-form label{
+  display:grid;
+  gap:6px;
+  font-weight:700;
+}
+.meeting-asr-form textarea{
+  grid-column:1 / -1;
+  min-height:78px;
+}
+.meeting-asr-form .primary{
+  min-height:44px;
+}
+.meeting-asr-status{
+  color:var(--muted);
+  font-weight:700;
+}
+.meeting-asr-result{
+  display:grid;
+  gap:12px;
+  overflow:auto;
+}
+.file-pill input[type="file"]{
+  padding:10px;
+}
 .aether-console #view-knowledge .library-head{
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;

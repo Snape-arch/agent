@@ -73,6 +73,7 @@ class WorkspaceServicesTests(unittest.TestCase):
             draft_exists = any(Path(d["draft_path"]).exists() for d in drafts["drafts"])
 
         self.assertEqual(result["transcript_status"], "transcript_imported")
+        self.assertIn("Decision: Use local deployment", result["transcript"])
         self.assertEqual({turn["speaker"] for turn in result["diarization"]}, {"Alice", "Bob"})
         self.assertIn("Use local deployment", meeting["decisions"])
         self.assertIn("audio model may be unavailable", meeting["risks"])

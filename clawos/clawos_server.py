@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from providers import create_model_provider
+from memoryos.document_ingestion import safe_filename
 from services import (
     AgentOrchestrationService,
     EvaluationService,
@@ -808,6 +809,9 @@ def get_agent_orchestration_service() -> AgentOrchestrationService:
 
 
 def local_asr_capability() -> dict[str, Any]:
+    model = os.environ.get("CLAWOS_ASR_MODEL", "small").strip() or "small"
+    default_model_dir = Path(os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")) / "ClawOS" / "asr_models"
+    model_dir = os.environ.get("CLAWOS_ASR_MODEL_DIR", str(default_model_dir)).strip()
     try:
         import faster_whisper  # noqa: F401
         faster_available = True
@@ -820,6 +824,11 @@ def local_asr_capability() -> dict[str, Any]:
         "whisper_cli": bool(whisper_cli),
         "whisper_cpp": bool(whisper_cpp),
         "available": bool(faster_available or whisper_cli or whisper_cpp),
+        "preferred_engine": "faster-whisper" if faster_available else ("whisper.cpp" if whisper_cpp else ("whisper" if whisper_cli else "none")),
+        "default_model": model,
+        "model_dir": model_dir,
+        "device": os.environ.get("CLAWOS_ASR_DEVICE", "cpu"),
+        "compute_type": os.environ.get("CLAWOS_ASR_COMPUTE_TYPE", "int8"),
     }
 
 
@@ -2448,6 +2457,46 @@ async def api_meeting_audio_import(request: Request):
             title=data.get("title", ""),
             meeting_id=data.get("meeting_id"),
             output_dir=data.get("output_dir", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if g_vector_store:
+        g_vector_store.refresh()
+    return JSONResponse(result)
+
+@app.post("/api/workspace/meetings/audio/upload")
+async def api_meeting_audio_upload(
+    audio: UploadFile = File(...),
+    transcript_file: UploadFile | None = File(None),
+    title: str = Form(""),
+    transcript: str = Form(""),
+    meeting_id: str = Form(""),
+):
+    filename = safe_filename(audio.filename or "meeting.wav")
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".wav", ".mp3", ".m4a", ".flac", ".ogg"}:
+        raise HTTPException(400, "supported audio files: wav, mp3, m4a, flac, ogg")
+    upload_root = UPLOAD_DIR / "meeting_audio"
+    upload_root.mkdir(parents=True, exist_ok=True)
+    stamp = int(time.time() * 1000)
+    audio_path = upload_root / f"{stamp}_{filename}"
+    audio_path.write_bytes(await audio.read())
+
+    transcript_path = ""
+    if transcript_file and transcript_file.filename:
+        transcript_name = safe_filename(transcript_file.filename or "transcript.txt")
+        transcript_path_obj = upload_root / f"{stamp}_{transcript_name}"
+        transcript_path_obj.write_bytes(await transcript_file.read())
+        transcript_path = str(transcript_path_obj)
+
+    try:
+        result = g_workspace_services.import_meeting_audio(
+            str(audio_path),
+            transcript_path=transcript_path,
+            transcript=transcript,
+            title=title or Path(filename).stem,
+            meeting_id=int(meeting_id) if str(meeting_id or "").strip() else None,
+            output_dir=str(upload_root / "artifacts"),
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
