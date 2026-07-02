@@ -1511,3 +1511,28 @@ Known notes:
 
 Recommended next step:
 - Add live provider smoke tests behind explicit network approval, then expand the offline search suite from 3 cases to 30-50 cases across news freshness, docs, papers, policy, product pages, Chinese pages, and JS-rendered pages.
+
+### 2026-07-02 - Search 36-case gate, multi-agent citation gate, and ASR profile expansion
+
+Completed:
+- Expanded `web_search_benchmark` from 3 offline cases to 36 reproducible cases across official docs, news freshness, papers, policy, product info, Chinese web pages, and JS-render-required pages.
+- Added category-level benchmark reporting, JS-render case counts, citation support counts, failure reasons, artifact output, and durable `web_evidence` run recording.
+- Wired Multi-Agent ResearchAgent output through the shared citation consistency gate. ReviewerAgent and JudgeAgent now treat unsupported claims as rework blockers, and the committee report includes a dedicated Research Evidence Gate section.
+- Saved the Research Evidence Gate as a knowledge item alongside the multi-agent committee report and builder workbench artifact.
+- Expanded the real faster-whisper small ASR evaluation suite from 6 to 12 cases with clean, background-noise, overlap, echo, long-meeting, fast-speech, and quiet-speaker profiles; report now includes by-profile metrics.
+
+Verification:
+- `python -m unittest clawos.tests.test_search_evidence clawos.tests.test_scenarios_e2e clawos.tests.test_workspace_services`: 28 tests OK.
+- `web_search_benchmark` tool smoke: 36/36 passed, pass_rate=1.0, 7 categories, 5 JS-render cases, durable run_type=`web_evidence`.
+- `python clawos\scripts\meeting_audio_real_asr_eval.py --out output\asr_real_eval`: 12/12 transcribed, avg_wer=0.2301, action_hit=0.9583, p95=12609.16ms, report path `output\asr_real_eval\meeting_audio_real_asr_report.json`.
+- `python -m unittest discover -s clawos\tests`: 207 tests OK.
+- Bundled Node checks for `clawos\static\assets\console.js` and `clawos\static\assets\console.modules.js`: passed.
+- `python -m py_compile clawos\scripts\tool_runner.py clawos\scripts\scenario_tools.py clawos\scripts\meeting_audio_real_asr_eval.py clawos\services\search_evidence.py`: passed.
+
+Known notes:
+- The search benchmark is intentionally offline and deterministic; live search quality still depends on configured provider keys, network permission, and provider coverage.
+- ASR samples are generated speech plus deterministic noise/overlap/echo profiles. They exercise the real ASR pipeline, but human-recorded field audio is still needed before claiming production meeting accuracy.
+- Generated reports/audio remain ignored under `output\`; `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Add a small human-recorded meeting fixture pack with ground-truth transcripts and speaker labels, then add live search provider smoke tests behind explicit network/key approval.

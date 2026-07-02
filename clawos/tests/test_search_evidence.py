@@ -113,6 +113,18 @@ class SearchEvidenceEngineTests(unittest.TestCase):
 
         self.assertEqual(report["failed_count"], 0)
         self.assertEqual(report["pass_rate"], 1.0)
+        self.assertGreaterEqual(report["case_count"], 30)
+        self.assertGreaterEqual(report["coverage"]["js_render_cases"], 5)
+        self.assertTrue({
+            "official_docs",
+            "news_freshness",
+            "papers",
+            "policy",
+            "product",
+            "chinese_web",
+            "js_page",
+        }.issubset(set(report["by_category"].keys())))
+        self.assertEqual(report["by_category"]["js_page"]["failed_count"], 0)
         self.assertIn("artifact", report)
         self.assertEqual(report["run_record"]["run_type"], "web_evidence")
         self.assertEqual(citation["status"], "pass")

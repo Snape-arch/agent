@@ -420,38 +420,66 @@ def tool_web_citation_check():
     print(json.dumps(result, ensure_ascii=False))
 
 
+def _search_benchmark_cases():
+    specs = [
+        ("official_docs_python_datetime", "official_docs", "Python datetime timezone official documentation", "docs.python.org", "https://docs.python.org/3/library/datetime.html", "Official Python documentation explains timezone aware datetime objects.", "2026-01-01"),
+        ("official_docs_fastapi_upload", "official_docs", "FastAPI UploadFile official documentation", "fastapi.tiangolo.com", "https://fastapi.tiangolo.com/tutorial/request-files/", "FastAPI official documentation describes UploadFile request files.", "2026-02-01"),
+        ("official_docs_node_fetch", "official_docs", "Node.js fetch official documentation", "nodejs.org", "https://nodejs.org/api/globals.html#fetch", "Node.js official documentation describes global fetch behavior.", "2026-03-01"),
+        ("official_docs_playwright", "official_docs", "Playwright locator official documentation", "playwright.dev", "https://playwright.dev/docs/locators", "Playwright official documentation explains locators and page interactions.", "2026-04-01"),
+        ("official_docs_sqlite", "official_docs", "SQLite write ahead log official documentation", "sqlite.org", "https://www.sqlite.org/wal.html", "SQLite official documentation explains write ahead logging.", "2025-12-01"),
+        ("official_docs_pytorch", "official_docs", "PyTorch inference mode official documentation", "pytorch.org", "https://pytorch.org/docs/stable/generated/torch.inference_mode.html", "PyTorch official documentation explains inference mode.", "2026-01-15"),
+        ("news_fresh_clawos", "news_freshness", "ClawOS July 2026 release news", "docs.clawos.local", "https://docs.clawos.local/news/2026-07-02", "July 2026 ClawOS release news covers search evidence and ASR updates.", "2026-07-02"),
+        ("news_fresh_ai_policy", "news_freshness", "AI policy update July 2026 official news", "gov.example", "https://gov.example/news/ai-policy-2026-07", "July 2026 official AI policy news describes compliance updates.", "2026-07-01"),
+        ("news_fresh_security", "news_freshness", "security advisory July 2026 latest bulletin", "cisa.gov", "https://www.cisa.gov/news-events/alerts/2026/07/security-advisory", "Latest July 2026 security advisory bulletin lists affected systems.", "2026-07-01"),
+        ("news_fresh_model", "news_freshness", "model platform release July 2026 changelog", "developer.example.com", "https://developer.example.com/changelog/2026-07", "July 2026 model platform changelog explains new release behavior.", "2026-07-02"),
+        ("news_fresh_browser", "news_freshness", "browser stable release July 2026 notes", "developer.chrome.com", "https://developer.chrome.com/release-notes/2026-07", "July 2026 browser release notes summarize stable features.", "2026-07-01"),
+        ("papers_rag_citations", "papers", "retrieval augmented generation citations paper", "arxiv.org", "https://arxiv.org/abs/2401.00001", "Retrieval augmented generation requires citations and evidence grounding.", "2024-01-01"),
+        ("papers_multi_agent_eval", "papers", "multi agent evaluation benchmark paper", "arxiv.org", "https://arxiv.org/abs/2502.11111", "Multi agent evaluation benchmarks compare planner builder reviewer judge roles.", "2025-02-10"),
+        ("papers_asr_noise", "papers", "automatic speech recognition noisy meeting paper", "ieee.org", "https://ieeexplore.ieee.org/document/1234567", "Noisy meeting automatic speech recognition papers measure WER and diarization.", "2025-06-01"),
+        ("papers_rerank_embedding", "papers", "embedding rerank retrieval paper", "acm.org", "https://dl.acm.org/doi/10.1145/123456", "Embedding rerank retrieval papers evaluate citation hit rate and relevance.", "2024-09-01"),
+        ("papers_workflow_agents", "papers", "workflow agent orchestration state machine paper", "arxiv.org", "https://arxiv.org/abs/2510.00002", "Workflow agent orchestration research uses state machines and quality gates.", "2025-10-01"),
+        ("policy_nist_ai_rmf", "policy", "NIST AI risk management framework official", "nist.gov", "https://www.nist.gov/itl/ai-risk-management-framework", "NIST AI Risk Management Framework is an official policy resource.", "2025-01-01"),
+        ("policy_eu_ai_act", "policy", "EU AI Act official regulation text", "europa.eu", "https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai", "EU official AI Act policy describes regulatory framework for AI.", "2025-08-01"),
+        ("policy_us_privacy", "policy", "FTC privacy official business guidance", "ftc.gov", "https://www.ftc.gov/business-guidance/privacy-security", "FTC official privacy guidance explains business security responsibilities.", "2025-07-01"),
+        ("policy_china_algo", "policy", "中国 生成式人工智能 服务 管理 官方 政策", "gov.cn", "https://www.gov.cn/zhengce/zhengceku/2023-07/13/content_6891752.htm", "中国官方政策说明生成式人工智能服务管理要求。", "2024-01-01"),
+        ("policy_cybersecurity", "policy", "cybersecurity incident reporting official rule", "cisa.gov", "https://www.cisa.gov/topics/cyber-threats-and-advisories/information-sharing/cyber-incident-reporting", "CISA official rule explains cyber incident reporting requirements.", "2025-04-01"),
+        ("product_qwen_embedding", "product", "Qwen embedding model product documentation", "dashscope.aliyuncs.com", "https://dashscope.aliyuncs.com/docs/qwen/embedding", "Qwen embedding product documentation explains text embedding usage.", "2026-01-01"),
+        ("product_deepseek_api", "product", "DeepSeek API product documentation", "api-docs.deepseek.com", "https://api-docs.deepseek.com/", "DeepSeek API product documentation explains chat model endpoints.", "2026-01-01"),
+        ("product_whisper_cpp", "product", "whisper cpp model product documentation", "github.com", "https://github.com/ggerganov/whisper.cpp", "whisper.cpp product repository documents local speech recognition models.", "2026-01-01"),
+        ("product_faster_whisper", "product", "faster whisper product documentation", "github.com", "https://github.com/SYSTRAN/faster-whisper", "faster-whisper documentation explains efficient Whisper transcription.", "2026-01-01"),
+        ("product_playwright_browser", "product", "Playwright browser rendering product documentation", "playwright.dev", "https://playwright.dev/python/docs/intro", "Playwright documentation explains browser rendering automation.", "2026-01-01"),
+        ("chinese_ai_learning", "chinese_web", "人工智能 学习 路线 官方 文档", "edu.cn", "https://www.edu.cn/ai/learning-path", "人工智能学习路线包含基础知识、实践项目和前沿主题。", "2025-09-01"),
+        ("chinese_policy_data", "chinese_web", "数据安全 法 官方 解读", "gov.cn", "https://www.gov.cn/zhengce/2025/data-security", "官方解读说明数据安全法和企业合规要求。", "2025-06-01"),
+        ("chinese_product_qwen", "chinese_web", "通义千问 向量 模型 文档", "help.aliyun.com", "https://help.aliyun.com/zh/model-studio/text-embedding", "通义千问向量模型文档说明文本向量和检索用法。", "2026-01-01"),
+        ("chinese_research_rag", "chinese_web", "检索增强生成 引用 评测", "cnki.net", "https://www.cnki.net/article/rag-citation", "检索增强生成评测关注引用命中率和证据一致性。", "2025-05-01"),
+        ("chinese_meeting_asr", "chinese_web", "会议 语音识别 行动项 提取", "developer.baidu.com", "https://developer.baidu.com/article/asr-meeting-actions", "会议语音识别需要摘要、决策和行动项提取。", "2025-10-01"),
+        ("js_dashboard_prices", "js_page", "JavaScript dashboard product pricing rendered page", "app.example.com", "https://app.example.com/pricing", "JavaScript rendered pricing dashboard lists enterprise plans.", "2026-06-01"),
+        ("js_docs_search", "js_page", "JavaScript documentation search rendered content", "docs.example.com", "https://docs.example.com/app/search", "JavaScript rendered documentation search exposes API examples.", "2026-06-15"),
+        ("js_policy_portal", "js_page", "JavaScript policy portal latest regulation", "portal.gov.example", "https://portal.gov.example/regulations/latest", "JavaScript policy portal renders latest regulation summaries.", "2026-07-01"),
+        ("js_research_catalog", "js_page", "JavaScript research catalog citations", "papers.example.edu", "https://papers.example.edu/catalog", "JavaScript research catalog renders citation metadata and abstracts.", "2026-05-01"),
+        ("js_product_status", "js_page", "JavaScript product status page incident history", "status.example.com", "https://status.example.com/history", "JavaScript product status page renders incident history and uptime.", "2026-07-02"),
+    ]
+    cases = []
+    for name, category, query, domain, url, snippet, published_at in specs:
+        cases.append({
+            "name": name,
+            "category": category,
+            "query": query,
+            "expected_domain": domain,
+            "render_js_required": category == "js_page",
+            "answer": snippet,
+            "mock_results": [
+                {"title": name.replace("_", " ").title(), "url": url, "snippet": snippet, "source": "mock", "rank": 1 if category != "news_freshness" else 2, "published_at": published_at},
+                {"title": "Low quality mirror", "url": f"https://mirror.example.net/{name}", "snippet": "A copied page with stale and weakly relevant information.", "source": "mock", "rank": 1, "published_at": "2020-01-01"},
+            ],
+        })
+    return cases
+
+
 def tool_web_search_benchmark():
     from services.search_evidence import SearchEvidenceEngine, citation_consistency
     engine = _search_engine()
-    cases = [
-        {
-            "name": "official_docs_rank",
-            "query": "Python datetime timezone official documentation",
-            "expected_domain": "python.org",
-            "mock_results": [
-                {"title": "Python docs datetime", "url": "https://docs.python.org/3/library/datetime.html", "snippet": "Official documentation for aware and naive datetime objects.", "source": "mock", "rank": 1, "published_at": "2026-01-01"},
-                {"title": "Random blog", "url": "https://example.net/blog/date", "snippet": "A short post about dates.", "source": "mock", "rank": 2, "published_at": "2020-01-01"},
-            ],
-        },
-        {
-            "name": "freshness_rank",
-            "query": "ClawOS release notes July 2026",
-            "expected_domain": "docs.clawos.local",
-            "mock_results": [
-                {"title": "Release notes 2026", "url": "https://docs.clawos.local/releases/2026-07", "snippet": "July 2026 release notes.", "source": "mock", "rank": 2, "published_at": "2026-07-01"},
-                {"title": "Old release", "url": "https://mirror.example.com/releases/2021", "snippet": "Old release notes.", "source": "mock", "rank": 1, "published_at": "2021-01-01"},
-            ],
-        },
-        {
-            "name": "citation_gate",
-            "query": "retrieval augmented generation citations",
-            "expected_domain": "arxiv.org",
-            "mock_results": [
-                {"title": "RAG citation paper", "url": "https://arxiv.org/abs/2401.00001", "snippet": "Retrieval augmented generation requires citations and evidence grounding.", "source": "mock", "rank": 1, "published_at": "2024-01-01"},
-            ],
-            "answer": "Retrieval augmented generation requires citations and evidence grounding.",
-        },
-    ]
+    cases = _search_benchmark_cases()
     results = []
     for case in cases:
         ranked = [engine.score_source(case["query"], item) for item in case["mock_results"]]
@@ -461,18 +489,36 @@ def tool_web_search_benchmark():
         passed = case["expected_domain"] in top_domain and citation["status"] == "pass"
         results.append({
             "name": case["name"],
+            "category": case.get("category", "general"),
+            "render_js_required": bool(case.get("render_js_required")),
             "pass": passed,
             "top_domain": top_domain,
             "source_score": ranked[0]["scores"]["source_score"] if ranked else 0,
             "citation_status": citation["status"],
+            "supported_count": citation.get("supported_count", 0),
+            "unsupported_count": citation.get("unsupported_count", 0),
             "failure_reason": "" if passed else "ranking_or_citation_gate_failed",
         })
+    by_category = {}
+    for item in results:
+        bucket = by_category.setdefault(item["category"], {"case_count": 0, "passed_count": 0, "failed_count": 0})
+        bucket["case_count"] += 1
+        bucket["passed_count"] += 1 if item["pass"] else 0
+        bucket["failed_count"] += 0 if item["pass"] else 1
+    for bucket in by_category.values():
+        bucket["pass_rate"] = round(bucket["passed_count"] / max(1, bucket["case_count"]), 4)
     report = {
-        "name": "search-evidence-acceptance-v1",
+        "name": "search-evidence-acceptance-v2-36case",
         "case_count": len(results),
         "passed_count": sum(1 for item in results if item["pass"]),
         "failed_count": sum(1 for item in results if not item["pass"]),
         "pass_rate": round(sum(1 for item in results if item["pass"]) / max(1, len(results)), 4),
+        "coverage": {
+            "categories": sorted(by_category.keys()),
+            "js_render_cases": sum(1 for item in results if item["render_js_required"]),
+            "offline_reproducible": True,
+        },
+        "by_category": by_category,
         "cases": results,
     }
     try:

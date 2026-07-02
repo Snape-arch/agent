@@ -101,6 +101,19 @@ class WorkspaceServicesTests(unittest.TestCase):
             "silence_then_voice",
         }))
 
+    def test_real_asr_eval_suite_declares_complex_audio_profiles(self):
+        from scripts.meeting_audio_real_asr_eval import CASES
+
+        profiles = {case.get("noise_profile", "clean") for case in CASES}
+        names = {case["name"] for case in CASES}
+
+        self.assertGreaterEqual(len(CASES), 10)
+        self.assertTrue({"clean", "background_noise", "overlap", "echo"}.issubset(profiles))
+        self.assertIn("long_quarterly_review", names)
+        self.assertIn("quiet_speaker", names)
+        self.assertTrue(any(int(case.get("repeat", 1)) > 1 for case in CASES))
+        self.assertTrue(any(int(case.get("rate", 0)) > 0 for case in CASES))
+
     def test_research_pdf_import_preserves_page_citations(self):
         from reportlab.pdfgen import canvas
 

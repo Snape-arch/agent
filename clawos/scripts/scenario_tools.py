@@ -953,7 +953,7 @@ def _enterprise_rubric_matrix(delivery, role_cards, gate, rework_result):
     }
 
 
-def _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, score, trace, gate, arbitration_rounds, disagreement_log, builder_execution, builder_review, rework_result, timeline, rubric_matrix):
+def _write_committee_report(output_dir, project_name, focus, delivery, role_cards, priorities, questions, score, trace, gate, arbitration_rounds, disagreement_log, builder_execution, builder_review, research_gate, rework_result, timeline, rubric_matrix):
     package_dir = Path(output_dir)
     package_dir.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1017,6 +1017,14 @@ def _write_committee_report(output_dir, project_name, focus, delivery, role_card
         f"- status: {gate['status']}",
         f"- thresholds: final>={gate['thresholds']['final_min']}, risk>={gate['thresholds']['risk_min']}, judge>={gate['thresholds']['judge_min']}",
         *[f"- failure: {item}" for item in (gate["failures"] or ["none"])],
+        "",
+        "## Research Evidence Gate",
+        "",
+        f"- status: {research_gate.get('status')}",
+        f"- score: {research_gate.get('score')}/100",
+        f"- claims: {research_gate.get('supported_count')}/{research_gate.get('claim_count')} supported",
+        f"- sources: {research_gate.get('source_count')}",
+        *[f"- required_rework: {item}" for item in (research_gate.get("required_rework") or ["none"])],
         "",
         "## Arbitration",
         "",
@@ -1131,6 +1139,85 @@ def _write_committee_report(output_dir, project_name, focus, delivery, role_card
     return artifact["path"]
 
 
+def _research_evidence_sources(delivery, has_validation, has_knowledge):
+    checks = delivery.get("checks") or {}
+    evidence = delivery.get("evidence_counts") or {}
+    sources = []
+    for idx, item in enumerate(delivery.get("knowledge_items") or []):
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or f"Knowledge item {idx + 1}")
+        content = str(item.get("content") or item.get("summary") or title)
+        sources.append({
+            "title": title,
+            "url": str(item.get("source") or f"knowledge://item/{idx + 1}"),
+            "snippet": content[:1000],
+        })
+    source_facts = [
+        ("validation", has_validation, f"Validation evidence count is {evidence.get('validation', 0)} and supports repeatable acceptance."),
+        ("knowledge", has_knowledge, f"Knowledge artifacts available are {len(delivery.get('knowledge_items') or [])} and support retrieval reuse."),
+        ("business", bool(evidence.get("business")), "Business plan evidence supports commercial positioning and customer scenarios."),
+        ("architecture", bool(checks.get("materials") or checks.get("architecture_assets")), "Architecture materials support system design, agents, tools, memory, and workflow claims."),
+        ("risk", bool(evidence.get("risk") or "risk_register" in (delivery.get("files") or {})), "Risk register evidence tracks MTTBook validation, submission hygiene, and fallback demo constraints."),
+    ]
+    for name, enabled, snippet in source_facts:
+        if enabled:
+            sources.append({"title": f"{name} evidence", "url": f"delivery://{name}", "snippet": snippet})
+    return sources
+
+
+def _research_claims(delivery, has_validation, has_knowledge):
+    checks = delivery.get("checks") or {}
+    evidence = delivery.get("evidence_counts") or {}
+    claims = []
+    claims.append(f"Knowledge artifacts available are {len(delivery.get('knowledge_items') or [])} and support retrieval reuse.")
+    if has_validation:
+        claims.append(f"Validation evidence count is {evidence.get('validation', 0)} and supports repeatable acceptance.")
+    else:
+        claims.append("Validation evidence count is missing and requires repeatable acceptance before approval.")
+    if evidence.get("business"):
+        claims.append("Business plan evidence supports commercial positioning and customer scenarios.")
+    if checks.get("materials") or checks.get("architecture_assets"):
+        claims.append("Architecture materials support system design, agents, tools, memory, and workflow claims.")
+    if evidence.get("risk") or "risk_register" in (delivery.get("files") or {}):
+        claims.append("Risk register evidence tracks MTTBook validation, submission hygiene, and fallback demo constraints.")
+    return claims
+
+
+def _research_evidence_gate(delivery, has_validation, has_knowledge):
+    try:
+        from services.search_evidence import citation_consistency
+
+        sources = _research_evidence_sources(delivery, has_validation, has_knowledge)
+        claims = _research_claims(delivery, has_validation, has_knowledge)
+        gate = citation_consistency(" ".join(claims), sources, min_overlap=0.2)
+        unsupported = gate.get("anti_hallucination_gate", {}).get("required_rework") or []
+        status = "pass" if gate.get("status") == "pass" else "revision_required"
+        return {
+            "status": status,
+            "score": round(gate.get("supported_count", 0) / max(1, gate.get("claim_count", 0)) * 100, 2),
+            "claim_count": gate.get("claim_count", 0),
+            "supported_count": gate.get("supported_count", 0),
+            "unsupported_count": gate.get("unsupported_count", 0),
+            "claims": gate.get("claims", []),
+            "source_count": len(sources),
+            "required_rework": unsupported,
+            "anti_hallucination_gate": gate.get("anti_hallucination_gate", {}),
+        }
+    except Exception as exc:
+        return {
+            "status": "revision_required",
+            "score": 0,
+            "claim_count": 0,
+            "supported_count": 0,
+            "unsupported_count": 1,
+            "claims": [],
+            "source_count": 0,
+            "required_rework": [f"Research evidence gate failed to run: {str(exc)[:120]}"],
+            "anti_hallucination_gate": {"status": "revision_required"},
+        }
+
+
 def multi_agent_review_committee(payload):
     """Run a deterministic fixed-role review squad over the delivery package."""
     project_name = str(payload.get("project_name") or "ClawOS").strip() or "ClawOS"
@@ -1146,7 +1233,7 @@ def multi_agent_review_committee(payload):
     output_dir = Path(delivery.get("package_dir") or payload.get("output_dir") or "output/delivery") / "committee"
     checks = delivery.get("checks") or {}
     evidence = delivery.get("evidence_counts") or {}
-    missing = delivery.get("missing") or []
+    missing = list(delivery.get("missing") or [])
     has_mtt_risk = "risk_register" in (delivery.get("files") or {}) or bool(evidence.get("risk"))
     has_knowledge = len(delivery.get("knowledge_items") or []) >= 6
     has_validation = bool(evidence.get("validation"))
@@ -1163,6 +1250,10 @@ def multi_agent_review_committee(payload):
         "runbook generation",
     ])
     builder_review = _builder_execution_review(builder_execution)
+    research_gate = _research_evidence_gate(delivery, has_validation, has_knowledge)
+    research_gate_pass = research_gate.get("status") == "pass"
+    if not research_gate_pass and "research_evidence_gate" not in missing:
+        missing.append("research_evidence_gate")
 
     role_cards = [
         _agent_signal(
@@ -1179,14 +1270,16 @@ def multi_agent_review_committee(payload):
         ),
         _agent_signal(
             "ResearchAgent",
-            90 if has_validation and has_knowledge else 72,
+            90 if has_validation and has_knowledge and research_gate_pass else (72 if has_validation and has_knowledge else 66),
             [
                 f"Knowledge artifacts available: {len(delivery.get('knowledge_items') or [])}.",
                 f"Validation evidence count: {evidence.get('validation', 0)}; capability evidence count: {evidence.get('capability', 0)}.",
+                f"Search evidence gate: {research_gate.get('status')} with {research_gate.get('supported_count')}/{research_gate.get('claim_count')} claims supported.",
             ],
             [
                 "Add scenario traces with inputs, tool calls, citations, latency, and pass/fail labels.",
                 "Prefer evidence-backed claims over broad product language in judge-facing materials.",
+                "Resolve every unsupported claim before ReviewerAgent or JudgeAgent can approve.",
             ],
         ),
         _agent_signal(
@@ -1204,10 +1297,11 @@ def multi_agent_review_committee(payload):
         ),
         _agent_signal(
             "ReviewerAgent",
-            88 if has_validation and not missing and builder_review.get("status") == "pass" else 72,
+            88 if has_validation and not missing and builder_review.get("status") == "pass" and research_gate_pass else 72,
             [
                 "Review checks compare delivery artifacts, evidence counts, missing gates, and judge-facing questions.",
                 f"Builder execution review: {builder_review.get('status')} with {len(builder_review.get('checked_tools') or [])} tools checked.",
+                f"Research evidence gate: {research_gate.get('status')} with unsupported_claims={research_gate.get('unsupported_count')}.",
                 "Reviewer should fail the flow when evidence is too thin or missing gates remain.",
             ],
             [
@@ -1230,10 +1324,11 @@ def multi_agent_review_committee(payload):
         ),
         _agent_signal(
             "JudgeAgent",
-            88 if has_validation and has_business else 74,
+            88 if has_validation and has_business and research_gate_pass else 74,
             [
                 "The strongest story is not chat, but repeatable work execution with memory, tools, RAG, skills, and self-evolution gates.",
                 (builder_review.get("judge_findings") or ["Builder execution not yet judged."])[0],
+                f"Research evidence gate status is {research_gate.get('status')}; unsupported claims require automatic rework.",
                 "Judges will pressure-test proof, reproducibility, and whether self-evolution can be governed safely.",
             ],
             [
@@ -1276,7 +1371,7 @@ def multi_agent_review_committee(payload):
             "ResearchAgent",
             "evidence",
             "Collect capability, validation, risk, and business evidence.",
-            f"Evidence counts capability={evidence.get('capability', 0)}, validation={evidence.get('validation', 0)}, risk={evidence.get('risk', 0)}, business={evidence.get('business', 0)}.",
+            f"Evidence counts capability={evidence.get('capability', 0)}, validation={evidence.get('validation', 0)}, risk={evidence.get('risk', 0)}, business={evidence.get('business', 0)}; citation_gate={research_gate.get('status')}.",
             artifacts=list(files.values())[:3],
             score=next(card["score"] for card in role_cards if card["agent"] == "ResearchAgent"),
         ),
@@ -1378,6 +1473,7 @@ def multi_agent_review_committee(payload):
         disagreement_log,
         builder_execution,
         builder_review,
+        research_gate,
         rework_result,
         timeline,
         rubric_matrix,
@@ -1398,6 +1494,7 @@ def multi_agent_review_committee(payload):
         "disagreement_log": disagreement_log,
         "builder_execution": builder_execution,
         "builder_review": builder_review,
+        "research_evidence_gate": research_gate,
         "rework_loop": rework_result,
         "priorities": priorities,
         "judge_questions": questions,
@@ -1414,6 +1511,13 @@ def multi_agent_review_committee(payload):
                 "category": "project",
                 "source": report_path,
                 "tags": ["multi-agent", "self-review", "committee", "generated"],
+            },
+            {
+                "title": f"{project_name} Research Evidence Gate",
+                "content": json.dumps(research_gate, ensure_ascii=False, indent=2),
+                "category": "project",
+                "source": "search-evidence-gate",
+                "tags": ["multi-agent", "citation-gate", "evidence", "generated"],
             },
             builder_execution.get("knowledge_item", {}),
         ],
