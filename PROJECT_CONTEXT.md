@@ -1536,3 +1536,25 @@ Known notes:
 
 Recommended next step:
 - Add a small human-recorded meeting fixture pack with ground-truth transcripts and speaker labels, then add live search provider smoke tests behind explicit network/key approval.
+
+### 2026-07-03 - Console frontstage IA, project workspace, and web-search toggle
+
+Completed:
+- Reduced home navigation to the three primary product routes: home, product, and console.
+- Removed the duplicate console header product-layer strip, keeping page navigation in the left rail.
+- Adjusted the home robotic arm placement and mobile opacity to reduce title overlap.
+- Tightened the console frontstage: work spaces remain visible, while system/backend surfaces are visually collapsed behind backend management and drawer entry points.
+- Reworked Knowledge Library into a user-facing workspace with mode-specific shells for all/research/learning/writing/project, clear upload affordance, graph/node summary, and advanced knowledge tools hidden behind a backend tools toggle.
+- Clarified Project Workspace ownership: project uploads, root path, goal, request preview, and explicit send-to-chat action. Project action buttons now produce visible in-page feedback instead of silently filling the hidden chat composer.
+- Added a chat web-search toggle; when enabled, the message requests `web_search` and asks the model to preserve clickable source links. Chat rendering now auto-links http(s) URLs.
+
+Verification:
+- `python -m unittest clawos.tests.test_frontend_static`: 33 tests OK.
+- Bundled Node syntax checks for `clawos\static\assets\console.js` and `clawos\static\assets\console.modules.js`: passed.
+
+Known notes:
+- This block is frontend/static behavior only. It does not run a live browser screenshot pass.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Run a live browser walkthrough of `/console#knowledge` and `/console#projects` against the FastAPI server before demo, then tune spacing/copy from the actual viewport.

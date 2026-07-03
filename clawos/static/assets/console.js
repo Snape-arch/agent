@@ -63,6 +63,45 @@ function usePrompt(text) {
   prompt.focus();
 }
 
+function projectPromptText(kind) {
+  const root = $("projectRootInput")?.value?.trim() || "当前项目";
+  const goal = $("projectGoalInput")?.value?.trim() || "给出清晰的项目分析、风险和下一步建议";
+  const base = `请基于项目上下文分析：${root}。目标：${goal}。`;
+  return ({
+    structure: `${base}\n请输出项目结构、关键入口文件、前端/后端/数据/脚本边界，以及用户下一步最该看的文件。`,
+    health: `${base}\n请做代码健康检查，包含风险、TODO、测试缺口、前后端职责是否清晰、可演示性问题。`,
+    brief: `${base}\n请生成一份项目交付简报，包含当前完成度、可展示能力、缺口、验收命令和答辩说法。`,
+    experiment: `${base}\n请设计一个可复现实验，评估工具命中率、任务完成率、延迟、失败原因和可追踪产物。`,
+    root: `${base}\n请先确认你会把我上传的项目资料和这个路径作为上下文，再给出项目管理建议。`,
+    full: `${base}\n请综合项目结构、质量风险、交付计划和演示路径，给出一份项目管理视角的行动清单。`,
+  }[kind] || base);
+}
+
+function prepareProjectPrompt(kind) {
+  const text = projectPromptText(kind);
+  usePrompt(text);
+  if ($("projectRequestPreview")) $("projectRequestPreview").textContent = text;
+  if ($("projectRequestCard")) $("projectRequestCard").classList.add("ready");
+  if ($("projectStatus")) $("projectStatus").textContent = "已生成项目请求，可直接发送到对话，或继续修改项目目标。";
+}
+
+function sendPreparedProjectPrompt() {
+  const text = $("projectRequestPreview")?.textContent?.trim() || $("prompt")?.value?.trim() || "";
+  if (!text || text.includes("点击上方任一项目动作")) {
+    if ($("projectStatus")) $("projectStatus").textContent = "请先点击一个项目动作生成请求。";
+    return;
+  }
+  usePrompt(text);
+  setView("chat");
+  if (!busy) sendMessage();
+}
+
+function handleProjectFiles(event) {
+  handlePickedFiles(event);
+  const count = event.target.files?.length || 0;
+  if ($("projectStatus")) $("projectStatus").textContent = count ? `已添加 ${count} 个项目文件到对话附件。` : "未选择文件。";
+}
+
 function statusBadge(status) {
   const raw = String(status ?? "").toLowerCase();
   const ok = ["ok", "success", "succeeded", "ready", "true", "passed", "allow"].includes(raw);
@@ -118,6 +157,7 @@ function md(text) {
     .replace(/```([\s\S]*?)```/g, "<pre>$1</pre>")
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/(https?:\/\/[^\s<>"'）)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
     .replace(/\n/g, "<br>");
 }
 
@@ -150,10 +190,14 @@ function addAssistantStream() {
 
 function sendMessage() {
   const prompt = $("prompt");
-  const text = prompt.value.trim();
+  let text = prompt.value.trim();
   const ready = chatAttachments.filter(item => item.status === "ready");
   if ((!text && !ready.length) || busy) return;
   prompt.value = "";
+  const wantsWebSearch = Boolean($("webSearchToggle")?.checked);
+  if (wantsWebSearch) {
+    text = `${text || "请阅读附件并联网检索相关资料。"}\n\n请先联网搜索可验证来源，回答中保留可点击网页链接，并标出哪些结论来自搜索结果。`;
+  }
   const attachments = ready.map(item => ({
     name: item.name,
     type: item.type,
@@ -163,7 +207,7 @@ function sendMessage() {
   }));
   chatAttachments = chatAttachments.filter(item => item.status === "uploading");
   renderAttachmentTray();
-  submitMessage(text || "请阅读附件并给出分析。", [], attachments);
+  submitMessage(text || "请阅读附件并给出分析。", wantsWebSearch ? ["web_search"] : [], attachments);
 }
 
 async function readChatStream(response, onText, onMeta) {
@@ -205,7 +249,8 @@ async function submitMessage(text, confirmedTools, attachments) {
   $("send").disabled = true;
   if ($("stop")) $("stop").disabled = false;
   const names = (attachments || []).map(item => item.name).filter(Boolean);
-  addMessage("user", text + (names.length ? `\n\n附件：${names.join("、")}` : ""));
+  const webHint = (confirmedTools || []).includes("web_search") ? "\n\n已开启联网搜索，回答会尽量保留来源链接。" : "";
+  addMessage("user", text + webHint + (names.length ? `\n\n附件：${names.join("、")}` : ""));
   const update = addAssistantStream();
   try {
     const response = await fetch(API + "/v1/chat/completions", {
@@ -431,6 +476,7 @@ function setKnowledgeCategory(category) {
   document.querySelectorAll(".library-tabs button[data-knowledge]").forEach(button => {
     button.classList.toggle("on", (button.dataset.knowledge === "all" && !knowledgeCategory) || button.dataset.knowledge === knowledgeCategory);
   });
+  renderKnowledgeWorkspaceShell();
   loadKnowledge();
   loadKnowledgeDocuments();
   loadOcrQueue();
@@ -439,6 +485,64 @@ function setKnowledgeCategory(category) {
 
 function knowledgeCategoryLabel(category) {
   return ({ research: "科研库", learning: "学习库", writing: "写作库", project: "项目库", domain: "通用库" }[category || ""] || "全部知识库");
+}
+
+const KNOWLEDGE_MODES = {
+  all: {
+    eyebrow: "Personal Knowledge Graph",
+    title: "全部知识库",
+    desc: "统一查看你的资料节点、图谱关系、上传入口和最近沉淀内容。",
+    upload: "论文、课程笔记、项目文档、会议纪要都会进入当前库，并生成可检索节点。",
+    actions: [["上传资料", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["检索节点", "searchKnowledge()", "secondary"]],
+  },
+  research: {
+    eyebrow: "Research Library",
+    title: "科研库",
+    desc: "面向论文、实验、引用和研究问题，优先展示论文节点、证据关系和可复现材料。",
+    upload: "上传论文 PDF、arXiv 笔记、实验记录或引用材料，自动沉淀为研究节点。",
+    actions: [["上传论文", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["生成论文报告", "generateKnowledgeReport()", "secondary"]],
+  },
+  learning: {
+    eyebrow: "Learning Library",
+    title: "学习库",
+    desc: "面向课程、路线、概念卡片和自测复盘，帮助你从资料走向掌握。",
+    upload: "上传课程讲义、学习笔记、术语表或练习材料，形成学习路径节点。",
+    actions: [["上传课程资料", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["生成学习笔记", "generateKnowledgeReport()", "secondary"]],
+  },
+  writing: {
+    eyebrow: "Writing Library",
+    title: "写作库",
+    desc: "面向博客、答辩稿、商业计划书和表达素材，突出草稿、论点和引用。",
+    upload: "上传草稿、素材、会议结论或参考文章，沉淀为可复用写作节点。",
+    actions: [["上传写作素材", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["从会话生成草稿", "draftKnowledgeFromSelectedSession()", "secondary"]],
+  },
+  project: {
+    eyebrow: "Project Library",
+    title: "项目库",
+    desc: "面向本地项目、交付包、runbook、验收报告和风险清单，服务真实交付。",
+    upload: "上传项目文档、架构图说明、验收报告或 runbook，形成交付节点。",
+    actions: [["上传项目资料", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["运行交付室", "runEnterpriseDeliveryRoom()", "secondary"]],
+  },
+};
+
+function renderKnowledgeWorkspaceShell() {
+  const mode = knowledgeCategory || "all";
+  const config = KNOWLEDGE_MODES[mode] || KNOWLEDGE_MODES.all;
+  const workspace = document.querySelector("#view-knowledge .knowledge-workspace");
+  if (workspace) workspace.dataset.mode = mode;
+  if ($("knowledgeFrontStage")) $("knowledgeFrontStage").dataset.mode = mode;
+  if ($("knowledgeModeEyebrow")) $("knowledgeModeEyebrow").textContent = config.eyebrow;
+  if ($("knowledgeModeTitle")) $("knowledgeModeTitle").textContent = config.title;
+  if ($("knowledgeModeDesc")) $("knowledgeModeDesc").textContent = config.desc;
+  if ($("knowledgeUploadHint")) $("knowledgeUploadHint").textContent = config.upload;
+  if ($("knowledgeModeActions")) {
+    $("knowledgeModeActions").innerHTML = config.actions.map(([label, action, kind]) => `<button class="${kind}" onclick="${action}">${esc(label)}</button>`).join("");
+  }
+}
+
+function toggleKnowledgeAdminTools() {
+  const workspace = document.querySelector("#view-knowledge .knowledge-workspace");
+  if (workspace) workspace.classList.toggle("show-knowledge-admin");
 }
 
 function renderKnowledgeSessionSelect() {
@@ -1807,6 +1911,9 @@ async function loadKnowledgeGraph() {
     }).join("");
     const color = type => ({ contains: "rgba(17,24,39,.22)", cites: "rgba(37,99,235,.38)", tagged: "rgba(22,163,74,.42)", links_to: "rgba(147,51,234,.38)", backlink: "rgba(220,38,38,.42)", sourced_from: "rgba(217,119,6,.42)", mentions: "rgba(8,145,178,.36)" }[type] || "rgba(17,24,39,.22)");
     edges.innerHTML = (graph.edges || []).filter(edge => pos[edge.source] && pos[edge.target]).slice(0, 80).map(edge => `<line x1="${pos[edge.source].left}%" y1="${pos[edge.source].top}%" x2="${pos[edge.target].left}%" y2="${pos[edge.target].top}%" stroke="${color(edge.type)}" stroke-width="${edge.type === "backlink" ? 2.4 : 1.6}"><title>${esc(edge.type || "edge")}</title></line>`).join("");
+    const summary = `${knowledgeCategoryLabel(knowledgeCategory)} · ${nodes.length} 个节点 · ${graph.edges?.length || 0} 条关系`;
+    if ($("knowledgeMapHint")) $("knowledgeMapHint").textContent = summary;
+    if ($("knowledgeGraphSummary")) $("knowledgeGraphSummary").textContent = summary;
     if ($("knowledgeMapHint")) $("knowledgeMapHint").textContent = `${graph.category || "all"} · ${nodes.length} 个真实节点 · ${graph.edges?.length || 0} 条语义关系`;
   } catch (err) {}
 }
@@ -2032,12 +2139,14 @@ function chooseFirstRunModel(provider) {
 
 async function refreshAll() {
   ensureProfessionalBoard();
+  renderKnowledgeWorkspaceShell();
   await Promise.allSettled([loadHealth(), loadDash(), loadRoutingStrategy(), loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue(), loadMemory(), loadReflection(), loadEvolution(), loadSkills(), loadTools(), loadToolExecutions(), loadTasks(), loadBenchmarks(), loadCapabilities(), loadSecurityCenter(), loadOps()]);
   if (window.loadRuntimeRecords) window.loadRuntimeRecords();
 }
 
 if ($("cfgProvider")) $("cfgProvider").addEventListener("change", () => applyProviderPreset(true));
 applyReportPreset();
+renderKnowledgeWorkspaceShell();
 loadSessions();
 startTaskStream();
 const initialView = (location.hash || "").replace("#", "");

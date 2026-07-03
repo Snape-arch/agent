@@ -45,6 +45,7 @@
 
     <div class="side-bottom">
       <div class="side-label side-bottom-label">后台系统</div>
+      <button data-view="dash"><span class="nav-ico">▦</span>后台管理</button>
       <button onclick="openModelSettings()"><span class="nav-ico">⚙</span>系统设置</button>
       <button onclick="toggleCommandDrawer()"><span class="nav-ico">◇</span>工具与评测</button>
       <div class="health"><span class="dot" id="healthDot"></span><span id="healthText">启动中</span></div>
@@ -53,11 +54,6 @@
 
   <header class="console-head">
     <div>
-      <div class="console-layer-strip" aria-label="ClawOS product layer">
-        <a href="/">Overview</a>
-        <a href="/product">Product Map</a>
-        <span>Console</span>
-      </div>
       <h1 id="viewTitle">新聊天</h1>
       <p id="viewSub">发起任务，连接工具、知识库、文件和项目上下文</p>
     </div>
@@ -138,6 +134,7 @@
           <div class="compose-inner">
             <button class="attach-button" onclick="chooseLocalFile()" title="添加本地文件">+</button>
             <textarea id="prompt" placeholder="有问题，尽管问。点 + 添加文件，Agent 会作为上下文自动读取。" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+            <label class="web-search-toggle" title="让本次回答优先调用联网搜索，并在结果里保留网页链接"><input id="webSearchToggle" type="checkbox"><span>联网搜索</span></label>
             <button class="primary" id="send" onclick="sendMessage()">发送</button>
             <button class="secondary" id="stop" onclick="stopGeneration()" disabled>停止</button>
             <input id="filePicker" type="file" multiple hidden onchange="handlePickedFiles(event)">
@@ -167,6 +164,27 @@
             <button data-knowledge="writing" onclick="setKnowledgeCategory('writing')">写作库</button>
             <button data-knowledge="project" onclick="setKnowledgeCategory('project')">项目库</button>
           </div>
+        </div>
+        <div class="knowledge-front-stage" id="knowledgeFrontStage" data-mode="all">
+          <section class="knowledge-mode-card">
+            <span id="knowledgeModeEyebrow">Personal Knowledge Graph</span>
+            <h3 id="knowledgeModeTitle">全部知识库</h3>
+            <p id="knowledgeModeDesc">统一查看你的资料节点、图谱关系、上传入口和最近沉淀内容。</p>
+            <div class="knowledge-mode-actions" id="knowledgeModeActions">
+              <button class="primary" onclick="document.getElementById('knowledgeFilePicker').click()">上传资料</button>
+              <button class="secondary" onclick="searchKnowledge()">检索节点</button>
+            </div>
+          </section>
+          <label class="knowledge-upload-hero" for="knowledgeFilePicker">
+            <b>拖入或选择资料</b>
+            <span id="knowledgeUploadHint">论文、课程笔记、项目文档、会议纪要都会进入当前库，并生成可检索节点。</span>
+          </label>
+          <section class="knowledge-graph-card">
+            <b>图谱与节点</b>
+            <span id="knowledgeGraphSummary">等待加载真实节点和语义关系。</span>
+            <button class="secondary" type="button" onclick="loadKnowledgeGraph()">刷新图谱</button>
+          </section>
+          <button class="secondary knowledge-admin-toggle" type="button" onclick="toggleKnowledgeAdminTools()">后台知识工具</button>
         </div>
         <div class="knowledge-toolbar">
           <label class="import-drop" for="knowledgeFilePicker">
@@ -250,7 +268,7 @@
       </div>
     </section>
 
-    <section class="view" id="view-projects"><div class="panel-view glass-panel project-workspace"><div class="library-head"><div><h2>项目</h2><p class="hint">把本地项目、科研目录和交付任务作为上下文入口。</p></div><button class="primary" onclick="usePrompt('分析当前项目结构、风险和下一步开发计划');setView('chat')">分析当前项目</button></div><div class="project-grid"><button class="quick" onclick="usePrompt('列出当前项目结构并找出最重要的入口文件');setView('chat')">项目结构</button><button class="quick" onclick="usePrompt('对当前项目做一次代码健康检查，包含 TODO、风险和测试建议');setView('chat')">健康检查</button><button class="quick" onclick="usePrompt('为当前项目生成一份工作汇报和交付计划');setView('chat')">交付简报</button><button class="quick" onclick="usePrompt('设计一个可复现实验来评估当前 Agent 的工具命中率和任务完成率');setView('chat')">实验设计</button></div></div></section>
+    <section class="view" id="view-projects"><div class="panel-view glass-panel project-workspace"><div class="library-head"><div><h2>项目工作台</h2><p class="hint">职责：把一个本地项目或交付任务整理成可分析、可追踪、可沉淀的上下文。这里负责项目资料上传、路径登记、分析请求和交付动作，不再自动跳到新对话空间。</p></div><button class="primary" onclick="prepareProjectPrompt('full')">准备项目分析</button></div><div class="project-intake"><label class="project-upload-drop" for="projectFilePicker"><input id="projectFilePicker" type="file" multiple hidden onchange="handleProjectFiles(event)"><b>上传项目资料</b><span>支持 README、需求文档、架构说明、验收报告、代码片段等；上传后会作为聊天附件上下文。</span></label><div class="project-path-card"><label>项目根目录<input id="projectRootInput" placeholder="C:\\Users\\34712\\Desktop\\agentwork"></label><label>目标<input id="projectGoalInput" placeholder="例如：整理比赛交付、分析代码风险、生成汇报"></label><button class="secondary" onclick="prepareProjectPrompt('root')">使用这个项目上下文</button></div></div><div class="project-grid"><button class="quick" onclick="prepareProjectPrompt('structure')">项目结构</button><button class="quick" onclick="prepareProjectPrompt('health')">健康检查</button><button class="quick" onclick="prepareProjectPrompt('brief')">交付简报</button><button class="quick" onclick="prepareProjectPrompt('experiment')">实验设计</button></div><div class="project-request-card" id="projectRequestCard"><b>项目请求预览</b><p id="projectRequestPreview">点击上方任一项目动作，这里会生成可发送给 ClawOS 的分析请求。</p><div class="action-row"><button class="primary" onclick="sendPreparedProjectPrompt()">发送到对话</button><button class="secondary" onclick="setView('chat')">打开对话</button></div></div><div class="project-status" id="projectStatus">等待上传资料或填写项目路径。</div></div></section>
     <section class="view" id="view-reflection"><div class="panel-view glass-panel"><button class="secondary" onclick="triggerReflection()">触发反思</button><div class="section-block"><h2>反思卡片</h2><table class="table" id="reflectionTable"></table></div><div class="section-block"><h2>改进审查</h2><table class="table" id="reflectionReviewTable"></table></div><div class="section-block"><h2>经验记忆</h2><table class="table" id="experienceTable"></table></div></div></section>
     <section class="view" id="view-evolution"><div class="panel-view glass-panel evolution-workspace"><div class="library-head"><div><h2>Self-Evolution Board</h2><p class="hint">自动生成低风险候选，后台跑 frozen / core E2E / retrieval 门禁，并按 shadow → canary → active 发布。</p></div><button class="secondary" onclick="loadEvolution()">刷新</button></div><div class="ops-score" id="evolutionScore">Evolution readiness: --</div><div class="ops-grid"><div class="section-block"><h2>新建自进化 Run</h2><div class="ops-form"><select id="evoTargetType"><option value="prompt">Prompt</option><option value="retrieval_params">Retrieval params</option><option value="report_template">Report template</option><option value="tool_routing_policy">Tool routing policy</option></select><input id="evoTargetKey" placeholder="target key，例如 paper_reader / default"><textarea id="evoBaselinePayload" placeholder='{"top_k":10,"rerank_top_k":3}'></textarea><button class="primary" onclick="queueEvolutionRun()">生成候选并排队</button></div><pre class="result-box" id="evolutionResult"></pre></div><div class="section-block"><h2>真实质量信号</h2><table class="table" id="evolutionQualityTable"></table></div></div><div class="section-block"><h2>运行与发布阶段</h2><table class="table" id="evolutionRunTable"></table></div><div class="section-block"><h2>门禁细节</h2><table class="table" id="evolutionGateTable"></table></div></div></section>
     <section class="view" id="view-skills"><div class="panel-view glass-panel skills-workbench"><div class="library-head"><div><h2>固化技能</h2><p class="hint">筛选、预演和审查可复用工作流。默认只做计划预演，显式点击执行才会运行技能。</p></div><button class="secondary" onclick="loadSkills()">刷新技能</button></div><div class="skill-toolbar"><input id="skillQuery" placeholder="搜索技能、标签、触发词" oninput="renderSkillsWorkbench()"><select id="skillCategory" onchange="renderSkillsWorkbench()"><option value="">全部分类</option></select><select id="skillStatusFilter" onchange="renderSkillsWorkbench()"><option value="">全部状态</option><option value="active">已发布</option><option value="candidate">候选</option><option value="validated">已验证</option><option value="needs_changes">需修改</option><option value="rejected">已拒绝</option><option value="canary">灰度</option></select></div><div class="skill-grid"><div class="section-block"><h2>技能目录</h2><div class="skill-card-list" id="skillsTable"></div></div><div class="section-block skill-detail"><h2>技能详情</h2><div id="skillDetail" class="skill-detail-box"></div><label>参数 JSON<textarea id="skillParams" spellcheck="false" placeholder='{"path":"D:/Projects/agent"}'></textarea></label><div class="action-row"><button class="secondary" onclick="runSelectedSkill(true)">预演计划</button><button class="primary" onclick="runSelectedSkill(false)">执行技能</button></div><pre id="skillRunResult" class="result-box">选择一个技能查看详情。</pre></div></div><div class="section-block"><h2>技能审查</h2><p class="hint">候选技能必须通过冻结评测后才能发布；未达标版本可标记为需修改或拒绝。</p><table class="table" id="skillReviewTable"></table></div><div class="skill-grid lower"><div class="section-block"><h2>版本记录</h2><table class="table" id="skillVersionTable"></table></div><div class="section-block"><h2>评测运行</h2><table class="table" id="skillRunTable"></table></div></div><div class="section-block"><h2>执行质量</h2><table class="table" id="skillStatsTable"></table></div></div></section>

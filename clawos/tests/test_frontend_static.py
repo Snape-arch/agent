@@ -30,18 +30,25 @@ class FrontendStaticTests(unittest.TestCase):
         site_css = self.read_page("assets/site.css")
         console_css = self.read_page("assets/console.css")
 
-        for page in (home, product):
-            self.assertIn("claw-layer-nav", page)
-            self.assertIn("Personal Agent OS", page)
-            self.assertIn("Product Map", page)
-            self.assertIn("Console", page)
+        self.assertIn("claw-layer-nav", home)
+        self.assertIn("Personal Agent OS", home)
+        self.assertIn(">首页</a>", home)
+        self.assertIn(">产品</a>", home)
+        self.assertIn(">控制台</a>", home)
+        home_nav = home.split('<div class="claw-home-links">', 1)[1].split("</div>", 1)[0]
+        self.assertEqual(home_nav.count("<a "), 3)
+        self.assertNotIn('href="#technology"', home_nav)
+        self.assertNotIn('href="#developers"', home_nav)
 
-        self.assertIn("console-layer-strip", console)
+        self.assertIn("claw-layer-nav", product)
+        self.assertIn("Personal Agent OS", product)
+        self.assertIn("Product Map", product)
+        self.assertIn("Console", product)
+
+        self.assertNotIn("console-layer-strip", console)
         self.assertIn("console-product-nav", console)
         self.assertIn("前台工作", console)
         self.assertIn("后台系统", console)
-        self.assertIn("Overview", console)
-        self.assertIn("Product Map", console)
         self.assertIn("Console", console)
         self.assertIn('href="/"', console)
         self.assertIn('href="/product"', console)
@@ -56,7 +63,6 @@ class FrontendStaticTests(unittest.TestCase):
             ".capability-link-card",
         ):
             self.assertIn(token, site_css)
-        self.assertIn(".aether-console .console-layer-strip", console_css)
         self.assertIn(".aether-console .console-product-nav", console_css)
         self.assertIn(".aether-console .space-group", console_css)
         self.assertIn(".aether-console .work-front", console_css)
@@ -103,6 +109,42 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertIn(token, css)
 
+    def test_console_project_workspace_and_admin_entry_are_user_clear(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.css")
+
+        for token in (
+            "项目工作台",
+            "projectFilePicker",
+            "projectRootInput",
+            "projectGoalInput",
+            "projectStatus",
+            "projectRequestCard",
+            "projectRequestPreview",
+            "上传项目资料",
+            "后台管理",
+        ):
+            self.assertIn(token, html)
+        for token in (
+            "projectPromptText",
+            "prepareProjectPrompt",
+            "sendPreparedProjectPrompt",
+            "handleProjectFiles",
+        ):
+            self.assertIn(token, js)
+        for token in (
+            ".project-intake",
+            ".project-upload-drop",
+            ".project-path-card",
+            ".project-status",
+            ".project-request-card",
+            ".project-request-card.ready",
+            "button[data-view=\"dash\"]:after",
+            "max-width:104px",
+        ):
+            self.assertIn(token, css)
+
     def test_home_scan_wall_uses_lifestyle_narrative_labels(self):
         home = self.read_page("index.html")
         css = self.read_page("assets/site.css")
@@ -127,8 +169,9 @@ class FrontendStaticTests(unittest.TestCase):
             "Skill Agent",
         ):
             self.assertNotIn(old_label, home)
-        self.assertIn("transform:translateX(8vw)", css)
-        self.assertIn("opacity:.42", css)
+        self.assertIn("transform:translateX(14vw)", css)
+        self.assertIn("padding-top:62px", css)
+        self.assertIn("opacity:.26", css)
 
     def test_pages_use_clawos_assets_and_motion(self):
         home = self.read_page("index.html")
@@ -159,6 +202,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("view-knowledge", html)
         self.assertIn("view-memory", html)
         self.assertIn("filePicker", html)
+        self.assertIn("webSearchToggle", html)
+        self.assertIn("联网搜索", html)
         self.assertIn("commandDrawer", html)
 
     def test_console_spaces_are_real_navigation_targets(self):
@@ -196,6 +241,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("aria-current", js)
         self.assertIn("history.replaceState", js)
         self.assertIn("location.hash", js)
+        self.assertIn("webSearchToggle", js)
+        self.assertIn('"web_search"', js)
+        self.assertIn('target="_blank"', js)
         self.assertNotIn('document.querySelectorAll(".side-nav button[data-view]")', js)
 
     def test_console_adopts_desktop_liquid_glass_reference_style(self):
@@ -269,6 +317,35 @@ class FrontendStaticTests(unittest.TestCase):
         js = self.read_page("assets/console.js")
         css = self.read_page("assets/console.css")
 
+        for token in (
+            "knowledgeFrontStage",
+            "knowledgeModeTitle",
+            "knowledgeUploadHint",
+            "knowledgeGraphSummary",
+            "knowledge-admin-toggle",
+            "后台知识工具",
+        ):
+            self.assertIn(token, html)
+        for token in (
+            "KNOWLEDGE_MODES",
+            "renderKnowledgeWorkspaceShell",
+            "toggleKnowledgeAdminTools",
+            "Research Library",
+            "Learning Library",
+            "Writing Library",
+            "Project Library",
+        ):
+            self.assertIn(token, js)
+        for token in (
+            ".knowledge-front-stage",
+            ".knowledge-mode-card",
+            ".knowledge-upload-hero",
+            ".knowledge-graph-card",
+            ".show-knowledge-admin",
+            ".section-block:has(#ocrQueueTable)",
+            ".space-switcher .system-back button:not([data-view=\"dash\"])",
+        ):
+            self.assertIn(token, css)
         for token in (
             "knowledgeTable",
             "knowledgeSearchTable",
