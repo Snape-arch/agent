@@ -1558,3 +1558,27 @@ Known notes:
 
 Recommended next step:
 - Run a live browser walkthrough of `/console#knowledge` and `/console#projects` against the FastAPI server before demo, then tune spacing/copy from the actual viewport.
+
+### 2026-07-04 - Live Search Provider Health and Console Report Card
+
+Completed:
+- Added `clawos/scripts/search_live_acceptance.py` for Provider Health + live smoke reporting across 40 cases covering official docs, news freshness, papers, policy, product docs, Chinese web, JS pages, developer docs, security, and education.
+- Added provider health aggregation to `SearchEvidenceEngine.search()` and exposed `web_search_live_benchmark` in `tool_runner.py` and `functions.jsonl`.
+- Added `/api/search/live/latest` to read the newest durable live search report without triggering network calls from the UI.
+- Added a console compact card for live search reports: provider success rate, pass rate, citation hit, p50/p95 latency, by-scenario stats, and failure reasons.
+
+Verification:
+- `python clawos\scripts\search_live_acceptance.py --offline-mock --limit-cases 40 --out output\search_evidence --no-cache`: 40/40 passed, citation_hit_rate=1.0, provider_success_rate=1.0.
+- Real network smoke with `--providers tavily,serpapi,bing,duckduckgo --limit-cases 40`: report generated at `output\search_evidence\live_search_report.json`; 0/40 passed because Tavily/SerpAPI/Bing keys were not configured and DuckDuckGo returned HTTPError/empty results in this environment. The report records these provider failure reasons explicitly.
+- `python -m py_compile clawos\services\search_evidence.py clawos\scripts\tool_runner.py clawos\scripts\search_live_acceptance.py clawos\clawos_server.py`: passed.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m unittest clawos.tests.test_search_evidence clawos.tests.test_frontend_static`: 37 tests OK.
+- `python -m unittest discover -s clawos\tests`: 209 tests OK.
+
+Known notes:
+- Generated live/offline reports and runtime cache files remain ignored under `output\search_evidence`; do not stage them.
+- Live search acceptance is now observable rather than hidden. A failing provider health card means the runtime needs stable provider credentials/network/parser work, not that the report pipeline failed.
+- `tmp/pdfs/*` remains local scratch output and must not be staged.
+
+Recommended next step:
+- Configure at least one stable search provider key, rerun the 40-case live suite, and tune provider-specific result parsing/ranking until live pass rate and citation hit rate become competition-grade.

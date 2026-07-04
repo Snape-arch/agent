@@ -534,6 +534,25 @@ def tool_web_search_benchmark():
     print(json.dumps(report, ensure_ascii=False))
 
 
+def tool_web_search_live_benchmark():
+    from scripts.search_live_acceptance import run_live_suite
+    raw_providers = input_data.get("providers") or ["tavily", "serpapi", "bing", "duckduckgo"]
+    if isinstance(raw_providers, str):
+        providers = [item.strip().lower() for item in raw_providers.split(",") if item.strip()]
+    else:
+        providers = [str(item).strip().lower() for item in raw_providers if str(item).strip()]
+    report = run_live_suite(
+        input_data.get("out") or os.path.join(BASE_DIR, "..", "output", "search_evidence"),
+        providers=providers,
+        limit_cases=int(input_data.get("limit_cases", 40) or 40),
+        offline_mock=bool(input_data.get("offline_mock", False)),
+        retries=max(1, min(int(input_data.get("retries", 1) or 1), 4)),
+        use_cache=bool(input_data.get("use_cache", True)),
+    )
+    report["run_record"] = _save_web_run("web_search_live_benchmark", report["name"], report)
+    print(json.dumps(report, ensure_ascii=False))
+
+
 
 
 # ---- SKILL MANAGEMENT TOOLS ----
@@ -1193,6 +1212,7 @@ handlers = {
     "note_read": tool_note_read, "note_list": tool_note_list,
     "web_search": tool_web_search, "web_fetch": tool_web_fetch,
     "web_citation_check": tool_web_citation_check, "web_search_benchmark": tool_web_search_benchmark,
+    "web_search_live_benchmark": tool_web_search_live_benchmark,
     "tools_list": tool_tools_list,
     "skill_register": tool_skill_register, "skill_list": tool_skill_list,
     "skill_execute": tool_skill_execute, "skill_delete": tool_skill_delete,

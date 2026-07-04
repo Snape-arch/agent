@@ -238,6 +238,7 @@ class SearchEvidenceEngine:
             "provider": next((a["provider"] for a in attempts if a.get("ok")), ""),
             "results": ranked[:limit],
             "attempts": attempts,
+            "provider_health": provider_health_summary(attempts, providers),
             "cache_hit": False,
             "rate_limit": rate,
             "quality_summary": self.quality_summary(ranked[:limit]),
@@ -394,4 +395,77 @@ def citation_consistency(answer: str, sources: list[dict[str, Any]], *, min_over
             "status": "pass" if not unsupported and checked else "revision_required",
             "required_rework": [item["claim"] for item in unsupported],
         },
+    }
+
+
+def _percentile(values: list[float], percentile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(float(item) for item in values)
+    if len(ordered) == 1:
+        return round(ordered[0], 2)
+    index = (len(ordered) - 1) * percentile
+    lower = int(index)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = index - lower
+    return round(ordered[lower] * (1 - weight) + ordered[upper] * weight, 2)
+
+
+def provider_health_summary(attempts: list[dict[str, Any]], providers: list[str] | None = None) -> dict[str, Any]:
+    provider_names = [str(item).lower() for item in (providers or []) if str(item).strip()]
+    buckets: dict[str, dict[str, Any]] = {
+        name: {"provider": name, "attempt_count": 0, "ok_count": 0, "latencies": [], "error_types": {}}
+        for name in provider_names
+    }
+    for attempt in attempts or []:
+        provider = str(attempt.get("provider") or "unknown").lower()
+        bucket = buckets.setdefault(provider, {"provider": provider, "attempt_count": 0, "ok_count": 0, "latencies": [], "error_types": {}})
+        bucket["attempt_count"] += 1
+        if attempt.get("ok"):
+            bucket["ok_count"] += 1
+        latency = attempt.get("latency_ms")
+        if latency is not None:
+            try:
+                bucket["latencies"].append(float(latency))
+            except (TypeError, ValueError):
+                pass
+        error_type = str(attempt.get("error_type") or "").strip()
+        if error_type and error_type not in {"", "none"}:
+            bucket["error_types"][error_type] = bucket["error_types"].get(error_type, 0) + 1
+
+    rows = []
+    for name in sorted(buckets):
+        bucket = buckets[name]
+        attempt_count = int(bucket["attempt_count"])
+        ok_count = int(bucket["ok_count"])
+        success_rate = round(ok_count / max(1, attempt_count), 4) if attempt_count else 0.0
+        if not attempt_count:
+            status = "untested"
+        elif success_rate >= 0.8:
+            status = "healthy"
+        elif success_rate > 0:
+            status = "degraded"
+        else:
+            status = "down"
+        error_types = dict(sorted(bucket["error_types"].items(), key=lambda item: (-item[1], item[0])))
+        rows.append({
+            "provider": name,
+            "status": status,
+            "attempt_count": attempt_count,
+            "ok_count": ok_count,
+            "failed_count": max(0, attempt_count - ok_count),
+            "success_rate": success_rate,
+            "latency_p50_ms": _percentile(bucket["latencies"], 0.50),
+            "latency_p95_ms": _percentile(bucket["latencies"], 0.95),
+            "error_types": error_types,
+            "last_error_type": next(iter(error_types.keys()), ""),
+        })
+    return {
+        "providers": rows,
+        "configured_count": len(provider_names),
+        "attempt_count": sum(item["attempt_count"] for item in rows),
+        "healthy_count": sum(1 for item in rows if item["status"] == "healthy"),
+        "degraded_count": sum(1 for item in rows if item["status"] == "degraded"),
+        "down_count": sum(1 for item in rows if item["status"] == "down"),
+        "untested_count": sum(1 for item in rows if item["status"] == "untested"),
     }

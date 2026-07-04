@@ -63,8 +63,36 @@ class SearchEvidenceEngineTests(unittest.TestCase):
         self.assertEqual(first["results"][0]["domain"], "docs.python.org")
         self.assertEqual(first["results"][0]["credibility"], "high")
         self.assertGreaterEqual(first["quality_summary"]["high_credibility"], 1)
+        self.assertEqual(first["provider_health"]["providers"][0]["provider"], "mock")
+        self.assertEqual(first["provider_health"]["providers"][0]["status"], "degraded")
         self.assertEqual(calls["mock"], 2)
         self.assertTrue(any(not attempt["ok"] for attempt in first["attempts"]))
+
+    def test_provider_health_summary_and_live_acceptance_mock(self):
+        from scripts.search_live_acceptance import run_live_suite
+        from services.search_evidence import provider_health_summary
+
+        health = provider_health_summary(
+            [
+                {"provider": "bing", "ok": True, "latency_ms": 100, "error_type": ""},
+                {"provider": "duckduckgo", "ok": False, "latency_ms": 500, "error_type": "timeout"},
+            ],
+            ["bing", "duckduckgo", "tavily"],
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            report = run_live_suite(Path(td), providers=["mock"], limit_cases=8, offline_mock=True)
+            self.assertTrue(Path(report["report_path"]).exists())
+
+        self.assertEqual(health["healthy_count"], 1)
+        self.assertEqual(health["down_count"], 1)
+        self.assertEqual(health["untested_count"], 1)
+        self.assertEqual(report["mode"], "offline_mock")
+        self.assertEqual(report["case_count"], 8)
+        self.assertEqual(report["failed_count"], 0)
+        self.assertEqual(report["citation_hit_rate"], 1.0)
+        self.assertIn("provider_health", report)
+        self.assertIn("by_scenario", report)
 
     def test_rate_limit_and_citation_consistency_gate(self):
         from services.search_evidence import FileRateLimiter, citation_consistency
@@ -100,6 +128,12 @@ class SearchEvidenceEngineTests(unittest.TestCase):
 
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
+            tool_runner.input_data = {"offline_mock": True, "limit_cases": 6}
+            tool_runner.handlers["web_search_live_benchmark"]()
+        live_report = json.loads(output.getvalue())
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
             tool_runner.input_data = {
                 "answer": "Python documentation explains timezone aware datetime objects.",
                 "sources": [{
@@ -128,6 +162,9 @@ class SearchEvidenceEngineTests(unittest.TestCase):
         self.assertIn("artifact", report)
         self.assertEqual(report["run_record"]["run_type"], "web_evidence")
         self.assertEqual(citation["status"], "pass")
+        self.assertEqual(live_report["mode"], "offline_mock")
+        self.assertEqual(live_report["failed_count"], 0)
+        self.assertGreaterEqual(live_report["case_count"], 6)
 
 
 if __name__ == "__main__":

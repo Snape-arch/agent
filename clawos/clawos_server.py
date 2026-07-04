@@ -2960,6 +2960,31 @@ async def api_latest_deepseek_qwen_acceptance():
         raise HTTPException(status_code=500, detail=f"Failed to read report: {type(exc).__name__}") from exc
 
 
+@app.get("/api/search/live/latest")
+async def api_latest_search_live_acceptance():
+    try:
+        report_dir = (BASE_DIR.parent / "output" / "search_evidence").resolve()
+        preferred = report_dir / "live_search_report.json"
+        candidates = [preferred]
+        if report_dir.exists():
+            candidates.extend(sorted(report_dir.glob("*live*search*report*.json"), key=lambda item: item.stat().st_mtime, reverse=True))
+        path = next((item for item in candidates if item.exists()), None)
+        if not path:
+            return JSONResponse({
+                "found": False,
+                "ok": False,
+                "message": "No live search acceptance report found. Run clawos/scripts/search_live_acceptance.py first.",
+                "report_path": str(preferred),
+            })
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["found"] = True
+        data["ok"] = int(data.get("failed_count", 1) or 0) == 0
+        data["report_path"] = str(path)
+        return JSONResponse(data)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read live search report: {type(exc).__name__}") from exc
+
+
 @app.get("/api/runtime/schema")
 async def api_runtime_schema():
     workflow = get_workflow_engine().start("schema-preview", "runtime schema preview").to_dict()

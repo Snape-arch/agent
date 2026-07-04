@@ -18,6 +18,7 @@ let lastEnterpriseKnowledgeIds = [];
 let lastSelfReviewCommittee = null;
 let lastCommitteeKnowledgeIds = [];
 let lastComplexAcceptanceReport = null;
+let lastLiveSearchReport = null;
 let editingKnowledgeId = null;
 let chatAttachments = [];
 let allSkills = [];
@@ -1015,6 +1016,72 @@ async function loadComplexAcceptanceReport() {
   } catch (err) {
     if ($("acceptanceReportStatus")) $("acceptanceReportStatus").textContent = "验收卡片读取失败：" + err.message;
     if ($("acceptanceReportResult")) $("acceptanceReportResult").textContent = "读取失败：" + err.message;
+  }
+}
+
+function renderLiveSearchReport(data) {
+  lastLiveSearchReport = data;
+  const target = $("liveSearchReportResult");
+  if (!target) return;
+  if (!data?.found) {
+    target.innerHTML = `<div class="acceptance-report-card"><b>未找到联网验收报告</b><span>${esc(data?.message || "output/search_evidence 下还没有 live_search_report.json。")}</span><code>${esc(data?.report_path || "")}</code></div>`;
+    return;
+  }
+  const providers = data.provider_health?.providers || [];
+  const providerRows = providers.map(item => [
+    item.provider || "",
+    { html: statusBadge(item.status || "unknown") },
+    `${Math.round(Number(item.success_rate || 0) * 100)}%`,
+    formatMs(item.latency_p50_ms),
+    formatMs(item.latency_p95_ms),
+    item.last_error_type || "-"
+  ]);
+  const scenarioRows = Object.entries(data.by_scenario || {}).map(([name, item]) => [
+    name,
+    `${item.passed_count || 0}/${item.case_count || 0}`,
+    `${Math.round(Number(item.pass_rate || 0) * 100)}%`,
+    `${Math.round(Number(item.citation_hit_rate || 0) * 100)}%`,
+    formatMs(item.latency_p50_ms)
+  ]);
+  const failedRows = (data.cases || []).filter(item => !item.pass).slice(0, 8).map(item => [
+    item.scenario || "",
+    item.name || "",
+    item.provider || "-",
+    item.failure_reason || "unknown",
+    item.top_domain || "-"
+  ]);
+  const metricRows = [
+    ["Provider success", `${Math.round(Number(data.provider_success_rate || 0) * 100)}%`],
+    ["Pass rate", `${Math.round(Number(data.pass_rate || 0) * 100)}%`],
+    ["Citation hit", `${Math.round(Number(data.citation_hit_rate || 0) * 100)}%`],
+    ["Latency P50", formatMs(data.latency_p50_ms)],
+    ["Latency P95", formatMs(data.latency_p95_ms)],
+    ["Cases", data.case_count || 0]
+  ];
+  target.innerHTML =
+    `<div class="acceptance-report-card">
+      <div><b>${esc(data.name || "search-live-acceptance")}</b><span>${statusBadge(data.ok ? "pass" : "fail")} ${esc(data.mode || "live")}</span></div>
+      <code>${esc(data.report_path || "")}</code>
+    </div>` +
+    `<div class="acceptance-metric-grid">${metricRows.map(row => `<div class="acceptance-metric"><span>${esc(row[0])}</span><b>${esc(row[1])}</b></div>`).join("")}</div>` +
+    table(["Provider", "Health", "Success", "P50", "P95", "Last error"], providerRows) +
+    table(["Scenario", "Pass", "Pass rate", "Citation", "P50"], scenarioRows) +
+    (failedRows.length ? table(["Scenario", "Case", "Provider", "Failure", "Top domain"], failedRows) : `<div class="acceptance-report-card"><b>Failure reasons</b><span>所有 live case 当前通过，暂无失败原因。</span></div>`);
+}
+
+async function loadLiveSearchReport() {
+  if ($("liveSearchReportStatus")) $("liveSearchReportStatus").textContent = "正在读取最新联网搜索 live report...";
+  try {
+    const data = await api("/api/search/live/latest");
+    renderLiveSearchReport(data);
+    if ($("liveSearchReportStatus")) {
+      $("liveSearchReportStatus").textContent = data.found
+        ? `provider ${Math.round(Number(data.provider_success_rate || 0) * 100)}% · pass ${data.passed_count || 0}/${data.case_count || 0} · citation ${Math.round(Number(data.citation_hit_rate || 0) * 100)}% · P95 ${formatMs(data.latency_p95_ms)}`
+        : data.message || "未找到联网验收报告";
+    }
+  } catch (err) {
+    if ($("liveSearchReportStatus")) $("liveSearchReportStatus").textContent = "联网报告读取失败：" + err.message;
+    if ($("liveSearchReportResult")) $("liveSearchReportResult").textContent = "读取失败：" + err.message;
   }
 }
 

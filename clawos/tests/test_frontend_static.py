@@ -530,6 +530,9 @@ class FrontendStaticTests(unittest.TestCase):
             "committeeResult",
             "acceptanceReportStatus",
             "acceptanceReportResult",
+            "liveSearchReportStatus",
+            "liveSearchReportResult",
+            "联网搜索 Live 验收",
             "多 Agent 执行编队",
             "评分门禁",
             "runEnterpriseDeliveryRoom",
@@ -582,11 +585,16 @@ class FrontendStaticTests(unittest.TestCase):
             "Blocker / Next",
             "Required rework",
             "lastComplexAcceptanceReport",
+            "lastLiveSearchReport",
             "/api/acceptance/deepseek-qwen/latest",
+            "/api/search/live/latest",
             "citation_hit_rate",
+            "provider_success_rate",
             "latency_p95_ms",
             "loadComplexAcceptanceReport",
             "renderComplexAcceptanceReport",
+            "loadLiveSearchReport",
+            "renderLiveSearchReport",
             "askEnterpriseDeliveryQuestion",
             "askSelfReviewCommitteeQuestion",
             "模拟评委视角",
@@ -596,6 +604,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".enterprise-delivery-panel", css)
         self.assertIn(".self-review-committee-panel", css)
         self.assertIn(".acceptance-report-panel", css)
+        self.assertIn(".live-search-report-panel", css)
+        self.assertIn("#liveSearchReportBlock", css)
         self.assertIn(".acceptance-report-card", css)
         self.assertIn(".acceptance-metric-grid", css)
         self.assertIn(".committee-timeline", css)
