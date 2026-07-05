@@ -3117,10 +3117,78 @@
   justify-self:start;
   margin-top:auto;
 }
-.aether-console #view-knowledge .knowledge-admin-toggle{
+.aether-console #view-knowledge .knowledge-admin-entry{
   align-self:stretch;
-  min-width:96px;
+  min-width:124px;
+  display:grid;
+  gap:8px;
+  align-content:center;
+  justify-items:start;
+  padding:16px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(10,12,14,.42);
+  box-shadow:inset 1px 1px 0 rgba(255,255,255,.18);
+}
+.aether-console #view-knowledge .knowledge-admin-entry span{
+  color:rgba(255,255,255,.62);
+  font:800 10px var(--mono);
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+.aether-console #view-knowledge .knowledge-admin-entry b{
+  font-size:16px;
+}
+.aether-console #view-knowledge .knowledge-admin-toggle{
+  width:100%;
+  min-height:38px;
   writing-mode:horizontal-tb;
+}
+.aether-console #view-knowledge .knowledge-frontstage-metrics{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin:0 0 14px;
+}
+.aether-console #view-knowledge .knowledge-frontstage-metrics div{
+  min-height:70px;
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.075);
+  display:grid;
+  align-content:center;
+  gap:6px;
+}
+.aether-console #view-knowledge .knowledge-frontstage-metrics span,
+.aether-console #view-knowledge .knowledge-zone-label span{
+  color:rgba(255,255,255,.58);
+  font:800 10px var(--mono);
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+.aether-console #view-knowledge .knowledge-frontstage-metrics b{
+  color:#fff;
+  font-size:18px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.aether-console #view-knowledge .knowledge-zone-label{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 10px;
+  padding:0 2px;
+}
+.aether-console #view-knowledge .knowledge-zone-label b{
+  color:rgba(255,255,255,.72);
+  font-size:12px;
+}
+.aether-console #view-knowledge .knowledge-backstage-label{
+  display:none;
+  margin-top:4px;
 }
 .aether-console #view-knowledge .knowledge-workspace[data-mode="research"] .knowledge-mode-card{background:linear-gradient(145deg,rgba(37,99,235,.22),rgba(255,255,255,.04)),rgba(10,12,14,.5)}
 .aether-console #view-knowledge .knowledge-workspace[data-mode="learning"] .knowledge-mode-card{background:linear-gradient(145deg,rgba(22,163,74,.22),rgba(255,255,255,.04)),rgba(10,12,14,.5)}
@@ -3137,6 +3205,7 @@
 .aether-console #view-knowledge .enterprise-delivery-panel,
 .aether-console #view-knowledge .acceptance-report-panel,
 .aether-console #view-knowledge .live-search-report-panel,
+.aether-console #view-knowledge .knowledge-backstage-label,
 .aether-console #view-knowledge #reportResultBlock,
 .aether-console #view-knowledge #enterpriseDeliveryResultBlock,
 .aether-console #view-knowledge #committeeResultBlock,
@@ -3152,6 +3221,7 @@
 .aether-console #view-knowledge .knowledge-workspace.show-knowledge-admin .enterprise-delivery-panel,
 .aether-console #view-knowledge .knowledge-workspace.show-knowledge-admin .acceptance-report-panel,
 .aether-console #view-knowledge .knowledge-workspace.show-knowledge-admin .live-search-report-panel,
+.aether-console #view-knowledge .knowledge-workspace.show-knowledge-admin .knowledge-backstage-label,
 .aether-console #view-knowledge .knowledge-workspace.show-knowledge-admin #reportResultBlock,
 .aether-console #view-knowledge .knowledge-workspace.show-knowledge-admin #enterpriseDeliveryResultBlock,
 .aether-console #view-knowledge .knowledge-workspace.show-knowledge-admin #committeeResultBlock,

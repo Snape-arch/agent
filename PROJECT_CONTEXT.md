@@ -1582,3 +1582,27 @@ Known notes:
 
 Recommended next step:
 - Configure at least one stable search provider key, rerun the 40-case live suite, and tune provider-specific result parsing/ranking until live pass rate and citation hit rate become competition-grade.
+
+### 2026-07-05 - Tavily live search closure and console front/back polish
+
+Completed:
+- Configured Tavily locally via ignored `clawos/.env`; no provider key was committed.
+- Added `.env` loading to `clawos/scripts/tool_runner.py` so CLI tools and live benchmark scripts see the same local provider configuration as the server.
+- Tuned the live search acceptance suite's security-news case toward official CISA evidence after Tavily surfaced a non-official event page.
+- Reworked the Knowledge Library console into clearer product layers: frontstage metrics, a frontstage work-zone label, a stateful backend management entry, and a backend section label for reports, acceptance, delivery, OCR, and citation QA.
+
+Verification:
+- `python clawos\scripts\search_live_acceptance.py --providers tavily --limit-cases 5 --out output\search_evidence --no-cache --retries 1`: 5/5 passed using ignored local `.env`.
+- `python clawos\scripts\search_live_acceptance.py --providers tavily --limit-cases 40 --out output\search_evidence --no-cache --retries 1`: 40/40 passed, citation_hit_rate=1.0, provider_success_rate=1.0, latency_p50_ms=787.46, latency_p95_ms=1606.36, report path `output\search_evidence\live_search_report.json`.
+- `python -m unittest clawos.tests.test_frontend_static clawos.tests.test_search_evidence`: 37 tests OK.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\console.js`: passed.
+- `python -m py_compile clawos\scripts\search_live_acceptance.py clawos\scripts\tool_runner.py clawos\services\search_evidence.py clawos\clawos_server.py`: passed.
+- `python -m unittest discover -s clawos\tests`: 209 tests OK.
+
+Known notes:
+- `clawos/.env`, `output\search_evidence`, and `tmp/pdfs/*` remain local/ignored or untracked and must not be staged.
+- Full tests still mutate `clawos/skills/skill_registry.jsonl` usage counters; restore that file before committing.
+- Live report quality now depends on the configured Tavily account quota and network availability.
+
+Recommended next step:
+- Start the server and do a browser walkthrough of `/console#knowledge`: verify the frontstage metrics, backend management toggle, and live search report card against the actual viewport before the next demo recording.

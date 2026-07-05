@@ -539,11 +539,32 @@ function renderKnowledgeWorkspaceShell() {
   if ($("knowledgeModeActions")) {
     $("knowledgeModeActions").innerHTML = config.actions.map(([label, action, kind]) => `<button class="${kind}" onclick="${action}">${esc(label)}</button>`).join("");
   }
+  updateKnowledgeFrontstageStats();
 }
 
 function toggleKnowledgeAdminTools() {
   const workspace = document.querySelector("#view-knowledge .knowledge-workspace");
-  if (workspace) workspace.classList.toggle("show-knowledge-admin");
+  const expanded = workspace ? workspace.classList.toggle("show-knowledge-admin") : false;
+  if ($("knowledgeAdminState")) $("knowledgeAdminState").textContent = expanded ? "Open" : "Closed";
+  if ($("knowledgeBackendState")) $("knowledgeBackendState").textContent = expanded ? "Open" : "Closed";
+  if ($("knowledgeAdminToggle")) $("knowledgeAdminToggle").textContent = expanded ? "Hide admin" : "Open admin";
+}
+
+function updateKnowledgeFrontstageStats() {
+  const mode = knowledgeCategory || "all";
+  const config = KNOWLEDGE_MODES[mode] || KNOWLEDGE_MODES.all;
+  const items = knowledgeItems || [];
+  if ($("knowledgeActiveLibrary")) $("knowledgeActiveLibrary").textContent = config.title || "All knowledge";
+  if ($("knowledgeNodeCount")) $("knowledgeNodeCount").textContent = String(items.length || 0);
+  if ($("knowledgeRecentSource")) {
+    const source = items.find(item => item.source)?.source || items[0]?.title || "No import";
+    $("knowledgeRecentSource").textContent = String(source).slice(0, 24);
+  }
+  const workspace = document.querySelector("#view-knowledge .knowledge-workspace");
+  const expanded = !!workspace?.classList.contains("show-knowledge-admin");
+  if ($("knowledgeAdminState")) $("knowledgeAdminState").textContent = expanded ? "Open" : "Closed";
+  if ($("knowledgeBackendState")) $("knowledgeBackendState").textContent = expanded ? "Open" : "Closed";
+  if ($("knowledgeAdminToggle")) $("knowledgeAdminToggle").textContent = expanded ? "Hide admin" : "Open admin";
 }
 
 function renderKnowledgeSessionSelect() {
@@ -569,6 +590,7 @@ async function loadKnowledge() {
     const query = knowledgeCategory ? "?category=" + encodeURIComponent(knowledgeCategory) : "";
     const data = await api("/api/knowledge" + query);
     knowledgeItems = data.items || [];
+    updateKnowledgeFrontstageStats();
     target.innerHTML = table(["标题", "库", "来源", "标签", "访问", "操作"], knowledgeItems.map(item => [
       item.title,
       knowledgeCategoryLabel(item.category),

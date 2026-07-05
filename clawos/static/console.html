@@ -184,8 +184,19 @@
             <span id="knowledgeGraphSummary">等待加载真实节点和语义关系。</span>
             <button class="secondary" type="button" onclick="loadKnowledgeGraph()">刷新图谱</button>
           </section>
-          <button class="secondary knowledge-admin-toggle" type="button" onclick="toggleKnowledgeAdminTools()">后台知识工具</button>
+          <section class="knowledge-admin-entry">
+            <span>后台管理</span>
+            <b id="knowledgeAdminState">已收起</b>
+            <button class="secondary knowledge-admin-toggle" id="knowledgeAdminToggle" type="button" onclick="toggleKnowledgeAdminTools()">打开后台</button>
+          </section>
         </div>
+        <div class="knowledge-frontstage-metrics" id="knowledgeFrontstageMetrics">
+          <div><span>当前库</span><b id="knowledgeActiveLibrary">全部知识</b></div>
+          <div><span>节点</span><b id="knowledgeNodeCount">0</b></div>
+          <div><span>最近来源</span><b id="knowledgeRecentSource">待导入</b></div>
+          <div><span>后台</span><b id="knowledgeBackendState">收起</b></div>
+        </div>
+        <div class="knowledge-zone-label frontstage-zone-label"><span>前台工作区</span><b>上传、检索、图谱和知识条目</b></div>
         <div class="knowledge-toolbar">
           <label class="import-drop" for="knowledgeFilePicker">
             <input id="knowledgeFilePicker" type="file" multiple hidden onchange="handleKnowledgeFiles(event)">
@@ -197,6 +208,7 @@
             <button class="secondary" onclick="draftKnowledgeFromSelectedSession()">生成文档草稿</button>
           </div>
         </div>
+        <div class="knowledge-zone-label knowledge-backstage-label"><span>后台管理</span><b>报告、验收、交付、OCR、引用问答</b></div>
         <div class="obsidian-panel">
           <div><b>笔记库检查与导出</b><span id="obsidianStatus">检查 frontmatter、标签、双链、反链和图谱关系</span></div>
           <label>导出目录<input id="obsidianExportDir" placeholder="默认 output/notes/当前库"></label>

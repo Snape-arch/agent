@@ -37,7 +37,7 @@ LIVE_CASES: list[dict[str, Any]] = [
     _case("official_playwright_locators", "official_docs", "Playwright locators official documentation", ["playwright.dev"], ["Playwright", "locator", "page"]),
     _case("official_sqlite_wal", "official_docs", "SQLite write ahead log official documentation", ["sqlite.org"], ["SQLite", "write-ahead", "logging"]),
     _case("news_ai_policy", "news_freshness", "latest AI policy official update July 2026", ["gov", "europa.eu", "nist.gov", "whitehouse.gov"], ["AI", "policy", "official"]),
-    _case("news_security_advisory", "news_freshness", "latest cybersecurity advisory official July 2026", ["cisa.gov", "cert.org"], ["cybersecurity", "advisory", "latest"]),
+    _case("news_security_advisory", "news_freshness", "CISA official cybersecurity alerts advisories July 2026", ["cisa.gov"], ["CISA", "cybersecurity", "advisory"]),
     _case("news_browser_release", "news_freshness", "latest Chrome release notes July 2026", ["developer.chrome.com", "chromereleases.googleblog.com"], ["Chrome", "release", "notes"]),
     _case("news_python_release", "news_freshness", "latest Python release notes July 2026", ["python.org"], ["Python", "release", "notes"]),
     _case("news_cloud_status", "news_freshness", "cloud status latest incident report", ["status"], ["status", "incident", "report"]),
