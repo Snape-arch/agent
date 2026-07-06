@@ -14,35 +14,42 @@ class FrontendStaticTests(unittest.TestCase):
     def test_frontend_is_split_into_layered_pages(self):
         home = self.read_page("index.html")
         product = self.read_page("product.html")
+        academy = self.read_page("academy.html")
         console = self.read_page("console.html")
 
         self.assertIn('href="/product"', home)
+        self.assertIn('href="/academy"', home)
         self.assertIn("magazine-backdrop", home)
         self.assertIn('href="/console"', product)
         self.assertIn("Evidence Grid", product)
         self.assertIn("Runtime Map", product)
+        self.assertIn("ClawOS AI Academy", academy)
+        self.assertIn("academy.js", academy)
         self.assertIn('class="console-page aether-console"', console)
 
     def test_product_shell_unifies_navigation_tokens_and_console_links(self):
         home = self.read_page("index.html")
         product = self.read_page("product.html")
+        academy = self.read_page("academy.html")
         console = self.read_page("console.html")
         site_css = self.read_page("assets/site.css")
         console_css = self.read_page("assets/console.css")
 
         self.assertIn("claw-layer-nav", home)
         self.assertIn("Personal Agent OS", home)
+        self.assertIn('href="/academy"', home)
         self.assertIn(">首页</a>", home)
         self.assertIn(">产品</a>", home)
         self.assertIn(">控制台</a>", home)
         home_nav = home.split('<div class="claw-home-links">', 1)[1].split("</div>", 1)[0]
-        self.assertEqual(home_nav.count("<a "), 3)
+        self.assertEqual(home_nav.count("<a "), 4)
         self.assertNotIn('href="#technology"', home_nav)
         self.assertNotIn('href="#developers"', home_nav)
 
         self.assertIn("claw-layer-nav", product)
         self.assertIn("Personal Agent OS", product)
         self.assertIn("Product Map", product)
+        self.assertIn("AI Academy", product)
         self.assertIn("Console", product)
 
         self.assertNotIn("console-layer-strip", console)
@@ -52,6 +59,7 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("Console", console)
         self.assertIn('href="/"', console)
         self.assertIn('href="/product"', console)
+        self.assertIn('href="/academy"', console)
         self.assertIn("首页", console)
         self.assertIn("产品页", console)
         for token in (
@@ -61,6 +69,9 @@ class FrontendStaticTests(unittest.TestCase):
             ".claw-layer-nav",
             ".capability-index-grid",
             ".capability-link-card",
+            ".academy-page",
+            ".academy-card-index",
+            ".academy-layer-graph",
         ):
             self.assertIn(token, site_css)
         self.assertIn(".aether-console .console-product-nav", console_css)
@@ -79,6 +90,14 @@ class FrontendStaticTests(unittest.TestCase):
         for href, label in expected_links.items():
             self.assertIn(f'href="{href}"', product)
             self.assertIn(label, product)
+        self.assertIn('href="/academy"', product)
+        self.assertIn("AI Academy", academy)
+        self.assertIn('href="/academy/path"', academy)
+        self.assertIn('href="/academy/paper"', academy)
+        self.assertIn('href="/academy/code"', academy)
+        self.assertIn('href="/academy/notes"', academy)
+        self.assertIn('href="/academy/ingest"', academy)
+        self.assertIn('href="/academy/quiz"', academy)
         self.assertNotIn('class="tab-bar"', product)
 
         self.assertIn("product-console-visual", product)
@@ -88,6 +107,82 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".product-page .visual-glyph", site_css)
         hero_section = product.split('<section class="product-hero">', 1)[1].split("</section>", 1)[0]
         self.assertNotIn("217661e1279b044bf39afd172106ea06.jpg", hero_section)
+
+    def test_ai_academy_exposes_learning_workflows(self):
+        academy = self.read_page("academy.html")
+        path = self.read_page("academy-path.html")
+        paper = self.read_page("academy-paper.html")
+        code = self.read_page("academy-code.html")
+        notes = self.read_page("academy-notes.html")
+        ingest = self.read_page("academy-ingest.html")
+        quiz = self.read_page("academy-quiz.html")
+        academy_js = self.read_page("assets/academy.js")
+        site_css = self.read_page("assets/site.css")
+        server = (REPO_ROOT / "clawos" / "clawos_server.py").read_text(encoding="utf-8")
+
+        for token in (
+            "ClawOS AI Academy",
+            "academy-module-card",
+            "academyLayerStrip",
+            "/academy/path",
+            "/academy/paper",
+            "/academy/code",
+            "/academy/notes",
+            "/academy/ingest",
+            "/academy/quiz",
+        ):
+            self.assertIn(token, academy)
+        self.assertIn("academyLayerGraph", path)
+        self.assertIn("academyLayerDetail", path)
+        self.assertIn("paperDeepReadOutput", paper)
+        self.assertIn("academyPaperFile", paper)
+        self.assertIn("academyCodeBlock", code)
+        self.assertIn("academyNoteOutput", notes)
+        self.assertIn("academyIngestStatus", ingest)
+        self.assertIn("academyQuizGrid", quiz)
+        for token in (
+            "AI_LAYERS",
+            "基础支撑层",
+            "传统 AI / 机器学习层 ML",
+            "深度学习层 DL",
+            "计算机视觉层 CV",
+            "NLP 与 LLM 层",
+            "VLM / 多模态层",
+            "生成式 AI 层",
+            "AI Agent 层",
+            "AI Coding / 软件工程智能体层",
+            "AI Infra / MLOps / LLMOps 层",
+            "Evaluation / Safety / Governance 层",
+            "强化学习层 RL",
+            "AI 应用层",
+            "前沿拓展层",
+            "academyRenderLayerGraph",
+            "academyGeneratePaperRead",
+            "academyGenerateNote",
+            "academyQueueKnowledge",
+            "academyGenerateQuiz",
+            "academyAnswerQuiz",
+            "clawos_academy_completed",
+        ):
+            self.assertIn(token, academy_js)
+        for token in (
+            ".academy-page",
+            ".academy-hero",
+            ".academy-visual",
+            ".academy-card-index",
+            ".academy-layer-node",
+            ".academy-layer-detail",
+            ".paper-output-card",
+            ".quiz-grid article.answered",
+        ):
+            self.assertIn(token, site_css)
+        self.assertIn('@app.get("/academy")', server)
+        self.assertIn('@app.get("/academy/path")', server)
+        self.assertIn('@app.get("/academy/paper")', server)
+        self.assertIn('@app.get("/academy/code")', server)
+        self.assertIn('@app.get("/academy/notes")', server)
+        self.assertIn('@app.get("/academy/ingest")', server)
+        self.assertIn('@app.get("/academy/quiz")', server)
 
     def test_console_prevents_vertical_compressed_table_text(self):
         html = self.read_page("console.html")

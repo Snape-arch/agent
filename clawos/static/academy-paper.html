@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClawOS AI Academy - 论文精读</title>
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body class="academy-page" data-academy-page="paper">
+  <nav class="site-nav light claw-layer-nav" aria-label="AI Academy navigation">
+    <a class="brand" href="/academy"><span class="mark">C</span><span><b>AI Academy</b><small>Paper Lab</small></span></a>
+    <div class="nav-links"><a href="/academy">Academy</a><a href="/academy/path">Path</a><a class="active" href="/academy/paper">Paper</a><a href="/console">Console</a></div>
+    <a class="pill solid dark" href="/console#knowledge">Open Knowledge</a>
+  </nav>
+  <main>
+    <section class="academy-lab" id="paper-lab">
+      <div class="academy-panel-head">
+        <span>Paper Deep Reading</span>
+        <h2>打开论文，生成 AI 导读和报告框架。</h2>
+        <p>基于之前的报告生成能力继续提升：从概念、定义、历史工作来源、出发点、方法原理、实验、消融、局限、复现实验和答辩问题全面覆盖。</p>
+      </div>
+      <div class="paper-lab-grid">
+        <div class="paper-input-card">
+          <label>上传论文 PDF / 文本<input id="academyPaperFile" type="file" accept=".pdf,.txt,.md"></label>
+          <label>论文标题<input id="paperTitle" value="Retrieval-Augmented Generation for Knowledge-Intensive NLP"></label>
+          <label>摘要或论文片段<textarea id="paperAbstract">RAG combines parametric sequence-to-sequence models with non-parametric memory retrieved from a dense vector index, improving factual grounding and knowledge-intensive tasks.</textarea></label>
+          <div class="academy-action-row"><button class="pill solid dark" type="button" onclick="academyGeneratePaperRead()">生成 AI 导读</button><button class="pill" type="button" onclick="academySendPaperPrompt()">带到控制台报告</button></div>
+        </div>
+        <div class="paper-output-card" id="paperDeepReadOutput"></div>
+      </div>
+    </section>
+  </main>
+  <script src="/assets/academy.js"></script>
+</body>
+</html>

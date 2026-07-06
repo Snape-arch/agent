@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ClawOS AI Academy - 测试题</title><link rel="stylesheet" href="/assets/site.css"></head>
+<body class="academy-page" data-academy-page="quiz">
+  <nav class="site-nav light claw-layer-nav"><a class="brand" href="/academy"><span class="mark">C</span><span><b>AI Academy</b><small>Assessment</small></span></a><div class="nav-links"><a href="/academy">Academy</a><a href="/academy/path">Path</a><a href="/academy/quiz" class="active">Quiz</a><a href="/console">Console</a></div><a class="pill solid dark" href="/academy/path">View Map</a></nav>
+  <main><section class="academy-quiz" id="quiz-builder"><div class="academy-panel-head"><span>Assessment Builder</span><h2>生成测试题，并反向点亮图谱。</h2><p>按知识图谱节点生成题目。答对点亮节点，答错可回到路线图补知识。</p></div><div class="quiz-grid" id="academyQuizGrid"></div><div class="academy-action-row"><button class="pill solid dark" type="button" onclick="academyGenerateQuiz()">生成 5 题测验</button><button class="pill" type="button" onclick="academyResetProgress()">重置图谱</button></div></section></main>
+  <script src="/assets/academy.js"></script>
+</body></html>

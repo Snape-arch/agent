@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClawOS AI Academy - 学习路线</title>
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body class="academy-page" data-academy-page="path">
+  <nav class="site-nav light claw-layer-nav" aria-label="AI Academy navigation">
+    <a class="brand" href="/academy"><span class="mark">C</span><span><b>AI Academy</b><small>Layered Map</small></span></a>
+    <div class="nav-links"><a href="/academy">Academy</a><a class="active" href="/academy/path">Path</a><a href="/academy/paper">Paper</a><a href="/console">Console</a></div>
+    <a class="pill solid dark" href="/academy/quiz">Generate Quiz</a>
+  </nav>
+  <main>
+    <section class="academy-lab route-page">
+      <div class="academy-panel-head">
+        <span>Dynamic Layered Graph</span>
+        <h2>AI 学习路线动态图</h2>
+        <p>主线从基础支撑层一路走到 Evaluation / Safety / Governance，并保留 RL 支线。点击任一层会展开更细的概念、历史来源、代表论文、实验任务和掌握标准。</p>
+      </div>
+      <div class="academy-layer-graph" id="academyLayerGraph"></div>
+      <div class="academy-layer-detail" id="academyLayerDetail"></div>
+    </section>
+  </main>
+  <script src="/assets/academy.js"></script>
+</body>
+</html>

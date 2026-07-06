@@ -1606,3 +1606,50 @@ Known notes:
 
 Recommended next step:
 - Start the server and do a browser walkthrough of `/console#knowledge`: verify the frontstage metrics, backend management toggle, and live search report card against the actual viewport before the next demo recording.
+
+### 2026-07-06 - ClawOS AI Academy first pass
+
+Completed:
+- Added a standalone `ClawOS AI Academy` page at `/academy`, visually aligned with the product-page shell but independent from the console UI.
+- Wired Academy navigation from home, product, and console product nav. Product capability index now includes an AI Academy card.
+- Added interactive Academy workflows: AI learning path, point-light knowledge graph, paper deep-reading workbench, code experiment tabs, guided note generation, knowledge ingest queue, and quiz generation that updates graph progress.
+- Added `/academy` FastAPI route and no-cache handling for `/assets/academy.js`.
+
+Verification:
+- `python -m unittest clawos.tests.test_frontend_static`: 34 tests OK.
+- `python -m unittest discover -s clawos\tests`: 210 tests OK.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\academy.js`: passed.
+- `python -m py_compile clawos\clawos_server.py`: passed.
+- Local HTTP smoke after starting `clawos_server.py`: `/academy` returned 200 and `/assets/academy.js` returned 200.
+
+Known notes:
+- Playwright package is present, but the local Chromium executable is missing, so screenshot-level browser verification could not run without installing browser binaries.
+- `clawos/.env`, `output\search_evidence`, and `tmp/pdfs/*` remain local/ignored or untracked and must not be staged.
+- Full tests still mutate `clawos/skills/skill_registry.jsonl` usage counters; restore that file before committing.
+
+Recommended next step:
+- Do a visual browser pass after installing/available Playwright browser binaries, then connect Academy actions to real knowledge ingestion/report APIs instead of local-only UI state.
+
+### 2026-07-07 - AI Academy multi-page learning system
+
+Completed:
+- Reworked `/academy` into an Academy landing page with module cards and explanations only, instead of crowding every workflow into one page.
+- Added independent Academy pages: `/academy/path`, `/academy/paper`, `/academy/code`, `/academy/notes`, `/academy/ingest`, and `/academy/quiz`.
+- Rebuilt the learning route as a dynamic layered graph covering Foundation -> ML -> DL -> CV -> NLP/LLM -> VLM/Multimodal -> GenAI -> AI Agent -> AI Coding -> AI Infra/MLOps/LLMOps -> Evaluation/Safety/Governance, with RL as an optional branch, then AI Application and Frontier layers.
+- Each layer expands into detailed concepts, representative papers/resources, experiments, and mastery criteria.
+- Paper deep reading now lives on its own page with PDF/text input affordance plus AI-guided report sections: concepts, definitions, historical sources, motivation, methods, experiments, ablations, limitations, reproducibility, and report handoff.
+
+Verification:
+- `python -m unittest clawos.tests.test_frontend_static`: 34 tests OK.
+- `python -m unittest discover -s clawos\tests`: 210 tests OK.
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\academy.js`: passed.
+- `python -m py_compile clawos\clawos_server.py`: passed.
+- Local HTTP smoke after restarting `clawos_server.py`: `/academy`, `/academy/path`, `/academy/paper`, `/academy/code`, `/academy/notes`, `/academy/ingest`, `/academy/quiz`, and `/assets/academy.js` all returned 200.
+
+Known notes:
+- Academy workflows are still frontend/local-state interactions; next pass should connect paper upload/report generation and knowledge ingest to existing ClawOS APIs.
+- `clawos/.env`, `output\search_evidence`, and `tmp/pdfs/*` remain local/ignored or untracked and must not be staged.
+- Full tests still mutate `clawos/skills/skill_registry.jsonl` usage counters; restore that file before committing.
+
+Recommended next step:
+- Wire `/academy/paper` to real document upload/report generation and `/academy/ingest` to `/api/knowledge`, then add a real browser visual pass when Playwright browser binaries are available.

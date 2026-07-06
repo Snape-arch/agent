@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ClawOS AI Academy - 知识入库</title><link rel="stylesheet" href="/assets/site.css"></head>
+<body class="academy-page" data-academy-page="ingest">
+  <nav class="site-nav light claw-layer-nav"><a class="brand" href="/academy"><span class="mark">C</span><span><b>AI Academy</b><small>Knowledge Ingest</small></span></a><div class="nav-links"><a href="/academy">Academy</a><a href="/academy/notes">Notes</a><a href="/academy/ingest" class="active">Ingest</a><a href="/console#knowledge">Knowledge</a></div><a class="pill solid dark" href="/console#knowledge">Open Console Knowledge</a></nav>
+  <main><section class="academy-ingest-panel standalone"><div class="academy-panel-head"><span>Knowledge Ingest</span><h2>把学习产物沉淀成知识库节点。</h2><p>选择产物类型加入入库队列。当前页面先做前端闭环，后续可直接接入 ClawOS 知识库 API 保存真实 Evidence/Artifact。</p></div><div class="academy-ingest-list"><button type="button" onclick="academyQueueKnowledge('paper')"><b>论文精读</b><span>保存概念、证据和实验设计</span></button><button type="button" onclick="academyQueueKnowledge('note')"><b>学习笔记</b><span>沉淀为知识库节点</span></button><button type="button" onclick="academyQueueKnowledge('experiment')"><b>代码实验</b><span>保存实验输入、输出和结论</span></button><button type="button" onclick="academyQueueKnowledge('quiz')"><b>测试错题</b><span>反向点亮薄弱图谱</span></button></div><div class="academy-output" id="academyIngestStatus">尚未加入入库队列。</div></section></main>
+  <script src="/assets/academy.js"></script>
+</body></html>

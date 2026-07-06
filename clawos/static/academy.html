@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClawOS AI Academy - AI 学习与掌握平台</title>
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body class="academy-page" data-academy-page="home">
+  <nav class="site-nav light claw-layer-nav" aria-label="ClawOS product navigation">
+    <a class="brand" href="/"><span class="mark">C</span><span><b>ClawOS</b><small>AI Academy</small></span></a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/product">Product Map</a>
+      <a class="active" href="/academy">AI Academy</a>
+      <a href="/console">Console</a>
+    </div>
+    <a class="pill solid dark" href="/academy/path">Open Learning Map</a>
+  </nav>
+
+  <main>
+    <section class="academy-hero compact">
+      <div class="academy-hero-copy">
+        <div class="eyebrow dark"><i></i> ClawOS AI Academy</div>
+        <h1>把 AI 学习变成路径、证据和可点亮的知识图谱。</h1>
+        <p>这里不再只是工作台，而是面向 AI 基础、前沿和工程掌握的平台。每个板块都有独立页面，首页只保留卡片、说明和学习路线总览。</p>
+      </div>
+      <div class="academy-visual compact" aria-label="ClawOS AI Academy learning graph preview">
+        <img src="/assets/app1/robotic-hand.png" alt="">
+        <div class="academy-orbit node-a">ML</div>
+        <div class="academy-orbit node-b">LLM</div>
+        <div class="academy-orbit node-c">Agent</div>
+        <div class="academy-orbit node-d">Eval</div>
+      </div>
+    </section>
+
+    <section class="academy-card-index" aria-label="AI Academy modules">
+      <a class="academy-module-card primary" href="/academy/path">
+        <i>01</i><b>AI 学习路线</b><span>动态分层图：基础支撑层、ML、DL、CV、NLP/LLM、多模态、生成式 AI、Agent、AI Coding、Infra、Eval/Safety/Governance、应用和前沿。</span><em>Open /academy/path</em>
+      </a>
+      <a class="academy-module-card" href="/academy/paper">
+        <i>02</i><b>论文精读</b><span>打开论文或粘贴摘要，生成概念、定义、历史工作来源、出发点、方法、实验、局限和报告框架。</span><em>Open /academy/paper</em>
+      </a>
+      <a class="academy-module-card" href="/academy/code">
+        <i>03</i><b>代码实验</b><span>围绕 embedding、rerank、Agent 工具调用、评测脚本和可复现实验构建 AI 工程练习。</span><em>Open /academy/code</em>
+      </a>
+      <a class="academy-module-card" href="/academy/notes">
+        <i>04</i><b>导写笔记</b><span>把课堂、论文、实验和项目复盘整理成 Cornell note、概念卡和自测问题。</span><em>Open /academy/notes</em>
+      </a>
+      <a class="academy-module-card" href="/academy/ingest">
+        <i>05</i><b>知识入库</b><span>把精读、笔记、实验、错题沉淀到 ClawOS 知识库，并形成可检索图谱节点。</span><em>Open /academy/ingest</em>
+      </a>
+      <a class="academy-module-card" href="/academy/quiz">
+        <i>06</i><b>生成测试题</b><span>按知识图谱节点生成测试题，答对后点亮节点，答错后反向标记薄弱点。</span><em>Open /academy/quiz</em>
+      </a>
+    </section>
+
+    <section class="academy-route-preview">
+      <div class="academy-panel-head">
+        <span>Layered AI Map</span>
+        <h2>一级路线总览</h2>
+        <p>点击节点进入完整动态分层图，逐层展开到概念、代表方法、关键论文、实验任务和验收标准。</p>
+      </div>
+      <div class="academy-layer-strip" id="academyLayerStrip"></div>
+    </section>
+  </main>
+  <script src="/assets/academy.js"></script>
+</body>
+</html>

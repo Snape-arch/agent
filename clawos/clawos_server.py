@@ -1257,9 +1257,17 @@ app = FastAPI(title="ClawOS Agent", version="1.0.0", lifespan=lifespan)
 NO_CACHE_STATIC_PATHS = {
     "/",
     "/product",
+    "/academy",
+    "/academy/path",
+    "/academy/paper",
+    "/academy/code",
+    "/academy/notes",
+    "/academy/ingest",
+    "/academy/quiz",
     "/console",
     "/assets/site.css",
     "/assets/site.js",
+    "/assets/academy.js",
     "/assets/console.js",
 }
 
@@ -1282,6 +1290,34 @@ async def root():
 @app.get("/product")
 async def product_page():
     return FileResponse(STATIC_DIR / "product.html")
+
+@app.get("/academy")
+async def academy_page():
+    return FileResponse(STATIC_DIR / "academy.html")
+
+@app.get("/academy/path")
+async def academy_path_page():
+    return FileResponse(STATIC_DIR / "academy-path.html")
+
+@app.get("/academy/paper")
+async def academy_paper_page():
+    return FileResponse(STATIC_DIR / "academy-paper.html")
+
+@app.get("/academy/code")
+async def academy_code_page():
+    return FileResponse(STATIC_DIR / "academy-code.html")
+
+@app.get("/academy/notes")
+async def academy_notes_page():
+    return FileResponse(STATIC_DIR / "academy-notes.html")
+
+@app.get("/academy/ingest")
+async def academy_ingest_page():
+    return FileResponse(STATIC_DIR / "academy-ingest.html")
+
+@app.get("/academy/quiz")
+async def academy_quiz_page():
+    return FileResponse(STATIC_DIR / "academy-quiz.html")
 
 @app.get("/console")
 async def console_page():
