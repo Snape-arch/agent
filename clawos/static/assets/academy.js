@@ -138,6 +138,18 @@ const academyState = {
   ingestQueue: JSON.parse(localStorage.getItem("clawos_academy_ingest") || "[]")
 };
 
+const academyPaperState = {
+  document: null,
+  chunks: [],
+  report: null,
+  citation: null,
+  savedKnowledgeId: null,
+  pdfUrl: "",
+  penEnabled: false,
+  drawing: false,
+  lastPoint: null
+};
+
 function academySave() {
   localStorage.setItem("clawos_academy_completed", JSON.stringify([...academyState.completed]));
   localStorage.setItem("clawos_academy_ingest", JSON.stringify(academyState.ingestQueue));
@@ -145,6 +157,25 @@ function academySave() {
 
 function academyEsc(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
+async function academyApi(path, options = {}) {
+  const response = await fetch(path, options);
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(`${path} ${response.status}: ${message.slice(0, 180)}`);
+  }
+  return response.json();
+}
+
+function academySetText(id, text) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = text;
+}
+
+function academyRenderHtml(id, html) {
+  const node = document.getElementById(id);
+  if (node) node.innerHTML = html;
 }
 
 function academyCompleteNode(key) {
@@ -192,9 +223,182 @@ function academyRenderProgressNodes() {
   }
 }
 
+function academyPaperSnippet() {
+  const chunkText = academyPaperState.chunks.map(chunk => chunk.text || chunk.content || "").join("\n\n").trim();
+  return chunkText || document.getElementById("paperAbstract")?.value || "";
+}
+
+function academyRenderPaperChunks() {
+  const target = document.getElementById("academyPaperText");
+  if (!target) return;
+  if (!academyPaperState.chunks.length) {
+    target.innerHTML = `<article class="paper-chunk"><b>Parsed Text</b><p>等待后端解析论文 chunk。</p></article>`;
+    return;
+  }
+  target.innerHTML = academyPaperState.chunks.slice(0, 10).map((chunk, index) => {
+    const label = chunk.citation || `doc:${academyPaperState.document?.id || "?"}#chunk=${chunk.chunk_index ?? index}`;
+    const text = chunk.text || chunk.content || chunk.preview || "";
+    return `<article class="paper-chunk"><b>${academyEsc(label)}</b><p>${academyEsc(text.slice(0, 720))}</p></article>`;
+  }).join("");
+}
+
+function academyRenderCitationEvidence(result) {
+  const answer = result?.answer || result?.summary || "暂无回答。";
+  const evidence = result?.citations || result?.evidence || result?.chunks || [];
+  academyPaperState.citation = result;
+  academyRenderHtml("academyCitationEvidence", `
+    <p>${academyEsc(answer)}</p>
+    ${evidence.length ? `<ul>${evidence.slice(0, 8).map((item, index) => {
+      const label = item.citation || item.source || item.url || `evidence-${index + 1}`;
+      const text = item.text || item.snippet || item.content || item.preview || "";
+      return `<li><b>${academyEsc(label)}</b><span>${academyEsc(text.slice(0, 260))}</span></li>`;
+    }).join("")}</ul>` : "<small>没有返回可用引用，请换一个问题或检查论文解析质量。</small>"}
+  `);
+}
+
+function academyRenderPaperReport() {
+  const report = academyPaperState.report;
+  const target = document.getElementById("academyPaperReportCard");
+  if (!target || !report) return;
+  const markdownPath = report.report?.markdown_path || report.markdown_path || "";
+  const pdfPath = report.report?.pdf_path || report.pdf_path || "";
+  const preview = report.preview || report.report?.preview || report.summary || "";
+  target.innerHTML = `
+    <b>报告产物</b>
+    <p id="academyPaperReportStatus">已生成 AI 导读报告。保存到知识库后会形成可追踪 Artifact/Evidence。</p>
+    <div class="report-paths">
+      <span>Markdown: ${academyEsc(markdownPath || "未返回")}</span>
+      <span>PDF: ${academyEsc(pdfPath || "未返回")}</span>
+    </div>
+    <p>${academyEsc(String(preview).slice(0, 520))}</p>
+  `;
+}
+
+function academyLightPaperGraph(stage = "paper") {
+  ["nlp_llm", "rag", "governance"].forEach(node => academyState.completed.add(node));
+  if (stage === "saved") academyState.completed.add("application");
+  academySave();
+  academyRenderProgressNodes();
+  const saved = academyPaperState.savedKnowledgeId ? `知识库条目 #${academyPaperState.savedKnowledgeId}` : "等待保存知识库";
+  academySetText("academyPaperGraphStatus", `已点亮 NLP/LLM、RAG、Evaluation/Safety 节点；${saved}。`);
+}
+
+async function academyUploadPaper() {
+  const fileInput = document.getElementById("academyPaperFile");
+  const file = fileInput?.files?.[0];
+  if (!file) {
+    academySetText("academyPaperStatus", "请先选择 PDF、DOCX 或文本论文。");
+    return null;
+  }
+  academySetText("academyPaperStatus", "正在上传并解析论文...");
+  if (academyPaperState.pdfUrl) URL.revokeObjectURL(academyPaperState.pdfUrl);
+  academyPaperState.pdfUrl = URL.createObjectURL(file);
+  const frame = document.getElementById("academyPdfFrame");
+  if (frame && file.type === "application/pdf") frame.src = academyPaperState.pdfUrl;
+  const form = new FormData();
+  form.append("files", file);
+  form.append("category", "research");
+  const uploaded = await academyApi("/api/documents/upload", { method: "POST", body: form });
+  const docs = uploaded.documents || uploaded.items || [];
+  academyPaperState.document = docs[0] || uploaded.document || null;
+  if (!academyPaperState.document?.id) throw new Error("上传成功但没有返回 document id");
+  const title = document.getElementById("paperTitle");
+  if (title && (!title.value || title.value.includes("Retrieval-Augmented"))) {
+    title.value = academyPaperState.document.title || academyPaperState.document.filename || file.name;
+  }
+  const chunks = await academyApi(`/api/documents/${Number(academyPaperState.document.id)}/chunks?limit=12`);
+  academyPaperState.chunks = chunks.chunks || chunks.items || [];
+  academyRenderPaperChunks();
+  academyGeneratePaperRead();
+  academyLightPaperGraph("parsed");
+  academySetText("academyPaperStatus", `解析完成：document #${academyPaperState.document.id}，chunk ${academyPaperState.chunks.length} 条。`);
+  return academyPaperState.document;
+}
+
+async function academyRunPaperWorkflow() {
+  try {
+    if (!academyPaperState.document?.id) await academyUploadPaper();
+    if (!academyPaperState.document?.id) return;
+    academySetText("academyPaperReportStatus", "正在生成 Markdown/PDF 深度导读报告...");
+    const body = {
+      library_document_id: Number(academyPaperState.document.id),
+      report_style: "academic_deep_read",
+      depth: 5,
+      question_count: 40,
+      output_dir: "output/academy",
+      formats: ["markdown", "pdf"]
+    };
+    academyPaperState.report = await academyApi("/api/workspace/research/learning-analysis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    academyRenderPaperReport();
+    await academyAskPaperCitation("method experiment limitation contribution");
+    academyLightPaperGraph("reported");
+  } catch (error) {
+    academySetText("academyPaperReportStatus", `报告生成失败：${error.message}`);
+  }
+}
+
+async function academySavePaperKnowledge() {
+  try {
+    if (!academyPaperState.report) await academyRunPaperWorkflow();
+    if (!academyPaperState.report) return;
+    academySetText("academyPaperStatus", "正在保存论文导读到知识库...");
+    const title = document.getElementById("paperTitle")?.value || academyPaperState.document?.title || "Academy paper deep read";
+    const markdownPath = academyPaperState.report.report?.markdown_path || academyPaperState.report.markdown_path || "";
+    const pdfPath = academyPaperState.report.report?.pdf_path || academyPaperState.report.pdf_path || "";
+    const citationText = JSON.stringify(academyPaperState.citation || {}, null, 2).slice(0, 3000);
+    const content = [
+      `# ${title}`,
+      "",
+      "## AI 导读报告",
+      academyPaperState.report.preview || academyPaperState.report.summary || "报告已生成。",
+      "",
+      `Markdown: ${markdownPath}`,
+      `PDF: ${pdfPath}`,
+      "",
+      "## Citation Evidence",
+      citationText
+    ].join("\n");
+    const saved = await academyApi("/api/knowledge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: `${title} - Academy Deep Read`, content, category: "research", source: "academy-paper", tags: ["academy", "paper", "deep-read", "citation-evidence"] })
+    });
+    academyPaperState.savedKnowledgeId = saved.id || saved.item?.id || saved.knowledge_id;
+    academyLightPaperGraph("saved");
+    academySetText("academyPaperStatus", `已保存到知识库：${academyPaperState.savedKnowledgeId || "完成"}。`);
+    const graph = await academyApi("/api/knowledge/graph?category=research&limit=20").catch(() => null);
+    if (graph) {
+      const nodeCount = (graph.nodes || graph.items || []).length;
+      academySetText("academyPaperGraphStatus", `知识库已更新：research graph ${nodeCount} 个节点；学习图谱已点亮论文相关能力。`);
+    }
+  } catch (error) {
+    academySetText("academyPaperStatus", `保存失败：${error.message}`);
+  }
+}
+
+async function academyAskPaperCitation(seedQuery) {
+  try {
+    if (!academyPaperState.document?.id) {
+      academySetText("academyCitationEvidence", "请先上传并解析论文。");
+      return;
+    }
+    const query = typeof seedQuery === "string" ? seedQuery : document.getElementById("academyCitationQuery")?.value || "contribution method experiment limitation";
+    academySetText("academyCitationEvidence", "正在从论文 chunks 中检索证据...");
+    const path = `/api/documents/citation-answer?q=${encodeURIComponent(query)}&category=research&document_id=${Number(academyPaperState.document.id)}&limit=6`;
+    const result = await academyApi(path);
+    academyRenderCitationEvidence(result);
+  } catch (error) {
+    academySetText("academyCitationEvidence", `证据检索失败：${error.message}`);
+  }
+}
+
 function academyGeneratePaperRead() {
   const title = document.getElementById("paperTitle")?.value || "Untitled paper";
-  const abstract = document.getElementById("paperAbstract")?.value || "";
+  const abstract = academyPaperSnippet();
   const target = document.getElementById("paperDeepReadOutput");
   if (!target) return;
   academyState.completed.add("nlp_llm");
@@ -217,6 +421,75 @@ function academySendPaperPrompt() {
   const abstract = document.getElementById("paperAbstract")?.value || "";
   const prompt = encodeURIComponent(`请按 ClawOS AI Academy 论文精读框架生成报告：${title}\n\n${abstract}`);
   location.href = `/console#knowledge?prompt=${prompt}`;
+}
+
+function academyResizeInkCanvas() {
+  const canvas = document.getElementById("academyInkCanvas");
+  const viewer = document.getElementById("academyPaperViewer");
+  if (!canvas || !viewer) return;
+  const rect = viewer.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(rect.width * ratio));
+  canvas.height = Math.max(1, Math.round(rect.height * ratio));
+  canvas.style.width = `${rect.width}px`;
+  canvas.style.height = `${rect.height}px`;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+}
+
+function academyCanvasPoint(event) {
+  const canvas = document.getElementById("academyInkCanvas");
+  const rect = canvas.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+function academyDrawInk(event) {
+  if (!academyPaperState.penEnabled || !academyPaperState.drawing) return;
+  const canvas = document.getElementById("academyInkCanvas");
+  const ctx = canvas.getContext("2d");
+  const next = academyCanvasPoint(event);
+  const prev = academyPaperState.lastPoint || next;
+  ctx.strokeStyle = document.getElementById("academyPenColor")?.value || "#2563eb";
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(prev.x, prev.y);
+  ctx.lineTo(next.x, next.y);
+  ctx.stroke();
+  academyPaperState.lastPoint = next;
+}
+
+function academySetupInk() {
+  const canvas = document.getElementById("academyInkCanvas");
+  if (!canvas) return;
+  academyResizeInkCanvas();
+  window.addEventListener("resize", academyResizeInkCanvas);
+  document.getElementById("academyPenToggle")?.addEventListener("click", event => {
+    academyPaperState.penEnabled = !academyPaperState.penEnabled;
+    canvas.classList.toggle("active", academyPaperState.penEnabled);
+    event.currentTarget.classList.toggle("solid", academyPaperState.penEnabled);
+    academySetText("academyPaperStatus", academyPaperState.penEnabled ? "画笔已开启，可以在论文预览区域直接标注。" : "画笔已关闭。");
+  });
+  canvas.addEventListener("pointerdown", event => {
+    if (!academyPaperState.penEnabled) return;
+    academyPaperState.drawing = true;
+    academyPaperState.lastPoint = academyCanvasPoint(event);
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener("pointermove", academyDrawInk);
+  canvas.addEventListener("pointerup", () => {
+    academyPaperState.drawing = false;
+    academyPaperState.lastPoint = null;
+  });
+  document.getElementById("academyClearInk")?.addEventListener("click", () => {
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+    academySetText("academyPaperStatus", "批注已清除。");
+  });
+  document.getElementById("academySaveAnnotation")?.addEventListener("click", () => {
+    const dataUrl = canvas.toDataURL("image/png");
+    localStorage.setItem("clawos_academy_paper_annotation", dataUrl);
+    academySetText("academyPaperStatus", "批注已保存到本地 annotation 缓存；后续可升级为 ArtifactStorage 持久化。");
+  });
 }
 
 function academyGenerateNote() {
@@ -281,6 +554,7 @@ function academyBoot() {
   academyRenderProgressNodes();
   academyRenderCode("embedding");
   academyGenerateQuiz();
+  academySetupInk();
   document.querySelectorAll(".code-lab-tabs button").forEach(btn => btn.addEventListener("click", () => academyRenderCode(btn.dataset.codeTopic)));
 }
 

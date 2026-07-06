@@ -1653,3 +1653,27 @@ Known notes:
 
 Recommended next step:
 - Wire `/academy/paper` to real document upload/report generation and `/academy/ingest` to `/api/knowledge`, then add a real browser visual pass when Playwright browser binaries are available.
+
+### 2026-07-07 - Academy Paper Studio real workflow wiring
+
+Completed:
+- Upgraded `/academy/paper` from a local demo page into a Paper Studio workflow with PDF/file upload, browser PDF preview, extracted chunk stream, canvas pen annotation controls, AI assistant panel, report cards, citation evidence, and graph-lighting status.
+- Wired Paper Studio frontend actions to existing ClawOS capabilities: `/api/documents/upload`, `/api/documents/{id}/chunks`, `/api/workspace/research/learning-analysis`, `/api/documents/citation-answer`, `/api/knowledge`, and `/api/knowledge/graph`.
+- Paper reports now request Markdown/PDF outputs through the research learning-analysis service, then can be saved back to the research knowledge library with citation evidence metadata.
+- Learning progress now lights NLP/LLM, RAG, Evaluation/Safety, and Application nodes as paper parsing/reporting/knowledge-save stages complete.
+- Added static regression coverage for real paper workflow wiring, citation evidence, report cards, and annotation UI.
+
+Verification:
+- `C:\Users\34712\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check clawos\static\assets\academy.js`: passed.
+- `python -m py_compile clawos\clawos_server.py`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: 34 tests OK.
+- `python -m unittest discover -s clawos\tests`: 210 tests OK.
+- Local HTTP smoke: `http://127.0.0.1:18790/academy/paper` returned 200.
+
+Known notes:
+- Canvas annotations currently persist to browser localStorage as an annotation image; next step is to persist them through ArtifactStorage as first-class annotation artifacts.
+- PDF viewing uses the browser's native iframe/object handling, not a custom PDF.js renderer yet.
+- `clawos/.env`, `output\*`, `tmp/pdfs/*`, and provider/API keys must remain uncommitted. Full tests still touch `clawos/skills/skill_registry.jsonl`; ensure no content diff is staged.
+
+Recommended next step:
+- Add a small PDF fixture smoke test through FastAPI TestClient for upload -> chunks -> report -> knowledge save, then persist pen annotations as Artifact/Evidence records.

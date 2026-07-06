@@ -3,30 +3,84 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ClawOS AI Academy - 论文精读</title>
+  <title>ClawOS AI Academy - Paper Studio</title>
   <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body class="academy-page" data-academy-page="paper">
   <nav class="site-nav light claw-layer-nav" aria-label="AI Academy navigation">
-    <a class="brand" href="/academy"><span class="mark">C</span><span><b>AI Academy</b><small>Paper Lab</small></span></a>
+    <a class="brand" href="/academy"><span class="mark">C</span><span><b>AI Academy</b><small>Paper Studio</small></span></a>
     <div class="nav-links"><a href="/academy">Academy</a><a href="/academy/path">Path</a><a class="active" href="/academy/paper">Paper</a><a href="/console">Console</a></div>
     <a class="pill solid dark" href="/console#knowledge">Open Knowledge</a>
   </nav>
   <main>
-    <section class="academy-lab" id="paper-lab">
+    <section class="academy-lab academy-paper-studio" id="paper-lab">
       <div class="academy-panel-head">
         <span>Paper Deep Reading</span>
-        <h2>打开论文，生成 AI 导读和报告框架。</h2>
-        <p>基于之前的报告生成能力继续提升：从概念、定义、历史工作来源、出发点、方法原理、实验、消融、局限、复现实验和答辩问题全面覆盖。</p>
+        <h2>打开论文，完成 AI 导读、证据链和知识入库。</h2>
+        <p>上传 PDF 或文本后，ClawOS 会调用现有文档解析、报告生成、citation evidence 和知识库能力；页面同时提供论文预览、画笔批注和 AI 助手导读工作区。</p>
       </div>
-      <div class="paper-lab-grid">
-        <div class="paper-input-card">
-          <label>上传论文 PDF / 文本<input id="academyPaperFile" type="file" accept=".pdf,.txt,.md"></label>
-          <label>论文标题<input id="paperTitle" value="Retrieval-Augmented Generation for Knowledge-Intensive NLP"></label>
-          <label>摘要或论文片段<textarea id="paperAbstract">RAG combines parametric sequence-to-sequence models with non-parametric memory retrieved from a dense vector index, improving factual grounding and knowledge-intensive tasks.</textarea></label>
-          <div class="academy-action-row"><button class="pill solid dark" type="button" onclick="academyGeneratePaperRead()">生成 AI 导读</button><button class="pill" type="button" onclick="academySendPaperPrompt()">带到控制台报告</button></div>
-        </div>
-        <div class="paper-output-card" id="paperDeepReadOutput"></div>
+
+      <div class="paper-workflow-bar">
+        <label class="paper-file-drop">论文文件
+          <input id="academyPaperFile" type="file" accept=".pdf,.txt,.md,.csv,.json,.html,.docx">
+        </label>
+        <label>论文标题<input id="paperTitle" value="Retrieval-Augmented Generation for Knowledge-Intensive NLP"></label>
+        <button class="pill solid dark" id="academyUploadPaper" type="button" onclick="academyUploadPaper()">上传并解析</button>
+        <button class="pill" id="academyRunPaperWorkflow" type="button" onclick="academyRunPaperWorkflow()">生成导读/报告</button>
+        <button class="pill" id="academySavePaperKnowledge" type="button" onclick="academySavePaperKnowledge()">保存到知识库</button>
+      </div>
+
+      <div class="academy-paper-status" id="academyPaperStatus">等待上传论文。支持 PDF 直接预览，解析后会生成 chunk、citation 和知识图谱进度。</div>
+
+      <div class="paper-reader-shell">
+        <section class="paper-reader-main">
+          <div class="paper-toolbar" aria-label="Paper annotation toolbar">
+            <button class="pill" id="academyPenToggle" type="button">画笔</button>
+            <input id="academyPenColor" type="color" value="#2563eb" aria-label="画笔颜色">
+            <button class="pill" id="academyClearInk" type="button">清除批注</button>
+            <button class="pill" id="academySaveAnnotation" type="button">保存批注</button>
+          </div>
+          <div class="paper-viewer" id="academyPaperViewer">
+            <iframe id="academyPdfFrame" class="paper-pdf-frame" title="论文 PDF 预览"></iframe>
+            <canvas id="academyInkCanvas" class="academy-ink-canvas"></canvas>
+            <div class="paper-text-stream" id="academyPaperText">
+              <article class="paper-chunk"><b>Reader</b><p>上传 PDF 后这里会显示浏览器预览；解析出的论文片段会同步显示在右侧导读区，方便引用和批注。</p></article>
+            </div>
+          </div>
+        </section>
+
+        <aside class="paper-assistant-panel" id="academyPaperAssistant">
+          <div>
+            <span>AI Reading Assistant</span>
+            <h3>论文导读工作台</h3>
+            <p>先上传论文，再生成 AI 导读和 Markdown/PDF 报告；如果需要追问，citation answer 会从当前论文 chunks 中返回证据。</p>
+          </div>
+          <label>摘要或重点片段<textarea id="paperAbstract">RAG combines parametric sequence-to-sequence models with non-parametric memory retrieved from a dense vector index, improving factual grounding and knowledge-intensive tasks.</textarea></label>
+          <div class="academy-action-row">
+            <button class="pill solid dark" type="button" onclick="academyGeneratePaperRead()">即时导读</button>
+            <button class="pill" type="button" onclick="academySendPaperPrompt()">带到控制台报告</button>
+          </div>
+          <div class="paper-output-card" id="paperDeepReadOutput"></div>
+        </aside>
+      </div>
+
+      <div class="paper-report-grid">
+        <section class="academy-report-card" id="academyPaperReportCard">
+          <b>报告产物</b>
+          <p id="academyPaperReportStatus">尚未生成。报告将输出 Markdown/PDF 路径，并作为 Artifact 保存回知识库。</p>
+        </section>
+        <section class="academy-report-card">
+          <b>Citation Evidence</b>
+          <div class="citation-query-row">
+            <input id="academyCitationQuery" value="本文方法、实验结论和局限是什么？">
+            <button class="pill" id="academyAskPaperCitation" type="button" onclick="academyAskPaperCitation()">追问证据</button>
+          </div>
+          <div class="academy-citation-list" id="academyCitationEvidence">等待解析论文后生成证据。</div>
+        </section>
+        <section class="academy-report-card">
+          <b>知识图谱点亮</b>
+          <p id="academyPaperGraphStatus">完成论文解析、报告生成和知识库保存后，会点亮 NLP/LLM、RAG、Evaluation/Safety 节点。</p>
+        </section>
       </div>
     </section>
   </main>

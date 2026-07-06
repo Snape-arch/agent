@@ -136,6 +136,14 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("academyLayerDetail", path)
         self.assertIn("paperDeepReadOutput", paper)
         self.assertIn("academyPaperFile", paper)
+        self.assertIn("academyUploadPaper", paper)
+        self.assertIn("academyRunPaperWorkflow", paper)
+        self.assertIn("academySavePaperKnowledge", paper)
+        self.assertIn("academyPaperViewer", paper)
+        self.assertIn("academyInkCanvas", paper)
+        self.assertIn("academyPaperAssistant", paper)
+        self.assertIn("academyCitationEvidence", paper)
+        self.assertIn("academyPaperReportCard", paper)
         self.assertIn("academyCodeBlock", code)
         self.assertIn("academyNoteOutput", notes)
         self.assertIn("academyIngestStatus", ingest)
@@ -158,6 +166,17 @@ class FrontendStaticTests(unittest.TestCase):
             "前沿拓展层",
             "academyRenderLayerGraph",
             "academyGeneratePaperRead",
+            "academyPaperState",
+            "academyUploadPaper",
+            "academyRunPaperWorkflow",
+            "academySavePaperKnowledge",
+            "academyAskPaperCitation",
+            "academySetupInk",
+            "/api/documents/upload",
+            "/api/workspace/research/learning-analysis",
+            "/api/knowledge",
+            "/api/documents/citation-answer",
+            "/api/knowledge/graph",
             "academyGenerateNote",
             "academyQueueKnowledge",
             "academyGenerateQuiz",
@@ -173,6 +192,11 @@ class FrontendStaticTests(unittest.TestCase):
             ".academy-layer-node",
             ".academy-layer-detail",
             ".paper-output-card",
+            ".paper-reader-shell",
+            ".academy-ink-canvas",
+            ".paper-assistant-panel",
+            ".academy-citation-list",
+            ".academy-report-card",
             ".quiz-grid article.answered",
         ):
             self.assertIn(token, site_css)
