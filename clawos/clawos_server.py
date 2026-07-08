@@ -26,7 +26,7 @@ from services import (
     WorkflowEngine,
 )
 from services.artifact_storage import safe_artifact_slug
-from services.runtime_records import RUN_SCHEMA_VERSION, RunRecord, run_from_task
+from services.runtime_records import RUN_SCHEMA_VERSION, RunRecord, now_iso, run_from_task
 
 # ---- PATHS ----
 BASE_DIR = Path(__file__).parent.resolve()
@@ -3982,20 +3982,256 @@ async def api_workbench_local_qwen_smoke(request: Request):
     return JSONResponse(payload)
 
 
-@app.get("/api/workbench/local-acceptance-history")
-async def api_workbench_local_acceptance_history(limit: int = 20):
+def _local_acceptance_runs(limit: int = 20) -> list[dict[str, Any]]:
     if not g_memory_store:
-        return JSONResponse({"runs": [], "count": 0, "durable": False})
+        return []
     max_items = max(1, min(int(limit or 20), 100))
     runs = []
     for run_type in ("workbench_daily_acceptance", "workbench_qwen_smoke"):
         for item in g_memory_store.list_run_records(run_type=run_type, limit=max_items):
             run = g_memory_store.get_run_record(item.get("run_id", ""))
             if run:
-                runs.append(_daily_acceptance_run_summary(run))
+                runs.append(run)
     runs.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
-    runs = runs[:max_items]
-    return JSONResponse({"runs": runs, "count": len(runs), "durable": True})
+    return runs[:max_items]
+
+
+def _local_acceptance_trends(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    daily_runs = [run for run in runs if run.get("run_type") == "workbench_daily_acceptance"]
+    qwen_runs = [run for run in runs if run.get("run_type") == "workbench_qwen_smoke" or (run.get("outputs") or {}).get("local_qwen_smoke")]
+    def rate(items: list[dict[str, Any]]) -> float:
+        return round(sum(1 for item in items if item.get("status") == "pass") / len(items), 4) if items else 0
+    qwen_failure_streak = 0
+    for run in qwen_runs:
+        outputs = run.get("outputs") or {}
+        qwen = outputs.get("local_qwen_smoke") or {}
+        ok = bool(qwen.get("ok") if qwen else run.get("status") == "pass")
+        if ok:
+            break
+        qwen_failure_streak += 1
+    gap_counts: dict[str, int] = {}
+    for run in daily_runs:
+        for item in run.get("failure_cases") or []:
+            if item.get("category") != "readiness_gap":
+                continue
+            key = str(item.get("reason") or item.get("failure_id") or "readiness_gap")
+            gap_counts[key] = gap_counts.get(key, 0) + 1
+    top_gaps = [{"label": label, "count": count} for label, count in sorted(gap_counts.items(), key=lambda item: (-item[1], item[0]))[:8]]
+    latest = _daily_acceptance_run_summary(runs[0]) if runs else {}
+    return {
+        "latest": latest,
+        "window": len(runs),
+        "daily_count": len(daily_runs),
+        "qwen_count": len(qwen_runs),
+        "overall_pass_rate": rate(runs),
+        "daily_pass_rate": rate(daily_runs),
+        "qwen_pass_rate": rate(qwen_runs),
+        "qwen_failure_streak": qwen_failure_streak,
+        "average_workbench_percent": round(sum(float((run.get("metrics") or {}).get("workbench_percent") or 0) for run in daily_runs) / len(daily_runs), 2) if daily_runs else 0,
+        "average_benchmark_pass_rate": round(sum(float((run.get("metrics") or {}).get("benchmark_pass_rate") or 0) for run in daily_runs) / len(daily_runs), 4) if daily_runs else 0,
+        "average_model_score_rate": round(sum(float((run.get("metrics") or {}).get("model_score_rate") or 0) for run in daily_runs) / len(daily_runs), 4) if daily_runs else 0,
+        "top_readiness_gaps": top_gaps,
+    }
+
+
+@app.get("/api/workbench/local-acceptance-history")
+async def api_workbench_local_acceptance_history(limit: int = 20):
+    if not g_memory_store:
+        return JSONResponse({"runs": [], "count": 0, "durable": False})
+    runs = _local_acceptance_runs(limit)
+    return JSONResponse({"runs": [_daily_acceptance_run_summary(run) for run in runs], "count": len(runs), "durable": True})
+
+
+@app.get("/api/workbench/local-acceptance-trends")
+async def api_workbench_local_acceptance_trends(limit: int = 30):
+    if not g_memory_store:
+        return JSONResponse({"trend": _local_acceptance_trends([]), "count": 0, "durable": False})
+    runs = _local_acceptance_runs(limit)
+    return JSONResponse({"trend": _local_acceptance_trends(runs), "count": len(runs), "durable": True})
+
+
+def _remediation_action_for_gap(label: str, count: int = 1) -> dict[str, Any]:
+    text = str(label or "").lower()
+    local_model = local_model_assets_status()
+    scripts = {"start_qwen": str(BASE_DIR / "scripts" / "start_qwen_llama_server.ps1")}
+    for index, script in enumerate(local_model.get("download_scripts") or []):
+        scripts[f"download_{index + 1}"] = script
+    if "qwen" in text or "model" in text or "llama" in text or "local 8b" in text or "local 8/9" in text:
+        return {
+            "id": "local_model_assets",
+            "gap": label,
+            "count": count,
+            "severity": "high",
+            "action": "Prepare local Qwen assets and start the llama.cpp OpenAI-compatible server.",
+            "why": local_model.get("summary", "Local Qwen runtime is not fully ready."),
+            "scripts": scripts,
+            "checks": ["/api/model/health", "/api/workbench/local-qwen-smoke"],
+        }
+    if "evidence" in text or "citation" in text or "search" in text:
+        return {
+            "id": "evidence_chain",
+            "gap": label,
+            "count": count,
+            "severity": "medium",
+            "action": "Upload or reopen a research document, verify chunks, then save a citation-grounded answer to knowledge.",
+            "why": "Evidence search needs parsed chunks and captured research knowledge before offline citation chains are useful.",
+            "scripts": {},
+            "checks": ["/api/documents", "/api/documents/search", "/api/academy/paper/offline-audit"],
+        }
+    if "package" in text or "checkpoint" in text or "artifact" in text:
+        return {
+            "id": "offline_artifacts",
+            "gap": label,
+            "count": count,
+            "severity": "medium",
+            "action": "Save a Paper Studio checkpoint and export a research project package after report generation.",
+            "why": "Long-term offline work needs local resumable artifacts, not just transient UI state.",
+            "scripts": {},
+            "checks": ["/api/academy/paper/checkpoints", "/api/academy/paper/project-board/exports", "/api/academy/paper/offline-audit"],
+        }
+    if "project" in text or "board" in text or "management" in text:
+        return {
+            "id": "project_management",
+            "gap": label,
+            "count": count,
+            "severity": "medium",
+            "action": "Create at least one follow-up item on the Paper Studio project board and mark decisions as work progresses.",
+            "why": "Research workflows become durable when follow-up questions and decisions are tracked as local RunRecords.",
+            "scripts": {},
+            "checks": ["/api/academy/paper/project-board", "/api/workbench/offline-readiness"],
+        }
+    if "document" in text or "ingestion" in text or "chunk" in text or "paper" in text or "report" in text:
+        return {
+            "id": "document_workflow",
+            "gap": label,
+            "count": count,
+            "severity": "medium",
+            "action": "Upload a research PDF/DOCX/text file, confirm chunks, and generate a local report from Paper Studio.",
+            "why": "Document analysis and report generation need at least one parsed local document with chunks.",
+            "scripts": {},
+            "checks": ["/api/documents", "/api/academy/paper/status", "/api/workbench/offline-readiness"],
+        }
+    return {
+        "id": "general_readiness",
+        "gap": label,
+        "count": count,
+        "severity": "low",
+        "action": "Run daily local acceptance again after resolving the listed readiness item.",
+        "why": "This gap was observed in persisted local acceptance history.",
+        "scripts": {},
+        "checks": ["/api/workbench/daily-local-acceptance", "/api/workbench/local-acceptance-trends"],
+    }
+
+
+def _local_remediation_payload(limit: int = 30) -> dict[str, Any]:
+    runs = _local_acceptance_runs(limit) if g_memory_store else []
+    trend = _local_acceptance_trends(runs)
+    top_gaps = trend.get("top_readiness_gaps") or []
+    actions = [_remediation_action_for_gap(item.get("label", ""), int(item.get("count") or 1)) for item in top_gaps]
+    if not actions:
+        readiness = _workbench_offline_readiness_payload(0)
+        actions = [_remediation_action_for_gap(item.get("label") or item.get("id") or "readiness gap", 1) for item in readiness.get("remaining", [])[:6]]
+    return {"actions": actions, "count": len(actions), "trend": trend, "durable": bool(g_memory_store)}
+
+
+@app.get("/api/workbench/local-remediation-guide")
+async def api_workbench_local_remediation_guide(limit: int = 30):
+    return JSONResponse(_local_remediation_payload(limit))
+
+
+def _maintenance_report_markdown(report: dict[str, Any]) -> str:
+    readiness = report.get("readiness") or {}
+    trend = (report.get("trends") or {}).get("trend") or {}
+    remediation = report.get("remediation") or {}
+    latest = report.get("latest_acceptance") or {}
+    lines = [
+        "# ClawOS Local Maintenance Report",
+        "",
+        f"Generated: {report.get('generated_at', '')}",
+        f"Workbench readiness: {readiness.get('percent', 0)}%",
+        f"Latest acceptance: {latest.get('status', '--')} {latest.get('updated_at', '')}",
+        "",
+        "## Trend Summary",
+        "",
+        f"- Daily pass rate: {trend.get('daily_pass_rate', 0)}",
+        f"- Qwen pass rate: {trend.get('qwen_pass_rate', 0)}",
+        f"- Qwen failure streak: {trend.get('qwen_failure_streak', 0)}",
+        f"- Average readiness: {trend.get('average_workbench_percent', 0)}%",
+        f"- Average benchmark pass rate: {trend.get('average_benchmark_pass_rate', 0)}",
+        f"- Average model score rate: {trend.get('average_model_score_rate', 0)}",
+        "",
+        "## Top Readiness Gaps",
+        "",
+    ]
+    gaps = trend.get("top_readiness_gaps") or []
+    lines.extend([f"- {item.get('label', '')}: {item.get('count', 0)}" for item in gaps] or ["- none"])
+    lines.extend(["", "## Remediation Guide", ""])
+    actions = remediation.get("actions") or []
+    for action in actions:
+        scripts = ", ".join(str(value) for value in (action.get("scripts") or {}).values()) or "none"
+        checks = ", ".join(action.get("checks") or []) or "none"
+        lines.extend([
+            f"### {action.get('gap') or action.get('id')}",
+            "",
+            f"- Severity: {action.get('severity', '')}",
+            f"- Action: {action.get('action', '')}",
+            f"- Why: {action.get('why', '')}",
+            f"- Scripts: {scripts}",
+            f"- Checks: {checks}",
+            "",
+        ])
+    if not actions:
+        lines.extend(["- none", ""])
+    lines.extend(["## Latest Daily Summary", "", latest.get("summary", "No daily acceptance summary available."), ""])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _export_local_maintenance_report(limit: int = 30) -> dict[str, Any]:
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    readiness = _workbench_offline_readiness_payload(0)
+    runs = _local_acceptance_runs(limit) if g_memory_store else []
+    history = {"runs": [_daily_acceptance_run_summary(run) for run in runs], "count": len(runs), "durable": bool(g_memory_store)}
+    trends = {"trend": _local_acceptance_trends(runs), "count": len(runs), "durable": bool(g_memory_store)}
+    remediation = _local_remediation_payload(limit)
+    latest = history["runs"][0] if history["runs"] else {}
+    report = {
+        "generated_at": now_iso(),
+        "standard": "local-first maintenance report",
+        "readiness": readiness,
+        "history": history,
+        "trends": trends,
+        "remediation": remediation,
+        "latest_acceptance": latest,
+    }
+    storage = ArtifactStorage(BASE_DIR.parent / "output" / "maintenance")
+    json_artifact = storage.write_json(f"{stamp}_clawos_maintenance_report.json", report)
+    markdown = _maintenance_report_markdown(report)
+    markdown_artifact = storage.write_bytes(f"{stamp}_clawos_maintenance_report.md", markdown.encode("utf-8"), kind="markdown")
+    payload = {"exported": True, "report": report, "artifacts": {"json": json_artifact, "markdown": markdown_artifact}}
+    if g_memory_store:
+        run = RunRecord(
+            run_id=f"workbench-maintenance-report-{stamp}",
+            run_type="workbench_maintenance_report",
+            title="ClawOS local maintenance report",
+            status="pass",
+            actor="user",
+            scenario="local-first-maintenance",
+            inputs={"limit": limit},
+            outputs={"readiness_percent": readiness.get("percent", 0), "history_count": history.get("count", 0), "remediation_count": remediation.get("count", 0)},
+            metrics={"workbench_percent": readiness.get("percent", 0), "history_count": history.get("count", 0), "remediation_count": remediation.get("count", 0)},
+            tags=["maintenance", "offline", "report"],
+        )
+        run.add_artifact("json_report", "Local maintenance JSON report", json_artifact["path"], storage=json_artifact)
+        run.add_artifact("markdown_report", "Local maintenance Markdown report", markdown_artifact["path"], storage=markdown_artifact)
+        run.add_evidence("workbench_readiness", "Maintenance report includes workbench readiness", score=readiness.get("percent", 0))
+        payload["run"] = g_memory_store.save_run_record(run.to_dict())
+    return payload
+
+
+@app.post("/api/workbench/local-maintenance-report")
+async def api_workbench_local_maintenance_report(request: Request):
+    data = await request.json()
+    return JSONResponse(_export_local_maintenance_report(limit=int(data.get("limit") or 30)))
 
 
 @app.get("/api/academy/paper/offline-audit")

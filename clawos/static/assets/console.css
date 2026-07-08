@@ -3551,3 +3551,96 @@
     justify-content:flex-start;
   }
 }
+.local-acceptance-history{
+  display:grid;
+  gap:10px;
+  min-width:0;
+  overflow:auto;
+}
+.offline-readiness-head.compact{
+  align-items:center;
+}
+.offline-readiness-head.compact h3{
+  margin:0;
+  font-size:14px;
+}
+#localAcceptanceHistoryTable td:last-child{
+  max-width:420px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.local-acceptance-trend-grid{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:8px;
+}
+.local-acceptance-trend-grid div{
+  min-width:0;
+  padding:9px 10px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;
+  background:rgba(255,255,255,.04);
+}
+.local-acceptance-trend-grid span,
+.local-acceptance-trend-grid b{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.local-acceptance-trend-grid span{
+  color:rgba(255,255,255,.62);
+  font-size:12px;
+}
+@media (max-width:900px){
+  .local-acceptance-trend-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media (max-width:640px){
+  .local-acceptance-trend-grid{
+    grid-template-columns:1fr;
+  }
+}
+.local-remediation-guide{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.local-remediation-card{
+  display:grid;
+  gap:6px;
+  min-width:0;
+  padding:10px 12px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;
+  background:rgba(255,255,255,.04);
+}
+.local-remediation-card.high{
+  border-color:rgba(255,118,118,.34);
+}
+.local-remediation-card.medium{
+  border-color:rgba(255,204,102,.28);
+}
+.local-remediation-card b,
+.local-remediation-card span,
+.local-remediation-card p,
+.local-remediation-card small{
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.local-remediation-card span,
+.local-remediation-card small{
+  display:block;
+  color:rgba(255,255,255,.62);
+}
+.local-remediation-card p{
+  margin:0;
+  color:rgba(255,255,255,.82);
+}
+@media (max-width:900px){
+  .local-remediation-guide{
+    grid-template-columns:1fr;
+  }
+}

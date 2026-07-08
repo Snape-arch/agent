@@ -2,6 +2,7 @@ import asyncio
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -198,5 +199,95 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
         self.assertNotIn("api_key", json.dumps(payload).lower())
         self.assertNotIn("sk-", json.dumps(payload).lower())
 
+
+    def test_local_acceptance_history_persists_daily_and_qwen_runs(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_smoke = server._local_qwen_smoke_check
+
+            async def fake_smoke():
+                return {
+                    "ok": True,
+                    "provider": "qwen",
+                    "model": "Qwen3.5-9B-Q4_K_M",
+                    "base_url": "http://127.0.0.1:8000/v1",
+                    "configured": True,
+                    "assets_ready": True,
+                    "assets_summary": "local Qwen assets ready",
+                    "duration_ms": 1,
+                    "error": "",
+                    "content_preview": "LOCAL_OK",
+                }
+
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            server._local_qwen_smoke_check = fake_smoke
+            try:
+                daily = asyncio.run(server._daily_local_acceptance_payload(limit=2, full_suite=False, include_qwen_smoke=True))
+                server._save_daily_acceptance_run(daily, {"limit": 2, "include_qwen_smoke": True})
+                qwen = asyncio.run(server._local_qwen_smoke_check())
+                server._save_qwen_smoke_run(qwen)
+                history = json.loads(asyncio.run(server.api_workbench_local_acceptance_history(limit=10)).body)
+                trends = json.loads(asyncio.run(server.api_workbench_local_acceptance_trends(limit=10)).body)
+                remediation = json.loads(asyncio.run(server.api_workbench_local_remediation_guide(limit=10)).body)
+            finally:
+                server.g_memory_store = old_store
+                server._local_qwen_smoke_check = old_smoke
+
+        self.assertEqual(history["count"], 2)
+        self.assertTrue(history["durable"])
+        self.assertEqual({item["run_type"] for item in history["runs"]}, {"workbench_daily_acceptance", "workbench_qwen_smoke"})
+        self.assertTrue(any(item["qwen_ok"] for item in history["runs"]))
+        self.assertTrue(trends["durable"])
+        self.assertEqual(trends["count"], 2)
+        self.assertEqual(trends["trend"]["window"], 2)
+        self.assertEqual(trends["trend"]["qwen_failure_streak"], 0)
+        self.assertIn("daily_pass_rate", trends["trend"])
+        self.assertIn("top_readiness_gaps", trends["trend"])
+        self.assertTrue(remediation["durable"])
+        self.assertGreaterEqual(remediation["count"], 1)
+        self.assertIn("actions", remediation)
+        self.assertTrue(any("checks" in item and "action" in item for item in remediation["actions"]))
+        self.assertNotIn("api_key", json.dumps(remediation).lower())
+        self.assertNotIn("sk-", json.dumps(remediation).lower())
+        self.assertNotIn("api_key", json.dumps(trends).lower())
+        self.assertNotIn("sk-", json.dumps(trends).lower())
+        self.assertNotIn("api_key", json.dumps(history).lower())
+        self.assertNotIn("sk-", json.dumps(history).lower())
+
+
+    def test_local_maintenance_report_exports_markdown_json_and_run_record(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_base = server.BASE_DIR
+            base = Path(td) / "clawos"
+            base.mkdir()
+            server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
+            server.BASE_DIR = base
+            try:
+                payload = server._export_local_maintenance_report(limit=5)
+                json_path = Path(payload["artifacts"]["json"]["path"])
+                markdown_path = Path(payload["artifacts"]["markdown"]["path"])
+                saved_run = server.g_memory_store.get_run_record(payload["run"]["run_id"])
+                self.assertTrue(payload["exported"])
+                self.assertTrue(json_path.exists())
+                self.assertTrue(markdown_path.exists())
+                self.assertEqual(saved_run["run_type"], "workbench_maintenance_report")
+                self.assertIn("local-first maintenance report", json_path.read_text(encoding="utf-8"))
+                self.assertIn("ClawOS Local Maintenance Report", markdown_path.read_text(encoding="utf-8"))
+                self.assertNotIn("api_key", json.dumps(payload).lower())
+                self.assertNotIn("sk-", json.dumps(payload).lower())
+            finally:
+                server.g_memory_store = old_store
+                server.BASE_DIR = old_base
 if __name__ == "__main__":
     unittest.main()
