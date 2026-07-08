@@ -2042,3 +2042,130 @@ Known notes:
 
 Recommended next step:
 - Add a persisted local acceptance history so daily checks, Qwen smoke results, readiness gaps, and benchmark pass rates can be reviewed over time from the Console without relying on external dashboards.
+### 2026-07-08 - Local acceptance history
+
+Completed:
+- Added persisted RunRecord history for daily local acceptance and explicit Qwen smoke checks.
+- `POST /api/workbench/daily-local-acceptance` saves `workbench_daily_acceptance` runs by default, including readiness gaps, frozen benchmark metrics, mock model acceptance score, optional Qwen smoke result, evidence, and failure cases.
+- `POST /api/workbench/local-qwen-smoke` saves `workbench_qwen_smoke` runs by default, including endpoint/model, asset readiness, duration, error class, evidence, and failure case when the smoke check fails.
+- Added `GET /api/workbench/local-acceptance-history` to return compact local history across daily checks and Qwen smoke runs.
+- Console Offline Readiness panel now includes a Local Acceptance History table with refresh, status, readiness percent, Qwen result, and summary columns.
+- Added regression coverage for persisted daily/Qwen history, route wiring, frontend history UI, and secret redaction expectations.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `7 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- History persistence depends on MemoryOS being initialized. Without MemoryOS, the history API returns `durable=false` and no rows.
+- Daily and Qwen APIs support `persist=false` for temporary smoke calls.
+
+Recommended next step:
+- Add a small trend summary over acceptance history, such as latest pass/fail, rolling pass rate, Qwen failure streak, and top recurring readiness gaps.
+### 2026-07-08 - Local acceptance trend summary
+
+Completed:
+- Added `GET /api/workbench/local-acceptance-trends` to summarize persisted daily local acceptance and Qwen smoke RunRecords.
+- Trend output includes latest run, rolling overall/daily/Qwen pass rates, Qwen failure streak, average workbench readiness, average benchmark pass rate, average model score rate, and top recurring readiness gaps.
+- Console Local Acceptance History now renders a compact trend grid above the history table: latest status, daily pass rate, Qwen streak, average readiness, and top gaps.
+- Reused RunRecord failure cases for readiness gap counting, so no new table or cloud dependency is needed.
+- Added regression coverage for trend API, trend UI wiring, and secret redaction expectations.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `7 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- Trend summary depends on persisted local acceptance history. Empty MemoryOS returns a durable=false/empty trend shape.
+- Qwen streak counts explicit Qwen smoke runs and daily runs that included Qwen smoke.
+
+Recommended next step:
+- Add a guided remediation panel for top readiness gaps, mapping missing model assets, missing Qwen server, missing project packages, or missing evidence search into concrete local actions/scripts.
+### 2026-07-08 - Local readiness remediation guide
+
+Completed:
+- Added `GET /api/workbench/local-remediation-guide` to map recurring readiness gaps into concrete local remediation actions.
+- The guide covers local Qwen/model assets, llama.cpp/Qwen server startup, document ingestion/report gaps, evidence-chain gaps, project board gaps, and offline checkpoint/project package gaps.
+- Remediation output includes severity, action, why, relevant local scripts such as `start_qwen_llama_server.ps1`, `download_qwen_model.ps1`, `download_llama_cpp.ps1`, and follow-up check APIs.
+- Console Local Acceptance History now renders remediation cards under the trend grid and refreshes them with local history.
+- The remediation guide is read-only: it does not run downloads, start servers, mutate data, or call cloud APIs.
+- Added regression coverage for remediation API payloads, frontend UI wiring, CSS, and secret redaction expectations.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `7 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- Remediation suggestions depend on historical readiness gaps when available, otherwise they fall back to current workbench offline readiness.
+- Scripts are shown as paths only; user still decides whether to run downloads or start the Qwen server.
+
+Recommended next step:
+- Add an exportable local maintenance report that bundles readiness, trend summary, remediation guide, and latest daily acceptance summary into one Markdown/JSON artifact for long-term self-audit.
+### 2026-07-08 - Local maintenance report export
+
+Completed:
+- Added `POST /api/workbench/local-maintenance-report` to export a local-first maintenance snapshot without cloud/API dependency.
+- The report bundles workbench offline readiness, local acceptance history, trend summary, remediation guide, and latest daily acceptance summary.
+- Exports both JSON and Markdown artifacts under `output/maintenance` via `ArtifactStorage`.
+- Persists a `workbench_maintenance_report` RunRecord when MemoryOS is available, with links to the JSON and Markdown artifacts.
+- Console Offline Readiness now includes an `Export report` action that shows exported artifact paths and refreshes local acceptance history.
+- Added regression coverage for backend report export, RunRecord persistence, frontend wiring, and secret redaction expectations.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `8 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- Report history and RunRecord persistence depend on MemoryOS initialization.
+- Export writes local files only; it does not run remediation scripts, download assets, start servers, or call cloud APIs.
+
+Recommended next step:
+- Add a console-side report browser for recent `workbench_maintenance_report` RunRecords, including Markdown preview and artifact open/copy actions.

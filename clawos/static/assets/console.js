@@ -1644,10 +1644,43 @@ async function refreshOfflineReadiness() {
     grid.innerHTML = "";
   }
 }
+async function loadLocalRemediationGuide() {
+  const target = $("localRemediationGuide");
+  if (!target) return;
+  const data = await api("/api/workbench/local-remediation-guide?limit=30").catch(() => ({ actions: [] }));
+  const actions = data.actions || [];
+  target.innerHTML = actions.length ? actions.map(action => {
+    const scripts = Object.values(action.scripts || {}).filter(Boolean).join(" | ") || "No script required";
+    const checks = (action.checks || []).join(" | ");
+    return `<div class="local-remediation-card ${esc(action.severity || "low")}">
+      <div><b>${esc(action.gap || action.id || "readiness gap")}</b><span>${esc(action.why || "")}</span></div>
+      <p>${esc(action.action || "")}</p>
+      <small>Scripts: ${esc(scripts)}</small>
+      <small>Checks: ${esc(checks)}</small>
+    </div>`;
+  }).join("") : '<div class="local-remediation-card"><b>No remediation actions</b><span>Run daily local acceptance to collect readiness gaps.</span></div>';
+}
 async function loadLocalAcceptanceHistory() {
   const target = $("localAcceptanceHistoryTable");
   if (!target) return;
-  const data = await api("/api/workbench/local-acceptance-history?limit=12").catch(() => ({ runs: [] }));
+  await loadLocalRemediationGuide();
+  const [data, trendData] = await Promise.all([
+    api("/api/workbench/local-acceptance-history?limit=12").catch(() => ({ runs: [] })),
+    api("/api/workbench/local-acceptance-trends?limit=30").catch(() => ({ trend: {} }))
+  ]);
+  const trend = trendData.trend || {};
+  const trendGrid = $("localAcceptanceTrendGrid");
+  if (trendGrid) {
+    const latest = trend.latest || {};
+    const gaps = (trend.top_readiness_gaps || []).map(item => `${item.label}:${item.count}`).join(", ") || "none";
+    trendGrid.innerHTML = [
+      ["Latest", latest.status || "--"],
+      ["Daily pass", `${Math.round((trend.daily_pass_rate || 0) * 100)}%`],
+      ["Qwen streak", String(trend.qwen_failure_streak || 0)],
+      ["Avg readiness", `${trend.average_workbench_percent || 0}%`],
+      ["Top gaps", gaps]
+    ].map(([label, value]) => `<div><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join("");
+  }
   const rows = (data.runs || []).map(run => [
     run.updated_at || "",
     run.run_type === "workbench_qwen_smoke" ? "Qwen smoke" : "Daily check",
@@ -1673,6 +1706,7 @@ async function runDailyLocalAcceptance(includeQwenSmoke = false) {
     if (summary) summary.textContent = dailyLocalAcceptanceSummary;
     if (status) status.textContent = `Daily local acceptance ${data.ok ? "passed" : "needs attention"}.`;
     await refreshOfflineReadiness();
+    await loadLocalAcceptanceHistory();
   } catch (err) {
     dailyLocalAcceptanceSummary = "";
     if (summary) summary.textContent = "Daily local acceptance failed: " + err.message;
@@ -1703,10 +1737,41 @@ async function runLocalQwenSmokeCheck() {
     if (summary) summary.textContent = dailyLocalAcceptanceSummary;
     if (status) status.textContent = `Local Qwen smoke ${data.ok ? "passed" : "needs attention"}.`;
     await refreshOfflineReadiness();
+    await loadLocalAcceptanceHistory();
   } catch (err) {
     dailyLocalAcceptanceSummary = "";
     if (summary) summary.textContent = "Local Qwen smoke failed: " + err.message;
     if (status) status.textContent = "Local Qwen smoke failed.";
+  }
+}
+async function exportLocalMaintenanceReport() {
+  const status = $("offlineReadinessStatus");
+  const summary = $("dailyAcceptanceSummary");
+  if (status) status.textContent = "Exporting local maintenance report.";
+  if (summary) summary.textContent = "Writing local Markdown and JSON maintenance report...";
+  try {
+    const data = await api("/api/workbench/local-maintenance-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 30 })
+    });
+    const jsonPath = data.artifacts?.json?.path || "";
+    const markdownPath = data.artifacts?.markdown?.path || "";
+    dailyLocalAcceptanceSummary = [
+      "ClawOS Local Maintenance Report",
+      `JSON: ${jsonPath}`,
+      `Markdown: ${markdownPath}`,
+      `Readiness: ${data.report?.readiness?.percent || 0}%`,
+      `Remediation actions: ${data.report?.remediation?.count || 0}`,
+      `Run: ${data.run?.run_id || "not persisted"}`
+    ].join("\n");
+    if (summary) summary.textContent = dailyLocalAcceptanceSummary;
+    if (status) status.textContent = "Local maintenance report exported.";
+    await loadLocalAcceptanceHistory();
+  } catch (err) {
+    dailyLocalAcceptanceSummary = "";
+    if (summary) summary.textContent = "Local maintenance report export failed: " + err.message;
+    if (status) status.textContent = "Local maintenance report export failed.";
   }
 }
 async function copyDailyLocalAcceptanceSummary() {

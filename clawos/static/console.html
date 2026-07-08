@@ -111,6 +111,7 @@
               <button class="secondary" type="button" onclick="runDailyLocalAcceptance(true)">Daily + Qwen</button>
               <button class="secondary" type="button" onclick="runLocalQwenSmokeCheck()">Qwen smoke</button>
               <button class="secondary" type="button" onclick="copyDailyLocalAcceptanceSummary()">Copy summary</button>
+              <button class="secondary" type="button" onclick="exportLocalMaintenanceReport()">Export report</button>
             </div>
           </div>
           <div class="offline-readiness-summary" id="offlineReadinessSummary"></div>
@@ -121,6 +122,8 @@
               <h3>Local Acceptance History</h3>
               <button class="secondary" type="button" onclick="loadLocalAcceptanceHistory()">Refresh history</button>
             </div>
+            <div class="local-acceptance-trend-grid" id="localAcceptanceTrendGrid"></div>
+            <div class="local-remediation-guide" id="localRemediationGuide"></div>
             <table class="table" id="localAcceptanceHistoryTable"></table>
           </div>
         </div>
