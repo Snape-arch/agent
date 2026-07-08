@@ -150,6 +150,13 @@ class MaintenanceService:
             f"provider={provider.get('provider', '')} model={provider.get('model', '')} key_present={has_key}",
             severity="warning",
         )
+        local_model = self.local_model_assets()
+        add(
+            "local_qwen_runtime",
+            bool(local_model["ready"]),
+            local_model["summary"],
+            severity="warning",
+        )
         if self.db_path.exists():
             try:
                 conn = sqlite3.connect(str(self.db_path))
@@ -165,6 +172,97 @@ class MaintenanceService:
             "checks": checks,
             "checked_at": self._now(),
         }
+
+    def local_model_assets(self) -> dict[str, Any]:
+        """Report whether local-first Qwen assets are present without downloading them."""
+        repo_root = self.base_dir.parent
+        models_dir = self.base_dir / "models"
+        manifests = {
+            "qwen_9b": models_dir / "qwen3_5_9b_q4_k_m.json",
+            "embedding": models_dir / "qwen3_embedding_0_6b.json",
+            "reranker": models_dir / "qwen3_reranker_0_6b.json",
+        }
+        assets: list[dict[str, Any]] = []
+        assets.append(self._manifest_asset("qwen_9b", manifests["qwen_9b"], repo_root, size_key="size_bytes"))
+        assets.append(self._manifest_asset("embedding", manifests["embedding"], repo_root, size_key="total_local_size_bytes", directory=True))
+        assets.append(self._manifest_asset("reranker", manifests["reranker"], repo_root, size_key="total_local_size_bytes", directory=True))
+
+        server_candidates = [
+            repo_root / "tools" / "llama.cpp" / "llama-server.exe",
+            repo_root / "tools" / "llama.cpp" / "build" / "bin" / "Release" / "llama-server.exe",
+        ]
+        found_server = next((path for path in server_candidates if path.exists()), None)
+        assets.append({
+            "id": "llama_server",
+            "label": "llama.cpp OpenAI-compatible server",
+            "path": str(found_server or server_candidates[0]),
+            "exists": bool(found_server),
+            "expected_bytes": 0,
+            "actual_bytes": found_server.stat().st_size if found_server and found_server.is_file() else 0,
+            "ok": bool(found_server),
+            "required": True,
+        })
+        required = [item for item in assets if item.get("required", True)]
+        ready = all(item["ok"] for item in required)
+        missing = [item["id"] for item in required if not item["ok"]]
+        return {
+            "ready": ready,
+            "mode": "local_qwen_gguf",
+            "summary": "local Qwen assets ready" if ready else f"missing local assets: {', '.join(missing)}",
+            "assets": assets,
+            "start_script": str(self.base_dir / "scripts" / "start_qwen_llama_server.ps1"),
+            "download_scripts": [
+                str(self.base_dir / "scripts" / "download_qwen_model.ps1"),
+                str(self.base_dir / "scripts" / "download_llama_cpp.ps1"),
+            ],
+        }
+
+    def _manifest_asset(
+        self,
+        asset_id: str,
+        manifest_path: Path,
+        repo_root: Path,
+        *,
+        size_key: str = "",
+        directory: bool = False,
+    ) -> dict[str, Any]:
+        if not manifest_path.exists():
+            return {
+                "id": asset_id,
+                "label": asset_id,
+                "path": str(manifest_path),
+                "exists": False,
+                "expected_bytes": 0,
+                "actual_bytes": 0,
+                "ok": False,
+                "required": True,
+                "error": "manifest_missing",
+            }
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        local_path = Path(str(manifest.get("local_path") or ""))
+        if not local_path.is_absolute():
+            local_path = (repo_root / local_path).resolve()
+        exists = local_path.exists()
+        expected = int(manifest.get(size_key) or 0) if size_key else 0
+        actual = self._directory_size(local_path) if exists and directory else (local_path.stat().st_size if exists and local_path.is_file() else 0)
+        size_ok = expected <= 0 or actual == expected
+        return {
+            "id": asset_id,
+            "label": manifest.get("model_name") or manifest.get("id") or asset_id,
+            "path": str(local_path),
+            "exists": exists,
+            "expected_bytes": expected,
+            "actual_bytes": actual,
+            "ok": bool(exists and size_ok),
+            "required": True,
+            "source_url": manifest.get("source_url", ""),
+        }
+
+    @staticmethod
+    def _directory_size(path: Path) -> int:
+        if not path.exists():
+            return 0
+        return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
 
     @staticmethod
     def _assert_sqlite_ok(path: Path) -> None:

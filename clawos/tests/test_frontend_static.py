@@ -139,6 +139,7 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("academyUploadPaper", paper)
         self.assertIn("academyRunPaperWorkflow", paper)
         self.assertIn("academySavePaperKnowledge", paper)
+        self.assertIn("academySavePaperCheckpoint", paper)
         self.assertIn("academyPaperViewer", paper)
         self.assertIn("academyInkCanvas", paper)
         self.assertIn("academyPaperAssistant", paper)
@@ -170,8 +171,20 @@ class FrontendStaticTests(unittest.TestCase):
             "academyUploadPaper",
             "academyRunPaperWorkflow",
             "academySavePaperKnowledge",
+            "academySavePaperCheckpoint",
+            "academyLoadPaperCheckpoints",
+            "academyOpenPaperCheckpoint",
+            "academyLoadPaperProjectBoard",
+            "academyAddPaperProjectItem",
+            "academyUpdatePaperProjectItem",
+            "academyExportPaperProject",
+            "academyLoadPaperProjectPackages",
+            "academyOpenPaperProjectPackage",
+            "academyRefreshPaperAudit",
             "academyAskPaperCitation",
             "academySetupInk",
+            "/api/academy/paper/annotations",
+            "annotationArtifact",
             "/api/documents/upload",
             "/api/workspace/research/learning-analysis",
             "/api/knowledge",
@@ -207,6 +220,17 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn('@app.get("/academy/notes")', server)
         self.assertIn('@app.get("/academy/ingest")', server)
         self.assertIn('@app.get("/academy/quiz")', server)
+        self.assertIn('@app.get("/api/documents/{document_id}/source")', server)
+        self.assertIn('@app.post("/api/academy/paper/checkpoint")', server)
+        self.assertIn('@app.get("/api/academy/paper/checkpoints")', server)
+        self.assertIn('@app.get("/api/academy/paper/checkpoints/{run_id}")', server)
+        self.assertIn('@app.get("/api/academy/paper/project-board")', server)
+        self.assertIn('@app.post("/api/academy/paper/project-board")', server)
+        self.assertIn('@app.post("/api/academy/paper/project-board/{run_id}/status")', server)
+        self.assertIn('@app.post("/api/academy/paper/project-board/export")', server)
+        self.assertIn('@app.get("/api/academy/paper/project-board/exports")', server)
+        self.assertIn('@app.get("/api/academy/paper/project-board/exports/{run_id}")', server)
+        self.assertIn('@app.get("/api/academy/paper/offline-audit")', server)
 
     def test_console_prevents_vertical_compressed_table_text(self):
         html = self.read_page("console.html")
@@ -989,6 +1013,7 @@ class FrontendStaticTests(unittest.TestCase):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
         css = self.read_page("assets/console.css")
+        server = (REPO_ROOT / "clawos" / "clawos_server.py").read_text(encoding="utf-8")
 
         self.assertIn("capabilityTable", html)
         self.assertIn("sceneBoundaryTable", html)
@@ -997,6 +1022,25 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("meetingTranscriptPicker", html)
         self.assertIn("meetingAsrResult", html)
         self.assertIn("modelHealthTable", html)
+        self.assertIn("offlineReadinessPanel", html)
+        self.assertIn("offlineReadinessGrid", html)
+        self.assertIn("dailyAcceptanceSummary", html)
+        self.assertIn("Run daily check", html)
+        self.assertIn("Daily + Qwen", html)
+        self.assertIn("Qwen smoke", html)
+        self.assertIn("refreshOfflineReadiness", js)
+        self.assertIn("/api/workbench/offline-readiness", js)
+        self.assertIn("/api/workbench/daily-local-acceptance", js)
+        self.assertIn("/api/workbench/local-qwen-smoke", js)
+        self.assertIn("runLocalQwenSmokeCheck", js)
+        self.assertIn("include_qwen_smoke", js)
+        self.assertIn("runDailyLocalAcceptance", js)
+        self.assertIn("copyDailyLocalAcceptanceSummary", js)
+        self.assertIn(".offline-readiness-panel", css)
+        self.assertIn(".daily-acceptance-summary", css)
+        self.assertIn("@app.get(\"/api/workbench/offline-readiness\")", server)
+        self.assertIn("@app.post(\"/api/workbench/daily-local-acceptance\")", server)
+        self.assertIn("@app.post(\"/api/workbench/local-qwen-smoke\")", server)
         self.assertIn("toolAccuracyTable", html)
         self.assertIn("routingPolicyTable", html)
         self.assertIn("/api/workspace/capabilities", js)
@@ -1005,6 +1049,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("renderMeetingAudioResult", js)
         self.assertIn("new FormData", js)
         self.assertIn("/api/model/health", js)
+        self.assertIn("local_model_assets", js)
+        self.assertIn("local qwen assets", js)
         self.assertIn("/api/tools/accuracy", js)
         self.assertIn("/api/routing/policy", js)
         self.assertIn("联网搜索/网页抓取", js)

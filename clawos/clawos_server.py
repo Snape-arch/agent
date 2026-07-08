@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ClawOS Server - Self-contained AI Agent with DeepSeek + Function Router."""
 from __future__ import annotations
-import argparse, asyncio, importlib.util, json, logging, os, re, sys, time, subprocess, shutil
+import argparse, asyncio, base64, importlib.util, json, logging, os, re, sys, time, subprocess, shutil
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any
@@ -15,6 +15,7 @@ from providers import create_model_provider
 from memoryos.document_ingestion import safe_filename
 from services import (
     AgentOrchestrationService,
+    ArtifactStorage,
     EvaluationService,
     KnowledgeService,
     MaintenanceService,
@@ -24,7 +25,8 @@ from services import (
     ToolService,
     WorkflowEngine,
 )
-from services.runtime_records import RUN_SCHEMA_VERSION, run_from_task
+from services.artifact_storage import safe_artifact_slug
+from services.runtime_records import RUN_SCHEMA_VERSION, RunRecord, run_from_task
 
 # ---- PATHS ----
 BASE_DIR = Path(__file__).parent.resolve()
@@ -779,6 +781,13 @@ def get_maintenance_service() -> MaintenanceService:
     return g_maintenance_service
 
 
+def local_model_assets_status() -> dict[str, Any]:
+    service = g_maintenance_service
+    if not service:
+        service = MaintenanceService(store=g_memory_store, db_path=MEMORY_DB, base_dir=BASE_DIR, config=config)
+    return service.local_model_assets()
+
+
 def get_workflow_engine() -> WorkflowEngine:
     global g_workflow_engine
     if not g_workflow_engine:
@@ -1410,6 +1419,7 @@ async def api_model_health(probe: bool = False):
             "reachable": any(a.get("reachable") for a in attempts) if probe else None,
             "fallback_strategy": "ordered_provider_fallback",
         }
+    sections["local_model_assets"] = local_model_assets_status()
     return JSONResponse(sections)
 
 @app.post("/api/config/model")
@@ -2303,29 +2313,36 @@ async def api_system_restore(request: Request):
     return JSONResponse(result)
 
 
-@app.get("/api/system/readiness")
-async def api_system_readiness():
+def _system_readiness_payload() -> dict[str, Any]:
+    local_model = local_model_assets_status()
     checks = [
         {"id": "config_check", "label": "Configuration check API", "ok": bool(g_maintenance_service), "weight": 12},
         {"id": "migrations", "label": "SQLite migrations API", "ok": bool(g_maintenance_service), "weight": 10},
         {"id": "backup_restore", "label": "Backup and restore API", "ok": bool(g_maintenance_service), "weight": 14},
         {"id": "task_runtime", "label": "Task queue, cancel, retry, recover", "ok": bool(g_memory_store), "weight": 14},
-        {"id": "worker_loop", "label": "Background worker control plane", "ok": bool(get_task_service()), "weight": 12},
+        {"id": "worker_loop", "label": "Background worker control plane", "ok": bool(g_memory_store and get_task_service()), "weight": 12},
         {"id": "real_worker_jobs", "label": "Report, OCR queue, batch document jobs", "ok": set(worker_action_handlers()) >= {"generate_report", "process_ocr_queue", "batch_ingest_documents"}, "weight": 16},
         {"id": "security_audit", "label": "Security policy and audit center", "ok": bool(g_security_policy and g_memory_store), "weight": 10},
-        {"id": "knowledge_ops", "label": "Knowledge graph, Obsidian, OCR operations", "ok": bool(get_knowledge_service()), "weight": 12},
+        {"id": "local_model_assets", "label": "Local Qwen model assets and llama.cpp runtime", "ok": bool(local_model.get("ready")), "weight": 12, "detail": local_model.get("summary", "")},
+        {"id": "knowledge_ops", "label": "Knowledge graph, Obsidian, OCR operations", "ok": bool(g_memory_store and get_knowledge_service()), "weight": 12},
     ]
     total = sum(int(item["weight"]) for item in checks)
     passed = sum(int(item["weight"]) for item in checks if item["ok"])
     score = round(passed / total, 4) if total else 0
-    return JSONResponse({
+    return {
         "score": score,
         "percent": round(score * 100, 1),
         "standard": "single-user enterprise ops readiness",
         "enterprise_ready": score >= 0.9,
+        "local_model_assets": local_model,
         "checks": checks,
         "remaining": [item for item in checks if not item["ok"]],
-    })
+    }
+
+
+@app.get("/api/system/readiness")
+async def api_system_readiness():
+    return JSONResponse(_system_readiness_payload())
 
 @app.get("/api/workspace/capabilities")
 async def api_workspace_capabilities():
@@ -2663,6 +2680,32 @@ async def api_research_learning_analysis(request: Request):
         raise HTTPException(400, str(exc))
     if library_document:
         result["library_document"] = library_document
+        report = result.get("report") or {}
+        stamp = int(time.time() * 1000)
+        run = RunRecord(
+            f"academy-paper-report-{library_document_id}-{stamp}",
+            "academy_paper_report",
+            f"Academy paper report: {library_document.get('title') or library_document.get('filename') or library_document_id}",
+            status="pass",
+            actor="system",
+            scenario="research",
+            inputs={
+                "document_id": library_document_id,
+                "title": library_document.get("title"),
+                "report_style": data.get("report_style", "journal"),
+            },
+            outputs={"report": report, "preview": result.get("preview", "")},
+            metrics={"question_count": data.get("question_count", 50), "depth": data.get("depth", 5)},
+            tags=["academy", "paper", "report"],
+        )
+        markdown_path = str(report.get("markdown_path") or "")
+        pdf_path = str(report.get("pdf_path") or "")
+        if markdown_path:
+            run.add_artifact("markdown_report", "Academy paper markdown report", markdown_path)
+        if pdf_path:
+            run.add_artifact("pdf_report", "Academy paper PDF report", pdf_path)
+        run.add_evidence("academy_paper_report", "Report is linked to the uploaded source document", citation=f"doc:{library_document_id}", document_id=library_document_id)
+        result["run"] = g_memory_store.save_run_record(run.to_dict())
     return JSONResponse(result)
 
 @app.post("/api/workspace/learning/goals")
@@ -3114,6 +3157,272 @@ async def api_document_upload(
     return JSONResponse({"documents": documents, "errors": errors, "count": len(documents)})
 
 
+@app.post("/api/academy/paper/annotations")
+async def api_academy_paper_annotation_save(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    try:
+        document_id = int(data.get("document_id") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid document id")
+    if not document_id:
+        raise HTTPException(400, "document_id is required")
+    document = g_memory_store.get_document(document_id)
+    if not document:
+        raise HTTPException(404, "Document not found")
+
+    image_data = str(data.get("image_data") or "")
+    prefix = "data:image/png;base64,"
+    if not image_data.startswith(prefix):
+        raise HTTPException(400, "image_data must be a PNG data URL")
+    encoded = image_data[len(prefix):]
+    if len(encoded) > 8 * 1024 * 1024:
+        raise HTTPException(400, "annotation image is too large")
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except Exception:
+        raise HTTPException(400, "annotation image is not valid base64")
+    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(400, "annotation image must be PNG")
+
+    title = str(data.get("title") or document.get("title") or document.get("filename") or f"document-{document_id}")[:160]
+    stamp = int(time.time() * 1000)
+    filename = safe_filename(f"{stamp}_{title}_annotation.png")
+    storage = ArtifactStorage(BASE_DIR.parent / "output" / "academy" / "annotations")
+    artifact = storage.write_bytes(filename, raw, kind="png")
+
+    run = RunRecord(
+        f"academy-annotation-{document_id}-{stamp}",
+        "academy_annotation",
+        f"Academy paper annotation: {title}",
+        status="pass",
+        actor="user",
+        scenario="research",
+        inputs={"document_id": document_id, "title": title},
+        outputs={"artifact_path": artifact["path"]},
+        tags=["academy", "paper", "annotation"],
+    )
+    run.add_artifact("annotation_png", f"Annotation for {title}", artifact["path"], storage=artifact)
+    run.add_evidence("academy_paper_annotation", "User annotation is linked to the source document", citation=f"doc:{document_id}", document_id=document_id)
+    saved_run = g_memory_store.save_run_record(run.to_dict())
+    return JSONResponse({"saved": True, "artifact": artifact, "run": saved_run, "document": document})
+
+
+def _latest_academy_run_for_document(run_type: str, document_id: int) -> dict[str, Any]:
+    if not g_memory_store:
+        return {}
+    for item in g_memory_store.list_run_records(run_type=run_type, limit=100):
+        run = g_memory_store.get_run_record(item.get("run_id", ""))
+        inputs = run.get("inputs") or {}
+        if int(inputs.get("document_id") or 0) == int(document_id):
+            return run
+    return {}
+
+
+def _academy_knowledge_for_document(document_id: int) -> dict[str, Any]:
+    if not g_memory_store:
+        return {}
+    marker = f"doc:{int(document_id)}"
+    matches = []
+    for item in g_memory_store.list_knowledge("research"):
+        source = str(item.get("source") or "")
+        content = str(item.get("content") or "")
+        if marker in source or marker in content:
+            matches.append(item)
+    if not matches:
+        return {}
+    return max(matches, key=lambda item: int(item.get("id") or 0))
+
+
+def _academy_paper_status_payload(document_id: int) -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    document = g_memory_store.get_document(document_id)
+    if not document:
+        raise HTTPException(404, "Document not found")
+    chunks = g_memory_store.get_document_chunks(document_id, 100)
+    report_run = _latest_academy_run_for_document("academy_paper_report", document_id)
+    annotation_run = _latest_academy_run_for_document("academy_annotation", document_id)
+    checkpoint_run = _latest_academy_run_for_document("academy_paper_checkpoint", document_id)
+    knowledge = _academy_knowledge_for_document(document_id)
+    report = (report_run.get("outputs") or {}).get("report") or {}
+    annotation_artifact = (annotation_run.get("artifacts") or [{}])[0] if annotation_run else {}
+    checkpoint_artifact = (checkpoint_run.get("artifacts") or [{}])[0] if checkpoint_run else {}
+    return {
+        "ok": True,
+        "document": document,
+        "chunks": {"count": len(chunks), "ready": bool(chunks)},
+        "report": {
+            "ready": bool(report_run),
+            "run_id": report_run.get("run_id", ""),
+            "markdown_path": report.get("markdown_path", ""),
+            "pdf_path": report.get("pdf_path", ""),
+            "updated_at": report_run.get("updated_at", ""),
+        },
+        "knowledge": {
+            "ready": bool(knowledge),
+            "id": knowledge.get("id"),
+            "title": knowledge.get("title", ""),
+            "source": knowledge.get("source", ""),
+        },
+        "annotation": {
+            "ready": bool(annotation_run),
+            "run_id": annotation_run.get("run_id", ""),
+            "artifact": annotation_artifact,
+            "updated_at": annotation_run.get("updated_at", ""),
+        },
+        "checkpoint": {
+            "ready": bool(checkpoint_run),
+            "run_id": checkpoint_run.get("run_id", ""),
+            "artifact": checkpoint_artifact,
+            "updated_at": checkpoint_run.get("updated_at", ""),
+        },
+    }
+
+
+@app.get("/api/academy/paper/status")
+async def api_academy_paper_status(document_id: int):
+    try:
+        return JSONResponse(_academy_paper_status_payload(document_id))
+    except HTTPException as exc:
+        if exc.status_code == 503:
+            return JSONResponse({"ok": False, "error": exc.detail}, status_code=503)
+        raise
+
+
+@app.post("/api/academy/paper/checkpoint")
+async def api_academy_paper_checkpoint_save(request: Request):
+    if not g_memory_store:
+        return JSONResponse({"saved": False, "error": "MemoryOS not initialized"}, status_code=503)
+    data = await request.json()
+    document_id = int(data.get("document_id") or 0)
+    if not document_id:
+        raise HTTPException(400, "document_id is required")
+    status = _academy_paper_status_payload(document_id)
+    document = status["document"]
+    chunks = g_memory_store.get_document_chunks(document_id, 12)
+    title = str(document.get("title") or document.get("filename") or f"document-{document_id}")
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    checkpoint = {
+        "schema": "clawos.academy.paper.checkpoint.v1",
+        "created_at": stamp,
+        "document": document,
+        "status": status,
+        "citation": data.get("citation") or {},
+        "chunks": [
+            {
+                "chunk_index": chunk.get("chunk_index"),
+                "citation": chunk.get("citation", ""),
+                "page": chunk.get("page"),
+                "preview": str(chunk.get("text") or chunk.get("content") or chunk.get("preview") or "")[:700],
+            }
+            for chunk in chunks
+        ],
+    }
+    storage = ArtifactStorage(BASE_DIR.parent / "output" / "academy" / "checkpoints")
+    artifact = storage.write_json(f"{stamp}_{safe_artifact_slug(title)}_checkpoint.json", checkpoint)
+    report = status.get("report") or {}
+    knowledge = status.get("knowledge") or {}
+    annotation = status.get("annotation") or {}
+    run = RunRecord(
+        run_id=f"academy-paper-checkpoint-{document_id}-{stamp}",
+        run_type="academy_paper_checkpoint",
+        title=f"Academy paper checkpoint: {title}",
+        status="pass",
+        actor="user",
+        scenario="research",
+        inputs={"document_id": document_id, "title": title},
+        outputs={
+            "checkpoint_path": artifact["path"],
+            "report_run_id": report.get("run_id", ""),
+            "knowledge_id": knowledge.get("id"),
+            "annotation_run_id": annotation.get("run_id", ""),
+            "chunk_count": status.get("chunks", {}).get("count", 0),
+        },
+        tags=["academy", "paper", "checkpoint"],
+    )
+    run.add_artifact("checkpoint_json", f"Checkpoint for {title}", artifact["path"], storage=artifact)
+    run.add_evidence("academy_paper_checkpoint", "Checkpoint bundles document metadata, report, knowledge, annotation, and citation evidence", citation=f"doc:{document_id}", document_id=document_id)
+    saved_run = g_memory_store.save_run_record(run.to_dict())
+    status["checkpoint"] = {
+        "ready": True,
+        "run_id": saved_run.get("run_id", ""),
+        "artifact": saved_run.get("artifacts", [{}])[0] if saved_run.get("artifacts") else {},
+        "updated_at": saved_run.get("updated_at", ""),
+    }
+    checkpoint["status"] = status
+    return JSONResponse({"saved": True, "checkpoint": checkpoint, "artifact": artifact, "run": saved_run, "status": status})
+
+
+def _academy_checkpoint_artifact_path(run: dict[str, Any]) -> Path | None:
+    for artifact in run.get("artifacts") or []:
+        if artifact.get("kind") != "checkpoint_json":
+            continue
+        storage = (artifact.get("metadata") or {}).get("storage") or {}
+        raw_path = artifact.get("uri") or storage.get("path") or ""
+        if raw_path:
+            return Path(str(raw_path)).expanduser().resolve()
+    return None
+
+
+def _academy_checkpoint_summary(run: dict[str, Any]) -> dict[str, Any]:
+    inputs = run.get("inputs") or {}
+    outputs = run.get("outputs") or {}
+    artifact = (run.get("artifacts") or [{}])[0] if run.get("artifacts") else {}
+    return {
+        "run_id": run.get("run_id", ""),
+        "title": run.get("title", ""),
+        "updated_at": run.get("updated_at", ""),
+        "document_id": inputs.get("document_id"),
+        "document_title": inputs.get("title", ""),
+        "checkpoint_path": outputs.get("checkpoint_path", ""),
+        "report_run_id": outputs.get("report_run_id", ""),
+        "knowledge_id": outputs.get("knowledge_id"),
+        "annotation_run_id": outputs.get("annotation_run_id", ""),
+        "chunk_count": outputs.get("chunk_count", 0),
+        "artifact": artifact,
+    }
+
+
+@app.get("/api/academy/paper/checkpoints")
+async def api_academy_paper_checkpoints(document_id: int = 0, limit: int = 20):
+    if not g_memory_store:
+        return JSONResponse({"checkpoints": [], "count": 0}, status_code=503)
+    max_items = max(1, min(int(limit or 20), 100))
+    checkpoints = []
+    for item in g_memory_store.list_run_records(run_type="academy_paper_checkpoint", limit=100):
+        run = g_memory_store.get_run_record(item.get("run_id", ""))
+        inputs = run.get("inputs") or {}
+        if document_id and int(inputs.get("document_id") or 0) != int(document_id):
+            continue
+        checkpoints.append(_academy_checkpoint_summary(run))
+        if len(checkpoints) >= max_items:
+            break
+    return JSONResponse({"checkpoints": checkpoints, "count": len(checkpoints)})
+
+
+@app.get("/api/academy/paper/checkpoints/{run_id}")
+async def api_academy_paper_checkpoint_detail(run_id: str):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    run = g_memory_store.get_run_record(run_id)
+    if not run or run.get("run_type") != "academy_paper_checkpoint":
+        raise HTTPException(404, "Checkpoint not found")
+    path = _academy_checkpoint_artifact_path(run)
+    if not path:
+        raise HTTPException(404, "Checkpoint artifact not found")
+    root = (BASE_DIR.parent / "output" / "academy" / "checkpoints").resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise HTTPException(403, "Checkpoint artifact is outside the checkpoint directory")
+    if not path.exists() or not path.is_file():
+        raise HTTPException(404, "Checkpoint artifact file not found")
+    checkpoint = json.loads(path.read_text(encoding="utf-8"))
+    return JSONResponse({"run": run, "checkpoint": checkpoint, "summary": _academy_checkpoint_summary(run)})
+
+
 def get_knowledge_service() -> KnowledgeService:
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
@@ -3122,6 +3431,595 @@ def get_knowledge_service() -> KnowledgeService:
         g_knowledge_service = KnowledgeService(g_memory_store, UPLOAD_DIR, lambda: g_vector_store.refresh() if g_vector_store else None)
     return g_knowledge_service
 
+
+def _academy_project_item_summary(run: dict[str, Any]) -> dict[str, Any]:
+    inputs = run.get("inputs") or {}
+    outputs = run.get("outputs") or {}
+    return {
+        "run_id": run.get("run_id", ""),
+        "title": run.get("title", ""),
+        "status": run.get("status", ""),
+        "updated_at": run.get("updated_at", ""),
+        "document_id": inputs.get("document_id"),
+        "document_title": inputs.get("document_title", ""),
+        "question": inputs.get("question", ""),
+        "priority": inputs.get("priority", "normal"),
+        "report_run_id": outputs.get("report_run_id", ""),
+        "checkpoint_run_id": outputs.get("checkpoint_run_id", ""),
+        "knowledge_id": outputs.get("knowledge_id"),
+        "annotation_run_id": outputs.get("annotation_run_id", ""),
+        "next_action": outputs.get("next_action", ""),
+    }
+
+
+@app.get("/api/academy/paper/project-board")
+async def api_academy_paper_project_board(document_id: int = 0, limit: int = 50):
+    if not g_memory_store:
+        return JSONResponse({"items": [], "count": 0}, status_code=503)
+    max_items = max(1, min(int(limit or 50), 100))
+    items = []
+    for item in g_memory_store.list_run_records(run_type="academy_research_project_item", limit=100):
+        run = g_memory_store.get_run_record(item.get("run_id", ""))
+        inputs = run.get("inputs") or {}
+        if document_id and int(inputs.get("document_id") or 0) != int(document_id):
+            continue
+        items.append(_academy_project_item_summary(run))
+        if len(items) >= max_items:
+            break
+    return JSONResponse({"items": items, "count": len(items)})
+
+
+@app.post("/api/academy/paper/project-board")
+async def api_academy_paper_project_item_save(request: Request):
+    if not g_memory_store:
+        return JSONResponse({"saved": False, "error": "MemoryOS not initialized"}, status_code=503)
+    data = await request.json()
+    document_id = int(data.get("document_id") or 0)
+    if not document_id:
+        raise HTTPException(400, "document_id is required")
+    status = _academy_paper_status_payload(document_id)
+    document = status.get("document") or {}
+    question = str(data.get("question") or data.get("title") or "").strip()
+    if not question:
+        raise HTTPException(400, "question is required")
+    priority = str(data.get("priority") or "normal").strip() or "normal"
+    next_action = str(data.get("next_action") or "follow-up research").strip() or "follow-up research"
+    title = question[:96]
+    stamp = int(time.time() * 1000)
+    report = status.get("report") or {}
+    checkpoint = status.get("checkpoint") or {}
+    knowledge = status.get("knowledge") or {}
+    annotation = status.get("annotation") or {}
+    run = RunRecord(
+        run_id=f"academy-research-project-item-{document_id}-{stamp}",
+        run_type="academy_research_project_item",
+        title=title,
+        status=str(data.get("status") or "open"),
+        actor="user",
+        scenario="research",
+        inputs={
+            "document_id": document_id,
+            "document_title": document.get("title") or document.get("filename") or f"doc:{document_id}",
+            "question": question,
+            "priority": priority,
+        },
+        outputs={
+            "next_action": next_action,
+            "report_run_id": report.get("run_id", ""),
+            "checkpoint_run_id": checkpoint.get("run_id", ""),
+            "knowledge_id": knowledge.get("id"),
+            "annotation_run_id": annotation.get("run_id", ""),
+        },
+        tags=["academy", "paper", "project-board", "follow-up"],
+    )
+    run.add_evidence("academy_research_project", "Project item is linked to the active research document and local artifacts", citation=f"doc:{document_id}", document_id=document_id)
+    saved_run = g_memory_store.save_run_record(run.to_dict())
+    return JSONResponse({"saved": True, "item": _academy_project_item_summary(saved_run), "run": saved_run})
+
+
+@app.post("/api/academy/paper/project-board/{run_id}/status")
+async def api_academy_paper_project_item_status(run_id: str, request: Request):
+    if not g_memory_store:
+        return JSONResponse({"saved": False, "error": "MemoryOS not initialized"}, status_code=503)
+    data = await request.json()
+    status = str(data.get("status") or "").strip().lower()
+    if status not in {"open", "done", "blocked"}:
+        raise HTTPException(400, "status must be open, done, or blocked")
+    run = g_memory_store.get_run_record(run_id)
+    if not run or run.get("run_type") != "academy_research_project_item":
+        raise HTTPException(404, "Project item not found")
+    outputs = dict(run.get("outputs") or {})
+    if "next_action" in data:
+        outputs["next_action"] = str(data.get("next_action") or "")
+    if "decision" in data:
+        outputs["decision"] = str(data.get("decision") or "")
+    run["status"] = status
+    run["outputs"] = outputs
+    saved_run = g_memory_store.save_run_record(run)
+    return JSONResponse({"saved": True, "item": _academy_project_item_summary(saved_run), "run": saved_run})
+
+
+@app.post("/api/academy/paper/project-board/export")
+async def api_academy_paper_project_board_export(request: Request):
+    if not g_memory_store:
+        return JSONResponse({"exported": False, "error": "MemoryOS not initialized"}, status_code=503)
+    data = await request.json()
+    document_id = int(data.get("document_id") or 0)
+    if not document_id:
+        raise HTTPException(400, "document_id is required")
+    status = _academy_paper_status_payload(document_id)
+    document = status.get("document") or {}
+    chunks = g_memory_store.get_document_chunks(document_id, 20)
+    project_items = []
+    for item in g_memory_store.list_run_records(run_type="academy_research_project_item", limit=100):
+        run = g_memory_store.get_run_record(item.get("run_id", ""))
+        inputs = run.get("inputs") or {}
+        if int(inputs.get("document_id") or 0) == document_id:
+            project_items.append(_academy_project_item_summary(run))
+    checkpoints = []
+    for item in g_memory_store.list_run_records(run_type="academy_paper_checkpoint", limit=100):
+        run = g_memory_store.get_run_record(item.get("run_id", ""))
+        inputs = run.get("inputs") or {}
+        if int(inputs.get("document_id") or 0) == document_id:
+            checkpoints.append(_academy_checkpoint_summary(run))
+    title = str(document.get("title") or document.get("filename") or f"doc-{document_id}")
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    package = {
+        "schema": "clawos.academy.research_project.v1",
+        "created_at": stamp,
+        "document": document,
+        "status": status,
+        "project_items": project_items,
+        "checkpoints": checkpoints,
+        "chunks": [
+            {
+                "chunk_index": chunk.get("chunk_index"),
+                "citation": chunk.get("citation", ""),
+                "page": chunk.get("page"),
+                "preview": str(chunk.get("text") or chunk.get("content") or chunk.get("preview") or "")[:700],
+            }
+            for chunk in chunks
+        ],
+    }
+    storage = ArtifactStorage(BASE_DIR.parent / "output" / "academy" / "projects")
+    artifact = storage.write_json(f"{stamp}_{safe_artifact_slug(title)}_project.json", package)
+    run = RunRecord(
+        run_id=f"academy-research-project-export-{document_id}-{stamp}",
+        run_type="academy_research_project_export",
+        title=f"Academy research project export: {title}",
+        status="pass",
+        actor="user",
+        scenario="research",
+        inputs={"document_id": document_id, "title": title},
+        outputs={
+            "project_path": artifact["path"],
+            "project_item_count": len(project_items),
+            "checkpoint_count": len(checkpoints),
+        },
+        tags=["academy", "paper", "project-board", "export"],
+    )
+    run.add_artifact("project_json", f"Research project package for {title}", artifact["path"], storage=artifact)
+    run.add_evidence("academy_research_project_export", "Export bundles document, checkpoints, project items, chunks, and local evidence", citation=f"doc:{document_id}", document_id=document_id)
+    saved_run = g_memory_store.save_run_record(run.to_dict())
+    return JSONResponse({"exported": True, "package": package, "artifact": artifact, "run": saved_run})
+
+
+def _academy_project_export_artifact_path(run: dict[str, Any]) -> Path | None:
+    for artifact in run.get("artifacts") or []:
+        if artifact.get("kind") != "project_json":
+            continue
+        storage = (artifact.get("metadata") or {}).get("storage") or {}
+        raw_path = artifact.get("uri") or storage.get("path") or ""
+        if raw_path:
+            return Path(str(raw_path)).expanduser().resolve()
+    return None
+
+
+def _academy_project_export_summary(run: dict[str, Any]) -> dict[str, Any]:
+    inputs = run.get("inputs") or {}
+    outputs = run.get("outputs") or {}
+    artifact = (run.get("artifacts") or [{}])[0] if run.get("artifacts") else {}
+    return {
+        "run_id": run.get("run_id", ""),
+        "title": run.get("title", ""),
+        "updated_at": run.get("updated_at", ""),
+        "document_id": inputs.get("document_id"),
+        "document_title": inputs.get("title", ""),
+        "project_path": outputs.get("project_path", ""),
+        "project_item_count": outputs.get("project_item_count", 0),
+        "checkpoint_count": outputs.get("checkpoint_count", 0),
+        "artifact": artifact,
+    }
+
+
+@app.get("/api/academy/paper/project-board/exports")
+async def api_academy_paper_project_exports(document_id: int = 0, limit: int = 20):
+    if not g_memory_store:
+        return JSONResponse({"exports": [], "count": 0}, status_code=503)
+    max_items = max(1, min(int(limit or 20), 100))
+    exports = []
+    for item in g_memory_store.list_run_records(run_type="academy_research_project_export", limit=100):
+        run = g_memory_store.get_run_record(item.get("run_id", ""))
+        inputs = run.get("inputs") or {}
+        if document_id and int(inputs.get("document_id") or 0) != int(document_id):
+            continue
+        exports.append(_academy_project_export_summary(run))
+        if len(exports) >= max_items:
+            break
+    return JSONResponse({"exports": exports, "count": len(exports)})
+
+
+
+def _academy_count_run_records(run_type: str, document_id: int = 0) -> int:
+    if not g_memory_store:
+        return 0
+    count = 0
+    for item in g_memory_store.list_run_records(run_type=run_type, limit=200):
+        run = g_memory_store.get_run_record(item.get("run_id", ""))
+        inputs = run.get("inputs") or {}
+        if document_id and int(inputs.get("document_id") or 0) != int(document_id):
+            continue
+        count += 1
+    return count
+
+
+def _academy_offline_audit_payload(document_id: int = 0) -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    documents = g_memory_store.list_documents("research")
+    active_document = g_memory_store.get_document(document_id) if document_id else (documents[0] if documents else {})
+    active_document_id = int((active_document or {}).get("id") or document_id or 0)
+    chunk_count = len(g_memory_store.get_document_chunks(active_document_id, 100)) if active_document_id else 0
+    knowledge_items = g_memory_store.list_knowledge("research")
+    local_model = local_model_assets_status()
+    report_count = _academy_count_run_records("academy_paper_report", active_document_id)
+    checkpoint_count = _academy_count_run_records("academy_paper_checkpoint", active_document_id)
+    project_item_count = _academy_count_run_records("academy_research_project_item", active_document_id)
+    project_export_count = _academy_count_run_records("academy_research_project_export", active_document_id)
+    checks = [
+        {"id": "local_model_assets", "label": "Local 8B/9B model assets", "ok": bool(local_model.get("ready")), "detail": local_model.get("summary", "")},
+        {"id": "document_ingestion", "label": "Research document ingestion", "ok": bool(active_document_id and chunk_count > 0), "detail": f"doc:{active_document_id or 0} chunks:{chunk_count}"},
+        {"id": "report_generation", "label": "Local report run recorded", "ok": report_count > 0, "detail": f"reports:{report_count}"},
+        {"id": "knowledge_capture", "label": "Research knowledge captured", "ok": len(knowledge_items) > 0, "detail": f"research knowledge:{len(knowledge_items)}"},
+        {"id": "evidence_search", "label": "Citation evidence search ready", "ok": bool(get_knowledge_service() and chunk_count > 0), "detail": f"searchable chunks:{chunk_count}"},
+        {"id": "checkpoints", "label": "Paper checkpoint available", "ok": checkpoint_count > 0, "detail": f"checkpoints:{checkpoint_count}"},
+        {"id": "project_board", "label": "Project board items", "ok": project_item_count > 0, "detail": f"items:{project_item_count}"},
+        {"id": "project_packages", "label": "Offline project package export", "ok": project_export_count > 0, "detail": f"packages:{project_export_count}"},
+    ]
+    passed = sum(1 for item in checks if item["ok"])
+    return {
+        "ok": passed == len(checks),
+        "percent": round((passed / len(checks)) * 100, 1) if checks else 0,
+        "standard": "local-first research workflow readiness",
+        "document": active_document or {},
+        "counts": {
+            "research_documents": len(documents),
+            "chunks": chunk_count,
+            "research_knowledge": len(knowledge_items),
+            "reports": report_count,
+            "checkpoints": checkpoint_count,
+            "project_items": project_item_count,
+            "project_packages": project_export_count,
+        },
+        "local_model_assets": local_model,
+        "checks": checks,
+        "remaining": [item for item in checks if not item["ok"]],
+    }
+
+
+def _workbench_offline_readiness_payload(document_id: int = 0) -> dict[str, Any]:
+    system = _system_readiness_payload()
+    local_model = system.get("local_model_assets", {})
+    try:
+        paper = _academy_offline_audit_payload(document_id)
+    except HTTPException as exc:
+        paper = {
+            "ok": False,
+            "percent": 0,
+            "standard": "local-first research workflow readiness",
+            "counts": {},
+            "checks": [],
+            "remaining": [{"id": "paper_memory", "label": "Paper workflow memory", "ok": False, "detail": str(exc.detail)}],
+        }
+    paper_checks = {item.get("id"): item for item in paper.get("checks", [])}
+    paper_counts = paper.get("counts", {})
+    checks = [
+        {"id": "system_readiness", "label": "System services", "ok": float(system.get("score", 0)) >= 0.8, "weight": 20, "detail": f"{system.get('percent', 0)}%"},
+        {"id": "local_model_assets", "label": "Local 8B/9B model assets", "ok": bool(local_model.get("ready")), "weight": 25, "detail": local_model.get("summary", "")},
+        {"id": "paper_workflow", "label": "Paper and report workflow", "ok": float(paper.get("percent", 0)) >= 75, "weight": 20, "detail": f"{paper.get('percent', 0)}%"},
+        {"id": "evidence_chain", "label": "Searchable citation evidence", "ok": bool(paper_checks.get("evidence_search", {}).get("ok") and paper_checks.get("knowledge_capture", {}).get("ok")), "weight": 15, "detail": f"chunks:{paper_counts.get('chunks', 0)} knowledge:{paper_counts.get('research_knowledge', 0)}"},
+        {"id": "project_management", "label": "Research project board", "ok": int(paper_counts.get("project_items", 0) or 0) > 0, "weight": 10, "detail": f"items:{paper_counts.get('project_items', 0)}"},
+        {"id": "offline_artifacts", "label": "Checkpoints and project packages", "ok": int(paper_counts.get("checkpoints", 0) or 0) > 0 and int(paper_counts.get("project_packages", 0) or 0) > 0, "weight": 10, "detail": f"checkpoints:{paper_counts.get('checkpoints', 0)} packages:{paper_counts.get('project_packages', 0)}"},
+    ]
+    total = sum(int(item["weight"]) for item in checks)
+    passed = sum(int(item["weight"]) for item in checks if item["ok"])
+    percent = round((passed / total) * 100, 1) if total else 0
+    return {
+        "ok": percent >= 90,
+        "percent": percent,
+        "standard": "local-first workbench offline readiness",
+        "system": system,
+        "model": {"local_model_assets": local_model},
+        "paper": paper,
+        "checks": checks,
+        "remaining": [item for item in checks if not item["ok"]],
+    }
+
+
+@app.get("/api/workbench/offline-readiness")
+async def api_workbench_offline_readiness(document_id: int = 0):
+    return JSONResponse(_workbench_offline_readiness_payload(document_id))
+
+
+def _daily_local_acceptance_summary(payload: dict[str, Any]) -> str:
+    readiness = payload.get("workbench_readiness", {})
+    frozen = payload.get("frozen_benchmark", {})
+    model = payload.get("model_acceptance", {})
+    qwen = payload.get("local_qwen_smoke") or {}
+    frozen_metrics = frozen.get("metrics", {})
+    model_benchmark = model.get("benchmark", {})
+    evaluation = model.get("evaluation", {})
+    lines = [
+        "ClawOS Daily Local Acceptance",
+        f"Mode: {payload.get('mode', 'quick')}",
+        f"Workbench readiness: {readiness.get('percent', 0)}% ({'ready' if readiness.get('ok') else 'needs attention'})",
+        f"Frozen benchmark: {frozen_metrics.get('passed_count', 0)}/{frozen_metrics.get('case_count', 0)} pass_rate={frozen_metrics.get('pass_rate', 0)} p95_ms={frozen_metrics.get('p95_latency_ms', 0)}",
+        f"Mock model acceptance: {model_benchmark.get('passed_count', 0)}/{model_benchmark.get('case_count', 0)} score={evaluation.get('total_score', 0)}/{evaluation.get('max_score', 0)} rate={evaluation.get('score_rate', 0)}",
+    ]
+    if qwen:
+        lines.append(f"Local Qwen smoke: {'ok' if qwen.get('ok') else 'not ready'} endpoint={qwen.get('base_url', '')} model={qwen.get('model', '')} error={qwen.get('error', '')}")
+    remaining = readiness.get("remaining") or []
+    if remaining:
+        lines.append("Remaining readiness items: " + ", ".join(str(item.get("id") or item.get("label") or "check") for item in remaining[:8]))
+    else:
+        lines.append("Remaining readiness items: none")
+    return "\n".join(lines)
+
+
+async def _local_qwen_smoke_check(http_client: Any = None, timeout_s: float = 20.0) -> dict[str, Any]:
+    assets = local_model_assets_status()
+    provider = create_model_provider({
+        "provider": "qwen",
+        "base_url": os.environ.get("QWEN_BASE_URL", "http://127.0.0.1:8000/v1"),
+        "model": os.environ.get("QWEN_MODEL", "Qwen3.5-9B-Q4_K_M"),
+        "requires_api_key": False,
+        "timeout_s": timeout_s,
+    })
+    result = await provider.complete(
+        [
+            {"role": "system", "content": "You are a local ClawOS smoke-test model. Reply with exactly: LOCAL_OK"},
+            {"role": "user", "content": "offline local model smoke check"},
+        ],
+        {"temperature": 0.0, "max_tokens": 16},
+        http_client=http_client,
+    )
+    content = str(result.get("content") or "").strip()
+    ok = bool(result.get("ok") and content)
+    return {
+        "ok": ok,
+        "provider": "qwen",
+        "model": getattr(provider, "model", ""),
+        "base_url": getattr(provider, "base_url", ""),
+        "configured": bool(provider.is_configured()) if hasattr(provider, "is_configured") else True,
+        "assets_ready": bool(assets.get("ready")),
+        "assets_summary": assets.get("summary", ""),
+        "duration_ms": result.get("duration_ms", 0),
+        "error": "" if ok else str(result.get("error") or "empty_response"),
+        "content_preview": content[:80],
+    }
+
+
+def _daily_acceptance_run_summary(run: dict[str, Any]) -> dict[str, Any]:
+    outputs = run.get("outputs") or {}
+    metrics = run.get("metrics") or {}
+    qwen = outputs.get("local_qwen_smoke") or {}
+    return {
+        "run_id": run.get("run_id", ""),
+        "run_type": run.get("run_type", ""),
+        "title": run.get("title", ""),
+        "status": run.get("status", ""),
+        "updated_at": run.get("updated_at", ""),
+        "mode": (run.get("inputs") or {}).get("mode", ""),
+        "workbench_percent": metrics.get("workbench_percent", 0),
+        "benchmark_pass_rate": metrics.get("benchmark_pass_rate", 0),
+        "model_score_rate": metrics.get("model_score_rate", 0),
+        "qwen_ok": qwen.get("ok") if qwen else None,
+        "qwen_error": qwen.get("error", "") if qwen else "",
+        "summary": outputs.get("summary", ""),
+    }
+
+
+def _save_daily_acceptance_run(payload: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+    if not g_memory_store:
+        return {}
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    readiness = payload.get("workbench_readiness") or {}
+    frozen = payload.get("frozen_benchmark") or {}
+    frozen_metrics = frozen.get("metrics") or {}
+    model = payload.get("model_acceptance") or {}
+    evaluation = model.get("evaluation") or {}
+    qwen = payload.get("local_qwen_smoke") or {}
+    run = RunRecord(
+        run_id=f"workbench-daily-acceptance-{stamp}",
+        run_type="workbench_daily_acceptance",
+        title="Workbench daily local acceptance",
+        status="pass" if payload.get("ok") else "fail",
+        actor="user",
+        scenario="local-first-maintenance",
+        inputs={
+            "mode": payload.get("mode", "quick"),
+            "limit": payload.get("limit", 0),
+            "full_suite": bool(inputs.get("full_suite", False)),
+            "include_qwen_smoke": bool(inputs.get("include_qwen_smoke", False)),
+            "document_id": int(inputs.get("document_id") or 0),
+        },
+        outputs={
+            "summary": payload.get("summary", ""),
+            "remaining_readiness": readiness.get("remaining", []),
+            "local_qwen_smoke": qwen,
+            "failed_cases": frozen.get("failed_cases", []),
+        },
+        metrics={
+            "workbench_percent": readiness.get("percent", 0),
+            "benchmark_pass_rate": frozen_metrics.get("pass_rate", 0),
+            "benchmark_passed_count": frozen_metrics.get("passed_count", 0),
+            "benchmark_case_count": frozen_metrics.get("case_count", 0),
+            "benchmark_p95_ms": frozen_metrics.get("p95_latency_ms", 0),
+            "model_score_rate": evaluation.get("score_rate", 0),
+            "model_total_score": evaluation.get("total_score", 0),
+            "model_max_score": evaluation.get("max_score", 0),
+            "qwen_ok": qwen.get("ok") if qwen else None,
+        },
+        tags=["daily", "offline", "acceptance", "qwen" if qwen else "mock"],
+    )
+    run.add_evidence("workbench_readiness", "Daily check includes local-first workbench readiness", score=readiness.get("percent", 0))
+    run.add_evidence("frozen_benchmark", "Daily check includes frozen benchmark pass rate", score=frozen_metrics.get("pass_rate", 0))
+    run.add_evidence("mock_model_acceptance", "Daily check includes mock model acceptance score", score=evaluation.get("score_rate", 0))
+    if qwen:
+        run.add_evidence("local_qwen_smoke", "Daily check explicitly includes local Qwen smoke result", score=1.0 if qwen.get("ok") else 0.0)
+    for item in (readiness.get("remaining") or [])[:8]:
+        run.add_failure_case("readiness_gap", str(item.get("label") or item.get("id") or "readiness gap"), severity="medium", output_summary=str(item.get("detail") or ""), remediation="Resolve the readiness item and rerun daily local acceptance.")
+    if qwen and not qwen.get("ok"):
+        run.add_failure_case("local_qwen_smoke", str(qwen.get("error") or "local Qwen smoke failed"), severity="high", output_summary=str(qwen.get("assets_summary") or ""), remediation="Start local llama.cpp/Qwen server and verify local model assets.")
+    if not frozen.get("passed", True):
+        run.add_failure_case("frozen_benchmark", "Frozen benchmark failed", severity="high", output_summary=json.dumps(frozen_metrics, ensure_ascii=False), remediation="Inspect failed benchmark cases before relying on the workbench.")
+    saved = g_memory_store.save_run_record(run.to_dict())
+    payload["run"] = _daily_acceptance_run_summary(saved)
+    return saved
+
+
+def _save_qwen_smoke_run(payload: dict[str, Any]) -> dict[str, Any]:
+    if not g_memory_store:
+        return {}
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    run = RunRecord(
+        run_id=f"workbench-qwen-smoke-{stamp}",
+        run_type="workbench_qwen_smoke",
+        title="Local Qwen smoke check",
+        status="pass" if payload.get("ok") else "fail",
+        actor="user",
+        scenario="local-model-maintenance",
+        inputs={"base_url": payload.get("base_url", ""), "model": payload.get("model", "")},
+        outputs={"local_qwen_smoke": payload},
+        metrics={"qwen_ok": bool(payload.get("ok")), "duration_ms": payload.get("duration_ms", 0), "assets_ready": bool(payload.get("assets_ready"))},
+        tags=["qwen", "smoke", "offline"],
+    )
+    run.add_evidence("local_qwen_smoke", "Explicit local Qwen smoke check was run", score=1.0 if payload.get("ok") else 0.0)
+    if not payload.get("ok"):
+        run.add_failure_case("local_qwen_smoke", str(payload.get("error") or "local Qwen smoke failed"), severity="high", output_summary=str(payload.get("assets_summary") or ""), remediation="Start local llama.cpp/Qwen server and verify local model assets.")
+    saved = g_memory_store.save_run_record(run.to_dict())
+    payload["run"] = _daily_acceptance_run_summary(saved)
+    return saved
+
+async def _daily_local_acceptance_payload(limit: int = 5, full_suite: bool = False, document_id: int = 0, include_qwen_smoke: bool = False) -> dict[str, Any]:
+    from scripts.evaluate_model_acceptance import _main_async as run_model_acceptance
+    from scripts.evaluate_model_acceptance import _run_suite as run_frozen_suite
+    from scenario_benchmarks import DEFAULT_SUITE_FILE
+
+    case_limit = 0 if full_suite else max(1, min(int(limit or 5), 30))
+    suite_path = str(DEFAULT_SUITE_FILE)
+    readiness = _workbench_offline_readiness_payload(document_id)
+    frozen = await asyncio.to_thread(run_frozen_suite, suite_path, case_limit)
+    acceptance_args = argparse.Namespace(
+        suite=suite_path,
+        provider="mock",
+        model="",
+        base_url="",
+        api_key_env="MODEL_API_KEY",
+        timeout_s=60.0,
+        mock_response="PASS: meeting research learning git template tool acceptance case reviewed with sufficient tool evidence.",
+        limit=case_limit,
+    )
+    model_acceptance = await run_model_acceptance(acceptance_args)
+    payload = {
+        "ok": bool(readiness.get("ok") and frozen.get("passed") and model_acceptance.get("ok")),
+        "mode": "full" if full_suite else "quick",
+        "limit": case_limit,
+        "standard": "daily local acceptance preset",
+        "workbench_readiness": readiness,
+        "frozen_benchmark": {
+            "passed": bool(frozen.get("passed")),
+            "metrics": frozen.get("metrics", {}),
+            "failed_cases": [case for case in frozen.get("case_results", []) if not case.get("passed")],
+        },
+        "model_acceptance": {
+            "ok": bool(model_acceptance.get("ok")),
+            "provider": model_acceptance.get("provider"),
+            "model": model_acceptance.get("model"),
+            "configured": bool(model_acceptance.get("configured")),
+            "benchmark": model_acceptance.get("benchmark", {}),
+            "evaluation": model_acceptance.get("evaluation", {}),
+            "provider_errors": (model_acceptance.get("evaluation", {}) or {}).get("provider_errors", {}),
+        },
+    }
+    if include_qwen_smoke:
+        payload["local_qwen_smoke"] = await _local_qwen_smoke_check()
+        payload["ok"] = bool(payload["ok"] and payload["local_qwen_smoke"].get("ok"))
+    payload["summary"] = _daily_local_acceptance_summary(payload)
+    return payload
+
+
+@app.post("/api/workbench/daily-local-acceptance")
+async def api_workbench_daily_local_acceptance(request: Request):
+    data = await request.json()
+    payload = await _daily_local_acceptance_payload(
+        limit=int(data.get("limit") or 5),
+        full_suite=bool(data.get("full_suite", False)),
+        document_id=int(data.get("document_id") or 0),
+        include_qwen_smoke=bool(data.get("include_qwen_smoke", False)),
+    )
+    if bool(data.get("persist", True)):
+        _save_daily_acceptance_run(payload, data)
+    return JSONResponse(payload)
+
+
+@app.post("/api/workbench/local-qwen-smoke")
+async def api_workbench_local_qwen_smoke(request: Request):
+    data = await request.json()
+    payload = await _local_qwen_smoke_check(timeout_s=float(data.get("timeout_s") or 20.0))
+    if bool(data.get("persist", True)):
+        _save_qwen_smoke_run(payload)
+    return JSONResponse(payload)
+
+
+@app.get("/api/workbench/local-acceptance-history")
+async def api_workbench_local_acceptance_history(limit: int = 20):
+    if not g_memory_store:
+        return JSONResponse({"runs": [], "count": 0, "durable": False})
+    max_items = max(1, min(int(limit or 20), 100))
+    runs = []
+    for run_type in ("workbench_daily_acceptance", "workbench_qwen_smoke"):
+        for item in g_memory_store.list_run_records(run_type=run_type, limit=max_items):
+            run = g_memory_store.get_run_record(item.get("run_id", ""))
+            if run:
+                runs.append(_daily_acceptance_run_summary(run))
+    runs.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
+    runs = runs[:max_items]
+    return JSONResponse({"runs": runs, "count": len(runs), "durable": True})
+
+
+@app.get("/api/academy/paper/offline-audit")
+async def api_academy_paper_offline_audit(document_id: int = 0):
+    return JSONResponse(_academy_offline_audit_payload(document_id))
+@app.get("/api/academy/paper/project-board/exports/{run_id}")
+async def api_academy_paper_project_export_detail(run_id: str):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    run = g_memory_store.get_run_record(run_id)
+    if not run or run.get("run_type") != "academy_research_project_export":
+        raise HTTPException(404, "Project export not found")
+    path = _academy_project_export_artifact_path(run)
+    if not path:
+        raise HTTPException(404, "Project export artifact not found")
+    root = (BASE_DIR.parent / "output" / "academy" / "projects").resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise HTTPException(403, "Project export artifact is outside the project directory")
+    if not path.exists() or not path.is_file():
+        raise HTTPException(404, "Project export artifact file not found")
+    package = json.loads(path.read_text(encoding="utf-8"))
+    return JSONResponse({"run": run, "package": package, "summary": _academy_project_export_summary(run)})
 
 @app.get("/api/documents")
 async def api_documents(category: str = ""):
@@ -3155,6 +4053,39 @@ async def api_document_run_ocr(document_id: int, request: Request):
         raise HTTPException(400, message)
     return JSONResponse(result)
 
+
+@app.get("/api/documents/{document_id}/source")
+async def api_document_source(document_id: int):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    document = g_memory_store.get_document(document_id)
+    if not document:
+        raise HTTPException(404, "Document not found")
+    source = Path(str(document.get("file_path") or "")).expanduser()
+    if not source:
+        raise HTTPException(404, "Document has no source file")
+    source = source.resolve()
+    upload_root = UPLOAD_DIR.resolve()
+    try:
+        source.relative_to(upload_root)
+    except ValueError:
+        raise HTTPException(403, "Document source is outside the upload directory")
+    if not source.exists() or not source.is_file():
+        raise HTTPException(404, "Document source file not found")
+    suffix = source.suffix.lower()
+    media_types = {
+        ".pdf": "application/pdf",
+        ".txt": "text/plain; charset=utf-8",
+        ".md": "text/markdown; charset=utf-8",
+        ".markdown": "text/markdown; charset=utf-8",
+        ".csv": "text/csv; charset=utf-8",
+        ".json": "application/json; charset=utf-8",
+        ".html": "text/html; charset=utf-8",
+        ".htm": "text/html; charset=utf-8",
+    }
+    if suffix not in media_types:
+        raise HTTPException(415, "Document source type is not previewable")
+    return FileResponse(source, media_type=media_types[suffix], filename=document.get("filename") or source.name)
 
 @app.get("/api/documents/{document_id}/chunks")
 async def api_document_chunks(document_id: int, limit: int = 20):

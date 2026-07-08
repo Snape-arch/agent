@@ -3446,3 +3446,108 @@
     grid-template-columns:1fr;
   }
 }
+
+.offline-readiness-panel{
+  display:grid;
+  gap:14px;
+}
+.offline-readiness-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+}
+.offline-readiness-head h2{
+  margin:0 0 4px;
+}
+.offline-readiness-summary{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+}
+.offline-readiness-summary div{
+  min-width:0;
+  padding:10px 12px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;
+  background:rgba(255,255,255,.05);
+}
+.offline-readiness-summary span,
+.offline-readiness-check span{
+  display:block;
+  color:rgba(255,255,255,.64);
+  font-size:12px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.offline-readiness-summary b,
+.offline-readiness-check b{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.offline-readiness-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+.offline-readiness-check{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 12px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;
+  background:rgba(255,255,255,.04);
+}
+.offline-readiness-check.ok{
+  border-color:rgba(83,224,164,.32);
+}
+.offline-readiness-check.pending{
+  border-color:rgba(255,204,102,.28);
+}
+@media (max-width:900px){
+  .offline-readiness-summary,
+  .offline-readiness-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media (max-width:640px){
+  .offline-readiness-head{
+    flex-direction:column;
+  }
+  .offline-readiness-summary,
+  .offline-readiness-grid{
+    grid-template-columns:1fr;
+  }
+}
+.offline-readiness-actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:8px;
+}
+.daily-acceptance-summary{
+  margin:0;
+  min-height:96px;
+  max-height:220px;
+  overflow:auto;
+  white-space:pre-wrap;
+  word-break:break-word;
+  padding:12px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;
+  background:rgba(0,0,0,.22);
+  color:rgba(255,255,255,.78);
+  font-size:12px;
+  line-height:1.5;
+}
+@media (max-width:640px){
+  .offline-readiness-actions{
+    justify-content:flex-start;
+  }
+}

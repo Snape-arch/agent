@@ -28,17 +28,23 @@ from scripts.run_frozen_benchmarks import _run_tool
 
 def _provider_config(args: argparse.Namespace) -> dict[str, Any]:
     provider = args.provider or os.environ.get("MODEL_PROVIDER") or "mock"
-    model = args.model or os.environ.get("MODEL_NAME") or ("mock-evaluator" if provider == "mock" else "")
+    provider_key = str(provider or "").lower()
+    model = args.model or os.environ.get("MODEL_NAME") or ("mock-evaluator" if provider_key == "mock" else "")
     base_url = args.base_url or os.environ.get("MODEL_BASE_URL") or ""
     api_key = os.environ.get(args.api_key_env or "MODEL_API_KEY", "")
     cfg = {
         "provider": provider,
-        "model": model,
-        "base_url": base_url,
-        "api_key": api_key,
         "timeout_s": args.timeout_s,
     }
-    if provider == "mock":
+    if model:
+        cfg["model"] = model
+    if base_url:
+        cfg["base_url"] = base_url
+    if api_key:
+        cfg["api_key"] = api_key
+    if provider_key == "qwen":
+        cfg["requires_api_key"] = False
+    if provider_key == "mock":
         cfg["mock_response"] = args.mock_response or (
             "PASS: meeting research learning git template tool acceptance case "
             "reviewed with sufficient tool evidence."

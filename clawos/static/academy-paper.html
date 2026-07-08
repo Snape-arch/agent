@@ -28,8 +28,51 @@
         <button class="pill solid dark" id="academyUploadPaper" type="button" onclick="academyUploadPaper()">上传并解析</button>
         <button class="pill" id="academyRunPaperWorkflow" type="button" onclick="academyRunPaperWorkflow()">生成导读/报告</button>
         <button class="pill" id="academySavePaperKnowledge" type="button" onclick="academySavePaperKnowledge()">保存到知识库</button>
+        <button class="pill" id="academySavePaperCheckpoint" type="button" onclick="academySavePaperCheckpoint()">保存 Checkpoint</button>
       </div>
 
+      <section class="academy-paper-offline-audit" aria-label="Offline workflow readiness">
+        <div><b>Offline Workflow Audit</b><span id="academyPaperAuditStatus">Checking local workflow...</span><button class="pill" id="academyRefreshPaperAudit" type="button" onclick="academyRefreshPaperAudit()">刷新验收</button></div>
+        <div id="academyPaperAuditGrid" class="academy-paper-audit-grid"></div>
+      </section>
+
+            <section class="academy-paper-history" aria-label="Recent research documents">
+        <div><b>Recent Papers</b><span id="academyPaperHistoryStatus">Loading local research library...</span></div>
+        <div id="academyPaperHistory" class="academy-paper-history-list"></div>
+      </section>
+      <section class="academy-paper-checkpoints" aria-label="Paper Studio checkpoints">
+        <div><b>Checkpoints</b><span id="academyPaperCheckpointStatus">Loading local checkpoints...</span></div>
+        <div id="academyPaperCheckpointHistory" class="academy-paper-checkpoint-list"></div>
+      </section>
+      <section class="academy-paper-project-board" aria-label="Research project board">
+        <div><b>Project Board</b><span id="academyPaperProjectStatus">Loading local project items...</span></div>
+        <div class="academy-paper-project-compose">
+          <input id="academyPaperProjectQuestion" value="下一步要验证的关键问题是什么？">
+          <button class="pill" id="academyAddPaperProjectItem" type="button" onclick="academyAddPaperProjectItem()">加入项目板</button>
+          <button class="pill" id="academyExportPaperProject" type="button" onclick="academyExportPaperProject()">导出项目包</button>
+        </div>
+        <div id="academyPaperProjectBoard" class="academy-paper-project-list"></div>
+      </section>
+      <section class="academy-paper-project-packages" aria-label="Research project packages">
+        <div><b>Project Packages</b><span id="academyPaperProjectPackageStatus">Loading local packages...</span></div>
+        <div id="academyPaperProjectPackages" class="academy-paper-project-package-list"></div>
+      </section>
+      <div class="academy-paper-runtime" id="academyPaperRuntimeStatus" aria-label="Paper Studio runtime status">
+        <article><b>Document</b><span>Waiting</span></article>
+        <article><b>Chunks</b><span>Waiting</span></article>
+        <article><b>Report</b><span>Waiting</span></article>
+        <article><b>Knowledge</b><span>Waiting</span></article>
+        <article><b>Annotation</b><span>Local fallback</span></article>
+        <article><b>Checkpoint</b><span>Not saved</span></article>
+      </div>
+
+      <section class="academy-paper-meta" id="academyPaperMeta" aria-label="Active document metadata">
+        <article><b>Filename</b><span>Waiting</span></article>
+        <article><b>Extractor</b><span>Waiting</span></article>
+        <article><b>Pages</b><span>Unknown</span></article>
+        <article><b>OCR</b><span>Unknown</span></article>
+        <article><b>Preview</b><span>Unknown</span></article>
+      </section>
       <div class="academy-paper-status" id="academyPaperStatus">等待上传论文。支持 PDF 直接预览，解析后会生成 chunk、citation 和知识图谱进度。</div>
 
       <div class="paper-reader-shell">
