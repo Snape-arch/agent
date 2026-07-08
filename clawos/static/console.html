@@ -99,6 +99,31 @@
     <section class="view" id="view-dash">
       <div class="dashboard-stack">
         <div class="metric-grid" id="metrics"></div>
+        <div class="section-block glass-panel offline-readiness-panel" id="offlineReadinessPanel">
+          <div class="offline-readiness-head">
+            <div>
+              <h2>Offline Readiness</h2>
+              <p class="hint" id="offlineReadinessStatus">Checking local-first workbench readiness.</p>
+            </div>
+            <div class="offline-readiness-actions">
+              <button class="secondary" type="button" onclick="refreshOfflineReadiness()">Refresh</button>
+              <button class="primary" type="button" onclick="runDailyLocalAcceptance()">Run daily check</button>
+              <button class="secondary" type="button" onclick="runDailyLocalAcceptance(true)">Daily + Qwen</button>
+              <button class="secondary" type="button" onclick="runLocalQwenSmokeCheck()">Qwen smoke</button>
+              <button class="secondary" type="button" onclick="copyDailyLocalAcceptanceSummary()">Copy summary</button>
+            </div>
+          </div>
+          <div class="offline-readiness-summary" id="offlineReadinessSummary"></div>
+          <div class="offline-readiness-grid" id="offlineReadinessGrid"></div>
+          <pre class="daily-acceptance-summary" id="dailyAcceptanceSummary">Daily local acceptance has not run yet.</pre>
+          <div class="local-acceptance-history">
+            <div class="offline-readiness-head compact">
+              <h3>Local Acceptance History</h3>
+              <button class="secondary" type="button" onclick="loadLocalAcceptanceHistory()">Refresh history</button>
+            </div>
+            <table class="table" id="localAcceptanceHistoryTable"></table>
+          </div>
+        </div>
         <div class="dashboard-grid dashboard-grid-lean">
           <div class="section-block glass-panel"><h2>近期活动</h2><table class="table" id="activityTable"></table></div>
           <div class="section-block glass-panel"><h2>系统</h2><div id="runtimeKv"></div></div>

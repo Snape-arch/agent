@@ -26,6 +26,15 @@ class FakeRequest:
         return self._payload
 
 
+class FakeUploadFile:
+    def __init__(self, filename, payload):
+        self.filename = filename
+        self._payload = payload
+
+    async def read(self):
+        return self._payload
+
+
 class MemoryAndRoutingTests(unittest.TestCase):
     def test_chinese_memory_ingestion_extracts_profile_and_preference(self):
         from memoryos.context_builder import ContextBuilder
@@ -475,6 +484,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 markdown_exists = Path(report["markdown_path"]).exists()
                 pdf_exists = Path(report["pdf_path"]).exists()
                 listed = json.loads(asyncio.run(server.api_knowledge_list(category="research")).body)
+                listed_documents = json.loads(asyncio.run(server.api_documents(category="research")).body)
             finally:
                 server.g_memory_store = old_store
                 server.g_workspace_services = old_services
@@ -493,6 +503,209 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertIn("Markdown:", note_content)
         self.assertIn("PDF:", note_content)
         self.assertIn("compact", note_content)
+
+    def test_document_source_preview_is_confined_to_upload_dir(self):
+        import clawos_server as server
+        from fastapi import HTTPException
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_upload_dir = server.UPLOAD_DIR
+            old_base = server.BASE_DIR
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            upload_dir = Path(td) / "uploads"
+            upload_dir.mkdir()
+            pdf = upload_dir / "paper.pdf"
+            pdf.write_bytes(b"%PDF-1.4\n% local preview\n")
+            outside = Path(td) / "outside.pdf"
+            outside.write_bytes(b"%PDF-1.4\n% outside\n")
+            preview_doc = store.add_document(
+                "Preview Paper",
+                filename="paper.pdf",
+                file_path=str(pdf),
+                file_hash="preview-paper",
+                mime_type="application/pdf",
+                category="research",
+                status="ready",
+            )
+            outside_doc = store.add_document(
+                "Outside Paper",
+                filename="outside.pdf",
+                file_path=str(outside),
+                file_hash="outside-paper",
+                mime_type="application/pdf",
+                category="research",
+                status="ready",
+            )
+            server.g_memory_store = store
+            server.UPLOAD_DIR = upload_dir
+            try:
+                preview = asyncio.run(server.api_document_source(preview_doc["id"]))
+                preview_path = Path(preview.path)
+                try:
+                    asyncio.run(server.api_document_source(outside_doc["id"]))
+                    outside_status = 200
+                except HTTPException as exc:
+                    outside_status = exc.status_code
+            finally:
+                server.g_memory_store = old_store
+                server.UPLOAD_DIR = old_upload_dir
+                server.BASE_DIR = old_base
+
+        self.assertEqual(preview.media_type, "application/pdf")
+        self.assertEqual(preview_path, pdf.resolve())
+        self.assertEqual(outside_status, 403)
+    def test_uploaded_pdf_flow_chunks_report_and_knowledge_save(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+        from reportlab.pdfgen import canvas
+        from security.policy import ToolSecurityPolicy
+        from workspace_services import WorkspaceServices
+
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_services = server.g_workspace_services
+            old_vector = server.g_vector_store
+            old_upload_dir = server.UPLOAD_DIR
+            old_base = server.BASE_DIR
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            services = WorkspaceServices(store, ToolSecurityPolicy([td]))
+            pdf = Path(td) / "paper-flow.pdf"
+            doc = canvas.Canvas(str(pdf))
+            doc.drawString(72, 720, "1 Local First Paper Workflow")
+            doc.drawString(72, 700, "Uploaded papers should produce chunks, reports, and durable knowledge.")
+            doc.showPage()
+            doc.drawString(72, 720, "2 Evidence Chain")
+            doc.drawString(72, 700, "The saved report should keep citation paths available for follow-up work.")
+            doc.save()
+            server.g_memory_store = store
+            server.g_workspace_services = services
+            server.g_vector_store = None
+            server.UPLOAD_DIR = Path(td) / "uploads"
+            server.BASE_DIR = Path(td) / "clawos"
+            server.BASE_DIR.mkdir()
+            try:
+                uploaded = json.loads(asyncio.run(server.api_document_upload(
+                    [FakeUploadFile("paper-flow.pdf", pdf.read_bytes())],
+                    category="research",
+                )).body)
+                uploaded_doc = uploaded["documents"][0]
+                chunks = json.loads(asyncio.run(server.api_document_chunks(uploaded_doc["id"], limit=10)).body)
+                generated = json.loads(asyncio.run(server.api_research_learning_analysis(FakeRequest({
+                    "library_document_id": uploaded_doc["id"],
+                    "output_dir": str(Path(td) / "reports"),
+                    "formats": ["markdown", "pdf"],
+                    "depth": 2,
+                    "question_count": 8,
+                    "report_style": "learning_notes",
+                }))).body)
+                saved = json.loads(asyncio.run(server.api_knowledge_save(FakeRequest({
+                    "title": "Paper Flow Knowledge Note",
+                    "content": "\n".join([
+                        "# Paper Flow Knowledge Note",
+                        generated.get("preview", ""),
+                        f"Source: doc:{uploaded_doc['id']}",
+                    ]),
+                    "category": "research",
+                    "source": f"doc:{uploaded_doc['id']}",
+                    "tags": ["paper", "report", "offline-flow"],
+                    "confidence": 0.86,
+                }))).body)
+                listed = json.loads(asyncio.run(server.api_knowledge_list(category="research")).body)
+                listed_documents = json.loads(asyncio.run(server.api_documents(category="research")).body)
+                status = json.loads(asyncio.run(server.api_academy_paper_status(uploaded_doc["id"])).body)
+                checkpoint = json.loads(asyncio.run(server.api_academy_paper_checkpoint_save(FakeRequest({
+                    "document_id": uploaded_doc["id"],
+                    "citation": {"answer": "grounded", "citations": chunks["chunks"][:1]},
+                }))).body)
+                checkpoint_status = json.loads(asyncio.run(server.api_academy_paper_status(uploaded_doc["id"])).body)
+                checkpoint_list = json.loads(asyncio.run(server.api_academy_paper_checkpoints(document_id=uploaded_doc["id"], limit=5)).body)
+                checkpoint_detail = json.loads(asyncio.run(server.api_academy_paper_checkpoint_detail(checkpoint["run"]["run_id"])).body)
+                project_item = json.loads(asyncio.run(server.api_academy_paper_project_item_save(FakeRequest({
+                    "document_id": uploaded_doc["id"],
+                    "question": "Which follow-up experiment should be reproduced first?",
+                    "priority": "high",
+                }))).body)
+                project_board = json.loads(asyncio.run(server.api_academy_paper_project_board(document_id=uploaded_doc["id"], limit=10)).body)
+                project_done = json.loads(asyncio.run(server.api_academy_paper_project_item_status(project_item["run"]["run_id"], FakeRequest({
+                    "status": "done",
+                    "decision": "Reproduce the smallest evidence-chain experiment first.",
+                }))).body)
+                project_export = json.loads(asyncio.run(server.api_academy_paper_project_board_export(FakeRequest({
+                    "document_id": uploaded_doc["id"],
+                }))).body)
+                project_export_exists = Path(project_export["artifact"]["path"]).exists()
+                project_exports = json.loads(asyncio.run(server.api_academy_paper_project_exports(document_id=uploaded_doc["id"], limit=5)).body)
+                project_export_detail = json.loads(asyncio.run(server.api_academy_paper_project_export_detail(project_export["run"]["run_id"])).body)
+                offline_audit = json.loads(asyncio.run(server.api_academy_paper_offline_audit(document_id=uploaded_doc["id"])).body)
+                workbench_readiness = json.loads(asyncio.run(server.api_workbench_offline_readiness(document_id=uploaded_doc["id"])).body)
+                checkpoint_artifact_exists = Path(checkpoint["artifact"]["path"]).exists()
+                checkpoint_run = store.get_run_record(checkpoint["run"]["run_id"])
+                markdown_exists = Path(generated["report"]["markdown_path"]).exists()
+                pdf_exists = Path(generated["report"]["pdf_path"]).exists()
+            finally:
+                server.g_memory_store = old_store
+                server.g_workspace_services = old_services
+                server.g_vector_store = old_vector
+                server.UPLOAD_DIR = old_upload_dir
+                server.BASE_DIR = old_base
+
+        self.assertEqual(uploaded["count"], 1)
+        self.assertEqual(uploaded["errors"], [])
+        self.assertEqual(uploaded_doc["status"], "ready")
+        self.assertTrue(uploaded_doc["metadata"].get("page_count"))
+        self.assertTrue(any(doc["id"] == uploaded_doc["id"] for doc in listed_documents["documents"]))
+        self.assertGreaterEqual(listed_documents["documents"][0]["chunk_count"], 1)
+        self.assertGreaterEqual(chunks["count"], 1)
+        self.assertIn("doc:", chunks["chunks"][0]["citation"])
+        self.assertEqual(generated["library_document"]["id"], uploaded_doc["id"])
+        self.assertTrue(markdown_exists)
+        self.assertTrue(pdf_exists)
+        self.assertTrue(saved["saved"])
+        self.assertTrue(generated["run"]["run_id"].startswith("academy-paper-report-"))
+        self.assertTrue(status["report"]["ready"])
+        self.assertEqual(status["document"]["metadata"]["ocr_required"], False)
+        self.assertTrue(status["knowledge"]["ready"])
+        self.assertTrue(checkpoint["saved"])
+        self.assertTrue(checkpoint_artifact_exists)
+        self.assertEqual(checkpoint["checkpoint"]["document"]["id"], uploaded_doc["id"])
+        self.assertEqual(checkpoint["checkpoint"]["status"]["knowledge"]["id"], saved["item"]["id"])
+        self.assertEqual(checkpoint_run["run_type"], "academy_paper_checkpoint")
+        self.assertEqual(checkpoint_list["count"], 1)
+        self.assertEqual(checkpoint_list["checkpoints"][0]["run_id"], checkpoint["run"]["run_id"])
+        self.assertEqual(checkpoint_detail["checkpoint"]["document"]["id"], uploaded_doc["id"])
+        self.assertEqual(checkpoint_detail["summary"]["knowledge_id"], saved["item"]["id"])
+        self.assertTrue(project_item["saved"])
+        self.assertEqual(project_item["item"]["document_id"], uploaded_doc["id"])
+        self.assertEqual(project_item["item"]["knowledge_id"], saved["item"]["id"])
+        self.assertEqual(project_item["item"]["checkpoint_run_id"], checkpoint["run"]["run_id"])
+        self.assertEqual(project_board["count"], 1)
+        self.assertEqual(project_board["items"][0]["question"], "Which follow-up experiment should be reproduced first?")
+        self.assertTrue(project_done["saved"])
+        self.assertEqual(project_done["item"]["status"], "done")
+        self.assertTrue(project_export["exported"])
+        self.assertTrue(project_export_exists)
+        self.assertEqual(project_export["package"]["document"]["id"], uploaded_doc["id"])
+        self.assertEqual(len(project_export["package"]["project_items"]), 1)
+        self.assertEqual(len(project_export["package"]["checkpoints"]), 1)
+        self.assertEqual(project_exports["count"], 1)
+        self.assertEqual(project_exports["exports"][0]["run_id"], project_export["run"]["run_id"])
+        self.assertEqual(project_export_detail["package"]["document"]["id"], uploaded_doc["id"])
+        self.assertEqual(project_export_detail["summary"]["project_item_count"], 1)
+        self.assertEqual(offline_audit["standard"], "local-first research workflow readiness")
+        self.assertEqual(offline_audit["counts"]["chunks"], chunks["count"])
+        self.assertEqual(offline_audit["counts"]["project_packages"], 1)
+        self.assertTrue(any(item["id"] == "document_ingestion" and item["ok"] for item in offline_audit["checks"]))
+        self.assertEqual(workbench_readiness["standard"], "local-first workbench offline readiness")
+        self.assertEqual(workbench_readiness["paper"]["counts"]["project_packages"], 1)
+        self.assertTrue(any(item["id"] == "paper_workflow" and item["ok"] for item in workbench_readiness["checks"]))
+        self.assertTrue(any(item["id"] == "local_model_assets" for item in workbench_readiness["checks"]))
+        self.assertEqual(checkpoint_run["evidence"][0]["citation"], f"doc:{uploaded_doc['id']}")
+        self.assertTrue(checkpoint_status["checkpoint"]["ready"])
+        self.assertEqual(status["knowledge"]["id"], saved["item"]["id"])
+        self.assertEqual(saved["item"]["source"], f"doc:{uploaded_doc['id']}")
+        self.assertTrue(any(item["id"] == saved["item"]["id"] for item in listed["items"]))
 
     def test_obsidian_export_output_dir_accepts_repo_relative_path(self):
         import clawos_server as server
@@ -671,6 +884,51 @@ class MemoryAndRoutingTests(unittest.TestCase):
 
         self.assertEqual(len(trajectory["tool_calls"]), 1)
         self.assertEqual(trajectory["tool_calls"][0]["name"], "time_now")
+
+
+    def test_academy_paper_annotation_persists_artifact_and_run_record(self):
+        import clawos_server as server
+        from memoryos.memory_store import MemoryStore
+
+        png_data_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        with tempfile.TemporaryDirectory() as td:
+            old_store = server.g_memory_store
+            old_base = server.BASE_DIR
+            base = Path(td) / "clawos"
+            base.mkdir()
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            doc = store.add_document(
+                "Annotated Paper",
+                filename="paper.pdf",
+                file_path=str(Path(td) / "paper.pdf"),
+                file_hash="annotated-paper",
+                category="research",
+                status="ready",
+            )
+            server.g_memory_store = store
+            server.BASE_DIR = base
+            try:
+                payload = json.loads(asyncio.run(server.api_academy_paper_annotation_save(FakeRequest({
+                    "document_id": doc["id"],
+                    "title": "Annotated Paper",
+                    "image_data": png_data_url,
+                }))).body)
+                artifact_path = Path(payload["artifact"]["path"])
+                artifact_exists = artifact_path.exists()
+                loaded_run = store.get_run_record(payload["run"]["run_id"])
+                status = json.loads(asyncio.run(server.api_academy_paper_status(doc["id"])).body)
+            finally:
+                server.g_memory_store = old_store
+                server.BASE_DIR = old_base
+
+        self.assertTrue(payload["saved"])
+        self.assertTrue(artifact_exists)
+        self.assertEqual(payload["artifact"]["kind"], "png")
+        self.assertEqual(loaded_run["run_type"], "academy_annotation")
+        self.assertEqual(loaded_run["artifacts"][0]["kind"], "annotation_png")
+        self.assertEqual(loaded_run["evidence"][0]["citation"], f"doc:{doc['id']}")
+        self.assertTrue(status["annotation"]["ready"])
+        self.assertEqual(status["annotation"]["run_id"], payload["run"]["run_id"])
 
 
 if __name__ == "__main__":

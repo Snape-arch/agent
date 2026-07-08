@@ -144,6 +144,13 @@ const academyPaperState = {
   report: null,
   citation: null,
   savedKnowledgeId: null,
+  annotationArtifact: null,
+  checkpointArtifact: null,
+  persistedStatus: null,
+  documents: [],
+  checkpoints: [],
+  projectItems: [],
+  projectPackages: [],
   pdfUrl: "",
   penEnabled: false,
   drawing: false,
@@ -233,6 +240,7 @@ function academyRenderPaperChunks() {
   if (!target) return;
   if (!academyPaperState.chunks.length) {
     target.innerHTML = `<article class="paper-chunk"><b>Parsed Text</b><p>等待后端解析论文 chunk。</p></article>`;
+    academyRenderPaperRuntimeStatus();
     return;
   }
   target.innerHTML = academyPaperState.chunks.slice(0, 10).map((chunk, index) => {
@@ -240,6 +248,7 @@ function academyRenderPaperChunks() {
     const text = chunk.text || chunk.content || chunk.preview || "";
     return `<article class="paper-chunk"><b>${academyEsc(label)}</b><p>${academyEsc(text.slice(0, 720))}</p></article>`;
   }).join("");
+  academyRenderPaperRuntimeStatus();
 }
 
 function academyRenderCitationEvidence(result) {
@@ -256,6 +265,67 @@ function academyRenderCitationEvidence(result) {
   `);
 }
 
+function academyRenderPaperMeta() {
+  const target = document.getElementById("academyPaperMeta");
+  if (!target) return;
+  const doc = academyPaperState.document || academyPaperState.persistedStatus?.document || {};
+  const meta = doc.metadata || {};
+  const previewable = academyPreviewablePaperSource(doc);
+  const ocrPages = Array.isArray(meta.ocr_pages) ? meta.ocr_pages : [];
+  const ocrLabel = meta.ocr_required ? (ocrPages.length ? `Needs OCR: p${ocrPages.join(",")}` : "Needs OCR") : "Not required";
+  const rows = [
+    ["Filename", doc.filename || doc.title || "Waiting"],
+    ["Extractor", doc.extractor || meta.extractor || "Unknown"],
+    ["Pages", meta.page_count || meta.pages || "Unknown"],
+    ["OCR", ocrLabel],
+    ["Preview", previewable ? "Available" : "Chunks only"]
+  ];
+  target.innerHTML = rows.map(([label, value]) => `<article><b>${academyEsc(label)}</b><span>${academyEsc(value)}</span></article>`).join("");
+}
+function academyRenderPaperRuntimeStatus() {
+  const target = document.getElementById("academyPaperRuntimeStatus");
+  if (!target) return;
+  const status = academyPaperState.persistedStatus || {};
+  const docId = academyPaperState.document?.id || status.document?.id;
+  const report = academyPaperState.report?.report || academyPaperState.report || {};
+  const persistedReport = status.report || {};
+  const markdownPath = report.markdown_path || persistedReport.markdown_path || "";
+  const pdfPath = report.pdf_path || persistedReport.pdf_path || "";
+  const knowledgeId = academyPaperState.savedKnowledgeId || status.knowledge?.id;
+  const annotationArtifact = academyPaperState.annotationArtifact || status.annotation?.artifact || {};
+  const annotationPath = annotationArtifact.path || annotationArtifact.uri || "";
+  const checkpointArtifact = academyPaperState.checkpointArtifact || status.checkpoint?.artifact || {};
+  const checkpointPath = checkpointArtifact.uri || checkpointArtifact.metadata?.storage?.path || checkpointArtifact.path || "";
+  const chunkCount = academyPaperState.chunks.length || status.chunks?.count || 0;
+  const items = [
+    ["Document", docId ? `doc:${docId}` : "Waiting for upload", Boolean(docId)],
+    ["Chunks", chunkCount ? `${chunkCount} indexed` : "No chunks yet", chunkCount > 0],
+    ["Report", markdownPath || pdfPath ? "Markdown/PDF ready" : "Not generated", Boolean(markdownPath || pdfPath || persistedReport.ready)],
+    ["Knowledge", knowledgeId ? `item:${knowledgeId}` : "Not saved", Boolean(knowledgeId)],
+    ["Annotation", annotationPath ? "Artifact ready" : "Local fallback", Boolean(annotationPath || status.annotation?.ready)],
+    ["Checkpoint", checkpointPath ? "Saved" : "Not saved", Boolean(checkpointPath || status.checkpoint?.ready)]
+  ];
+  target.innerHTML = items.map(([label, value, ready]) => `
+    <article class="${ready ? "ready" : "waiting"}">
+      <b>${academyEsc(label)}</b><span>${academyEsc(value)}</span>
+    </article>`).join("");
+}
+
+async function academyRefreshPaperPersistedStatus() {
+  if (!academyPaperState.document?.id) {
+    academyPaperState.persistedStatus = null;
+    academyRenderPaperRuntimeStatus();
+    return null;
+  }
+  const status = await academyApi(`/api/academy/paper/status?document_id=${Number(academyPaperState.document.id)}`);
+  academyPaperState.persistedStatus = status;
+  if (status.knowledge?.id) academyPaperState.savedKnowledgeId = status.knowledge.id;
+  if (status.annotation?.artifact) academyPaperState.annotationArtifact = status.annotation.artifact;
+  if (status.checkpoint?.artifact) academyPaperState.checkpointArtifact = status.checkpoint.artifact;
+  academyRenderPaperRuntimeStatus();
+  academyRenderPaperMeta();
+  return status;
+}
 function academyRenderPaperReport() {
   const report = academyPaperState.report;
   const target = document.getElementById("academyPaperReportCard");
@@ -272,6 +342,7 @@ function academyRenderPaperReport() {
     </div>
     <p>${academyEsc(String(preview).slice(0, 520))}</p>
   `;
+  academyRenderPaperRuntimeStatus();
 }
 
 function academyLightPaperGraph(stage = "paper") {
@@ -280,9 +351,282 @@ function academyLightPaperGraph(stage = "paper") {
   academySave();
   academyRenderProgressNodes();
   const saved = academyPaperState.savedKnowledgeId ? `知识库条目 #${academyPaperState.savedKnowledgeId}` : "等待保存知识库";
+  academyRenderPaperRuntimeStatus();
   academySetText("academyPaperGraphStatus", `已点亮 NLP/LLM、RAG、Evaluation/Safety 节点；${saved}。`);
 }
 
+async function academyRefreshPaperAudit() {
+  const target = document.getElementById("academyPaperAuditGrid");
+  if (!target) return;
+  academySetText("academyPaperAuditStatus", "Checking local workflow...");
+  try {
+    const docId = academyPaperState.document?.id || academyPaperState.persistedStatus?.document?.id || 0;
+    const suffix = docId ? `?document_id=${Number(docId)}` : "";
+    const audit = await academyApi(`/api/academy/paper/offline-audit${suffix}`);
+    academyPaperState.offlineAudit = audit;
+    const checks = audit.checks || [];
+    target.innerHTML = checks.map(item => `<article class="${item.ok ? "ready" : "waiting"}"><b>${academyEsc(item.label || item.id)}</b><span>${item.ok ? "Ready" : "Missing"}</span><small>${academyEsc(item.detail || item.id)}</small></article>`).join("");
+    academySetText("academyPaperAuditStatus", `${audit.percent || 0}% ready · ${audit.remaining?.length || 0} remaining`);
+  } catch (error) {
+    academySetText("academyPaperAuditStatus", `Offline audit unavailable: ${error.message}`);
+  }
+}
+async function academyLoadPaperHistory() {
+  const target = document.getElementById("academyPaperHistory");
+  if (!target) return;
+  academySetText("academyPaperHistoryStatus", "Loading local research library...");
+  try {
+    const payload = await academyApi("/api/documents?category=research");
+    academyPaperState.documents = payload.documents || [];
+    if (!academyPaperState.documents.length) {
+      target.innerHTML = `<button type="button" disabled>No local papers yet</button>`;
+      academySetText("academyPaperHistoryStatus", "Upload a paper to start a local history.");
+      return;
+    }
+    target.innerHTML = academyPaperState.documents.slice(0, 8).map(doc => {
+      const chunkCount = Number(doc.chunk_count || 0);
+      const label = `${doc.title || doc.filename || `Document ${doc.id}`}`;
+      return `<button type="button" data-document-id="${Number(doc.id)}">
+        <b>${academyEsc(label)}</b><span>doc:${Number(doc.id)} · ${chunkCount} chunks · ${academyEsc(doc.status || "unknown")}</span>
+      </button>`;
+    }).join("");
+    target.querySelectorAll("button[data-document-id]").forEach(button => {
+      button.addEventListener("click", () => academyOpenPaperDocument(Number(button.dataset.documentId)));
+    });
+    academySetText("academyPaperHistoryStatus", `${academyPaperState.documents.length} local research documents`);
+  } catch (error) {
+    academySetText("academyPaperHistoryStatus", `History unavailable: ${error.message}`);
+  }
+}
+
+async function academyLoadPaperCheckpoints(documentId = 0) {
+  const target = document.getElementById("academyPaperCheckpointHistory");
+  if (!target) return;
+  academySetText("academyPaperCheckpointStatus", "Loading local checkpoints...");
+  try {
+    const suffix = documentId ? `?document_id=${Number(documentId)}&limit=8` : "?limit=8";
+    const payload = await academyApi(`/api/academy/paper/checkpoints${suffix}`);
+    academyPaperState.checkpoints = payload.checkpoints || [];
+    if (!academyPaperState.checkpoints.length) {
+      target.innerHTML = `<button type="button" disabled>No checkpoints yet</button>`;
+      academySetText("academyPaperCheckpointStatus", "Save a checkpoint after a report or citation pass.");
+      return;
+    }
+    target.innerHTML = academyPaperState.checkpoints.map(item => {
+      const label = item.document_title || item.title || item.run_id;
+      const knowledge = item.knowledge_id ? `item:${item.knowledge_id}` : "no knowledge";
+      return `<button type="button" data-run-id="${academyEsc(item.run_id)}">
+        <b>${academyEsc(label)}</b><span>${academyEsc(item.run_id)} · doc:${Number(item.document_id || 0)} · ${academyEsc(knowledge)}</span>
+      </button>`;
+    }).join("");
+    target.querySelectorAll("button[data-run-id]").forEach(button => {
+      button.addEventListener("click", () => academyOpenPaperCheckpoint(button.dataset.runId));
+    });
+    academySetText("academyPaperCheckpointStatus", `${academyPaperState.checkpoints.length} local checkpoints`);
+  } catch (error) {
+    academySetText("academyPaperCheckpointStatus", `Checkpoint history unavailable: ${error.message}`);
+  }
+}
+
+async function academyLoadPaperProjectBoard(documentId = 0) {
+  const target = document.getElementById("academyPaperProjectBoard");
+  if (!target) return;
+  academySetText("academyPaperProjectStatus", "Loading local project items...");
+  try {
+    const suffix = documentId ? `?document_id=${Number(documentId)}&limit=20` : "?limit=20";
+    const payload = await academyApi(`/api/academy/paper/project-board${suffix}`);
+    academyPaperState.projectItems = payload.items || [];
+    if (!academyPaperState.projectItems.length) {
+      target.innerHTML = `<article><b>No project items yet</b><span>Add a follow-up question after reading or checkpointing a paper.</span></article>`;
+      academySetText("academyPaperProjectStatus", "No local project items yet.");
+      return;
+    }
+    target.innerHTML = academyPaperState.projectItems.map(item => {
+      const links = [`doc:${Number(item.document_id || 0)}`];
+      if (item.checkpoint_run_id) links.push("checkpoint");
+      if (item.report_run_id) links.push("report");
+      if (item.knowledge_id) links.push(`knowledge:${item.knowledge_id}`);
+      return `<article><b>${academyEsc(item.question || item.title)}</b><span>${academyEsc(item.status || "open")} 路 ${academyEsc(item.priority || "normal")}</span><small>${academyEsc(links.join(" 路 "))}</small><div class="academy-paper-project-actions"><button type="button" data-project-run-id="${academyEsc(item.run_id)}" data-status="done">Done</button><button type="button" data-project-run-id="${academyEsc(item.run_id)}" data-status="blocked">Blocked</button><button type="button" data-project-run-id="${academyEsc(item.run_id)}" data-status="open">Reopen</button></div></article>`;
+    }).join("");
+    target.querySelectorAll("button[data-project-run-id]").forEach(button => {
+      button.addEventListener("click", () => academyUpdatePaperProjectItem(button.dataset.projectRunId, button.dataset.status));
+    });
+    academySetText("academyPaperProjectStatus", `${academyPaperState.projectItems.length} local project items`);
+  } catch (error) {
+    academySetText("academyPaperProjectStatus", `Project board unavailable: ${error.message}`);
+  }
+}
+
+async function academyLoadPaperProjectPackages(documentId = 0) {
+  const target = document.getElementById("academyPaperProjectPackages");
+  if (!target) return;
+  academySetText("academyPaperProjectPackageStatus", "Loading local packages...");
+  try {
+    const suffix = documentId ? `?document_id=${Number(documentId)}&limit=8` : "?limit=8";
+    const payload = await academyApi(`/api/academy/paper/project-board/exports${suffix}`);
+    academyPaperState.projectPackages = payload.exports || [];
+    if (!academyPaperState.projectPackages.length) {
+      target.innerHTML = `<button type="button" disabled>No project packages yet</button>`;
+      academySetText("academyPaperProjectPackageStatus", "Export a project package to review it later.");
+      return;
+    }
+    target.innerHTML = academyPaperState.projectPackages.map(item => `<button type="button" data-project-export-id="${academyEsc(item.run_id)}"><b>${academyEsc(item.document_title || item.title || item.run_id)}</b><span>${academyEsc(item.run_id)} 路 items:${Number(item.project_item_count || 0)} 路 checkpoints:${Number(item.checkpoint_count || 0)}</span></button>`).join("");
+    target.querySelectorAll("button[data-project-export-id]").forEach(button => {
+      button.addEventListener("click", () => academyOpenPaperProjectPackage(button.dataset.projectExportId));
+    });
+    academySetText("academyPaperProjectPackageStatus", `${academyPaperState.projectPackages.length} local project packages`);
+  } catch (error) {
+    academySetText("academyPaperProjectPackageStatus", `Project package history unavailable: ${error.message}`);
+  }
+}
+
+async function academyOpenPaperProjectPackage(runId) {
+  const payload = await academyApi(`/api/academy/paper/project-board/exports/${encodeURIComponent(runId)}`);
+  const pack = payload.package || {};
+  const doc = pack.document || {};
+  academyPaperState.document = doc;
+  academyPaperState.persistedStatus = pack.status || null;
+  academyPaperState.chunks = pack.chunks || [];
+  academyPaperState.projectItems = pack.project_items || [];
+  academyPaperState.checkpoints = pack.checkpoints || [];
+  academyPaperState.report = pack.status?.report ? { report: pack.status.report } : null;
+  academyPaperState.savedKnowledgeId = pack.status?.knowledge?.id || null;
+  academyPaperState.annotationArtifact = pack.status?.annotation?.artifact || null;
+  academyPaperState.checkpointArtifact = pack.status?.checkpoint?.artifact || null;
+  const title = document.getElementById("paperTitle");
+  if (title) title.value = doc.title || doc.filename || payload.summary?.document_title || "Research project package";
+  academyRenderPaperMeta();
+  academyRenderPaperChunks();
+  if (academyPaperState.report) academyRenderPaperReport();
+  academyRenderPaperRuntimeStatus();
+  await academyLoadPaperProjectBoard(Number(doc.id || payload.summary?.document_id || 0));
+  await academyLoadPaperCheckpoints(Number(doc.id || payload.summary?.document_id || 0));
+  academySetText("academyPaperProjectPackageStatus", `Project package restored: ${runId}`);
+}
+async function academyUpdatePaperProjectItem(runId, status) {
+  try {
+    const saved = await academyApi(`/api/academy/paper/project-board/${encodeURIComponent(runId)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+    academySetText("academyPaperProjectStatus", `Project item ${saved.item?.status || status}: ${runId}`);
+    await academyLoadPaperProjectBoard(Number(academyPaperState.document?.id || saved.item?.document_id || 0));
+  } catch (error) {
+    academySetText("academyPaperProjectStatus", `Project item update failed: ${error.message}`);
+  }
+}
+
+async function academyExportPaperProject() {
+  try {
+    if (!academyPaperState.document?.id) {
+      academySetText("academyPaperProjectStatus", "Open or upload a paper before exporting a project package.");
+      return;
+    }
+    const exported = await academyApi("/api/academy/paper/project-board/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document_id: Number(academyPaperState.document.id) })
+    });
+    academySetText("academyPaperProjectStatus", `Project package exported: ${exported.artifact?.path || exported.run?.run_id || "done"}`);
+    academyLoadPaperProjectPackages(Number(academyPaperState.document.id)).catch(() => null);
+    academyRefreshPaperAudit().catch(() => null);
+  } catch (error) {
+    academySetText("academyPaperProjectStatus", `Project export failed: ${error.message}`);
+  }
+}
+async function academyAddPaperProjectItem() {
+  try {
+    if (!academyPaperState.document?.id) {
+      academySetText("academyPaperProjectStatus", "Open or upload a paper before adding a project item.");
+      return;
+    }
+    const input = document.getElementById("academyPaperProjectQuestion");
+    const question = (input?.value || document.getElementById("academyCitationQuery")?.value || "").trim();
+    if (!question) {
+      academySetText("academyPaperProjectStatus", "Enter a follow-up question first.");
+      return;
+    }
+    const saved = await academyApi("/api/academy/paper/project-board", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        document_id: Number(academyPaperState.document.id),
+        question,
+        priority: "normal",
+        next_action: "follow-up research"
+      })
+    });
+    academySetText("academyPaperProjectStatus", `Project item saved: ${saved.item?.run_id || "done"}`);
+    await academyLoadPaperProjectBoard(Number(academyPaperState.document.id));
+  } catch (error) {
+    academySetText("academyPaperProjectStatus", `Project item save failed: ${error.message}`);
+  }
+}
+async function academyOpenPaperCheckpoint(runId) {
+  const payload = await academyApi(`/api/academy/paper/checkpoints/${encodeURIComponent(runId)}`);
+  const checkpoint = payload.checkpoint || {};
+  const status = checkpoint.status || {};
+  const doc = checkpoint.document || status.document || {};
+  academyPaperState.document = doc;
+  academyPaperState.persistedStatus = status;
+  academyPaperState.citation = checkpoint.citation || null;
+  academyPaperState.chunks = checkpoint.chunks || [];
+  academyPaperState.report = status.report ? { report: status.report } : null;
+  academyPaperState.savedKnowledgeId = status.knowledge?.id || null;
+  academyPaperState.annotationArtifact = status.annotation?.artifact || null;
+  academyPaperState.checkpointArtifact = payload.summary?.artifact || status.checkpoint?.artifact || null;
+  const title = document.getElementById("paperTitle");
+  if (title) title.value = doc.title || doc.filename || payload.summary?.document_title || "Checkpoint paper";
+  const frame = document.getElementById("academyPdfFrame");
+  if (frame) {
+    if (doc.id && academyPreviewablePaperSource(doc)) frame.src = `/api/documents/${Number(doc.id)}/source`;
+    else frame.removeAttribute("src");
+  }
+  academyRenderPaperMeta();
+  academyRenderPaperChunks();
+  if (academyPaperState.report) academyRenderPaperReport();
+  if (academyPaperState.citation) academyRenderCitationEvidence(academyPaperState.citation);
+  academyRenderPaperRuntimeStatus();
+  academyLoadPaperProjectBoard(Number(doc.id || 0)).catch(() => null);
+  academySetText("academyPaperStatus", `Checkpoint restored: ${runId}`);
+}
+function academyPreviewablePaperSource(doc) {
+  const filename = String(doc?.filename || doc?.file_path || "").toLowerCase();
+  const mime = String(doc?.mime_type || "").toLowerCase();
+  return filename.endsWith(".pdf") || mime.includes("pdf");
+}
+async function academyOpenPaperDocument(documentId) {
+  const doc = academyPaperState.documents.find(item => Number(item.id) === Number(documentId)) || { id: documentId };
+  academyPaperState.document = doc;
+  academyPaperState.report = null;
+  academyPaperState.citation = null;
+  academyPaperState.savedKnowledgeId = null;
+  academyPaperState.annotationArtifact = null;
+  academyPaperState.checkpointArtifact = null;
+  academyPaperState.persistedStatus = null;
+  const title = document.getElementById("paperTitle");
+  if (title) title.value = doc.title || doc.filename || `Document ${documentId}`;
+  const frame = document.getElementById("academyPdfFrame");
+  if (frame) {
+    if (academyPreviewablePaperSource(doc)) frame.src = `/api/documents/${Number(documentId)}/source`;
+    else frame.removeAttribute("src");
+  }
+  academySetText("academyPaperStatus", `Opening local paper doc:${documentId}...`);
+  const chunks = await academyApi(`/api/documents/${Number(documentId)}/chunks?limit=12`);
+  academyPaperState.document = chunks.document || doc;
+  academyPaperState.chunks = chunks.chunks || chunks.items || [];
+  academyRenderPaperMeta();
+  await academyRefreshPaperPersistedStatus().catch(() => null);
+  academyRenderPaperChunks();
+  academyGeneratePaperRead();
+  academyLightPaperGraph("parsed");
+  academyLoadPaperCheckpoints(Number(documentId)).catch(() => null);
+  academyLoadPaperProjectBoard(Number(documentId)).catch(() => null);
+  academyLoadPaperProjectPackages(Number(documentId)).catch(() => null);
+  academyRefreshPaperAudit().catch(() => null);
+  academySetText("academyPaperStatus", `Opened local paper doc:${documentId}; ${academyPaperState.chunks.length} chunks loaded.`);
+}
 async function academyUploadPaper() {
   const fileInput = document.getElementById("academyPaperFile");
   const file = fileInput?.files?.[0];
@@ -308,10 +652,17 @@ async function academyUploadPaper() {
   }
   const chunks = await academyApi(`/api/documents/${Number(academyPaperState.document.id)}/chunks?limit=12`);
   academyPaperState.chunks = chunks.chunks || chunks.items || [];
+  academyRenderPaperMeta();
+  await academyRefreshPaperPersistedStatus().catch(() => null);
   academyRenderPaperChunks();
   academyGeneratePaperRead();
   academyLightPaperGraph("parsed");
   academySetText("academyPaperStatus", `解析完成：document #${academyPaperState.document.id}，chunk ${academyPaperState.chunks.length} 条。`);
+  academyLoadPaperHistory().catch(() => null);
+  academyLoadPaperCheckpoints(Number(academyPaperState.document.id)).catch(() => null);
+  academyLoadPaperProjectBoard(Number(academyPaperState.document.id)).catch(() => null);
+  academyLoadPaperProjectPackages(Number(academyPaperState.document.id)).catch(() => null);
+  academyRefreshPaperAudit().catch(() => null);
   return academyPaperState.document;
 }
 
@@ -334,6 +685,7 @@ async function academyRunPaperWorkflow() {
       body: JSON.stringify(body)
     });
     academyRenderPaperReport();
+    await academyRefreshPaperPersistedStatus().catch(() => null);
     await academyAskPaperCitation("method experiment limitation contribution");
     academyLightPaperGraph("reported");
   } catch (error) {
@@ -365,14 +717,17 @@ async function academySavePaperKnowledge() {
     const saved = await academyApi("/api/knowledge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: `${title} - Academy Deep Read`, content, category: "research", source: "academy-paper", tags: ["academy", "paper", "deep-read", "citation-evidence"] })
+      body: JSON.stringify({ title: `${title} - Academy Deep Read`, content, category: "research", source: `academy-paper doc:${academyPaperState.document?.id || ""}`, tags: ["academy", "paper", "deep-read", "citation-evidence"] })
     });
     academyPaperState.savedKnowledgeId = saved.id || saved.item?.id || saved.knowledge_id;
+    await academyRefreshPaperPersistedStatus().catch(() => null);
     academyLightPaperGraph("saved");
     academySetText("academyPaperStatus", `已保存到知识库：${academyPaperState.savedKnowledgeId || "完成"}。`);
     const graph = await academyApi("/api/knowledge/graph?category=research&limit=20").catch(() => null);
     if (graph) {
       const nodeCount = (graph.nodes || graph.items || []).length;
+      academyRenderPaperRuntimeStatus();
+    academyLoadPaperCheckpoints(Number(academyPaperState.document.id)).catch(() => null);
       academySetText("academyPaperGraphStatus", `知识库已更新：research graph ${nodeCount} 个节点；学习图谱已点亮论文相关能力。`);
     }
   } catch (error) {
@@ -380,6 +735,31 @@ async function academySavePaperKnowledge() {
   }
 }
 
+async function academySavePaperCheckpoint() {
+  try {
+    if (!academyPaperState.document?.id) {
+      academySetText("academyPaperStatus", "请先上传或打开论文，再保存 Checkpoint。");
+      return;
+    }
+    academySetText("academyPaperStatus", "正在保存 Paper Studio Checkpoint...");
+    const saved = await academyApi("/api/academy/paper/checkpoint", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        document_id: Number(academyPaperState.document.id),
+        citation: academyPaperState.citation || {}
+      })
+    });
+    academyPaperState.checkpointArtifact = saved.artifact || saved.status?.checkpoint?.artifact || null;
+    academyPaperState.persistedStatus = saved.status || academyPaperState.persistedStatus;
+    academyRenderPaperRuntimeStatus();
+    academyLoadPaperCheckpoints(Number(academyPaperState.document.id)).catch(() => null);
+    academyRefreshPaperAudit().catch(() => null);
+    academySetText("academyPaperStatus", `Checkpoint 已保存：${saved.artifact?.path || saved.run?.run_id || "done"}`);
+  } catch (error) {
+    academySetText("academyPaperStatus", `Checkpoint 保存失败：${error.message}`);
+  }
+}
 async function academyAskPaperCitation(seedQuery) {
   try {
     if (!academyPaperState.document?.id) {
@@ -485,10 +865,26 @@ function academySetupInk() {
     canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
     academySetText("academyPaperStatus", "批注已清除。");
   });
-  document.getElementById("academySaveAnnotation")?.addEventListener("click", () => {
+  document.getElementById("academySaveAnnotation")?.addEventListener("click", async () => {
     const dataUrl = canvas.toDataURL("image/png");
     localStorage.setItem("clawos_academy_paper_annotation", dataUrl);
-    academySetText("academyPaperStatus", "批注已保存到本地 annotation 缓存；后续可升级为 ArtifactStorage 持久化。");
+    if (!academyPaperState.document?.id) {
+      academySetText("academyPaperStatus", "批注已保存到本地缓存；上传论文后可持久化为 Artifact。");
+      return;
+    }
+    try {
+      const title = document.getElementById("paperTitle")?.value || academyPaperState.document.title || "Academy paper annotation";
+      const saved = await academyApi("/api/academy/paper/annotations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ document_id: Number(academyPaperState.document.id), title, image_data: dataUrl })
+      });
+      academyPaperState.annotationArtifact = saved.artifact;
+      await academyRefreshPaperPersistedStatus().catch(() => null);
+      academySetText("academyPaperStatus", `批注已保存为 Artifact：${saved.artifact?.path || "saved"}`);
+    } catch (error) {
+      academySetText("academyPaperStatus", `批注已保留在本地缓存，Artifact 保存失败：${error.message}`);
+    }
   });
 }
 
@@ -555,6 +951,12 @@ function academyBoot() {
   academyRenderCode("embedding");
   academyGenerateQuiz();
   academySetupInk();
+  academyRenderPaperRuntimeStatus();
+  academyRefreshPaperAudit().catch(() => null);
+  academyLoadPaperHistory().catch(() => null);
+  academyLoadPaperCheckpoints().catch(() => null);
+  academyLoadPaperProjectBoard().catch(() => null);
+  academyLoadPaperProjectPackages().catch(() => null);
   document.querySelectorAll(".code-lab-tabs button").forEach(btn => btn.addEventListener("click", () => academyRenderCode(btn.dataset.codeTopic)));
 }
 

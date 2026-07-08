@@ -1677,3 +1677,368 @@ Known notes:
 
 Recommended next step:
 - Add a small PDF fixture smoke test through FastAPI TestClient for upload -> chunks -> report -> knowledge save, then persist pen annotations as Artifact/Evidence records.
+
+### 2026-07-07 - Local model readiness visibility
+
+Completed:
+- Added a no-download local Qwen readiness check in `MaintenanceService.local_model_assets()`.
+- `/api/model/health` now includes `local_model_assets`, so provider configuration and real local assets are visible separately.
+- `/api/system/readiness` now includes `local_model_assets` as a weighted check and returns the full local model asset report.
+- Console model health now renders routing/upstream primary and fallback providers plus local Qwen asset readiness.
+- Added regression tests for missing local Qwen assets, model health asset reporting, and console consumption of `local_model_assets`.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\services\maintenance_service.py clawos\clawos_server.py`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider`: `26 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `node --check clawos\static\assets\console.js`: passed.
+- Runtime local asset check reports `ready=False` with missing `qwen_9b`, `embedding`, `reranker`, and `llama_server` on this machine.
+
+Known notes:
+- This pass does not download models or run a real local Qwen server.
+- `tools/models/qwen3.5-9b-gguf/Qwen3.5-9B-Q4_K_M.gguf`, `tools/llama.cpp/llama-server.exe`, `tools/models/qwen3-embedding-0.6b`, and `tools/models/qwen3-reranker-0.6b` are still absent locally.
+- The existing `%SystemDrive%/...` deleted-path git noise remains untouched.
+
+Recommended next step:
+- With explicit network/download approval, install llama.cpp runtime and Qwen GGUF, then run `/api/model/health?probe=true` and `evaluate_model_acceptance.py --provider qwen --base-url http://127.0.0.1:8000/v1 --model Qwen3.5-9B-Q4_K_M`.
+### 2026-07-07 - Qwen acceptance default config fix
+
+Completed:
+- Updated `evaluate_model_acceptance.py` so `--provider qwen` no longer passes empty `model` or `base_url` values that override `QwenProvider` local defaults.
+- Qwen acceptance config now marks `requires_api_key=false` when using the local provider.
+- Added a regression test proving Qwen acceptance config relies on provider defaults unless explicit CLI/env values are supplied.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\scripts\evaluate_model_acceptance.py`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance`: passed.
+
+Known notes:
+- This pass still does not start a local Qwen server or download model assets.
+- Real Qwen acceptance remains blocked on installing `tools/llama.cpp/llama-server.exe` and `tools/models/qwen3.5-9b-gguf/Qwen3.5-9B-Q4_K_M.gguf`.
+
+Recommended next step:
+- After local model assets are installed, run `evaluate_model_acceptance.py --provider qwen --limit 2 --json` first, then scale to the full frozen suite.
+### 2026-07-07 - Academy paper annotation artifact persistence
+
+Completed:
+- Added `ArtifactStorage.write_bytes()` for binary local artifacts.
+- Added `POST /api/academy/paper/annotations` to persist Paper Studio pen annotations as PNG artifacts under `output/academy/annotations`.
+- Annotation saves now create a durable `academy_annotation` RunRecord with an `annotation_png` artifact and document-linked evidence citation.
+- `/academy/paper` now attempts artifact persistence after saving the browser canvas, while keeping localStorage as the offline fallback when no document is uploaded or the API fails.
+- Added regression coverage for annotation artifact creation, run/evidence persistence, and frontend API wiring.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\services\artifact_storage.py clawos\tests\test_routing_memory.py`: passed.
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `26 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+
+Known notes:
+- This pass does not add a visual browser screenshot check.
+- Generated annotation artifacts live under ignored `output/academy/annotations` and should not be committed.
+- The existing `%SystemDrive%/...` deleted-path git noise remains untouched.
+
+Recommended next step:
+- Add a FastAPI/TestClient-style PDF upload -> chunks -> report -> knowledge save smoke test, then run a browser walkthrough of `/academy/paper` when browser tooling is available.
+### 2026-07-07 - Uploaded paper workflow smoke coverage
+
+Completed:
+- Added a regression smoke test that exercises the real `/api/documents/upload` entrypoint with an in-memory PDF upload.
+- The smoke flow now proves uploaded PDFs become ready library documents, expose citation-bearing chunks, generate markdown/PDF learning reports, and save a follow-up knowledge note with a `doc:N` source.
+- The test keeps uploads, reports, and the temporary MemoryOS database inside a temp directory, so it remains offline and does not touch real `clawos/uploads` data.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\tests\test_routing_memory.py`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory.MemoryAndRoutingTests.test_uploaded_pdf_flow_chunks_report_and_knowledge_save`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `27 tests OK`.
+
+Known notes:
+- This pass adds backend/service smoke coverage only; it does not launch the browser or visually inspect `/academy/paper`.
+- The existing `%SystemDrive%/...` deleted-path git noise remains untouched.
+
+Recommended next step:
+- Add a small runtime health card or Paper Studio status hint that surfaces whether the current document has chunks, generated reports, saved knowledge, and annotation artifacts, then do a browser pass when tooling is available.
+### 2026-07-07 - Paper Studio runtime status panel
+
+Completed:
+- Added a Paper Studio runtime status panel on `/academy/paper` for document upload, parsed chunks, generated report artifacts, saved knowledge, and annotation artifact state.
+- Wired the panel to existing `academyPaperState` updates after upload/chunk parsing, report generation, knowledge save, annotation save, and initial page boot.
+- Added static frontend coverage so the status panel markup, renderer, state token, and CSS class remain part of the Academy Paper workflow.
+
+Verification:
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `27 tests OK`.
+- `git diff --check -- PROJECT_CONTEXT.md clawos\static\academy-paper.html clawos\static\assets\academy.js clawos\static\assets\site.css clawos\tests\test_frontend_static.py clawos\tests\test_routing_memory.py`: passed with CRLF warnings only.
+
+Known notes:
+- This is a frontend state visibility pass only; it does not change backend document/report/artifact APIs.
+- Browser screenshot verification is still not run in this environment.
+
+Recommended next step:
+- Start the local server and do a browser walkthrough of `/academy/paper`, then connect the panel to persisted historical run records if the user wants status to survive a full page reload.
+### 2026-07-08 - Paper Studio persisted status recovery
+
+Completed:
+- Added `academy_paper_report` RunRecord persistence when a library document generates a learning-analysis report.
+- Added `GET /api/academy/paper/status?document_id=N` to recover uploaded document chunk count, latest report artifacts, latest knowledge item linked by `doc:N`, and latest annotation artifact.
+- Updated `/academy/paper` so the runtime status panel refreshes from persisted state after upload, report generation, knowledge save, annotation save, and page state refresh.
+- Paper knowledge saves now include the source document marker in `source`, so status recovery can reconnect saved notes to the original document.
+- Added regression coverage for report RunRecord recovery, knowledge recovery, annotation recovery, and frontend API wiring.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py`: passed.
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `27 tests OK`.
+- `git diff --check -- PROJECT_CONTEXT.md clawos\clawos_server.py clawos\static\assets\academy.js clawos\tests\test_frontend_static.py clawos\tests\test_routing_memory.py`: passed with CRLF warnings only.
+
+Known notes:
+- Browser screenshot verification is still not run in this environment.
+- The status recovery is document-scoped; a future pass can add a document picker/history drawer for reopening older Paper Studio sessions.
+
+Recommended next step:
+- Add a Paper Studio document history selector backed by `/api/documents?category=research`, so users can reopen prior local papers without re-uploading.
+### 2026-07-08 - Paper Studio local document history
+
+Completed:
+- Added a local Recent Papers selector on `/academy/paper`, backed by `/api/documents?category=research`.
+- The page now loads recent research documents on boot and after uploads, showing document id, chunk count, and status without needing cloud services.
+- Clicking a prior paper opens it from MemoryOS, reloads chunks, refreshes persisted report/knowledge/annotation status, and regenerates the local deep-read cards without re-uploading the file.
+- Opening a historical document clears the stale PDF iframe preview because the browser object URL only exists for fresh uploads.
+- Added static frontend coverage for the history selector and API wiring, plus a backend smoke assertion for the document list shape and `chunk_count`.
+
+Verification:
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `27 tests OK`.
+- `git diff --check -- PROJECT_CONTEXT.md clawos\static\academy-paper.html clawos\static\assets\academy.js clawos\static\assets\site.css clawos\tests\test_frontend_static.py clawos\tests\test_routing_memory.py`: passed with CRLF warnings only.
+
+Known notes:
+- Browser screenshot verification is still not run in this environment.
+- Historical paper reopen currently restores chunks/status/report metadata; it does not rehydrate the original PDF preview unless a file is uploaded again.
+
+Recommended next step:
+- Add an optional source-file preview endpoint for local uploads, with path confinement, so reopened PDFs can be previewed safely from the stored document record.
+### 2026-07-08 - Confined document source preview
+
+Completed:
+- Added `GET /api/documents/{document_id}/source` for local source preview of uploaded research documents.
+- The endpoint only serves files whose resolved path is inside the configured `UPLOAD_DIR`, and rejects missing, external, or unsupported source files.
+- Previewable source types are limited to PDF and common text-like formats; Paper Studio uses it only to restore PDF iframe previews when reopening historical papers.
+- `/academy/paper` now restores PDF preview URLs for reopened local PDFs instead of leaving the iframe blank after history selection.
+- Added regression coverage for successful local PDF preview, upload-directory confinement, frontend preview helper wiring, and server route exposure.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py`: passed.
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `28 tests OK`.
+- `git diff --check -- PROJECT_CONTEXT.md clawos\clawos_server.py clawos\static\assets\academy.js clawos\tests\test_frontend_static.py clawos\tests\test_routing_memory.py`: passed with CRLF warnings only.
+
+Known notes:
+- Browser screenshot verification is still not run in this environment.
+- DOCX source files remain parsed into chunks/reports, but are not served as browser previews by this endpoint.
+
+Recommended next step:
+- Add a small in-page source metadata panel showing filename, extractor, page count, OCR status, and source preview availability for the active document.
+### 2026-07-08 - Paper Studio active document metadata
+
+Completed:
+- Added an active document metadata panel on `/academy/paper` for filename, extractor, page count, OCR status, and source preview availability.
+- The panel renders from existing MemoryOS document fields and ingestion metadata, without adding a new table or cloud dependency.
+- Metadata refreshes after upload, historical document reopen, and persisted status refresh, so it stays aligned with the currently active paper.
+- Added static frontend coverage for the panel, renderer, and CSS class, plus backend flow assertions that uploaded PDF metadata and OCR state are present in status recovery.
+
+Verification:
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `28 tests OK`.
+- `git diff --check -- PROJECT_CONTEXT.md clawos\static\academy-paper.html clawos\static\assets\academy.js clawos\static\assets\site.css clawos\tests\test_frontend_static.py clawos\tests\test_routing_memory.py`: passed with CRLF warnings only.
+
+Known notes:
+- Browser screenshot verification is still not run in this environment.
+- The panel reports DOCX/text documents as chunks-only preview unless the existing source preview endpoint marks them browser-previewable.
+
+Recommended next step:
+- Add a compact Paper Studio export/checkpoint action that bundles report paths, knowledge item id, annotation artifact, citation evidence, and document metadata into one local run summary.
+### 2026-07-08 - Paper Studio checkpoint export
+
+Completed:
+- Added `POST /api/academy/paper/checkpoint` to save a local JSON checkpoint for the active paper.
+- The checkpoint bundles document metadata, chunk previews, latest report paths, saved knowledge item, annotation artifact, and citation evidence into `output/academy/checkpoints`.
+- Checkpoints are recorded as `academy_paper_checkpoint` RunRecords with artifact and evidence links, so they remain searchable through MemoryOS traces.
+- `/api/academy/paper/status` now reports the latest checkpoint, and `/academy/paper` exposes a `保存 Checkpoint` action plus runtime status.
+- Added regression coverage for the upload -> report -> knowledge -> checkpoint flow and static frontend route wiring.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py`: passed.
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `28 tests OK`.
+
+Known notes:
+- Checkpoint export is JSON-only for now; it intentionally avoids re-running model analysis or copying source PDFs.
+
+Recommended next step:
+- Add a small checkpoint history/reopen panel so prior Paper Studio sessions can be compared and resumed from their saved local run summaries.
+### 2026-07-08 - Paper Studio checkpoint history and restore
+
+Completed:
+- Added local checkpoint history APIs for Paper Studio: list checkpoints and load a checkpoint detail by `run_id`.
+- Checkpoint detail reads the saved JSON artifact only from `output/academy/checkpoints`, preserving the local-first artifact boundary.
+- `/academy/paper` now shows a Checkpoints panel, loads saved checkpoint runs on boot, and can restore document metadata, chunk previews, citation evidence, report status, knowledge id, annotation artifact, and PDF preview when available.
+- Saving a new checkpoint refreshes the in-page checkpoint list so a research session can be resumed without cloud services or model re-execution.
+- Added regression coverage for checkpoint list/detail recovery and frontend history/restore wiring.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py`: passed.
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `28 tests OK`.
+
+Known notes:
+- Checkpoint restore rehydrates the saved run summary and previews; it does not copy or duplicate the original source file.
+
+Recommended next step:
+- Add a compact project/research task board that links documents, reports, checkpoints, and follow-up questions into durable local project records.
+### 2026-07-08 - Local research project board
+
+Completed:
+- Added a local Paper Studio project board backed by `academy_research_project_item` RunRecords, avoiding new cloud dependencies or a new database table.
+- Added `GET /api/academy/paper/project-board` and `POST /api/academy/paper/project-board` to list and save follow-up research items for a paper.
+- Each project item links the active document, latest report run, checkpoint run, knowledge item, and annotation run where available.
+- `/academy/paper` now includes a Project Board panel with a follow-up question input and local item list.
+- The board refreshes on page boot, paper upload, historical paper open, and checkpoint restore, so research work can resume offline from durable local records.
+- Added regression coverage for project item persistence/linkage and frontend route/UI wiring.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py`: passed.
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `28 tests OK`.
+
+Known notes:
+- Project items currently support create/list only; status transitions such as done/blocked are not yet editable from the UI.
+
+Recommended next step:
+- Add project item status updates and a compact export so a research project can be reviewed as a local package of documents, checkpoints, reports, evidence, and follow-up decisions.
+### 2026-07-08 - Research project status and export package
+
+Completed:
+- Added project item status updates with `POST /api/academy/paper/project-board/{run_id}/status` for `open`, `done`, and `blocked` states.
+- Added `POST /api/academy/paper/project-board/export` to write a local JSON research project package under `output/academy/projects`.
+- The project export bundles document metadata, current Paper Studio status, project items, checkpoint summaries, and chunk previews into one offline-reviewable artifact.
+- Exports are recorded as `academy_research_project_export` RunRecords with artifact and evidence links.
+- `/academy/paper` now exposes Done/Blocked/Reopen controls for project items and a project package export button.
+- Added regression coverage for status transition, project package export, artifact existence, and frontend route/UI wiring.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py`: passed.
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `28 tests OK`.
+
+Known notes:
+- Project package export is JSON-only and intentionally references existing source/report/checkpoint artifacts instead of duplicating them.
+
+Recommended next step:
+- Add a local project package history panel or console summary so exported research packages can be reopened and reviewed outside the current Paper Studio session.
+### 2026-07-08 - Research project package history and restore
+
+Completed:
+- Added local project package history APIs: `GET /api/academy/paper/project-board/exports` and `GET /api/academy/paper/project-board/exports/{run_id}`.
+- Project package detail reads the saved JSON artifact only from `output/academy/projects`, preserving the local artifact boundary.
+- `/academy/paper` now shows a Project Packages panel, loads local exports on boot, and refreshes it after project export.
+- Clicking a project package restores document metadata, Paper Studio status, chunk previews, project items, checkpoint summaries, report status, knowledge id, and annotation/checkpoint artifacts where available.
+- Added regression coverage for package list/detail recovery and frontend history/restore wiring.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py`: passed.
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `28 tests OK`.
+
+Known notes:
+- Project package restore rehydrates the saved JSON package and linked local state; it does not duplicate source files or reports.
+
+Recommended next step:
+- Add a compact local readiness/audit panel that summarizes whether the workstation can run the full offline workflow: local model assets, document ingestion, report generation, checkpoints, project packages, and evidence search.
+### 2026-07-08 - Offline workflow readiness audit
+
+Completed:
+- Added `GET /api/academy/paper/offline-audit` to summarize local-first research workflow readiness for the active paper or latest research document.
+- The audit checks local 8B/9B model assets, document ingestion/chunks, report runs, research knowledge, citation evidence readiness, checkpoints, project board items, and project package exports.
+- `/academy/paper` now includes an Offline Workflow Audit panel with a manual refresh button and per-capability readiness cards.
+- The audit refreshes on page boot, paper upload/open, checkpoint save, and project package export so local workflow gaps are visible while working offline.
+- Added regression coverage for audit counts/checks and frontend route/UI wiring.
+
+Verification:
+- `clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py`: passed.
+- `node --check clawos\static\assets\academy.js`: passed.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static`: `34 tests OK`.
+- `clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory`: `28 tests OK`.
+
+Known notes:
+- Audit is a local readiness summary; it does not run a live model generation probe or mutate artifacts.
+
+Recommended next step:
+- Add a compact console-level offline readiness surface that links this Paper Studio audit with `/api/system/readiness` and `/api/model/health` for whole-workbench daily checks.
+
+### 2026-07-08 - Console workbench offline readiness
+
+Completed:
+- Added `GET /api/workbench/offline-readiness` as a compact local-first readiness summary for the whole workbench.
+- Reused `/api/system/readiness` logic through `_system_readiness_payload()` so system readiness has a single scoring source.
+- Aggregated local 8B/9B model asset readiness with Paper Studio offline workflow audit, including document chunks, research knowledge, report runs, citation evidence, checkpoints, project board items, and project package exports.
+- Added an Offline Readiness panel to the Console dashboard with workbench/system/paper/model summary metrics and per-check status cards.
+- Extended frontend static tests and the Paper Studio routing-memory workflow test to cover the new API and panel wiring.
+
+Verification:
+```powershell
+clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+```
+
+Result:
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- The new readiness check is offline-only; it does not probe a live model endpoint or call network APIs.
+
+Recommended next step:
+- Add a daily local acceptance preset that runs this workbench readiness check together with mock model acceptance and frozen benchmark output, then exposes one copyable summary for self-use maintenance.
+### 2026-07-08 - Explicit local Qwen smoke check
+
+Completed:
+- Added `_local_qwen_smoke_check()` and `POST /api/workbench/local-qwen-smoke` for an explicit local Qwen endpoint smoke test.
+- The smoke check uses the local OpenAI-compatible Qwen provider at `QWEN_BASE_URL` / `QWEN_MODEL`, defaults to `http://127.0.0.1:8000/v1` and `Qwen3.5-9B-Q4_K_M`, and never requires or sends an API key.
+- `POST /api/workbench/daily-local-acceptance` now supports `include_qwen_smoke=true`, folding real local Qwen availability into the daily summary only when explicitly requested.
+- Console Offline Readiness now exposes `Daily + Qwen` and `Qwen smoke` actions next to the default quick daily check.
+- Smoke results report endpoint, model, asset readiness summary, duration, error class, and a short content preview without logging prompts or secrets.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+```
+
+Result:
+- Model acceptance tests: `6 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Model provider tests: `26 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+
+Known notes:
+- The Qwen smoke path is explicit because it calls the local llama.cpp/OpenAI-compatible server. It is still offline/local, but it can fail if the server is not running or assets are missing.
+- The default daily local acceptance remains mock/frozen-only for fast no-model maintenance checks.
+
+Recommended next step:
+- Add a persisted local acceptance history so daily checks, Qwen smoke results, readiness gaps, and benchmark pass rates can be reviewed over time from the Console without relying on external dashboards.

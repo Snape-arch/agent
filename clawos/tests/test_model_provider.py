@@ -557,5 +557,65 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(result["root_cause"], "missing path")
 
 
+    def test_maintenance_service_reports_missing_local_qwen_assets(self):
+        import tempfile
+        from services.maintenance_service import MaintenanceService
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = root / "clawos"
+            models = base / "models"
+            models.mkdir(parents=True)
+            (models / "qwen3_5_9b_q4_k_m.json").write_text(json.dumps({
+                "id": "qwen-test",
+                "model_name": "Qwen test",
+                "local_path": "tools/models/qwen/test.gguf",
+                "size_bytes": 12,
+            }), encoding="utf-8")
+            (models / "qwen3_embedding_0_6b.json").write_text(json.dumps({
+                "id": "embed-test",
+                "local_path": "tools/models/qwen-embedding",
+                "total_local_size_bytes": 12,
+            }), encoding="utf-8")
+            (models / "qwen3_reranker_0_6b.json").write_text(json.dumps({
+                "id": "rerank-test",
+                "local_path": "tools/models/qwen-reranker",
+                "total_local_size_bytes": 12,
+            }), encoding="utf-8")
+
+            service = MaintenanceService(store=None, db_path=base / "memory.db", base_dir=base, config={})
+            status = service.local_model_assets()
+            check = service.config_check()
+
+        self.assertFalse(status["ready"])
+        self.assertIn("qwen_9b", status["summary"])
+        self.assertTrue(any(item["id"] == "llama_server" and not item["ok"] for item in status["assets"]))
+        self.assertTrue(any(item["name"] == "local_qwen_runtime" for item in check["checks"]))
+
+    def test_model_health_exposes_local_model_asset_status(self):
+        import clawos_server as server
+        from providers import create_model_provider
+
+        old_config = server.config
+        old_routing = server.g_routing_provider
+        old_upstream = server.g_upstream_provider
+        try:
+            server.config = {
+                "routing": {"provider": "mock", "model": "router", "mock_response": "ok"},
+                "upstream": {"provider": "mock", "model": "chat", "mock_response": "ok"},
+            }
+            server.g_routing_provider = create_model_provider(server.config["routing"])
+            server.g_upstream_provider = create_model_provider(server.config["upstream"])
+            payload = json.loads(asyncio.run(server.api_model_health()).body)
+        finally:
+            server.config = old_config
+            server.g_routing_provider = old_routing
+            server.g_upstream_provider = old_upstream
+
+        self.assertIn("local_model_assets", payload)
+        self.assertIn("assets", payload["local_model_assets"])
+        self.assertEqual(payload["local_model_assets"]["mode"], "local_qwen_gguf")
+
+
 if __name__ == "__main__":
     unittest.main()

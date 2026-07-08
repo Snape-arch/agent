@@ -29,6 +29,12 @@ class ArtifactStorage:
         target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return self.describe(target, "json")
 
+    def write_bytes(self, relative_path: str, payload: bytes, kind: str = "binary") -> dict[str, Any]:
+        target = self._resolve(relative_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        return self.describe(target, kind)
+
     def write_markdown(self, relative_path: str, title: str, sections: list[tuple[str, Any]]) -> dict[str, Any]:
         target = self._resolve(relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)

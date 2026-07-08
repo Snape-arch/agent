@@ -2,6 +2,7 @@ const API = location.origin;
 let currentSession = "default";
 let busy = false;
 let lastToolCalls = [];
+let dailyLocalAcceptanceSummary = "";
 let allTools = [];
 let pendingConfirmation = null;
 let lastTaskId = null;
@@ -1584,9 +1585,139 @@ async function loadModelHealth() {
   const target = $("modelHealthTable");
   if (!target) return;
   const data = await api("/api/model/health").catch(() => ({}));
-  target.innerHTML = table(["项目", "状态", "说明"], [["primary", { html: statusBadge(data.ok ? "success" : "pending") }, data.provider || data.model || ""]]);
+  const rows = [];
+  ["routing", "upstream"].forEach(section => {
+    const state = data[section] || {};
+    const primary = state.primary || {};
+    if (primary.provider || primary.model) {
+      rows.push([
+        `${section} primary`,
+        { html: statusBadge(primary.configured ? "success" : "pending") },
+        `${primary.provider || "-"} / ${primary.model || "-"}`
+      ]);
+    }
+    (state.fallbacks || []).forEach((fallback, index) => rows.push([
+      `${section} fallback ${index + 1}`,
+      { html: statusBadge(fallback.configured ? "success" : "pending") },
+      `${fallback.provider || "-"} / ${fallback.model || "-"}`
+    ]));
+  });
+  const localAssets = data.local_model_assets || {};
+  if (localAssets.mode) {
+    const missing = (localAssets.assets || []).filter(item => !item.ok).map(item => item.id).join(", ");
+    rows.push([
+      "local qwen assets",
+      { html: statusBadge(localAssets.ready ? "success" : "pending") },
+      localAssets.ready ? localAssets.summary : `${localAssets.summary || "missing local assets"}${missing ? ` (${missing})` : ""}`
+    ]);
+  }
+  target.innerHTML = table(["Item", "Status", "Detail"], rows.length ? rows : [["model", { html: statusBadge("pending") }, "No model provider configured"]]);
 }
 
+async function refreshOfflineReadiness() {
+  const status = $("offlineReadinessStatus");
+  const summary = $("offlineReadinessSummary");
+  const grid = $("offlineReadinessGrid");
+  if (!status || !summary || !grid) return;
+  status.textContent = "Checking local-first workbench readiness.";
+  try {
+    const data = await api("/api/workbench/offline-readiness");
+    const remaining = (data.remaining || []).length;
+    status.textContent = `${data.standard || "offline readiness"} 路 ${data.ok ? "ready" : `${remaining} items need attention`}`;
+    const model = data.model?.local_model_assets || {};
+    const paper = data.paper || {};
+    summary.innerHTML = [
+      ["Workbench", `${data.percent || 0}%`],
+      ["System", `${data.system?.percent || 0}%`],
+      ["Paper", `${paper.percent || 0}%`],
+      ["Model", model.ready ? "ready" : "pending"]
+    ].map(([label, value]) => `<div><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join("");
+    grid.innerHTML = (data.checks || []).map(item => `
+      <div class="offline-readiness-check ${item.ok ? "ok" : "pending"}">
+        <div><b>${esc(item.label || item.id || "check")}</b><span>${esc(item.detail || "")}</span></div>
+        ${statusBadge(item.ok ? "success" : "pending")}
+      </div>
+    `).join("");
+  } catch (err) {
+    status.textContent = "Offline readiness failed: " + err.message;
+    summary.innerHTML = "";
+    grid.innerHTML = "";
+  }
+}
+async function loadLocalAcceptanceHistory() {
+  const target = $("localAcceptanceHistoryTable");
+  if (!target) return;
+  const data = await api("/api/workbench/local-acceptance-history?limit=12").catch(() => ({ runs: [] }));
+  const rows = (data.runs || []).map(run => [
+    run.updated_at || "",
+    run.run_type === "workbench_qwen_smoke" ? "Qwen smoke" : "Daily check",
+    { html: statusBadge(run.status === "pass" ? "success" : "failed") },
+    `${run.workbench_percent || 0}%`,
+    run.qwen_ok === null || run.qwen_ok === undefined ? "--" : (run.qwen_ok ? "ok" : (run.qwen_error || "failed")),
+    run.summary || run.run_id || ""
+  ]);
+  target.innerHTML = table(["Time", "Type", "Status", "Readiness", "Qwen", "Summary"], rows.length ? rows : [["", "No local acceptance history", "", "", "", ""]]);
+}
+async function runDailyLocalAcceptance(includeQwenSmoke = false) {
+  const status = $("offlineReadinessStatus");
+  const summary = $("dailyAcceptanceSummary");
+  if (status) status.textContent = includeQwenSmoke ? "Running daily local acceptance with Qwen smoke." : "Running daily local acceptance.";
+  if (summary) summary.textContent = includeQwenSmoke ? "Running quick local checks and local Qwen smoke..." : "Running quick local checks...";
+  try {
+    const data = await api("/api/workbench/daily-local-acceptance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 5, full_suite: false, include_qwen_smoke: includeQwenSmoke })
+    });
+    dailyLocalAcceptanceSummary = data.summary || JSON.stringify(data, null, 2);
+    if (summary) summary.textContent = dailyLocalAcceptanceSummary;
+    if (status) status.textContent = `Daily local acceptance ${data.ok ? "passed" : "needs attention"}.`;
+    await refreshOfflineReadiness();
+  } catch (err) {
+    dailyLocalAcceptanceSummary = "";
+    if (summary) summary.textContent = "Daily local acceptance failed: " + err.message;
+    if (status) status.textContent = "Daily local acceptance failed.";
+  }
+}
+
+async function runLocalQwenSmokeCheck() {
+  const status = $("offlineReadinessStatus");
+  const summary = $("dailyAcceptanceSummary");
+  if (status) status.textContent = "Running local Qwen smoke check.";
+  if (summary) summary.textContent = "Calling local Qwen endpoint only...";
+  try {
+    const data = await api("/api/workbench/local-qwen-smoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ timeout_s: 20 })
+    });
+    dailyLocalAcceptanceSummary = [
+      "ClawOS Local Qwen Smoke",
+      `Status: ${data.ok ? "ok" : "not ready"}`,
+      `Endpoint: ${data.base_url || ""}`,
+      `Model: ${data.model || ""}`,
+      `Assets: ${data.assets_summary || ""}`,
+      `Error: ${data.error || ""}`,
+      `Preview: ${data.content_preview || ""}`
+    ].join("\n");
+    if (summary) summary.textContent = dailyLocalAcceptanceSummary;
+    if (status) status.textContent = `Local Qwen smoke ${data.ok ? "passed" : "needs attention"}.`;
+    await refreshOfflineReadiness();
+  } catch (err) {
+    dailyLocalAcceptanceSummary = "";
+    if (summary) summary.textContent = "Local Qwen smoke failed: " + err.message;
+    if (status) status.textContent = "Local Qwen smoke failed.";
+  }
+}
+async function copyDailyLocalAcceptanceSummary() {
+  const summary = dailyLocalAcceptanceSummary || $("dailyAcceptanceSummary")?.textContent || "";
+  if (!summary.trim()) return;
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(summary);
+  }
+  const status = $("offlineReadinessStatus");
+  if (status) status.textContent = "Daily local acceptance summary copied.";
+}
 async function loadToolAccuracy() {
   const target = $("toolAccuracyTable");
   if (!target) return;
@@ -2229,7 +2360,7 @@ function chooseFirstRunModel(provider) {
 async function refreshAll() {
   ensureProfessionalBoard();
   renderKnowledgeWorkspaceShell();
-  await Promise.allSettled([loadHealth(), loadDash(), loadRoutingStrategy(), loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue(), loadMemory(), loadReflection(), loadEvolution(), loadSkills(), loadTools(), loadToolExecutions(), loadTasks(), loadBenchmarks(), loadCapabilities(), loadSecurityCenter(), loadOps()]);
+  await Promise.allSettled([loadHealth(), loadDash(), loadRoutingStrategy(), loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue(), loadMemory(), loadReflection(), loadEvolution(), loadSkills(), loadTools(), loadToolExecutions(), loadTasks(), loadBenchmarks(), loadCapabilities(), loadSecurityCenter(), loadOps(), refreshOfflineReadiness(), loadLocalAcceptanceHistory()]);
   if (window.loadRuntimeRecords) window.loadRuntimeRecords();
 }
 
