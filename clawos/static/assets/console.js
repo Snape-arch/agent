@@ -1664,6 +1664,7 @@ async function loadLocalAcceptanceHistory() {
   const target = $("localAcceptanceHistoryTable");
   if (!target) return;
   await loadLocalRemediationGuide();
+  await loadLocalMaintenanceReports();
   const [data, trendData] = await Promise.all([
     api("/api/workbench/local-acceptance-history?limit=12").catch(() => ({ runs: [] })),
     api("/api/workbench/local-acceptance-trends?limit=30").catch(() => ({ trend: {} }))
@@ -1768,10 +1769,54 @@ async function exportLocalMaintenanceReport() {
     if (summary) summary.textContent = dailyLocalAcceptanceSummary;
     if (status) status.textContent = "Local maintenance report exported.";
     await loadLocalAcceptanceHistory();
+    await loadLocalMaintenanceReports();
+    if (data.run?.run_id) await openLocalMaintenanceReport(data.run.run_id);
   } catch (err) {
     dailyLocalAcceptanceSummary = "";
     if (summary) summary.textContent = "Local maintenance report export failed: " + err.message;
     if (status) status.textContent = "Local maintenance report export failed.";
+  }
+}
+async function loadLocalMaintenanceReports() {
+  const tableTarget = $("localMaintenanceReportTable");
+  if (!tableTarget) return;
+  const data = await api("/api/workbench/local-maintenance-reports?limit=8").catch(() => ({ reports: [] }));
+  const rows = (data.reports || []).map(report => {
+    const runId = String(report.run_id || "");
+    return [
+      report.updated_at || report.created_at || "",
+      `${report.readiness_percent || 0}%`,
+      report.history_count || 0,
+      report.remediation_count || 0,
+      report.markdown_path || "",
+      { html: `<button class="secondary" type="button" onclick='openLocalMaintenanceReport(${JSON.stringify(runId)})'>View</button>` }
+    ];
+  });
+  tableTarget.innerHTML = table(
+    ["Time", "Readiness", "History", "Actions", "Markdown", "Open"],
+    rows.length ? rows : [["", "No maintenance reports", "", "", "", ""]]
+  );
+}
+
+async function openLocalMaintenanceReport(runId) {
+  const preview = $("localMaintenanceReportPreview");
+  if (!preview || !runId) return;
+  preview.textContent = "Loading maintenance report...";
+  try {
+    const data = await api(`/api/workbench/local-maintenance-reports/${encodeURIComponent(runId)}`);
+    const summary = data.summary || {};
+    preview.textContent = [
+      `Run: ${summary.run_id || runId}`,
+      `Readiness: ${summary.readiness_percent || 0}%`,
+      `JSON: ${summary.json_path || ""}`,
+      `Markdown: ${summary.markdown_path || ""}`,
+      "",
+      data.markdown || "No Markdown content."
+    ].join("\n");
+    const status = $("offlineReadinessStatus");
+    if (status) status.textContent = "Local maintenance report loaded.";
+  } catch (err) {
+    preview.textContent = "Maintenance report load failed: " + err.message;
   }
 }
 async function copyDailyLocalAcceptanceSummary() {

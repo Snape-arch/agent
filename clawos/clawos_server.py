@@ -4233,6 +4233,88 @@ async def api_workbench_local_maintenance_report(request: Request):
     data = await request.json()
     return JSONResponse(_export_local_maintenance_report(limit=int(data.get("limit") or 30)))
 
+def _maintenance_artifact_root() -> Path:
+    return (BASE_DIR.parent / "output" / "maintenance").resolve()
+
+
+def _maintenance_report_artifact_path(run: dict[str, Any], kind: str) -> Path | None:
+    for artifact in run.get("artifacts") or []:
+        if artifact.get("kind") != kind:
+            continue
+        storage = (artifact.get("metadata") or {}).get("storage") or {}
+        raw_path = artifact.get("uri") or storage.get("path") or ""
+        if raw_path:
+            return Path(str(raw_path)).expanduser().resolve()
+    return None
+
+
+def _read_maintenance_artifact(run: dict[str, Any], kind: str) -> tuple[Path, str]:
+    path = _maintenance_report_artifact_path(run, kind)
+    if not path:
+        raise HTTPException(404, "Maintenance report artifact not found")
+    root = _maintenance_artifact_root()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise HTTPException(403, "Maintenance report artifact is outside the maintenance directory")
+    if not path.exists() or not path.is_file():
+        raise HTTPException(404, "Maintenance report artifact file not found")
+    return path, path.read_text(encoding="utf-8")
+
+
+def _maintenance_report_summary(run: dict[str, Any]) -> dict[str, Any]:
+    outputs = run.get("outputs") or {}
+    metrics = run.get("metrics") or {}
+    markdown_path = _maintenance_report_artifact_path(run, "markdown_report")
+    json_path = _maintenance_report_artifact_path(run, "json_report")
+    return {
+        "run_id": run.get("run_id", ""),
+        "title": run.get("title", ""),
+        "status": run.get("status", ""),
+        "updated_at": run.get("updated_at", ""),
+        "created_at": run.get("created_at", ""),
+        "readiness_percent": outputs.get("readiness_percent", metrics.get("workbench_percent", 0)),
+        "history_count": outputs.get("history_count", metrics.get("history_count", 0)),
+        "remediation_count": outputs.get("remediation_count", metrics.get("remediation_count", 0)),
+        "markdown_path": str(markdown_path) if markdown_path else "",
+        "json_path": str(json_path) if json_path else "",
+    }
+
+
+@app.get("/api/workbench/local-maintenance-reports")
+async def api_workbench_local_maintenance_reports(limit: int = 12):
+    if not g_memory_store:
+        return JSONResponse({"reports": [], "count": 0, "durable": False})
+    max_items = max(1, min(int(limit or 12), 50))
+    reports = []
+    for item in g_memory_store.list_run_records(run_type="workbench_maintenance_report", limit=max_items):
+        run = g_memory_store.get_run_record(item.get("run_id", ""))
+        if run:
+            reports.append(_maintenance_report_summary(run))
+    return JSONResponse({"reports": reports, "count": len(reports), "durable": True})
+
+
+@app.get("/api/workbench/local-maintenance-reports/{run_id}")
+async def api_workbench_local_maintenance_report_detail(run_id: str):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    run = g_memory_store.get_run_record(run_id)
+    if not run or run.get("run_type") != "workbench_maintenance_report":
+        raise HTTPException(404, "Maintenance report not found")
+    markdown_path, markdown = _read_maintenance_artifact(run, "markdown_report")
+    json_path, json_text = _read_maintenance_artifact(run, "json_report")
+    try:
+        report = json.loads(json_text)
+    except json.JSONDecodeError:
+        report = {}
+    return JSONResponse({
+        "run": run,
+        "summary": _maintenance_report_summary(run),
+        "markdown": markdown,
+        "report": report,
+        "artifacts": {"markdown_path": str(markdown_path), "json_path": str(json_path)},
+    })
+
 
 @app.get("/api/academy/paper/offline-audit")
 async def api_academy_paper_offline_audit(document_id: int = 0):
