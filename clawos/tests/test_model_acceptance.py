@@ -278,14 +278,23 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
                 json_path = Path(payload["artifacts"]["json"]["path"])
                 markdown_path = Path(payload["artifacts"]["markdown"]["path"])
                 saved_run = server.g_memory_store.get_run_record(payload["run"]["run_id"])
+                reports = json.loads(asyncio.run(server.api_workbench_local_maintenance_reports(limit=5)).body)
+                detail = json.loads(asyncio.run(server.api_workbench_local_maintenance_report_detail(payload["run"]["run_id"])).body)
                 self.assertTrue(payload["exported"])
                 self.assertTrue(json_path.exists())
                 self.assertTrue(markdown_path.exists())
                 self.assertEqual(saved_run["run_type"], "workbench_maintenance_report")
+                self.assertEqual(reports["count"], 1)
+                self.assertEqual(reports["reports"][0]["run_id"], payload["run"]["run_id"])
+                self.assertIn("markdown_path", reports["reports"][0])
+                self.assertIn("ClawOS Local Maintenance Report", detail["markdown"])
+                self.assertEqual(detail["summary"]["run_id"], payload["run"]["run_id"])
                 self.assertIn("local-first maintenance report", json_path.read_text(encoding="utf-8"))
                 self.assertIn("ClawOS Local Maintenance Report", markdown_path.read_text(encoding="utf-8"))
                 self.assertNotIn("api_key", json.dumps(payload).lower())
                 self.assertNotIn("sk-", json.dumps(payload).lower())
+                self.assertNotIn("api_key", json.dumps(reports).lower())
+                self.assertNotIn("sk-", json.dumps(detail).lower())
             finally:
                 server.g_memory_store = old_store
                 server.BASE_DIR = old_base

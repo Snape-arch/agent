@@ -125,6 +125,14 @@
             <div class="local-acceptance-trend-grid" id="localAcceptanceTrendGrid"></div>
             <div class="local-remediation-guide" id="localRemediationGuide"></div>
             <table class="table" id="localAcceptanceHistoryTable"></table>
+            <div class="local-maintenance-reports">
+              <div class="offline-readiness-head compact">
+                <h3>Local Maintenance Reports</h3>
+                <button class="secondary" type="button" onclick="loadLocalMaintenanceReports()">Refresh reports</button>
+              </div>
+              <table class="table" id="localMaintenanceReportTable"></table>
+              <pre class="local-maintenance-preview" id="localMaintenanceReportPreview">No maintenance report selected.</pre>
+            </div>
           </div>
         </div>
         <div class="dashboard-grid dashboard-grid-lean">
