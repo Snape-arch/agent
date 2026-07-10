@@ -586,10 +586,17 @@ class ModelProviderTests(unittest.TestCase):
             service = MaintenanceService(store=None, db_path=base / "memory.db", base_dir=base, config={})
             status = service.local_model_assets()
             check = service.config_check()
+            runtime = root / "tools" / "llama.cpp" / "runtime"
+            runtime.mkdir(parents=True)
+            (runtime / "llama-server.exe").write_bytes(b"server")
+            runtime_status = service.local_model_assets()
 
         self.assertFalse(status["ready"])
         self.assertIn("qwen_9b", status["summary"])
         self.assertTrue(any(item["id"] == "llama_server" and not item["ok"] for item in status["assets"]))
+        runtime_asset = next(item for item in runtime_status["assets"] if item["id"] == "llama_server")
+        self.assertTrue(runtime_asset["ok"])
+        self.assertIn(str(Path("runtime") / "llama-server.exe"), runtime_asset["path"])
         self.assertTrue(any(item["name"] == "local_qwen_runtime" for item in check["checks"]))
 
     def test_model_health_exposes_local_model_asset_status(self):

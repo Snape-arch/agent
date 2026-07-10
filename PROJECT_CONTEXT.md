@@ -2452,3 +2452,36 @@ Known notes:
 
 Recommended next step:
 - Add a report-side evidence chain browser that can open citation-answer RunRecords, source chunks, and generated report sections from one local Paper Studio panel.
+
+### 2026-07-10 - Local Qwen installer and CUDA runtime reliability
+
+Completed:
+- Fixed `download_llama_cpp.ps1` so NVIDIA installs select the real `llama-*-bin-win-cuda-*.zip` server archive instead of the similarly named `cudart-*` companion archive.
+- Added installation of the matching official CUDA runtime companion archive and made an existing `llama-server.exe` without `cudart64*.dll` count as incomplete.
+- Changed llama.cpp and Qwen downloads to prefer resumable `curl.exe -C -` transfers, with the existing PowerShell/Hugging Face alternatives retained when curl is unavailable.
+- Installed the ignored local llama.cpp b9946 CUDA 12.4 runtime and companion files under `tools/llama.cpp/runtime`.
+- Updated `MaintenanceService.local_model_assets()` to recognize the downloader's `tools/llama.cpp/runtime/llama-server.exe` install path instead of falsely reporting the installed server as missing.
+
+Verification:
+```powershell
+tools\llama.cpp\runtime\llama-server.exe --version
+tools\llama.cpp\runtime\llama-cli.exe --list-devices
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider.ModelProviderTests.test_maintenance_service_reports_missing_local_qwen_assets
+```
+
+Result:
+- llama.cpp reports build `9946 (fb30ba9a6)`.
+- CUDA device discovery reports `NVIDIA GeForce RTX 5060 Laptop GPU` with 8150 MiB total VRAM.
+- Static frontend/downloader regression suite: `35 tests OK`.
+- Targeted maintenance-service runtime-path regression: `1 test OK`.
+- Both modified PowerShell scripts pass parser validation.
+
+Known notes:
+- The Qwen GGUF is still not installed. Hugging Face xet repeatedly hit CDN TLS `unexpected EOF` failures and eventually stalled on one connection; the task-owned download processes were stopped cleanly.
+- Interrupted xet `.incomplete` files remain under the ignored Hugging Face local download cache, but there is no verified 5,680,522,464-byte target GGUF and no SHA256 acceptance evidence yet.
+- Real local Qwen server smoke and model acceptance therefore remain pending.
+- Embedding and reranker model directories are also still absent locally.
+
+Recommended next step:
+- When network approval is available, rerun `clawos\scripts\download_qwen_model.ps1`, verify the manifest size/SHA256, start `start_qwen_llama_server.ps1`, then run `/v1/models`, `/api/workbench/local-qwen-smoke`, and `evaluate_model_acceptance.py --provider qwen --limit 2 --json`.

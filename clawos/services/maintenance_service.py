@@ -189,6 +189,7 @@ class MaintenanceService:
 
         server_candidates = [
             repo_root / "tools" / "llama.cpp" / "llama-server.exe",
+            repo_root / "tools" / "llama.cpp" / "runtime" / "llama-server.exe",
             repo_root / "tools" / "llama.cpp" / "build" / "bin" / "Release" / "llama-server.exe",
         ]
         found_server = next((path for path in server_candidates if path.exists()), None)

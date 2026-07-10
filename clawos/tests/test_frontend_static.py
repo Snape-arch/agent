@@ -629,6 +629,19 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("[switch]$Download", qwen_starter)
         self.assertIn("rerun this script with -Download", qwen_starter)
 
+    def test_llama_cpp_downloader_ignores_cudart_only_archives(self):
+        downloader = (REPO_ROOT / "clawos" / "scripts" / "download_llama_cpp.ps1").read_text(encoding="utf-8-sig")
+        model_downloader = (REPO_ROOT / "clawos" / "scripts" / "download_qwen_model.ps1").read_text(encoding="utf-8-sig")
+
+        self.assertIn('^llama-.*bin-win-(cuda|cu12).*x64\\.zip$', downloader)
+        self.assertIn('$_.name -notmatch "(?i)^cudart-"', downloader)
+        self.assertIn('-L -C - --retry 8', downloader)
+        self.assertIn('cudart-llama-bin-win-cuda-', downloader)
+        self.assertIn('ggml-cuda.dll', downloader)
+        self.assertIn('cudart64*.dll', downloader)
+        self.assertIn('if ($curl)', model_downloader)
+        self.assertIn('-L -C - --retry 8', model_downloader)
+
     def test_console_exposes_report_style_presets(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
