@@ -2169,3 +2169,286 @@ Known notes:
 
 Recommended next step:
 - Add a console-side report browser for recent `workbench_maintenance_report` RunRecords, including Markdown preview and artifact open/copy actions.
+### 2026-07-09 - Local maintenance report browser
+
+Completed:
+- Added `GET /api/workbench/local-maintenance-reports` to list recent `workbench_maintenance_report` RunRecords.
+- Added `GET /api/workbench/local-maintenance-reports/{run_id}` to read the saved Markdown and JSON artifacts for a selected maintenance report.
+- Maintenance report artifact reads are constrained to `output/maintenance`, so the detail API does not become a general file reader.
+- Console Offline Readiness now includes a Local Maintenance Reports table with refresh and per-report Markdown preview.
+- Exporting a report now refreshes the report browser and opens the newly generated Markdown preview when the RunRecord is persisted.
+- Added regression coverage for report list/detail APIs, frontend report browser wiring, CSS, and secret redaction expectations.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `8 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- The browser depends on MemoryOS RunRecords. If MemoryOS is unavailable, the list is empty and durable=false.
+- The detail endpoint reads local report artifacts only; it does not open files externally or execute remediation actions.
+
+Recommended next step:
+- Turn remediation guide entries into explicit local action checklists that can be marked reviewed/resolved and linked back into the next maintenance report.
+### 2026-07-09 - Local remediation action checklist
+
+Completed:
+- Added persistent local remediation actions backed by `workbench_remediation_action` RunRecords, avoiding a new table while keeping the data local and auditable.
+- Added `POST /api/workbench/local-remediation-actions` so remediation guide items can be marked `open`, `reviewed`, or `resolved` with a stable action id.
+- `GET /api/workbench/local-remediation-guide` now annotates each action with `action_id`, status, status note, status RunRecord id, and reviewed/resolved counts.
+- Local maintenance report exports now include a Remediation Status section and reviewed/resolved counts, so reports capture not only gaps but also what has been acknowledged or closed.
+- Console remediation cards now show status and expose `Mark reviewed` / `Mark resolved` actions without running scripts, downloading models, starting services, or calling cloud APIs.
+- Added regression coverage for status persistence, guide/report integration, frontend action wiring, CSS, and secret redaction expectations.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `8 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- Remediation action persistence requires MemoryOS. Without MemoryOS, the guide remains readable but status writes return 503.
+- Marking an action resolved is a user audit state only; it does not execute the suggested remediation script or re-run checks automatically.
+
+Recommended next step:
+- Add a one-click local recheck for a resolved remediation item that runs only safe local checks such as readiness, model health, or Qwen smoke depending on the action's `checks` list.
+### 2026-07-09 - Safe local remediation recheck
+
+Completed:
+- Added `POST /api/workbench/local-remediation-actions/recheck` for one-click safe local rechecks of remediation actions.
+- Rechecks are restricted to local/read-only checks already represented by the guide: model health, offline readiness, local acceptance trends, remediation guide refresh, Qwen smoke, document counts, Paper Studio audit, checkpoint/export/project/report RunRecord counts.
+- Recheck results are written back into the same `workbench_remediation_action` RunRecord under `last_recheck`, preserving the reviewed/resolved audit state.
+- `GET /api/workbench/local-remediation-guide` now returns `last_recheck` per action so the Console and future reports can show whether a resolved item still needs attention.
+- Console remediation cards now show last recheck state and include a `Recheck` button next to `Mark reviewed` and `Mark resolved`.
+- Recheck does not run remediation scripts, download model assets, start background servers, mutate project artifacts, or call cloud APIs.
+- Added regression coverage for backend recheck persistence, guide integration, frontend route/function wiring, and secret redaction expectations.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `8 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- Qwen smoke remains a local endpoint call and can fail when the local server is not running; this is reported as a recheck result, not treated as a tool execution failure.
+- Recheck uses local state snapshots and RunRecord counts; it is a maintenance gate, not an automatic fixer.
+
+Recommended next step:
+- Surface the remediation/recheck history inside the Local Maintenance Report browser so old reports and current action state can be compared side by side.
+### 2026-07-09 - Maintenance report current-state comparison
+
+Completed:
+- `GET /api/workbench/local-maintenance-reports/{run_id}` now returns both `report_remediation` from the saved artifact and `current_remediation` from the live local RunRecords.
+- The detail response keeps historical report artifacts immutable while allowing the Console to compare old report state against current reviewed/resolved/recheck progress.
+- Console maintenance report preview now shows report-time reviewed/resolved counts and current reviewed/resolved/rechecked counts before the Markdown body.
+- This makes the report browser useful as a longitudinal audit surface: old snapshots remain readable while current remediation closure is visible in the same view.
+- Added regression coverage for detail API remediation snapshots and frontend comparison text.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `8 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- Historical JSON/Markdown artifacts are not rewritten; current state is returned separately by the detail API.
+- Current-state comparison depends on MemoryOS RunRecords being available.
+
+Recommended next step:
+- Add a compact local workbench timeline that merges daily acceptance, Qwen smoke, remediation actions, rechecks, and maintenance reports into one chronological view.
+### 2026-07-09 - Local workbench timeline
+
+Completed:
+- Added `GET /api/workbench/local-timeline` to merge key local maintenance RunRecords into one chronological view.
+- Timeline currently covers daily local acceptance, explicit Qwen smoke checks, remediation action state changes, remediation rechecks, and maintenance report exports.
+- Remediation actions with a `last_recheck` produce both an action event and a recheck event, making the audit trail easier to scan from the Console.
+- Console Offline Readiness now includes a Local Workbench Timeline table between trend summary and remediation cards.
+- The timeline is local-only and read-only; it does not execute checks, mutate action state, open files, or call cloud APIs.
+- Added regression coverage for timeline API event kinds, maintenance report timeline inclusion, frontend DOM/JS/CSS wiring, and route registration.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `8 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- Timeline depends on MemoryOS RunRecords. Without MemoryOS it returns an empty durable=false payload.
+- Current remediation action RunRecords are upserted by action id, so the timeline represents the latest remediation action state plus the latest recheck event, not every historical status transition.
+
+Recommended next step:
+- Add timeline drill-down so selecting an event opens the relevant report preview, remediation card, Qwen smoke details, or daily acceptance summary.
+### 2026-07-09 - Local timeline drill-down
+
+Completed:
+- Timeline events now include `target` and `payload` data so the Console can open event-specific local details without additional tables.
+- Console Local Workbench Timeline now has an `Open` action per row and a local detail preview pane.
+- Opening a maintenance report event reuses the existing maintenance report preview; daily acceptance, Qwen smoke, remediation action, and recheck events render their local payload details inline.
+- This keeps the timeline read-only while making the audit trail actionable for long-term self-maintenance.
+- Added regression coverage for timeline `target`/`payload`, frontend drill-down DOM/function wiring, and retained route/static checks.
+- Fixed an accidental target-field insertion into Academy checkpoint summaries caught by `clawos.tests.test_routing_memory`.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `8 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- Timeline drill-down is read-only. It opens existing report previews or local payload snapshots; it does not rerun checks or mutate action state.
+- Maintenance report events can open rich previews because report artifacts already have a detail API; other event kinds currently show structured JSON payloads inline.
+
+Recommended next step:
+- Add a local-first research workflow timeline that connects document ingestion, citation answers, reports, project board items, checkpoints, and project package exports for Paper Studio.
+### 2026-07-09 - Timeline event drill-down
+
+Completed:
+- Timeline items now include `target` and `payload` fields for local drill-down without adding new persistence tables.
+- Console Local Workbench Timeline now includes an `Open` action per event plus `localWorkbenchTimelineDetail` for inline details.
+- Maintenance report timeline events open the existing report preview; daily acceptance, Qwen smoke, remediation action, and remediation recheck events show their local payload snapshots inline.
+- Added regression assertions that timeline events expose target/payload data and that the frontend includes the timeline drill-down cache, Open handler, and detail panel.
+- Fixed an accidental `target` insertion into Academy checkpoint summary discovered by `clawos.tests.test_routing_memory`.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_model_acceptance.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\console.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Model acceptance tests: `8 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Routing/memory workflow tests: `28 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- Timeline drill-down is read-only. It does not rerun checks, mark actions, open external files, or call cloud APIs.
+- Non-report event details currently render JSON payloads; richer per-kind panels can be added later if needed.
+
+Recommended next step:
+- Add a local-first research workflow timeline that connects Paper Studio document ingestion, citation answers, reports, project board items, checkpoints, and project package exports.
+### 2026-07-09 - Paper Studio research workflow timeline
+
+Completed:
+- Added `GET /api/academy/paper/timeline` for a read-only, local-first Paper Studio workflow timeline.
+- The timeline merges research document ingestion, saved knowledge/citation notes, paper reports, annotations, checkpoints, project board items, and project package exports.
+- Timeline items include `target` and `payload` so the Academy page can reopen documents, checkpoints, and project packages or inspect local event details inline.
+- Paper Studio now shows a Research Timeline panel and refreshes it from the existing upload, report, knowledge save, checkpoint, project board, and export flows.
+- Citation answers do not yet have their own RunRecord; durable citation evidence is surfaced when saved into knowledge or captured inside a checkpoint.
+- The endpoint is local-only and read-only. It does not run models, re-run searches, open files externally, download assets, execute scripts, or call cloud APIs.
+- Added regression coverage for backend event kinds/targets/payloads, frontend DOM/JS/CSS wiring, and route registration.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\academy.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_acceptance
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider
+```
+
+Result:
+- Routing/memory workflow tests: `28 tests OK`.
+- Static frontend tests: `34 tests OK`.
+- Model acceptance tests: `8 tests OK`.
+- Model provider tests: `26 tests OK`.
+
+Known notes:
+- The timeline is reconstructed from existing MemoryOS documents, knowledge items, and RunRecords; it does not add a new persistence table.
+- Current citation-answer API responses are transient unless the user saves them to knowledge or checkpoint state.
+
+Recommended next step:
+- Persist citation-answer runs as explicit `academy_citation_answer` RunRecords so evidence Q&A appears in the Paper Studio timeline immediately, without requiring a checkpoint or knowledge-save step.
+### 2026-07-09 - Durable Paper Studio citation-answer runs
+
+Completed:
+- `GET /api/documents/citation-answer` now persists each evidence Q&A as an `academy_citation_answer` RunRecord when MemoryOS is available.
+- Citation-answer RunRecords store query/category/document inputs, answer/citation outputs, citation count metrics, and evidence records linked to document/chunk citations.
+- Paper Studio timeline now reads `academy_citation_answer` RunRecords directly, so evidence Q&A appears immediately after a citation query without waiting for a checkpoint or knowledge-save step.
+- Paper Studio refreshes the research timeline after citation-answer queries.
+- Added regression coverage for citation-answer RunRecord persistence, evidence metadata, timeline inclusion, and static route/run-type wiring.
+
+Verification:
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\tests\test_routing_memory.py clawos\tests\test_frontend_static.py
+node --check clawos\static\assets\academy.js
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_routing_memory
+clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
+```
+
+Result:
+- Routing/memory workflow tests: `28 tests OK`.
+- Static frontend tests: `34 tests OK`.
+
+Known notes:
+- Citation-answer persistence depends on MemoryOS, which is already required by the citation-answer service.
+- The citation-answer route remains local and read-only with respect to external systems; it only writes a local audit RunRecord.
+
+Recommended next step:
+- Add a report-side evidence chain browser that can open citation-answer RunRecords, source chunks, and generated report sections from one local Paper Studio panel.

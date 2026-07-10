@@ -3,6 +3,7 @@ let currentSession = "default";
 let busy = false;
 let lastToolCalls = [];
 let dailyLocalAcceptanceSummary = "";
+let localWorkbenchTimelineItems = [];
 let allTools = [];
 let pendingConfirmation = null;
 let lastTaskId = null;
@@ -1652,17 +1653,100 @@ async function loadLocalRemediationGuide() {
   target.innerHTML = actions.length ? actions.map(action => {
     const scripts = Object.values(action.scripts || {}).filter(Boolean).join(" | ") || "No script required";
     const checks = (action.checks || []).join(" | ");
-    return `<div class="local-remediation-card ${esc(action.severity || "low")}">
+    const actionPayload = esc(JSON.stringify(action));
+    const status = action.status || "open";
+    const lastRecheck = action.last_recheck || {};
+    const recheckText = lastRecheck.checked_at ? `Recheck: ${lastRecheck.ok ? "ok" : "needs attention"} ${lastRecheck.checked_at}` : "Recheck: not run";
+    return `<div class="local-remediation-card ${esc(action.severity || "low")} ${esc(status)}">
       <div><b>${esc(action.gap || action.id || "readiness gap")}</b><span>${esc(action.why || "")}</span></div>
       <p>${esc(action.action || "")}</p>
+      <small>Status: ${esc(status)} ${action.status_note ? "- " + esc(action.status_note) : ""}</small>
+      <small>${esc(recheckText)}</small>
       <small>Scripts: ${esc(scripts)}</small>
       <small>Checks: ${esc(checks)}</small>
+      <div class="local-remediation-actions">
+        <button class="secondary" type="button" data-action='${actionPayload}' onclick="markLocalRemediationAction(this, 'reviewed')">Mark reviewed</button>
+        <button class="secondary" type="button" data-action='${actionPayload}' onclick="markLocalRemediationAction(this, 'resolved')">Mark resolved</button>
+        <button class="secondary" type="button" data-action='${actionPayload}' onclick="recheckLocalRemediationAction(this)">Recheck</button>
+      </div>
     </div>`;
   }).join("") : '<div class="local-remediation-card"><b>No remediation actions</b><span>Run daily local acceptance to collect readiness gaps.</span></div>';
+}
+
+async function markLocalRemediationAction(button, status) {
+  const raw = button?.dataset?.action || "{}";
+  let action = {};
+  try { action = JSON.parse(raw); } catch (err) { action = {}; }
+  const state = $("offlineReadinessStatus");
+  if (state) state.textContent = `Marking remediation ${status}.`;
+  await api("/api/workbench/local-remediation-actions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action_id: action.action_id || action.id, action, status })
+  });
+  if (state) state.textContent = `Remediation marked ${status}.`;
+  await loadLocalRemediationGuide();
+}
+async function recheckLocalRemediationAction(button) {
+  const raw = button?.dataset?.action || "{}";
+  let action = {};
+  try { action = JSON.parse(raw); } catch (err) { action = {}; }
+  const state = $("offlineReadinessStatus");
+  if (state) state.textContent = "Running safe local remediation recheck.";
+  const data = await api("/api/workbench/local-remediation-actions/recheck", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action_id: action.action_id || action.id, action })
+  });
+  const result = data.recheck || {};
+  if (state) state.textContent = `Remediation recheck ${result.ok ? "passed" : "needs attention"}.`;
+  await loadLocalRemediationGuide();
+}
+async function loadLocalWorkbenchTimeline() {
+  const target = $("localWorkbenchTimelineTable");
+  if (!target) return;
+  const data = await api("/api/workbench/local-timeline?limit=20").catch(() => ({ items: [] }));
+  localWorkbenchTimelineItems = data.items || [];
+  const rows = localWorkbenchTimelineItems.map((item, index) => [
+    item.updated_at || "",
+    item.label || item.kind || "event",
+    { html: statusBadge(item.status === "pass" ? "success" : item.status === "fail" ? "failed" : item.status || "pending") },
+    item.summary || item.title || item.run_id || "",
+    item.detail || "",
+    { html: `<button class="secondary" type="button" onclick="openLocalTimelineEvent(${index})">Open</button>` }
+  ]);
+  target.innerHTML = table(
+    ["Time", "Event", "Status", "Summary", "Detail", "Open"],
+    rows.length ? rows : [["", "No local workbench events", "", "", "", ""]]
+  );
+}
+
+async function openLocalTimelineEvent(index) {
+  const item = localWorkbenchTimelineItems[index] || {};
+  const target = $("localWorkbenchTimelineDetail");
+  if (!target) return;
+  if (item.kind === "maintenance_report" && item.run_id) {
+    await openLocalMaintenanceReport(item.run_id);
+    target.textContent = `Opened maintenance report: ${item.run_id}`;
+    return;
+  }
+  const payload = item.payload || {};
+  const lines = [
+    `Event: ${item.label || item.kind || "event"}`,
+    `Run: ${item.run_id || ""}`,
+    `Status: ${item.status || ""}`,
+    `Time: ${item.updated_at || ""}`,
+    `Summary: ${item.summary || ""}`,
+    `Detail: ${item.detail || ""}`,
+    "",
+    JSON.stringify(payload, null, 2)
+  ];
+  target.textContent = lines.join("\n");
 }
 async function loadLocalAcceptanceHistory() {
   const target = $("localAcceptanceHistoryTable");
   if (!target) return;
+  await loadLocalWorkbenchTimeline();
   await loadLocalRemediationGuide();
   await loadLocalMaintenanceReports();
   const [data, trendData] = await Promise.all([
@@ -1805,11 +1889,17 @@ async function openLocalMaintenanceReport(runId) {
   try {
     const data = await api(`/api/workbench/local-maintenance-reports/${encodeURIComponent(runId)}`);
     const summary = data.summary || {};
+    const reportRemediation = data.report_remediation || {};
+    const currentRemediation = data.current_remediation || {};
+    const currentActions = currentRemediation.actions || [];
+    const rechecked = currentActions.filter(item => item.last_recheck && item.last_recheck.checked_at).length;
     preview.textContent = [
       `Run: ${summary.run_id || runId}`,
       `Readiness: ${summary.readiness_percent || 0}%`,
       `JSON: ${summary.json_path || ""}`,
       `Markdown: ${summary.markdown_path || ""}`,
+      `Report remediation: reviewed ${reportRemediation.reviewed_count || 0}, resolved ${reportRemediation.resolved_count || 0}`,
+      `Current remediation: reviewed ${currentRemediation.reviewed_count || 0}, resolved ${currentRemediation.resolved_count || 0}, rechecked ${rechecked}`,
       "",
       data.markdown || "No Markdown content."
     ].join("\n");

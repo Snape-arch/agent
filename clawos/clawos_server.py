@@ -3649,6 +3649,167 @@ async def api_academy_paper_project_exports(document_id: int = 0, limit: int = 2
     return JSONResponse({"exports": exports, "count": len(exports)})
 
 
+def _academy_event_time(source: dict[str, Any]) -> str:
+    return str(source.get("updated_at") or source.get("completed_at") or source.get("started_at") or source.get("created_at") or "")
+
+
+def _academy_run_document_id(run: dict[str, Any]) -> int:
+    inputs = run.get("inputs") or {}
+    outputs = run.get("outputs") or {}
+    for value in (inputs.get("document_id"), outputs.get("document_id")):
+        try:
+            if int(value or 0):
+                return int(value)
+        except (TypeError, ValueError):
+            pass
+    for evidence in run.get("evidence") or []:
+        try:
+            if int(evidence.get("document_id") or 0):
+                return int(evidence.get("document_id") or 0)
+        except (TypeError, ValueError):
+            pass
+    return 0
+
+
+def _academy_timeline_event(kind: str, label: str, summary: str, updated_at: str, document_id: int = 0, run_id: str = "", status: str = "", payload: dict[str, Any] | None = None, target: dict[str, Any] | None = None) -> dict[str, Any]:
+    detail = payload or {}
+    return {
+        "kind": kind,
+        "label": label,
+        "summary": summary,
+        "updated_at": updated_at,
+        "document_id": document_id,
+        "run_id": run_id,
+        "status": status,
+        "target": target or {"kind": kind, "run_id": run_id, "document_id": document_id},
+        "payload": detail,
+    }
+
+
+def _academy_checkpoint_citation_payload(run: dict[str, Any]) -> dict[str, Any]:
+    path = _academy_checkpoint_artifact_path(run)
+    if not path:
+        return {}
+    root = (BASE_DIR.parent / "output" / "academy" / "checkpoints").resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return {}
+    if not path.exists() or not path.is_file():
+        return {}
+    try:
+        checkpoint = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    citation = checkpoint.get("citation") or {}
+    if not citation:
+        return {}
+    evidence = citation.get("citations") or citation.get("evidence") or citation.get("chunks") or []
+    return {
+        "answer": citation.get("answer") or citation.get("summary") or "",
+        "evidence_count": len(evidence) if isinstance(evidence, list) else 0,
+        "checkpoint_run_id": run.get("run_id", ""),
+    }
+
+
+def _academy_paper_timeline_payload(document_id: int = 0, limit: int = 30) -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    max_items = max(1, min(int(limit or 30), 100))
+    active_document = g_memory_store.get_document(document_id) if document_id else {}
+    documents = [active_document] if active_document else g_memory_store.list_documents("research")
+    events: list[dict[str, Any]] = []
+    for doc in documents:
+        if not doc:
+            continue
+        doc_id = int(doc.get("id") or 0)
+        if document_id and doc_id != int(document_id):
+            continue
+        events.append(_academy_timeline_event(
+            "document_ingestion",
+            "Document ingested",
+            f"{doc.get('title') or doc.get('filename') or f'doc:{doc_id}'}; chunks:{doc.get('chunk_count', 0)}",
+            _academy_event_time(doc),
+            document_id=doc_id,
+            status=str(doc.get("status") or ""),
+            payload={"document": doc},
+            target={"kind": "document", "document_id": doc_id},
+        ))
+    knowledge_marker = f"doc:{int(document_id)}" if document_id else ""
+    for item in g_memory_store.list_knowledge("research"):
+        source = str(item.get("source") or "")
+        content = str(item.get("content") or "")
+        if knowledge_marker and knowledge_marker not in source and knowledge_marker not in content:
+            continue
+        matched_doc = int(document_id or 0)
+        if not matched_doc:
+            marker = re.search(r"doc:(\d+)", source + "\n" + content)
+            matched_doc = int(marker.group(1)) if marker else 0
+        events.append(_academy_timeline_event(
+            "knowledge_capture",
+            "Knowledge captured",
+            str(item.get("title") or f"knowledge:{item.get('id')}")[:160],
+            _academy_event_time(item),
+            document_id=matched_doc,
+            status="saved",
+            payload={"knowledge": item},
+            target={"kind": "knowledge", "knowledge_id": item.get("id"), "document_id": matched_doc},
+        ))
+    run_kinds = {
+        "academy_paper_report": ("report", "Report generated"),
+        "academy_citation_answer": ("citation_answer", "Citation answer saved"),
+        "academy_annotation": ("annotation", "Annotation saved"),
+        "academy_paper_checkpoint": ("checkpoint", "Checkpoint saved"),
+        "academy_research_project_item": ("project_item", "Project item updated"),
+        "academy_research_project_export": ("project_export", "Project package exported"),
+    }
+    for run_type, (kind, label) in run_kinds.items():
+        for item in g_memory_store.list_run_records(run_type=run_type, limit=100):
+            run = g_memory_store.get_run_record(item.get("run_id", ""))
+            run_doc_id = _academy_run_document_id(run)
+            if document_id and run_doc_id != int(document_id):
+                continue
+            events.append(_academy_timeline_event(
+                kind,
+                label,
+                str(run.get("title") or run.get("run_id") or label)[:180],
+                _academy_event_time(run),
+                document_id=run_doc_id,
+                run_id=run.get("run_id", ""),
+                status=str(run.get("status") or ""),
+                payload={"run": run},
+                target={"kind": kind, "run_id": run.get("run_id", ""), "document_id": run_doc_id},
+            ))
+            if run_type == "academy_paper_checkpoint":
+                citation = _academy_checkpoint_citation_payload(run)
+                if citation:
+                    events.append(_academy_timeline_event(
+                        "citation_answer",
+                        "Citation evidence captured",
+                        f"answer:{bool(citation.get('answer'))} evidence:{citation.get('evidence_count', 0)}",
+                        _academy_event_time(run),
+                        document_id=run_doc_id,
+                        run_id=run.get("run_id", ""),
+                        status="saved",
+                        payload={"citation": citation},
+                        target={"kind": "checkpoint", "run_id": run.get("run_id", ""), "document_id": run_doc_id},
+                    ))
+    events.sort(key=lambda event: event.get("updated_at") or "", reverse=True)
+    return {
+        "ok": True,
+        "durable": True,
+        "standard": "local-first paper research workflow timeline",
+        "document_id": int(document_id or 0),
+        "document": active_document,
+        "events": events[:max_items],
+        "count": min(len(events), max_items),
+        "total": len(events),
+    }
+
+
+@app.get("/api/academy/paper/timeline")
+async def api_academy_paper_timeline(document_id: int = 0, limit: int = 30):
+    return JSONResponse(_academy_paper_timeline_payload(document_id, limit))
 
 def _academy_count_run_records(run_type: str, document_id: int = 0) -> int:
     if not g_memory_store:
@@ -3828,6 +3989,87 @@ def _daily_acceptance_run_summary(run: dict[str, Any]) -> dict[str, Any]:
         "summary": outputs.get("summary", ""),
     }
 
+
+def _workbench_timeline_item(run: dict[str, Any]) -> list[dict[str, Any]]:
+    run_type = run.get("run_type", "")
+    outputs = run.get("outputs") or {}
+    metrics = run.get("metrics") or {}
+    updated_at = run.get("updated_at") or run.get("created_at") or ""
+    base = {
+        "run_id": run.get("run_id", ""),
+        "run_type": run_type,
+        "status": run.get("status", ""),
+        "updated_at": updated_at,
+        "title": run.get("title", ""),
+        "target": {"kind": run_type, "run_id": run.get("run_id", "")},
+    }
+    if run_type == "workbench_daily_acceptance":
+        return [{
+            **base,
+            "kind": "daily_acceptance",
+            "label": "Daily local acceptance",
+            "summary": outputs.get("summary", ""),
+            "detail": f"readiness:{metrics.get('workbench_percent', 0)}% benchmark:{metrics.get('benchmark_pass_rate', 0)} model:{metrics.get('model_score_rate', 0)}",
+            "payload": {"summary": outputs.get("summary", ""), "metrics": metrics},
+        }]
+    if run_type == "workbench_qwen_smoke":
+        qwen = outputs.get("local_qwen_smoke") or {}
+        return [{
+            **base,
+            "kind": "qwen_smoke",
+            "label": "Local Qwen smoke",
+            "summary": qwen.get("assets_summary") or qwen.get("error") or run.get("title", ""),
+            "detail": f"model:{qwen.get('model', '')} ok:{qwen.get('ok')}",
+            "payload": {"local_qwen_smoke": qwen},
+        }]
+    if run_type == "workbench_remediation_action":
+        action_id = outputs.get("action_id") or (run.get("inputs") or {}).get("action_id") or ""
+        items = [{
+            **base,
+            "kind": "remediation_action",
+            "label": f"Remediation {run.get('status', 'open')}",
+            "summary": str((run.get("inputs") or {}).get("gap") or action_id),
+            "detail": outputs.get("note") or "local remediation state updated",
+            "payload": {"action_id": action_id, "outputs": outputs, "inputs": run.get("inputs") or {}},
+        }]
+        recheck = outputs.get("last_recheck") or {}
+        if recheck.get("checked_at"):
+            items.append({
+                **base,
+                "kind": "remediation_recheck",
+                "label": "Remediation recheck",
+                "status": "pass" if recheck.get("ok") else "fail",
+                "updated_at": recheck.get("checked_at") or updated_at,
+                "summary": str((run.get("inputs") or {}).get("gap") or action_id),
+                "detail": f"checks:{recheck.get('count', 0)} ok:{recheck.get('ok')}",
+                "payload": {"action_id": action_id, "recheck": recheck},
+            })
+        return items
+    if run_type == "workbench_maintenance_report":
+        return [{
+            **base,
+            "kind": "maintenance_report",
+            "label": "Maintenance report",
+            "summary": f"readiness:{outputs.get('readiness_percent', metrics.get('workbench_percent', 0))}% remediation:{outputs.get('remediation_count', metrics.get('remediation_count', 0))}",
+            "detail": "local JSON/Markdown report exported",
+            "target": {"kind": "maintenance_report", "run_id": run.get("run_id", "")},
+            "payload": {"outputs": outputs, "metrics": metrics},
+        }]
+    return []
+
+
+def _workbench_timeline_payload(limit: int = 30) -> dict[str, Any]:
+    if not g_memory_store:
+        return {"items": [], "count": 0, "durable": False}
+    max_items = max(1, min(int(limit or 30), 100))
+    tracked = {"workbench_daily_acceptance", "workbench_qwen_smoke", "workbench_remediation_action", "workbench_maintenance_report"}
+    items: list[dict[str, Any]] = []
+    for run in g_memory_store.list_run_records(limit=200):
+        if run.get("run_type") not in tracked:
+            continue
+        items.extend(_workbench_timeline_item(run))
+    items.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
+    return {"items": items[:max_items], "count": len(items[:max_items]), "durable": True}
 
 def _save_daily_acceptance_run(payload: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
     if not g_memory_store:
@@ -4034,6 +4276,10 @@ def _local_acceptance_trends(runs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+@app.get("/api/workbench/local-timeline")
+async def api_workbench_local_timeline(limit: int = 30):
+    return JSONResponse(_workbench_timeline_payload(limit))
+
 @app.get("/api/workbench/local-acceptance-history")
 async def api_workbench_local_acceptance_history(limit: int = 20):
     if not g_memory_store:
@@ -4123,6 +4369,32 @@ def _remediation_action_for_gap(label: str, count: int = 1) -> dict[str, Any]:
     }
 
 
+def _remediation_action_key(action: dict[str, Any]) -> str:
+    return str(action.get("id") or safe_artifact_slug(action.get("gap") or action.get("action") or "readiness-gap"))
+
+
+def _remediation_action_statuses(limit: int = 100) -> dict[str, dict[str, Any]]:
+    if not g_memory_store:
+        return {}
+    statuses: dict[str, dict[str, Any]] = {}
+    for item in g_memory_store.list_run_records(run_type="workbench_remediation_action", limit=limit):
+        run = g_memory_store.get_run_record(item.get("run_id", ""))
+        inputs = run.get("inputs") or {}
+        outputs = run.get("outputs") or {}
+        action_id = str(inputs.get("action_id") or outputs.get("action_id") or "")
+        if not action_id or action_id in statuses:
+            continue
+        statuses[action_id] = {
+            "run_id": run.get("run_id", ""),
+            "action_id": action_id,
+            "status": run.get("status", "open"),
+            "note": outputs.get("note", ""),
+            "updated_at": run.get("updated_at", ""),
+            "last_recheck": outputs.get("last_recheck") or {},
+        }
+    return statuses
+
+
 def _local_remediation_payload(limit: int = 30) -> dict[str, Any]:
     runs = _local_acceptance_runs(limit) if g_memory_store else []
     trend = _local_acceptance_trends(runs)
@@ -4131,12 +4403,122 @@ def _local_remediation_payload(limit: int = 30) -> dict[str, Any]:
     if not actions:
         readiness = _workbench_offline_readiness_payload(0)
         actions = [_remediation_action_for_gap(item.get("label") or item.get("id") or "readiness gap", 1) for item in readiness.get("remaining", [])[:6]]
-    return {"actions": actions, "count": len(actions), "trend": trend, "durable": bool(g_memory_store)}
+    statuses = _remediation_action_statuses()
+    for action in actions:
+        action_id = _remediation_action_key(action)
+        state = statuses.get(action_id, {})
+        action["action_id"] = action_id
+        action["status"] = state.get("status", "open")
+        action["status_note"] = state.get("note", "")
+        action["status_updated_at"] = state.get("updated_at", "")
+        action["status_run_id"] = state.get("run_id", "")
+        action["last_recheck"] = state.get("last_recheck", {})
+    reviewed_count = sum(1 for item in actions if item.get("status") in {"reviewed", "resolved"})
+    resolved_count = sum(1 for item in actions if item.get("status") == "resolved")
+    return {"actions": actions, "count": len(actions), "reviewed_count": reviewed_count, "resolved_count": resolved_count, "trend": trend, "durable": bool(g_memory_store)}
 
 
 @app.get("/api/workbench/local-remediation-guide")
 async def api_workbench_local_remediation_guide(limit: int = 30):
     return JSONResponse(_local_remediation_payload(limit))
+
+
+def _save_remediation_action_run(action: dict[str, Any], action_id: str, status: str, note: str = "", recheck: dict[str, Any] | None = None) -> dict[str, Any]:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    run = RunRecord(
+        run_id=f"workbench-remediation-action-{safe_artifact_slug(action_id)}",
+        run_type="workbench_remediation_action",
+        title=f"Workbench remediation: {action.get('gap') or action_id}",
+        status=status,
+        actor="user",
+        scenario="local-first-maintenance",
+        inputs={"action_id": action_id, "gap": action.get("gap", ""), "action": action.get("action", "")},
+        outputs={"action_id": action_id, "status": status, "note": note, "checks": action.get("checks") or [], "last_recheck": recheck or {}},
+        metrics={
+            "resolved": 1 if status == "resolved" else 0,
+            "reviewed": 1 if status in {"reviewed", "resolved"} else 0,
+            "recheck_ok": 1 if (recheck or {}).get("ok") else 0,
+        },
+        tags=["maintenance", "remediation", status],
+    )
+    run.add_evidence("local_remediation_action", "User reviewed, resolved, or rechecked a local readiness remediation action", citation=action_id)
+    return g_memory_store.save_run_record(run.to_dict())
+
+
+async def _run_local_remediation_recheck(action: dict[str, Any]) -> dict[str, Any]:
+    checks = [str(item) for item in (action.get("checks") or [])]
+    results: list[dict[str, Any]] = []
+    for check in checks:
+        if check == "/api/model/health":
+            assets = local_model_assets_status()
+            results.append({"check": check, "ok": bool(assets.get("ready") or assets.get("ok")), "summary": assets.get("summary", "")})
+        elif check == "/api/workbench/offline-readiness":
+            readiness = _workbench_offline_readiness_payload(0)
+            results.append({"check": check, "ok": bool(readiness.get("ok")), "summary": f"{readiness.get('percent', 0)}%"})
+        elif check == "/api/workbench/local-acceptance-trends":
+            runs = _local_acceptance_runs(30) if g_memory_store else []
+            trend = _local_acceptance_trends(runs)
+            results.append({"check": check, "ok": bool(trend.get("window", 0) >= 0), "summary": f"window:{trend.get('window', 0)}"})
+        elif check == "/api/workbench/local-remediation-guide":
+            payload = _local_remediation_payload(30)
+            results.append({"check": check, "ok": True, "summary": f"actions:{payload.get('count', 0)} resolved:{payload.get('resolved_count', 0)}"})
+        elif check == "/api/workbench/local-qwen-smoke":
+            smoke = await _local_qwen_smoke_check()
+            results.append({"check": check, "ok": bool(smoke.get("ok")), "summary": smoke.get("assets_summary") or smoke.get("error") or "qwen smoke"})
+        elif check == "/api/documents":
+            count = len(g_memory_store.list_documents("research")) if g_memory_store else 0
+            results.append({"check": check, "ok": count > 0, "summary": f"research documents:{count}"})
+        elif check == "/api/documents/search":
+            count = len(g_memory_store.list_documents("research")) if g_memory_store else 0
+            results.append({"check": check, "ok": count > 0, "summary": f"searchable research documents:{count}"})
+        elif check == "/api/academy/paper/offline-audit":
+            try:
+                audit = _academy_offline_audit_payload(0)
+                results.append({"check": check, "ok": bool(audit.get("ok")), "summary": f"{audit.get('percent', 0)}%"})
+            except HTTPException as exc:
+                results.append({"check": check, "ok": False, "summary": str(exc.detail)})
+        elif check in {"/api/academy/paper/checkpoints", "/api/academy/paper/project-board/exports", "/api/academy/paper/project-board", "/api/academy/paper/status"}:
+            run_type = "academy_paper_checkpoint" if "checkpoints" in check else "academy_research_project_export" if "exports" in check else "academy_research_project_item" if "project-board" in check else "academy_paper_report"
+            count = _academy_count_run_records(run_type, 0)
+            results.append({"check": check, "ok": count > 0, "summary": f"{run_type}:{count}"})
+        else:
+            results.append({"check": check, "ok": False, "summary": "No safe local recheck is registered for this item."})
+    ok = bool(results) and all(item.get("ok") for item in results)
+    return {"ok": ok, "checked_at": now_iso(), "results": results, "count": len(results)}
+
+
+@app.post("/api/workbench/local-remediation-actions")
+async def api_workbench_local_remediation_action(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    status = str(data.get("status") or "reviewed").strip().lower()
+    if status not in {"open", "reviewed", "resolved"}:
+        raise HTTPException(400, "Unsupported remediation status")
+    action = data.get("action") or {}
+    action_id = str(data.get("action_id") or _remediation_action_key(action)).strip()
+    if not action_id:
+        raise HTTPException(400, "action_id is required")
+    saved = _save_remediation_action_run(action, action_id, status, str(data.get("note") or ""))
+    return JSONResponse({"saved": True, "action": {"action_id": action_id, "status": status, "note": data.get("note", "")}, "run": saved})
+
+
+@app.post("/api/workbench/local-remediation-actions/recheck")
+async def api_workbench_local_remediation_recheck(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    action = data.get("action") or {}
+    action_id = str(data.get("action_id") or _remediation_action_key(action)).strip()
+    if not action_id:
+        raise HTTPException(400, "action_id is required")
+    current = _remediation_action_statuses().get(action_id, {})
+    status = str(current.get("status") or action.get("status") or "reviewed")
+    recheck = await _run_local_remediation_recheck(action)
+    note = str(current.get("note") or data.get("note") or "")
+    saved = _save_remediation_action_run(action, action_id, status, note, recheck)
+    return JSONResponse({"saved": True, "action_id": action_id, "status": status, "recheck": recheck, "run": saved})
 
 
 def _maintenance_report_markdown(report: dict[str, Any]) -> str:
@@ -4182,6 +4564,15 @@ def _maintenance_report_markdown(report: dict[str, Any]) -> str:
         ])
     if not actions:
         lines.extend(["- none", ""])
+    lines.extend(["## Remediation Status", ""])
+    if actions:
+        for action in actions:
+            recheck = action.get("last_recheck") or {}
+            suffix = f"; recheck={recheck.get('ok')}" if recheck else ""
+            lines.append(f"- {action.get('gap') or action.get('id')}: {action.get('status', 'open')}{suffix}")
+    else:
+        lines.append("- none")
+    lines.extend(["", f"Reviewed: {remediation.get('reviewed_count', 0)}", f"Resolved: {remediation.get('resolved_count', 0)}", ""])
     lines.extend(["## Latest Daily Summary", "", latest.get("summary", "No daily acceptance summary available."), ""])
     return "\n".join(lines).rstrip() + "\n"
 
@@ -4307,11 +4698,14 @@ async def api_workbench_local_maintenance_report_detail(run_id: str):
         report = json.loads(json_text)
     except json.JSONDecodeError:
         report = {}
+    current_remediation = _local_remediation_payload(30)
     return JSONResponse({
         "run": run,
         "summary": _maintenance_report_summary(run),
         "markdown": markdown,
         "report": report,
+        "report_remediation": (report.get("remediation") or {}) if isinstance(report, dict) else {},
+        "current_remediation": current_remediation,
         "artifacts": {"markdown_path": str(markdown_path), "json_path": str(json_path)},
     })
 
@@ -4430,10 +4824,37 @@ async def api_document_search(q: str = "", category: str = "", limit: int = 10):
 async def api_document_citation_answer(q: str = "", category: str = "", document_id: int = 0, limit: int = 5):
     service = get_knowledge_service()
     try:
-        return JSONResponse(service.citation_answer(q, category, document_id, limit))
+        result = service.citation_answer(q, category, document_id, limit)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
-
+    result["document_id"] = int(document_id or 0)
+    if g_memory_store:
+        stamp = int(time.time() * 1000)
+        citations = result.get("citations") or []
+        title_query = (q or "citation answer").strip()[:96] or "citation answer"
+        run = RunRecord(
+            run_id=f"academy-citation-answer-{int(document_id or 0)}-{stamp}",
+            run_type="academy_citation_answer",
+            title=f"Academy citation answer: {title_query}",
+            status="pass",
+            actor="system",
+            scenario="research",
+            inputs={"query": q, "category": category, "document_id": int(document_id or 0), "limit": int(limit or 5)},
+            outputs={"answer": result.get("answer", ""), "citations": citations, "count": result.get("count", len(citations))},
+            metrics={"citation_count": len(citations)},
+            tags=["academy", "paper", "citation-answer"],
+        )
+        for citation in citations[:12]:
+            citation_doc_id = int(citation.get("document_id") or document_id or 0)
+            run.add_evidence(
+                "academy_citation_answer",
+                str(citation.get("snippet") or citation.get("title") or "Citation evidence")[:360],
+                citation=str(citation.get("citation") or f"doc:{citation_doc_id}"),
+                document_id=citation_doc_id,
+                chunk_id=citation.get("chunk_id"),
+            )
+        result["run"] = g_memory_store.save_run_record(run.to_dict())
+    return JSONResponse(result)
 
 @app.get("/api/knowledge/graph")
 async def api_knowledge_graph(category: str = "", limit: int = 80):

@@ -480,7 +480,54 @@ async function academyLoadPaperProjectPackages(documentId = 0) {
   }
 }
 
-async function academyOpenPaperProjectPackage(runId) {
+
+async function academyLoadPaperTimeline(documentId = 0) {
+  const target = document.getElementById("academyPaperTimeline");
+  if (!target) return;
+  const activeDocId = Number(documentId || academyPaperState.document?.id || academyPaperState.persistedStatus?.document?.id || 0);
+  academySetText("academyPaperTimelineStatus", "Loading local research timeline...");
+  try {
+    const suffix = activeDocId ? `?document_id=${activeDocId}&limit=30` : "?limit=30";
+    const payload = await academyApi(`/api/academy/paper/timeline${suffix}`);
+    academyPaperState.timeline = payload.events || [];
+    if (!academyPaperState.timeline.length) {
+      target.innerHTML = `<button type="button" disabled>No timeline events yet</button>`;
+      academySetText("academyPaperTimelineStatus", "Upload, analyze, save, checkpoint, or export a paper to build the timeline.");
+      academyRenderHtml("academyPaperTimelineDetail", "");
+      return;
+    }
+    target.innerHTML = academyPaperState.timeline.map((item, index) => {
+      const time = item.updated_at || "unknown time";
+      const status = item.status ? ` / ${item.status}` : "";
+      return `<button type="button" data-timeline-index="${index}"><b>${academyEsc(item.label || item.kind)}</b><span>${academyEsc(time)} / doc:${Number(item.document_id || 0)}${academyEsc(status)}</span><small>${academyEsc(item.summary || item.run_id || "local event")}</small></button>`;
+    }).join("");
+    target.querySelectorAll("button[data-timeline-index]").forEach(button => {
+      button.addEventListener("click", () => academyOpenPaperTimelineEvent(Number(button.dataset.timelineIndex)));
+    });
+    academySetText("academyPaperTimelineStatus", `${academyPaperState.timeline.length} local workflow events`);
+  } catch (error) {
+    academySetText("academyPaperTimelineStatus", `Timeline unavailable: ${error.message}`);
+  }
+}
+
+async function academyOpenPaperTimelineEvent(index) {
+  const item = academyPaperState.timeline[index];
+  const detail = document.getElementById("academyPaperTimelineDetail");
+  if (!item || !detail) return;
+  const target = item.target || {};
+  try {
+    if (target.kind === "document" && target.document_id) {
+      await academyOpenPaperDocument(Number(target.document_id));
+    } else if (target.kind === "checkpoint" && target.run_id) {
+      await academyOpenPaperCheckpoint(target.run_id);
+    } else if (target.kind === "project_export" && target.run_id) {
+      await academyOpenPaperProjectPackage(target.run_id);
+    }
+    detail.innerHTML = `<b>${academyEsc(item.label || item.kind)}</b><pre>${academyEsc(JSON.stringify(item.payload || item, null, 2))}</pre>`;
+  } catch (error) {
+    detail.innerHTML = `<b>${academyEsc(item.label || item.kind)}</b><span>Open failed: ${academyEsc(error.message)}</span><pre>${academyEsc(JSON.stringify(item.payload || item, null, 2))}</pre>`;
+  }
+}async function academyOpenPaperProjectPackage(runId) {
   const payload = await academyApi(`/api/academy/paper/project-board/exports/${encodeURIComponent(runId)}`);
   const pack = payload.package || {};
   const doc = pack.document || {};
@@ -501,6 +548,7 @@ async function academyOpenPaperProjectPackage(runId) {
   academyRenderPaperRuntimeStatus();
   await academyLoadPaperProjectBoard(Number(doc.id || payload.summary?.document_id || 0));
   await academyLoadPaperCheckpoints(Number(doc.id || payload.summary?.document_id || 0));
+  academyLoadPaperTimeline(Number(doc.id || payload.summary?.document_id || 0)).catch(() => null);
   academySetText("academyPaperProjectPackageStatus", `Project package restored: ${runId}`);
 }
 async function academyUpdatePaperProjectItem(runId, status) {
@@ -528,6 +576,7 @@ async function academyExportPaperProject() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ document_id: Number(academyPaperState.document.id) })
     });
+    academyLoadPaperTimeline(Number(academyPaperState.document.id)).catch(() => null);
     academySetText("academyPaperProjectStatus", `Project package exported: ${exported.artifact?.path || exported.run?.run_id || "done"}`);
     academyLoadPaperProjectPackages(Number(academyPaperState.document.id)).catch(() => null);
     academyRefreshPaperAudit().catch(() => null);
@@ -557,6 +606,7 @@ async function academyAddPaperProjectItem() {
         next_action: "follow-up research"
       })
     });
+    academyLoadPaperTimeline(Number(academyPaperState.document.id)).catch(() => null);
     academySetText("academyPaperProjectStatus", `Project item saved: ${saved.item?.run_id || "done"}`);
     await academyLoadPaperProjectBoard(Number(academyPaperState.document.id));
   } catch (error) {
@@ -624,6 +674,7 @@ async function academyOpenPaperDocument(documentId) {
   academyLoadPaperCheckpoints(Number(documentId)).catch(() => null);
   academyLoadPaperProjectBoard(Number(documentId)).catch(() => null);
   academyLoadPaperProjectPackages(Number(documentId)).catch(() => null);
+  academyLoadPaperTimeline(Number(documentId)).catch(() => null);
   academyRefreshPaperAudit().catch(() => null);
   academySetText("academyPaperStatus", `Opened local paper doc:${documentId}; ${academyPaperState.chunks.length} chunks loaded.`);
 }
@@ -687,6 +738,7 @@ async function academyRunPaperWorkflow() {
     academyRenderPaperReport();
     await academyRefreshPaperPersistedStatus().catch(() => null);
     await academyAskPaperCitation("method experiment limitation contribution");
+    academyLoadPaperTimeline(Number(academyPaperState.document.id)).catch(() => null);
     academyLightPaperGraph("reported");
   } catch (error) {
     academySetText("academyPaperReportStatus", `报告生成失败：${error.message}`);
@@ -728,6 +780,7 @@ async function academySavePaperKnowledge() {
       const nodeCount = (graph.nodes || graph.items || []).length;
       academyRenderPaperRuntimeStatus();
     academyLoadPaperCheckpoints(Number(academyPaperState.document.id)).catch(() => null);
+      academyLoadPaperTimeline(Number(academyPaperState.document.id)).catch(() => null);
       academySetText("academyPaperGraphStatus", `知识库已更新：research graph ${nodeCount} 个节点；学习图谱已点亮论文相关能力。`);
     }
   } catch (error) {
@@ -755,6 +808,7 @@ async function academySavePaperCheckpoint() {
     academyRenderPaperRuntimeStatus();
     academyLoadPaperCheckpoints(Number(academyPaperState.document.id)).catch(() => null);
     academyRefreshPaperAudit().catch(() => null);
+    academyLoadPaperTimeline(Number(academyPaperState.document.id)).catch(() => null);
     academySetText("academyPaperStatus", `Checkpoint 已保存：${saved.artifact?.path || saved.run?.run_id || "done"}`);
   } catch (error) {
     academySetText("academyPaperStatus", `Checkpoint 保存失败：${error.message}`);
@@ -771,6 +825,7 @@ async function academyAskPaperCitation(seedQuery) {
     const path = `/api/documents/citation-answer?q=${encodeURIComponent(query)}&category=research&document_id=${Number(academyPaperState.document.id)}&limit=6`;
     const result = await academyApi(path);
     academyRenderCitationEvidence(result);
+    academyLoadPaperTimeline(Number(academyPaperState.document.id)).catch(() => null);
   } catch (error) {
     academySetText("academyCitationEvidence", `证据检索失败：${error.message}`);
   }

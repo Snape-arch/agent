@@ -123,6 +123,14 @@
               <button class="secondary" type="button" onclick="loadLocalAcceptanceHistory()">Refresh history</button>
             </div>
             <div class="local-acceptance-trend-grid" id="localAcceptanceTrendGrid"></div>
+            <div class="local-workbench-timeline">
+              <div class="offline-readiness-head compact">
+                <h3>Local Workbench Timeline</h3>
+                <button class="secondary" type="button" onclick="loadLocalWorkbenchTimeline()">Refresh timeline</button>
+              </div>
+              <table class="table" id="localWorkbenchTimelineTable"></table>
+              <pre class="local-timeline-detail" id="localWorkbenchTimelineDetail">No timeline event selected.</pre>
+            </div>
             <div class="local-remediation-guide" id="localRemediationGuide"></div>
             <table class="table" id="localAcceptanceHistoryTable"></table>
             <div class="local-maintenance-reports">
