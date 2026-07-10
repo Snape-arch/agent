@@ -115,9 +115,15 @@ class VectorStore:
 class SentenceTransformerEncoder:
     """Lazy local sentence-transformers encoder."""
 
-    def __init__(self, model_path: str, dim: int = 1024):
+    def __init__(self, model_path: str, dim: int = 1024, device: str = ""):
         self.model_path = str(Path(model_path).expanduser().resolve())
         self.dim = int(dim or 1024)
+        self.device = str(
+            device
+            or os.environ.get("CLAWOS_EMBEDDING_DEVICE")
+            or os.environ.get("EMBEDDING_DEVICE")
+            or "cpu"
+        ).strip()
         self._model = None
         self._lock = threading.RLock()
 
@@ -130,7 +136,7 @@ class SentenceTransformerEncoder:
                     raise RuntimeError(f"sentence-transformers is not installed: {exc}") from exc
                 if not Path(self.model_path).exists():
                     raise RuntimeError(f"embedding model path not found: {self.model_path}")
-                self._model = SentenceTransformer(self.model_path, local_files_only=True)
+                self._model = SentenceTransformer(self.model_path, device=self.device, local_files_only=True)
             return self._model
 
     def embed(self, text: str) -> list[float]:

@@ -40,18 +40,17 @@ if (-not $Force -and (Test-ModelFile -Path $modelPath)) {
 
 Write-Host "Downloading Qwen model: $($manifest.repo_id)/$($manifest.filename)"
 Write-Host "Target: $modelPath"
+$url = "https://huggingface.co/$($manifest.repo_id)/resolve/main/$($manifest.filename)"
+$curl = Get-Command curl.exe -ErrorAction SilentlyContinue
 $hf = Join-Path $repoRoot "clawos\.venv\Scripts\hf.exe"
-if (Test-Path -LiteralPath $hf) {
+if ($curl) {
+    & $curl.Source -L -C - --retry 8 --retry-delay 5 --connect-timeout 30 -o $modelPath $url
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+} elseif (Test-Path -LiteralPath $hf) {
     & $hf download $manifest.repo_id $manifest.filename --local-dir $modelDir
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } else {
-    $url = "https://huggingface.co/$($manifest.repo_id)/resolve/main/$($manifest.filename)"
-    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-    if (-not $curl) {
-        throw "Neither clawos\.venv\Scripts\hf.exe nor curl.exe is available for model download."
-    }
-    & $curl.Source -L -C - --retry 8 --retry-delay 5 --connect-timeout 30 -o $modelPath $url
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    throw "Neither curl.exe nor clawos\.venv\Scripts\hf.exe is available for model download."
 }
 
 if (-not (Test-ModelFile -Path $modelPath)) {

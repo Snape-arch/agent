@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -19,6 +20,7 @@ class OpenAICompatibleProvider:
         self.api_key = str(cfg.get("api_key") or "")
         self.timeout_s = float(cfg.get("timeout_s", 120.0) or 120.0)
         self.requires_api_key = _as_bool(cfg.get("requires_api_key", True))
+        self.chat_template_kwargs = cfg.get("chat_template_kwargs")
 
     def is_configured(self) -> bool:
         has_endpoint = bool(self.base_url and self.model)
@@ -61,12 +63,22 @@ class OpenAICompatibleProvider:
             payload["tools"] = options["tools"]
         if options.get("tool_choice") is not None:
             payload["tool_choice"] = options["tool_choice"]
+        chat_template_kwargs = options.get("chat_template_kwargs", self.chat_template_kwargs)
+        if chat_template_kwargs is not None:
+            payload["chat_template_kwargs"] = chat_template_kwargs
 
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        client = http_client or httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_s))
-        close_client = http_client is None
+        use_local_client = _is_loopback_url(self.base_url) and (
+            http_client is None or isinstance(http_client, httpx.AsyncClient)
+        )
+        client = (
+            httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_s), trust_env=False)
+            if use_local_client
+            else http_client or httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_s))
+        )
+        close_client = use_local_client or http_client is None
         try:
             resp = await client.post(
                 f"{self.base_url}/chat/completions",
@@ -114,3 +126,7 @@ def _as_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+def _is_loopback_url(value: str) -> bool:
+    return (urlparse(value).hostname or "").lower() in {"127.0.0.1", "localhost", "::1"}

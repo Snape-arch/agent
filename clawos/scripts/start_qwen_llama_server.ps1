@@ -3,7 +3,8 @@ param(
     [string]$HostName = "127.0.0.1",
     [int]$Port = 8000,
     [int]$ContextSize = 8192,
-    [int]$GpuLayers = 99,
+    [int]$Parallel = 1,
+    [string]$GpuLayers = "20",
     [string]$ServerPath = "",
     [switch]$Download
 )
@@ -60,4 +61,4 @@ if (-not $server) {
 Write-Host "Starting Qwen local OpenAI-compatible server"
 Write-Host "Model: $ModelPath"
 Write-Host "URL:   http://$HostName`:$Port/v1"
-& $server -m $ModelPath --host $HostName --port $Port -c $ContextSize -ngl $GpuLayers
+& $server -m $ModelPath --host $HostName --port $Port -c $ContextSize -np $Parallel -ngl $GpuLayers

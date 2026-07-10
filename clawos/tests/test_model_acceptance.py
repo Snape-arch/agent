@@ -32,6 +32,20 @@ class FakeHttpClient:
 
 
 class ModelAcceptanceScriptTests(unittest.TestCase):
+    def test_case_prompt_requires_exact_acceptance_context(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from scripts.evaluate_model_acceptance import _case_prompt
+
+        messages = _case_prompt(
+            {"name": "case-a", "scenario": "meeting", "tool": "meeting_workflow", "expected": {}},
+            {"passed": True, "error": "", "data": {}},
+        )
+
+        system = messages[0]["content"]
+        self.assertIn("authoritative frozen benchmark result", system)
+        self.assertIn("exact case, scenario, and tool", system)
+
     def test_model_acceptance_script_runs_with_mock_provider(self):
         script = ROOT / "scripts" / "evaluate_model_acceptance.py"
         result = subprocess.run(
@@ -106,7 +120,12 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
         old_model = os.environ.pop("MODEL_NAME", None)
         old_base = os.environ.pop("MODEL_BASE_URL", None)
         old_key = os.environ.pop("MODEL_API_KEY", None)
+        old_qwen_model = os.environ.pop("QWEN_MODEL", None)
+        old_qwen_base = os.environ.pop("QWEN_BASE_URL", None)
         try:
+            os.environ["MODEL_NAME"] = "deepseek-chat"
+            os.environ["MODEL_BASE_URL"] = "https://api.deepseek.com/v1"
+            os.environ["MODEL_API_KEY"] = "must-not-leak"
             args = argparse.Namespace(
                 provider="qwen",
                 model="",
@@ -121,10 +140,20 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
                 os.environ["MODEL_PROVIDER"] = old_provider
             if old_model is not None:
                 os.environ["MODEL_NAME"] = old_model
+            else:
+                os.environ.pop("MODEL_NAME", None)
             if old_base is not None:
                 os.environ["MODEL_BASE_URL"] = old_base
+            else:
+                os.environ.pop("MODEL_BASE_URL", None)
             if old_key is not None:
                 os.environ["MODEL_API_KEY"] = old_key
+            else:
+                os.environ.pop("MODEL_API_KEY", None)
+            if old_qwen_model is not None:
+                os.environ["QWEN_MODEL"] = old_qwen_model
+            if old_qwen_base is not None:
+                os.environ["QWEN_BASE_URL"] = old_qwen_base
 
         self.assertEqual(cfg["provider"], "qwen")
         self.assertFalse(cfg["requires_api_key"])
@@ -234,6 +263,16 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
                 history = json.loads(asyncio.run(server.api_workbench_local_acceptance_history(limit=10)).body)
                 trends = json.loads(asyncio.run(server.api_workbench_local_acceptance_trends(limit=10)).body)
                 remediation = json.loads(asyncio.run(server.api_workbench_local_remediation_guide(limit=10)).body)
+                action = remediation["actions"][0]
+                class RemediationRequest:
+                    async def json(self):
+                        return {"action_id": action["action_id"], "action": action, "status": "resolved"}
+                saved_action = json.loads(asyncio.run(server.api_workbench_local_remediation_action(RemediationRequest())).body)
+                class RecheckRequest:
+                    async def json(self):
+                        return {"action_id": action["action_id"], "action": action}
+                recheck = json.loads(asyncio.run(server.api_workbench_local_remediation_recheck(RecheckRequest())).body)
+                remediation_after = json.loads(asyncio.run(server.api_workbench_local_remediation_guide(limit=10)).body)
             finally:
                 server.g_memory_store = old_store
                 server._local_qwen_smoke_check = old_smoke
@@ -252,6 +291,13 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
         self.assertGreaterEqual(remediation["count"], 1)
         self.assertIn("actions", remediation)
         self.assertTrue(any("checks" in item and "action" in item for item in remediation["actions"]))
+        self.assertTrue(recheck["saved"])
+        self.assertIn("results", recheck["recheck"])
+        self.assertTrue(saved_action["saved"])
+        self.assertEqual(saved_action["action"]["status"], "resolved")
+        self.assertTrue(any(item.get("last_recheck", {}).get("checked_at") for item in remediation_after["actions"]))
+        self.assertEqual(remediation_after["resolved_count"], 1)
+        self.assertTrue(any(item["status"] == "resolved" for item in remediation_after["actions"]))
         self.assertNotIn("api_key", json.dumps(remediation).lower())
         self.assertNotIn("sk-", json.dumps(remediation).lower())
         self.assertNotIn("api_key", json.dumps(trends).lower())
@@ -288,6 +334,10 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
                 self.assertEqual(reports["reports"][0]["run_id"], payload["run"]["run_id"])
                 self.assertIn("markdown_path", reports["reports"][0])
                 self.assertIn("ClawOS Local Maintenance Report", detail["markdown"])
+                self.assertIn("Remediation Status", detail["markdown"])
+                self.assertIn("report_remediation", detail)
+                self.assertIn("current_remediation", detail)
+                self.assertIn("actions", detail["current_remediation"])
                 self.assertEqual(detail["summary"]["run_id"], payload["run"]["run_id"])
                 self.assertIn("local-first maintenance report", json_path.read_text(encoding="utf-8"))
                 self.assertIn("ClawOS Local Maintenance Report", markdown_path.read_text(encoding="utf-8"))

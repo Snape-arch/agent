@@ -55,10 +55,16 @@ def _default_reranker_model_path():
 class CrossEncoderReranker:
     """Lazy local sentence-transformers CrossEncoder reranker."""
 
-    def __init__(self, model_path="", provider="qwen3", batch_size=8):
+    def __init__(self, model_path="", provider="qwen3", batch_size=8, device=""):
         self.provider = str(provider or "qwen3").strip().lower()
         self.model_path = str(Path(model_path or _default_reranker_model_path()).expanduser().resolve())
         self.batch_size = max(1, int(batch_size or 8))
+        self.device = str(
+            device
+            or os.environ.get("CLAWOS_RERANKER_DEVICE")
+            or os.environ.get("RERANKER_DEVICE")
+            or "cpu"
+        ).strip()
         self._model = None
         self._lock = threading.RLock()
 
@@ -77,7 +83,7 @@ class CrossEncoderReranker:
                     raise RuntimeError(f"sentence-transformers is not installed: {exc}") from exc
                 if not Path(self.model_path).exists():
                     raise RuntimeError(f"reranker model path not found: {self.model_path}")
-                self._model = CrossEncoder(self.model_path, local_files_only=True)
+                self._model = CrossEncoder(self.model_path, device=self.device, local_files_only=True)
             return self._model
 
     def rerank(self, query, candidates, top_k=5):

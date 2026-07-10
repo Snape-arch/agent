@@ -1,6 +1,9 @@
 """ReflectionAnalyzer - root cause analysis and insight extraction."""
 import json
 import re
+
+import httpx
+
 from .json_repair import loads_repaired_json
 
 
@@ -77,13 +80,18 @@ class ReflectionAnalyzer:
             if is_local_qwen:
                 payload["grammar"] = JSON_OBJECT_GRAMMAR
                 payload["stop"] = ["</s>", "<|im_end|>"]
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
             headers = {
                 "Content-Type": "application/json"
             }
             if self._config.get("api_key"):
                 headers["Authorization"] = f"Bearer {self._config.get('api_key', '')}"
             url = f"{self._config['base_url'].rstrip('/')}/chat/completions"
-            resp = await self._http.post(url, json=payload, headers=headers, timeout=timeout_s)
+            if is_local_qwen and isinstance(self._http, httpx.AsyncClient):
+                async with httpx.AsyncClient(timeout=timeout_s, trust_env=False) as local_client:
+                    resp = await local_client.post(url, json=payload, headers=headers)
+            else:
+                resp = await self._http.post(url, json=payload, headers=headers, timeout=timeout_s)
             resp.raise_for_status()
             data = resp.json()
             content = data["choices"][0]["message"]["content"]

@@ -37,6 +37,13 @@ class FakeHttpClient:
 
 
 class ModelProviderTests(unittest.TestCase):
+    def test_openai_provider_recognizes_only_loopback_urls(self):
+        from providers.openai_compatible import _is_loopback_url
+
+        self.assertTrue(_is_loopback_url("http://127.0.0.1:8000/v1"))
+        self.assertTrue(_is_loopback_url("http://localhost:8000/v1"))
+        self.assertFalse(_is_loopback_url("https://api.deepseek.com/v1"))
+
     def test_mock_provider_returns_model_result_envelope(self):
         from providers import create_model_provider
 
@@ -79,6 +86,23 @@ class ModelProviderTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(client.calls[0]["url"], "http://127.0.0.1:8000/v1/chat/completions")
         self.assertNotIn("Authorization", client.calls[0]["headers"])
+        self.assertEqual(client.calls[0]["json"]["chat_template_kwargs"], {"enable_thinking": False})
+
+    def test_qwen_provider_allows_thinking_override(self):
+        from providers import create_model_provider
+
+        response = FakeResponse({"choices": [{"message": {"role": "assistant", "content": "ok"}}]})
+        client = FakeHttpClient(response)
+        provider = create_model_provider({"provider": "qwen"})
+
+        result = asyncio.run(provider.complete(
+            [{"role": "user", "content": "think"}],
+            {"chat_template_kwargs": {"enable_thinking": True}},
+            http_client=client,
+        ))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(client.calls[0]["json"]["chat_template_kwargs"], {"enable_thinking": True})
 
     def test_openai_provider_forwards_json_mode_grammar_and_limits(self):
         from providers import create_model_provider
@@ -552,6 +576,7 @@ class ModelProviderTests(unittest.TestCase):
         payload = client.calls[0]["json"]
         self.assertEqual(payload["response_format"], {"type": "json_object"})
         self.assertIn("grammar", payload)
+        self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": False})
         self.assertLessEqual(payload["max_tokens"], 320)
         self.assertIn("Return JSON only", payload["messages"][1]["content"])
         self.assertEqual(result["root_cause"], "missing path")
@@ -586,10 +611,17 @@ class ModelProviderTests(unittest.TestCase):
             service = MaintenanceService(store=None, db_path=base / "memory.db", base_dir=base, config={})
             status = service.local_model_assets()
             check = service.config_check()
+            runtime = root / "tools" / "llama.cpp" / "runtime"
+            runtime.mkdir(parents=True)
+            (runtime / "llama-server.exe").write_bytes(b"server")
+            runtime_status = service.local_model_assets()
 
         self.assertFalse(status["ready"])
         self.assertIn("qwen_9b", status["summary"])
         self.assertTrue(any(item["id"] == "llama_server" and not item["ok"] for item in status["assets"]))
+        runtime_asset = next(item for item in runtime_status["assets"] if item["id"] == "llama_server")
+        self.assertTrue(runtime_asset["ok"])
+        self.assertIn(str(Path("runtime") / "llama-server.exe"), runtime_asset["path"])
         self.assertTrue(any(item["name"] == "local_qwen_runtime" for item in check["checks"]))
 
     def test_model_health_exposes_local_model_asset_status(self):

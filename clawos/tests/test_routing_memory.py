@@ -352,6 +352,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
                     FakeRequest({"sidecar_text": "Scanned PDF OCR text now supports citation chunks.", "force": True}),
                 )).body)
                 answer_payload = json.loads(asyncio.run(server.api_document_citation_answer(q="citation chunks", category="research")).body)
+                answer_run = store.get_run_record(answer_payload["run"]["run_id"])
                 graph_payload = json.loads(asyncio.run(server.api_knowledge_graph(category="research")).body)
             finally:
                 server.g_memory_store = old_store
@@ -363,6 +364,8 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertEqual(run_payload["chunk_count"], 1)
         self.assertNotEqual(answer_payload["citations"][0]["chunk_id"], chunk["id"])
         self.assertIn("citation chunks", answer_payload["answer"])
+        self.assertEqual(answer_payload["run"]["run_type"], "academy_citation_answer")
+        self.assertEqual(answer_run["evidence"][0]["source"], "academy_citation_answer")
         self.assertTrue(any(node["type"] == "document" for node in graph_payload["nodes"]))
         self.assertTrue(any(edge["type"] == "cites" for edge in graph_payload["edges"]))
         self.assertTrue(any(edge["type"] == "mentions" for edge in graph_payload["edges"]))
@@ -616,6 +619,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 listed = json.loads(asyncio.run(server.api_knowledge_list(category="research")).body)
                 listed_documents = json.loads(asyncio.run(server.api_documents(category="research")).body)
                 status = json.loads(asyncio.run(server.api_academy_paper_status(uploaded_doc["id"])).body)
+                citation_answer = json.loads(asyncio.run(server.api_document_citation_answer(q="evidence chain", category="research", document_id=uploaded_doc["id"], limit=4)).body)
                 checkpoint = json.loads(asyncio.run(server.api_academy_paper_checkpoint_save(FakeRequest({
                     "document_id": uploaded_doc["id"],
                     "citation": {"answer": "grounded", "citations": chunks["chunks"][:1]},
@@ -641,6 +645,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 project_export_detail = json.loads(asyncio.run(server.api_academy_paper_project_export_detail(project_export["run"]["run_id"])).body)
                 offline_audit = json.loads(asyncio.run(server.api_academy_paper_offline_audit(document_id=uploaded_doc["id"])).body)
                 workbench_readiness = json.loads(asyncio.run(server.api_workbench_offline_readiness(document_id=uploaded_doc["id"])).body)
+                paper_timeline = json.loads(asyncio.run(server.api_academy_paper_timeline(document_id=uploaded_doc["id"], limit=20)).body)
                 checkpoint_artifact_exists = Path(checkpoint["artifact"]["path"]).exists()
                 checkpoint_run = store.get_run_record(checkpoint["run"]["run_id"])
                 markdown_exists = Path(generated["report"]["markdown_path"]).exists()
@@ -700,6 +705,13 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertTrue(any(item["id"] == "document_ingestion" and item["ok"] for item in offline_audit["checks"]))
         self.assertEqual(workbench_readiness["standard"], "local-first workbench offline readiness")
         self.assertEqual(workbench_readiness["paper"]["counts"]["project_packages"], 1)
+        self.assertEqual(paper_timeline["standard"], "local-first paper research workflow timeline")
+        self.assertEqual(paper_timeline["document_id"], uploaded_doc["id"])
+        timeline_kinds = {item["kind"] for item in paper_timeline["events"]}
+        self.assertTrue({"document_ingestion", "report", "knowledge_capture", "checkpoint", "citation_answer", "project_item", "project_export"}.issubset(timeline_kinds))
+        self.assertEqual(citation_answer["run"]["run_type"], "academy_citation_answer")
+        self.assertTrue(any((item.get("payload") or {}).get("run", {}).get("run_type") == "academy_citation_answer" for item in paper_timeline["events"]))
+        self.assertTrue(all("target" in item and "payload" in item for item in paper_timeline["events"]))
         self.assertTrue(any(item["id"] == "paper_workflow" and item["ok"] for item in workbench_readiness["checks"]))
         self.assertTrue(any(item["id"] == "local_model_assets" for item in workbench_readiness["checks"]))
         self.assertEqual(checkpoint_run["evidence"][0]["citation"], f"doc:{uploaded_doc['id']}")

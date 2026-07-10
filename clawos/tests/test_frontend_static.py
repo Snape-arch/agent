@@ -145,6 +145,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("academyPaperAssistant", paper)
         self.assertIn("academyCitationEvidence", paper)
         self.assertIn("academyPaperReportCard", paper)
+        self.assertIn("academyPaperTimeline", paper)
+        self.assertIn("academyPaperTimelineDetail", paper)
         self.assertIn("academyCodeBlock", code)
         self.assertIn("academyNoteOutput", notes)
         self.assertIn("academyIngestStatus", ingest)
@@ -180,6 +182,9 @@ class FrontendStaticTests(unittest.TestCase):
             "academyExportPaperProject",
             "academyLoadPaperProjectPackages",
             "academyOpenPaperProjectPackage",
+            "academyLoadPaperTimeline",
+            "academyOpenPaperTimelineEvent",
+            "/api/academy/paper/timeline",
             "academyRefreshPaperAudit",
             "academyAskPaperCitation",
             "academySetupInk",
@@ -210,6 +215,8 @@ class FrontendStaticTests(unittest.TestCase):
             ".paper-assistant-panel",
             ".academy-citation-list",
             ".academy-report-card",
+            ".academy-paper-timeline-list",
+            ".academy-paper-timeline-detail",
             ".quiz-grid article.answered",
         ):
             self.assertIn(token, site_css)
@@ -230,6 +237,8 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn('@app.post("/api/academy/paper/project-board/export")', server)
         self.assertIn('@app.get("/api/academy/paper/project-board/exports")', server)
         self.assertIn('@app.get("/api/academy/paper/project-board/exports/{run_id}")', server)
+        self.assertIn('@app.get("/api/academy/paper/timeline")', server)
+        self.assertIn('academy_citation_answer', server)
         self.assertIn('@app.get("/api/academy/paper/offline-audit")', server)
 
     def test_console_prevents_vertical_compressed_table_text(self):
@@ -619,6 +628,22 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertNotIn("start_qwen_llama_server.ps1", launcher)
         self.assertIn("[switch]$Download", qwen_starter)
         self.assertIn("rerun this script with -Download", qwen_starter)
+        self.assertIn("[int]$Parallel = 1", qwen_starter)
+        self.assertIn("-np $Parallel", qwen_starter)
+        self.assertIn('[string]$GpuLayers = "20"', qwen_starter)
+
+    def test_llama_cpp_downloader_ignores_cudart_only_archives(self):
+        downloader = (REPO_ROOT / "clawos" / "scripts" / "download_llama_cpp.ps1").read_text(encoding="utf-8-sig")
+        model_downloader = (REPO_ROOT / "clawos" / "scripts" / "download_qwen_model.ps1").read_text(encoding="utf-8-sig")
+
+        self.assertIn('^llama-.*bin-win-(cuda|cu12).*x64\\.zip$', downloader)
+        self.assertIn('$_.name -notmatch "(?i)^cudart-"', downloader)
+        self.assertIn('-L -C - --retry 8', downloader)
+        self.assertIn('cudart-llama-bin-win-cuda-', downloader)
+        self.assertIn('ggml-cuda.dll', downloader)
+        self.assertIn('cudart64*.dll', downloader)
+        self.assertIn('if ($curl)', model_downloader)
+        self.assertIn('-L -C - --retry 8', model_downloader)
 
     def test_console_exposes_report_style_presets(self):
         html = self.read_page("console.html")
@@ -1040,9 +1065,13 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("/api/workbench/local-acceptance-history", js)
         self.assertIn("/api/workbench/local-acceptance-trends", js)
         self.assertIn("/api/workbench/local-remediation-guide", js)
+        self.assertIn("/api/workbench/local-remediation-actions", js)
         self.assertIn("/api/workbench/local-maintenance-report", js)
         self.assertIn("exportLocalMaintenanceReport", js)
         self.assertIn("loadLocalRemediationGuide", js)
+        self.assertIn("markLocalRemediationAction", js)
+        self.assertIn("Mark reviewed", js)
+        self.assertIn("Mark resolved", js)
         self.assertIn("loadLocalAcceptanceHistory", js)
         self.assertIn("runLocalQwenSmokeCheck", js)
         self.assertIn("include_qwen_smoke", js)
@@ -1053,12 +1082,15 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".local-acceptance-history", css)
         self.assertIn(".local-acceptance-trend-grid", css)
         self.assertIn(".local-remediation-guide", css)
+        self.assertIn(".local-remediation-actions", css)
+        self.assertIn(".local-remediation-card.resolved", css)
         self.assertIn("@app.get(\"/api/workbench/offline-readiness\")", server)
         self.assertIn("@app.post(\"/api/workbench/daily-local-acceptance\")", server)
         self.assertIn("@app.post(\"/api/workbench/local-qwen-smoke\")", server)
         self.assertIn("@app.get(\"/api/workbench/local-acceptance-history\")", server)
         self.assertIn("@app.get(\"/api/workbench/local-acceptance-trends\")", server)
         self.assertIn("@app.get(\"/api/workbench/local-remediation-guide\")", server)
+        self.assertIn("@app.post(\"/api/workbench/local-remediation-actions\")", server)
         self.assertIn("@app.post(\"/api/workbench/local-maintenance-report\")", server)
         self.assertIn("toolAccuracyTable", html)
         self.assertIn("routingPolicyTable", html)
