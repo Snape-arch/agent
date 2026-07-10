@@ -2169,3 +2169,26 @@ Known notes:
 
 Recommended next step:
 - Add a console-side report browser for recent `workbench_maintenance_report` RunRecords, including Markdown preview and artifact open/copy actions.
+
+### 2026-07-10 - Stage 1 architecture and vertical-agent assessment
+
+Completed:
+- Added `clawos/STAGE1_PROJECT_ASSESSMENT_2026-07-10.md` with a repository-grounded 72/100 assessment and P0/P1/P2 priorities.
+- Verified that all 56 declared functions have handlers, while MTClaw exposes only 18 low-risk tools and currently exposes none of the core meeting/research/learning vertical tools.
+- Confirmed that MTClaw routing is real but default-off, non-streaming-only, and bypassed by the informational scenario policy API.
+- Assessed meeting, coding, knowledge, paper, education, and fixed-role multi-agent capabilities without treating unavailable hardware/model checks as passed.
+
+Verification:
+- Relevant module suite: `70 tests OK`.
+- Full suite: `221 tests OK`.
+- Frozen benchmark: `30/30 passed`, P95 `456.679 ms`.
+- Mock model acceptance: `150/150`, rate `1.0`.
+- Function inventory: `56/56` handlers; MTClaw safe tools `18/18`; vertical tools in MTClaw safe set `0`.
+
+Known notes:
+- No network fetch, real model API, real ASR, Qwen runtime, or MTT AIBOOK acceptance was run.
+- Existing user changes in `clawos/skills/skill_registry.jsonl` and untracked `tmp/` files remain outside this assessment commit.
+- FastAPI `on_event` and Chroma telemetry emitted non-blocking deprecation warnings.
+
+Recommended next step:
+- Make the scored scenario policy control execution, add low-risk vertical wrappers to the MTClaw route, and freeze five trace-backed Stage 1 demo cases before expanding UI breadth.
