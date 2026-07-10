@@ -112,6 +112,17 @@
         </aside>
       </div>
 
+      <section class="academy-paper-scholar" aria-label="Scholarly discovery and paper intelligence">
+        <div><b>Scholar Discovery & Evidence QA</b><span id="academyScholarStatus">Search Crossref, OpenAlex, and Semantic Scholar, or inspect the active local paper.</span></div>
+        <div class="academy-paper-project-compose">
+          <input id="academyScholarQuery" value="retrieval augmented generation citation verification" aria-label="Scholarly search query">
+          <button class="pill" type="button" onclick="academySearchScholar()">Search literature</button>
+          <button class="pill" type="button" onclick="academyAnalyzePaperStructure()">Analyze active paper</button>
+        </div>
+        <div id="academyScholarResults" class="academy-paper-project-list"></div>
+        <div id="academyPaperIntelligenceResult" class="academy-paper-timeline-detail"></div>
+      </section>
+
       <div class="paper-report-grid">
         <section class="academy-report-card" id="academyPaperReportCard">
           <b>报告产物</b>

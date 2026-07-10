@@ -11,6 +11,7 @@ from .agent_orchestration_service import AgentOrchestrationService
 from .artifact_storage import ArtifactStorage
 from .evaluation_service import EvaluationService
 from .workflow_engine import WorkflowEngine
+from .paper_intelligence_service import PaperIntelligenceService, ScholarlySearchService
 
 __all__ = [
     "AgentOrchestrationService",
@@ -24,4 +25,6 @@ __all__ = [
     "TaskService",
     "ToolService",
     "WorkflowEngine",
+    "PaperIntelligenceService",
+    "ScholarlySearchService",
 ]

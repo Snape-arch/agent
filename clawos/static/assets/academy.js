@@ -831,6 +831,68 @@ async function academyAskPaperCitation(seedQuery) {
   }
 }
 
+async function academySearchScholar() {
+  const query = document.getElementById("academyScholarQuery")?.value?.trim() || "";
+  const target = document.getElementById("academyScholarResults");
+  if (!query || !target) return;
+  academySetText("academyScholarStatus", "Searching scholarly providers...");
+  try {
+    const result = await academyApi(`/api/research/literature/search?q=${encodeURIComponent(query)}&limit=8`);
+    const papers = result.results || [];
+    target.innerHTML = papers.length ? papers.map((paper, index) => `
+      <article>
+        <b>${academyEsc(paper.title || "Untitled paper")}</b>
+        <span>${academyEsc([paper.year, paper.venue, paper.doi].filter(Boolean).join(" · "))}</span>
+        <small>relevance ${Number(paper.relevance_score || 0).toFixed(3)} · ${academyEsc((paper.sources || []).join(", "))}</small>
+        ${paper.open_access_pdf_url ? `<button class="pill" type="button" onclick="academyDownloadScholar(${index})">Download OA PDF & ingest</button>` : ""}
+      </article>`).join("") : "<p>No results. Provider attempts are shown in the status.</p>";
+    academyPaperState.scholarResults = papers;
+    const ok = (result.attempts || []).filter(item => item.ok).length;
+    academySetText("academyScholarStatus", `${papers.length} ranked papers · ${ok}/${(result.attempts || []).length} providers available`);
+  } catch (error) {
+    academySetText("academyScholarStatus", `Scholarly search failed: ${error.message}`);
+  }
+}
+
+async function academyDownloadScholar(index) {
+  const paper = (academyPaperState.scholarResults || [])[Number(index)];
+  if (!paper || !window.confirm(`Download and ingest the verified open-access PDF?\n\n${paper.title || "Untitled paper"}`)) return;
+  academySetText("academyScholarStatus", "Validating, downloading, and ingesting the open-access PDF...");
+  try {
+    const result = await academyApi("/api/research/literature/download", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paper, confirmed: true })
+    });
+    academySetText("academyScholarStatus", `Ingested document #${result.document?.id || "?"}; SHA-256 ${String(result.download?.sha256 || "").slice(0, 12)}...`);
+    academyLoadPaperHistory().catch(() => null);
+  } catch (error) {
+    academySetText("academyScholarStatus", `Download blocked or failed: ${error.message}`);
+  }
+}
+
+async function academyAnalyzePaperStructure() {
+  const documentId = Number(academyPaperState.document?.id || 0);
+  const target = document.getElementById("academyPaperIntelligenceResult");
+  if (!documentId || !target) {
+    academySetText("academyScholarStatus", "Open or upload a local paper first.");
+    return;
+  }
+  academySetText("academyScholarStatus", `Analyzing structure and evidence for doc:${documentId}...`);
+  try {
+    const result = await academyApi(`/api/research/papers/${documentId}/structure`);
+    const q = result.quality || {};
+    const sectionNames = Object.entries(result.sections || {}).filter(([, rows]) => rows?.length).map(([name]) => name);
+    target.innerHTML = `<b>Paper intelligence score ${Number(q.score || 0).toFixed(1)}</b>
+      <p>Sections: ${academyEsc(sectionNames.join(", ") || "none")}</p>
+      <p>Claims ${Number(q.claim_count || 0)} · tables ${Number(q.table_count || 0)} · formulas ${Number(q.formula_count || 0)} · references ${Number(q.reference_count || 0)}</p>
+      <p>Evidence gate: ${q.checks?.claims_grounded ? "PASS" : "REVISION REQUIRED"}</p>`;
+    academySetText("academyScholarStatus", `Paper analysis complete · ${Number(q.score || 0).toFixed(1)}/100`);
+  } catch (error) {
+    academySetText("academyScholarStatus", `Paper analysis failed: ${error.message}`);
+  }
+}
+
 function academyGeneratePaperRead() {
   const title = document.getElementById("paperTitle")?.value || "Untitled paper";
   const abstract = academyPaperSnippet();

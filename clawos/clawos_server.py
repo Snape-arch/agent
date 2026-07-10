@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from providers import create_model_provider
-from memoryos.document_ingestion import safe_filename
+from memoryos.document_ingestion import ingest_file, safe_filename
 from services import (
     AgentOrchestrationService,
     ArtifactStorage,
@@ -20,6 +20,8 @@ from services import (
     KnowledgeService,
     MaintenanceService,
     ModelService,
+    PaperIntelligenceService,
+    ScholarlySearchService,
     SecurityService,
     TaskService,
     ToolService,
@@ -73,6 +75,8 @@ g_workspace_services: Any = None
 g_skill_evolution: Any = None
 g_scenario_benchmark: Any = None
 g_knowledge_service: KnowledgeService | None = None
+g_paper_intelligence_service: PaperIntelligenceService | None = None
+g_scholarly_search_service: ScholarlySearchService | None = None
 g_security_service: SecurityService | None = None
 g_task_service: TaskService | None = None
 g_maintenance_service: MaintenanceService | None = None
@@ -463,7 +467,7 @@ def has_api_key(section: str = "routing") -> bool:
 
 
 SCENARIO_ROUTING_POLICY = {
-    "research": {"tools": ["knowledge_search", "web_search", "web_fetch", "research_pdf", "paper_deep_read", "research_experiment_plan", "text_stats"], "risk": "medium", "model_profile": "deep_reasoning", "retrieval": "citations_required", "requires_confirmation": ["web_fetch"], "description": "科研检索、网页抓取、论文解析和可引用 RAG"},
+    "research": {"tools": ["knowledge_search", "web_search", "web_fetch", "research_pdf", "paper_intelligence", "scholarly_search", "scholarly_download", "paper_deep_read", "research_experiment_plan", "text_stats"], "risk": "medium", "model_profile": "deep_reasoning", "retrieval": "citations_required", "requires_confirmation": ["web_fetch", "scholarly_search", "scholarly_download"], "description": "科研检索、开放获取下载、结构化论文解析、跨论文比较和可引用 RAG"},
     "learning": {"tools": ["knowledge_search", "learning_workspace", "web_fetch", "exam_practice_builder", "text_stats"], "risk": "medium", "model_profile": "tutor", "retrieval": "knowledge_first", "requires_confirmation": ["web_fetch"], "description": "学习目标、资料入库、练习题和掌握度"},
     "office": {"tools": ["knowledge_search", "meeting_action_items", "meeting_workflow", "office_artifact", "work_brief_builder", "text_stats"], "risk": "medium", "model_profile": "structured_output", "retrieval": "workspace_context", "requires_confirmation": ["office_artifact"], "description": "会议、简报、表格和演示文稿产物"},
     "project": {"tools": ["ls", "cat", "find_files", "grep_text", "file_info", "code_stats", "find_todos", "dir_tree", "git_workspace", "shell_exec", "file_write"], "risk": "high", "model_profile": "code_agent", "retrieval": "repo_context", "requires_confirmation": ["git_workspace", "shell_exec", "file_write"], "description": "项目分析、代码检索和审批式 Git 操作"},
@@ -1201,6 +1205,7 @@ async def lifespan(app: FastAPI):
     global g_memory_store, g_context_builder, g_vector_store, g_policy_optimizer
     global g_security_policy, g_secret_manager
     global g_workspace_services, g_skill_evolution, g_scenario_benchmark, g_knowledge_service
+    global g_paper_intelligence_service, g_scholarly_search_service
     global g_security_service, g_task_service, g_maintenance_service
     from memoryos.memory_store import MemoryStore
     from memoryos.context_builder import ContextBuilder
@@ -1247,6 +1252,8 @@ async def lifespan(app: FastAPI):
     g_maintenance_service = MaintenanceService(store=g_memory_store, db_path=MEMORY_DB, base_dir=BASE_DIR, config=config)
     g_maintenance_service.apply_migrations()
     g_knowledge_service = KnowledgeService(g_memory_store, UPLOAD_DIR, lambda: g_vector_store.refresh() if g_vector_store else None)
+    g_paper_intelligence_service = PaperIntelligenceService(g_memory_store)
+    g_scholarly_search_service = ScholarlySearchService(BASE_DIR / "data" / "scholarly")
     from workspace_services import WorkspaceServices
     g_workspace_services = WorkspaceServices(g_memory_store, g_security_policy)
     from skills.skill_evolution import SkillEvolutionManager
@@ -2681,6 +2688,130 @@ async def api_research_compare_matrix(request: Request):
         data.get("query_terms", []),
     ))
 
+
+@app.get("/api/research/papers/{document_id}/structure")
+async def api_paper_structure(document_id: int):
+    try:
+        return JSONResponse(get_paper_intelligence_service().analyze_document(document_id))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.post("/api/research/claims/align")
+async def api_claim_citation_alignment(request: Request):
+    data = await request.json()
+    claims = data.get("claims") or []
+    if not isinstance(claims, list) or not claims:
+        raise HTTPException(400, "claims must be a non-empty list")
+    try:
+        document_ids = [int(item) for item in (data.get("document_ids") or [])]
+        threshold = float(data.get("threshold", 0.34))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "document_ids and threshold must be numeric")
+    return JSONResponse(get_paper_intelligence_service().align_claims(claims, document_ids, threshold))
+
+
+@app.post("/api/research/papers/compare")
+async def api_paper_comparison(request: Request):
+    data = await request.json()
+    try:
+        document_ids = [int(item) for item in (data.get("document_ids") or [])]
+    except (TypeError, ValueError):
+        raise HTTPException(400, "document_ids must be numeric")
+    if len(set(document_ids)) < 2:
+        raise HTTPException(400, "at least two document_ids are required")
+    try:
+        return JSONResponse(get_paper_intelligence_service().compare_documents(document_ids))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.get("/api/research/papers/readiness")
+async def api_paper_readiness(document_ids: str = ""):
+    try:
+        ids = [int(item) for item in document_ids.split(",") if item.strip()] or None
+    except ValueError:
+        raise HTTPException(400, "document_ids must be comma-separated integers")
+    return JSONResponse(get_paper_intelligence_service().readiness(ids))
+
+
+@app.get("/api/research/literature/search")
+async def api_scholarly_search(
+    q: str,
+    limit: int = 10,
+    providers: str = "crossref,openalex,semantic_scholar",
+    year_from: int = 0,
+    year_to: int = 0,
+    open_access_only: bool = False,
+):
+    selected = [item.strip() for item in providers.split(",") if item.strip()]
+    try:
+        result = await asyncio.to_thread(
+            get_scholarly_search_service().search,
+            q,
+            limit,
+            selected,
+            year_from,
+            year_to,
+            open_access_only,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+
+@app.get("/api/research/literature/open-access")
+async def api_scholarly_open_access(doi: str, email: str = ""):
+    try:
+        result = await asyncio.to_thread(get_scholarly_search_service().resolve_open_access, doi, email)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"open-access registry unavailable: {type(exc).__name__}")
+    return JSONResponse(result)
+
+
+@app.post("/api/research/literature/download")
+async def api_scholarly_download(request: Request):
+    data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(409, "confirmed=true is required for network download and local ingestion")
+    try:
+        if not g_memory_store or not g_security_policy:
+            raise HTTPException(503, "research storage is not initialized")
+        paper = dict(data.get("paper") or {})
+        if not paper.get("open_access_pdf_url") and paper.get("doi"):
+            resolved = await asyncio.to_thread(
+                get_scholarly_search_service().resolve_open_access,
+                paper["doi"],
+                data.get("email", ""),
+            )
+            paper.update({"pdf_url": resolved.get("pdf_url", ""), "license": resolved.get("license", ""), "open_access_verified_by": "unpaywall"})
+        output_dir = g_security_policy.resolve_path(data.get("output_dir") or str(UPLOAD_DIR / "scholarly"))
+        download = await asyncio.to_thread(
+            get_scholarly_search_service().download_open_access,
+            paper,
+            output_dir,
+            int(data.get("max_bytes") or 50_000_000),
+        )
+        document = await asyncio.to_thread(
+            ingest_file,
+            g_memory_store,
+            UPLOAD_DIR,
+            Path(download["path"]),
+            title=str(paper.get("title") or ""),
+            category="research",
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(502, f"scholarly download or ingestion failed: {type(exc).__name__}")
+    if g_vector_store:
+        g_vector_store.refresh()
+    return JSONResponse({"download": download, "document": document, "next": {"structure_url": f"/api/research/papers/{document['id']}/structure"}})
+
 @app.post("/api/workspace/research/repro-workflows")
 async def api_research_repro_workflow(request: Request):
     data = await request.json()
@@ -3482,6 +3613,22 @@ def get_knowledge_service() -> KnowledgeService:
     if not g_knowledge_service or getattr(g_knowledge_service, "store", None) is not g_memory_store:
         g_knowledge_service = KnowledgeService(g_memory_store, UPLOAD_DIR, lambda: g_vector_store.refresh() if g_vector_store else None)
     return g_knowledge_service
+
+
+def get_paper_intelligence_service() -> PaperIntelligenceService:
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    global g_paper_intelligence_service
+    if not g_paper_intelligence_service or getattr(g_paper_intelligence_service, "store", None) is not g_memory_store:
+        g_paper_intelligence_service = PaperIntelligenceService(g_memory_store)
+    return g_paper_intelligence_service
+
+
+def get_scholarly_search_service() -> ScholarlySearchService:
+    global g_scholarly_search_service
+    if not g_scholarly_search_service:
+        g_scholarly_search_service = ScholarlySearchService(BASE_DIR / "data" / "scholarly")
+    return g_scholarly_search_service
 
 
 def _academy_project_item_summary(run: dict[str, Any]) -> dict[str, Any]:

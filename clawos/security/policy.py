@@ -149,6 +149,7 @@ class ToolSecurityPolicy:
         "project_init": ("root",),
         "meeting_workflow": ("audio_path", "transcript_path", "output_dir"),
         "research_pdf": ("file_path", "output_path", "output_dir"),
+        "scholarly_download": ("output_dir",),
         "office_artifact": ("file_path", "output_path"),
         "git_workspace": ("path",),
         "competition_delivery_package": ("root", "output_dir"),
@@ -156,16 +157,17 @@ class ToolSecurityPolicy:
         "template_instantiate": ("target_path",),
         "shell_exec": ("workdir",),
     }
-    NETWORK_TOOLS = {"web_search", "web_fetch", "weather"}
-    EXTERNAL_API_TOOLS = {"web_search", "web_fetch", "weather", "model_provider"}
+    NETWORK_TOOLS = {"web_search", "web_fetch", "weather", "scholarly_search", "scholarly_download"}
+    EXTERNAL_API_TOOLS = {"web_search", "web_fetch", "weather", "model_provider", "scholarly_search", "scholarly_download"}
     WRITE_TOOLS = {
         "file_write", "file_organize", "batch_rename", "project_init",
         "note_save", "meeting_template", "template_instantiate",
         "office_artifact", "git_workspace",
         "competition_delivery_package",
         "multi_agent_review_committee",
+        "scholarly_download",
     }
-    HIGH_RISK_TOOLS = {"shell_exec", "template_instantiate"}
+    HIGH_RISK_TOOLS = {"shell_exec", "template_instantiate", "scholarly_download"}
     ALLOWED_COMMANDS = {
         "python", "python3", "py", "git", "pytest", "npm", "node",
         "uv", "pip", "pip3", "cargo", "go", "java", "javac", "echo",

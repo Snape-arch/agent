@@ -31,6 +31,13 @@ def _workspace_services():
     return WorkspaceServices(MemoryStore(_memory_db_path()), ToolSecurityPolicy())
 
 
+def _paper_services():
+    from memoryos.memory_store import MemoryStore
+    from services.paper_intelligence_service import PaperIntelligenceService, ScholarlySearchService
+    store = MemoryStore(_memory_db_path())
+    return store, PaperIntelligenceService(store), ScholarlySearchService(Path(BASE_DIR) / "data" / "scholarly")
+
+
 def _read_text_input(payload, text_key="text", file_key="file_path"):
     text = payload.get(text_key, "") or ""
     file_path = payload.get(file_key, "") or ""
@@ -1723,6 +1730,47 @@ def research_pdf(payload):
     return {"error": f"unknown action: {action}"}
 
 
+def paper_intelligence(payload):
+    _, service, _ = _paper_services()
+    action = payload.get("action", "readiness")
+    if action == "structure":
+        return service.analyze_document(int(payload.get("document_id")))
+    if action == "align_claims":
+        return service.align_claims(payload.get("claims") or [], payload.get("document_ids") or [], float(payload.get("threshold", 0.34)))
+    if action == "compare":
+        return service.compare_documents(payload.get("document_ids") or [])
+    if action == "readiness":
+        return service.readiness(payload.get("document_ids") or None)
+    return {"error": f"unknown action: {action}"}
+
+
+def scholarly_search(payload):
+    _, _, service = _paper_services()
+    return service.search(
+        payload.get("query", ""),
+        payload.get("limit", 10),
+        payload.get("providers"),
+        payload.get("year_from", 0),
+        payload.get("year_to", 0),
+        bool(payload.get("open_access_only", False)),
+    )
+
+
+def scholarly_download(payload):
+    if payload.get("confirmed") is not True:
+        raise PermissionError("confirmed=true is required for network download and local ingestion")
+    from memoryos.document_ingestion import ingest_file
+    store, _, service = _paper_services()
+    paper = dict(payload.get("paper") or {})
+    if not paper.get("open_access_pdf_url") and paper.get("doi"):
+        resolved = service.resolve_open_access(paper["doi"], payload.get("email", ""))
+        paper.update({"pdf_url": resolved.get("pdf_url", ""), "license": resolved.get("license", ""), "open_access_verified_by": "unpaywall"})
+    output_dir = Path(payload.get("output_dir") or (Path(BASE_DIR) / "uploads" / "scholarly"))
+    download = service.download_open_access(paper, output_dir, int(payload.get("max_bytes") or 50_000_000))
+    document = ingest_file(store, Path(BASE_DIR) / "uploads", Path(download["path"]), title=paper.get("title", ""), category="research")
+    return {"download": download, "document": document}
+
+
 def learning_workspace(payload):
     services = _workspace_services()
     action = payload.get("action", "create_goal")
@@ -1815,6 +1863,9 @@ HANDLERS = {
     "research_experiment_plan": research_experiment_plan,
     "meeting_workflow": meeting_workflow,
     "research_pdf": research_pdf,
+    "paper_intelligence": paper_intelligence,
+    "scholarly_search": scholarly_search,
+    "scholarly_download": scholarly_download,
     "learning_workspace": learning_workspace,
     "office_artifact": office_artifact,
     "git_workspace": git_workspace,

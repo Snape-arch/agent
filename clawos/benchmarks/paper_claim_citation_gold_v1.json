@@ -1,0 +1,47 @@
+{
+  "schema": "clawos.paper-claim-citation-gold.v1",
+  "description": "Curated deterministic gold set for claim-to-page/chunk alignment, structure extraction, and cross-paper contradiction candidates.",
+  "papers": [
+    {
+      "key": "paper_a",
+      "title": "Evidence-Gated Scholarly RAG",
+      "references": ["Lewis et al. Retrieval-Augmented Generation. 2020. doi:10.5555/3495724.3496517"],
+      "chunks": [
+        "Abstract\nThis study evaluates evidence-gated scholarly retrieval augmented generation.",
+        "Methodology\nWe sampled 200 claims from 50 computer-science papers and used three blinded annotators.",
+        "Experiments\nTable 1: Accuracy by retrieval method\nF1 = 2 * precision * recall / (precision + recall) (1)",
+        "Results\nWe find the cross-encoder reranker improves citation accuracy from 81 percent to 93 percent.",
+        "Results\nThe evidence gate reduces unsupported claims by 35 percent.",
+        "Limitations\nHowever, the study is limited to English computer-science papers and one annotation protocol.",
+        "References\n[1] Lewis et al. Retrieval-Augmented Generation. 2020. doi:10.5555/3495724.3496517"
+      ]
+    },
+    {
+      "key": "paper_b",
+      "title": "Replication of Scholarly Reranking",
+      "references": ["Smith et al. Citation Verification. 2025. doi:10.1234/verify"],
+      "chunks": [
+        "Abstract\nThis replication evaluates cross-encoder evidence reranking.",
+        "Methodology\nWe evaluated 180 claims from 45 biomedical papers with two independent reviewers.",
+        "Experiments\nTable 2: Replication accuracy\nerror_rate = unsupported / total (2)",
+        "Results\nWe find the cross-encoder reranker does not improve citation accuracy and lowers it from 82 percent to 78 percent.",
+        "Results\nOpen-access resolution successfully retrieves 96 percent of available full-text papers.",
+        "Limitations\nHowever, the replication is limited to biomedical abstracts and excludes paywalled full text.",
+        "References\n[1] Smith et al. Citation Verification. 2025. doi:10.1234/verify"
+      ]
+    }
+  ],
+  "claims": [
+    {"paper": "paper_a", "claim": "The study sampled 200 claims from 50 computer-science papers with three blinded annotators.", "chunk": 2},
+    {"paper": "paper_a", "claim": "The cross-encoder reranker improves citation accuracy from 81 percent to 93 percent.", "chunk": 4},
+    {"paper": "paper_a", "claim": "The evidence gate reduces unsupported claims by 35 percent.", "chunk": 5},
+    {"paper": "paper_a", "claim": "The study is limited to English computer-science papers and one annotation protocol.", "chunk": 6},
+    {"paper": "paper_a", "claim": "The reported F1 is the harmonic combination of precision and recall.", "chunk": 3},
+    {"paper": "paper_b", "claim": "The replication evaluated 180 claims from 45 biomedical papers with two reviewers.", "chunk": 2},
+    {"paper": "paper_b", "claim": "The reranker lowers citation accuracy from 82 percent to 78 percent.", "chunk": 4},
+    {"paper": "paper_b", "claim": "Open-access resolution retrieves 96 percent of available full-text papers.", "chunk": 5},
+    {"paper": "paper_b", "claim": "The replication is limited to biomedical abstracts and excludes paywalled full text.", "chunk": 6},
+    {"paper": "paper_b", "claim": "The error rate is unsupported claims divided by total claims.", "chunk": 3}
+  ],
+  "contradiction": {"left_paper": "paper_a", "right_paper": "paper_b", "topic": "cross-encoder reranker citation accuracy"}
+}

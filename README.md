@@ -88,7 +88,11 @@ Invoke-RestMethod http://127.0.0.1:18790/health
 ```powershell
 python clawos\scripts\run_mtclaw_vertical_acceptance.py
 python clawos\scripts\validate_competition_architecture.py
+python clawos\scripts\evaluate_paper_intelligence.py
+python clawos\scripts\benchmark_paper_retrieval.py
 ```
+
+论文与知识库阶段一验收报告见 `clawos/PAPER_KNOWLEDGE_ENTERPRISE_ACCEPTANCE_2026-07-10.md`。后一个命令会加载仓库外 `tools/models` 中的真实本地 Qwen3 embedding/reranker 权重；权重目录和临时下载文件不得提交。
 
 目标 MTT Linux 的严格比赛入口为：
 

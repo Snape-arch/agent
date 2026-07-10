@@ -1,0 +1,114 @@
+{
+  "schema": "clawos.paper-retrieval-benchmark.v1",
+  "dataset": "clawos.paper-retrieval-gold.v1",
+  "real_models": true,
+  "embedding_model": "qwen3-embedding-0.6b",
+  "reranker_model": "qwen3-reranker-0.6b",
+  "device": "cpu",
+  "duration_seconds": 35.72,
+  "metrics": {
+    "cases": 12,
+    "embedding_recall_at_3": 1.0,
+    "embedding_mrr": 0.9583,
+    "embedding_ndcg_at_4": 0.9692,
+    "reranker_hit_at_1": 1.0,
+    "reranker_mrr": 1.0,
+    "embedding_latency_p50_ms": 251.1,
+    "embedding_latency_p95_ms": 22822.54,
+    "reranker_latency_p50_ms": 723.39,
+    "reranker_latency_p95_ms": 1874.82
+  },
+  "gates": {
+    "embedding_recall_at_3_95": true,
+    "embedding_mrr_85": true,
+    "reranker_hit_at_1_90": true,
+    "reranker_mrr_95": true
+  },
+  "passed": true,
+  "cases": [
+    {
+      "id": "citation_fidelity",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    },
+    {
+      "id": "method_extraction",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    },
+    {
+      "id": "limitations",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    },
+    {
+      "id": "table_result",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    },
+    {
+      "id": "formula",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    },
+    {
+      "id": "reference_doi",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    },
+    {
+      "id": "contradiction",
+      "embedding_rank": 2,
+      "reranker_rank": 1,
+      "embedding_top": "b",
+      "reranker_top": "a"
+    },
+    {
+      "id": "oa_download",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    },
+    {
+      "id": "reranker",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    },
+    {
+      "id": "page_citation",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    },
+    {
+      "id": "evidence_gate",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    },
+    {
+      "id": "experiment_structure",
+      "embedding_rank": 1,
+      "reranker_rank": 1,
+      "embedding_top": "a",
+      "reranker_top": "a"
+    }
+  ]
+}

@@ -41,11 +41,13 @@ SAFE_TOOLS = {
     "paper_deep_read",
     "exam_practice_builder",
     "research_pdf",
+    "paper_intelligence",
     "learning_workspace",
 }
 
 SAFE_ACTIONS = {
     "research_pdf": {"search", "validate_citations", "compare_matrix"},
+    "paper_intelligence": {"structure", "align_claims", "compare", "readiness"},
     "learning_workspace": {"get", "graph", "assessment"},
 }
 

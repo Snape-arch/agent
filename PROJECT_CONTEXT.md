@@ -121,6 +121,28 @@ $env:MODEL_API_KEY="<your-deepseek-key>"
 3. 若发现演示阻碍问题，只做最小修复。
 4. 确认 `git status` 只包含本轮应提交文件，且 `.env`、数据库、日志、缓存未进入 Git。
 
+### 2026-07-10 - 论文与知识库垂直场景闭环
+
+Completed:
+
+- 新增 `PaperIntelligenceService`：方法/实验/发现/局限结构化抽取，表格、公式、参考文献提取，claim-to-citation 对齐、90% 证据门禁及跨论文矛盾候选。
+- 新增 Crossref/OpenAlex/Semantic Scholar 多源检索、Unpaywall DOI 开放获取解析和严格 OA PDF 下载；包含公网 HTTPS、开放获取来源、MIME、PDF 魔数、大小、SHA-256 和原子写入校验。
+- 新增 API、function router 与 Paper Studio 可视入口；`paper_intelligence` 以只读动作进入 MTClaw，联网搜索/下载继续要求 ClawOS 确认。
+- 新增两个冻结金标集和两个验收 runner。真实本地 Qwen3 embedding/reranker 检索验收已通过。
+
+Verification:
+
+- `python clawos/scripts/evaluate_paper_intelligence.py`: score `100.0`, all gates passed（2 篇/10 claims 的有限回归集）。
+- `python clawos/scripts/benchmark_paper_retrieval.py`: 12 cases，embedding Recall@3 `1.0`、MRR `0.9583`；reranker Hit@1/MRR `1.0`。
+- 真实网络：Crossref/OpenAlex 检索成功；Semantic Scholar 429 被隔离；真实 OA PDF 下载 `771621` bytes、MIME/PDF/哈希校验通过。
+- 阶段一综合评分 `92/100`，详见 `clawos/PAPER_KNOWLEDGE_ENTERPRISE_ACCEPTANCE_2026-07-10.md`。
+
+Remaining external gates:
+
+- 目标比赛设备上的容量、延迟和 24 小时长稳验收。
+- 500+ 真实论文、1 万+ 领域盲标 claims 的分层精度验收。
+- Semantic Scholar 429/5xx 指数退避、熔断和生产监控。
+
 ### 2026-06-18 - Console CSS module and knowledge/RAG IA cleanup
 
 Completed:

@@ -1,0 +1,66 @@
+{
+  "schema": "clawos.paper-retrieval-gold.v1",
+  "description": "Manually curated bilingual scholarly retrieval set. Each query has one unambiguous relevant passage and three hard negatives.",
+  "cases": [
+    {"id": "citation_fidelity", "query": "如何评估 claim-to-citation 引用忠实度", "gold": "a", "candidates": [
+      {"id": "a", "text": "Citation fidelity is measured by checking whether every generated claim is entailed by its cited passage, with supported-claim precision and citation recall."},
+      {"id": "b", "text": "PDF typography includes margins, headings, line spacing, and page footers."},
+      {"id": "c", "text": "Vector databases persist dense embeddings and metadata filters."},
+      {"id": "d", "text": "A bibliography style controls author names and publication years."}]},
+    {"id": "method_extraction", "query": "extract research methodology sample design and procedure", "gold": "a", "candidates": [
+      {"id": "a", "text": "The Methods section describes participant sampling, controls, apparatus, variables, intervention procedure, and statistical analysis."},
+      {"id": "b", "text": "The conclusion restates the principal contribution and future work."},
+      {"id": "c", "text": "Reference entries contain DOI, year, journal, and author metadata."},
+      {"id": "d", "text": "Table captions should be placed above tables."}]},
+    {"id": "limitations", "query": "identify study limitations and threats to validity", "gold": "a", "candidates": [
+      {"id": "a", "text": "Limitations include selection bias, a small English-only corpus, possible label noise, and uncertain external validity."},
+      {"id": "b", "text": "The model achieved 91.2 percent accuracy on the benchmark."},
+      {"id": "c", "text": "The introduction motivates retrieval augmented generation."},
+      {"id": "d", "text": "The dataset license permits noncommercial use."}]},
+    {"id": "table_result", "query": "find table reporting ablation experiment results", "gold": "a", "candidates": [
+      {"id": "a", "text": "Table 3 reports the ablation: removing the reranker lowers citation accuracy from 92.1 to 81.4 percent."},
+      {"id": "b", "text": "Equation 2 defines normalized discounted cumulative gain."},
+      {"id": "c", "text": "Appendix A lists prompt templates."},
+      {"id": "d", "text": "The related-work section surveys prior systems."}]},
+    {"id": "formula", "query": "公式定义 precision recall F1 harmonic mean", "gold": "a", "candidates": [
+      {"id": "a", "text": "F1 = 2 * precision * recall / (precision + recall), the harmonic mean of precision and recall."},
+      {"id": "b", "text": "Table 1 lists the number of papers by venue."},
+      {"id": "c", "text": "The authors released source code on GitHub."},
+      {"id": "d", "text": "The abstract summarizes the research question."}]},
+    {"id": "reference_doi", "query": "extract DOI and bibliographic reference metadata", "gold": "a", "candidates": [
+      {"id": "a", "text": "References: Lewis et al. Retrieval-Augmented Generation. NeurIPS 2020. doi:10.5555/3495724.3496517."},
+      {"id": "b", "text": "Results show an improvement on two datasets."},
+      {"id": "c", "text": "The method uses a cross encoder reranker."},
+      {"id": "d", "text": "A chart uses blue and orange bars."}]},
+    {"id": "contradiction", "query": "detect contradictory findings across papers", "gold": "a", "candidates": [
+      {"id": "a", "text": "Paper A reports the intervention improves accuracy by 20 percent, while Paper B reports no improvement under the same outcome and population."},
+      {"id": "b", "text": "Two papers use different citation formatting styles."},
+      {"id": "c", "text": "The papers were downloaded as PDF files."},
+      {"id": "d", "text": "Both studies list three authors."}]},
+    {"id": "oa_download", "query": "verified open access full text PDF download", "gold": "a", "candidates": [
+      {"id": "a", "text": "Resolve the DOI through an open-access registry, verify the public HTTPS PDF URL, content type, PDF magic bytes, size, and checksum before ingestion."},
+      {"id": "b", "text": "Sort search results alphabetically by title."},
+      {"id": "c", "text": "Copy any URL returned by a search engine directly to disk."},
+      {"id": "d", "text": "Use a browser bookmark to save the journal landing page."}]},
+    {"id": "reranker", "query": "cross encoder reranker improves top one evidence ranking", "gold": "a", "candidates": [
+      {"id": "a", "text": "A cross-encoder jointly scores each query-passage pair and reranks retrieved candidates to improve top-one evidence precision."},
+      {"id": "b", "text": "A dense encoder independently maps text into vectors."},
+      {"id": "c", "text": "BM25 counts term frequency and inverse document frequency."},
+      {"id": "d", "text": "Chunk overlap preserves context at page boundaries."}]},
+    {"id": "page_citation", "query": "页码 chunk 可追溯引用格式", "gold": "a", "candidates": [
+      {"id": "a", "text": "Each evidence item carries a stable citation such as doc:42#page=7&chunk=2 so users can trace the answer to the original page and chunk."},
+      {"id": "b", "text": "The upload directory stores files by checksum."},
+      {"id": "c", "text": "The report title is generated from the file name."},
+      {"id": "d", "text": "Markdown headings create an outline."}]},
+    {"id": "evidence_gate", "query": "unsupported claims evidence gate blocks report", "gold": "a", "candidates": [
+      {"id": "a", "text": "The evidence gate marks unsupported claims for revision and releases a report only when at least 90 percent of claims have adequate citations."},
+      {"id": "b", "text": "The report can be exported to an Obsidian vault."},
+      {"id": "c", "text": "A project board tracks task status."},
+      {"id": "d", "text": "The system uses a dark user interface."}]},
+    {"id": "experiment_structure", "query": "实验数据集 baseline metric statistical significance", "gold": "a", "candidates": [
+      {"id": "a", "text": "The experiment section specifies datasets, baselines, metrics, random seeds, confidence intervals, significance tests, and reproducibility artifacts."},
+      {"id": "b", "text": "The paper title is centered on the first page."},
+      {"id": "c", "text": "The knowledge graph links authors to papers."},
+      {"id": "d", "text": "The download cache expires after six hours."}]}
+  ]
+}

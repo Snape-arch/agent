@@ -87,6 +87,10 @@ class CompetitionArchitectureTests(unittest.TestCase):
             enforce_safe_payload("research_pdf", {"action": "import", "file_path": "paper.pdf"})
         with self.assertRaises(PermissionError):
             enforce_safe_payload("paper_deep_read", {"text": "paper", "output_path": "report.md"})
+        self.assertEqual(
+            enforce_safe_payload("paper_intelligence", {"action": "compare", "document_ids": [1, 2]})["action"],
+            "compare",
+        )
 
     def test_generated_vertical_schemas_are_least_privilege(self):
         from mtclaw.prepare_runtime import prepare
@@ -109,6 +113,12 @@ class CompetitionArchitectureTests(unittest.TestCase):
             set(functions["learning_workspace"]["parameters"]["properties"]["action"]["enum"]),
             {"get", "graph", "assessment"},
         )
+        self.assertEqual(
+            set(functions["paper_intelligence"]["parameters"]["properties"]["action"]["enum"]),
+            {"structure", "align_claims", "compare", "readiness"},
+        )
+        self.assertNotIn("scholarly_search", functions)
+        self.assertNotIn("scholarly_download", functions)
 
     def test_knowledge_search_tool_returns_local_evidence(self):
         from memoryos.memory_store import MemoryStore
