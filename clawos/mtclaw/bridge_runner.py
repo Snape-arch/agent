@@ -36,7 +36,39 @@ SAFE_TOOLS = {
     "reflection_list",
     "skill_list",
     "tools_list",
+    "knowledge_search",
+    "meeting_action_items",
+    "paper_deep_read",
+    "exam_practice_builder",
+    "research_pdf",
+    "learning_workspace",
 }
+
+SAFE_ACTIONS = {
+    "research_pdf": {"search", "validate_citations", "compare_matrix"},
+    "learning_workspace": {"get", "graph", "assessment"},
+}
+
+NO_WRITE_ARGUMENTS = {
+    "meeting_action_items": {"output_path"},
+    "paper_deep_read": {"output_path"},
+    "exam_practice_builder": {"output_path"},
+    "research_pdf": {"file_path", "output_path", "output_dir", "steps", "formats"},
+}
+
+
+def enforce_safe_payload(tool_name: str, payload: dict) -> dict:
+    """Enforce action-level read-only policy before invoking a vertical wrapper."""
+    guarded = dict(payload or {})
+    allowed_actions = SAFE_ACTIONS.get(tool_name)
+    if allowed_actions is not None:
+        action = str(guarded.get("action") or "").strip()
+        if action not in allowed_actions:
+            raise PermissionError(f"action not allowed through MTClaw: {tool_name}.{action or '<missing>'}")
+    removed = sorted(key for key in NO_WRITE_ARGUMENTS.get(tool_name, set()) if guarded.get(key))
+    if removed:
+        raise PermissionError(f"write-capable arguments not allowed through MTClaw: {', '.join(removed)}")
+    return guarded
 
 
 def main() -> int:
@@ -58,9 +90,8 @@ def main() -> int:
         return 5
 
     try:
-        guarded = tool_runner.security_check(
-            tool_name, payload if isinstance(payload, dict) else {}
-        )
+        guarded = enforce_safe_payload(tool_name, payload if isinstance(payload, dict) else {})
+        guarded = tool_runner.security_check(tool_name, guarded)
     except PermissionError as exc:
         print(json.dumps({"error": str(exc), "status": "denied"}, ensure_ascii=False))
         return 6

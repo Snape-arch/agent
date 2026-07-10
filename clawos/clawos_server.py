@@ -58,6 +58,7 @@ def load_local_env(env_path: Path) -> None:
 
 load_local_env(BASE_DIR / ".env")
 
+CONFIG_PATH = Path(os.environ.get("CLAWOS_CONFIG_PATH", str(CONFIG_PATH))).expanduser().resolve()
 MEMORY_DB = Path(os.environ.get("CLAWOS_MEMORY_DB", str(BASE_DIR / "memoryos.db"))).expanduser().resolve()
 
 g_memory_store: Any = None
@@ -435,13 +436,16 @@ async def call_model_with_fallback(section: str, messages: list[dict[str, Any]],
     }
 
 
-async def call_routing_llm(messages: list[dict[str, Any]]) -> dict[str, Any]:
+async def call_routing_llm(
+    messages: list[dict[str, Any]],
+    available_tools: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Call configured model provider for tool detection."""
     result = await call_model_with_fallback(
         "routing",
         messages,
         {
-        "tools": tools_def,
+        "tools": available_tools if available_tools is not None else tools_def,
         "temperature": 0.0,
         }
     )
@@ -459,12 +463,12 @@ def has_api_key(section: str = "routing") -> bool:
 
 
 SCENARIO_ROUTING_POLICY = {
-    "research": {"tools": ["web_search", "web_fetch", "research_pdf"], "risk": "medium", "model_profile": "deep_reasoning", "retrieval": "citations_required", "requires_confirmation": ["web_fetch"], "description": "科研检索、网页抓取、论文解析和可引用 RAG"},
-    "learning": {"tools": ["learning_workspace", "web_fetch", "exam_practice_builder"], "risk": "medium", "model_profile": "tutor", "retrieval": "knowledge_first", "requires_confirmation": ["web_fetch"], "description": "学习目标、资料入库、练习题和掌握度"},
-    "office": {"tools": ["meeting_workflow", "office_artifact", "work_brief_builder"], "risk": "medium", "model_profile": "structured_output", "retrieval": "workspace_context", "requires_confirmation": ["office_artifact"], "description": "会议、简报、表格和演示文稿产物"},
-    "project": {"tools": ["ls", "grep_text", "code_stats", "git_workspace"], "risk": "high", "model_profile": "code_agent", "retrieval": "repo_context", "requires_confirmation": ["git_workspace"], "description": "项目分析、代码检索和审批式 Git 操作"},
+    "research": {"tools": ["knowledge_search", "web_search", "web_fetch", "research_pdf", "paper_deep_read", "research_experiment_plan", "text_stats"], "risk": "medium", "model_profile": "deep_reasoning", "retrieval": "citations_required", "requires_confirmation": ["web_fetch"], "description": "科研检索、网页抓取、论文解析和可引用 RAG"},
+    "learning": {"tools": ["knowledge_search", "learning_workspace", "web_fetch", "exam_practice_builder", "text_stats"], "risk": "medium", "model_profile": "tutor", "retrieval": "knowledge_first", "requires_confirmation": ["web_fetch"], "description": "学习目标、资料入库、练习题和掌握度"},
+    "office": {"tools": ["knowledge_search", "meeting_action_items", "meeting_workflow", "office_artifact", "work_brief_builder", "text_stats"], "risk": "medium", "model_profile": "structured_output", "retrieval": "workspace_context", "requires_confirmation": ["office_artifact"], "description": "会议、简报、表格和演示文稿产物"},
+    "project": {"tools": ["ls", "cat", "find_files", "grep_text", "file_info", "code_stats", "find_todos", "dir_tree", "git_workspace", "shell_exec", "file_write"], "risk": "high", "model_profile": "code_agent", "retrieval": "repo_context", "requires_confirmation": ["git_workspace", "shell_exec", "file_write"], "description": "项目分析、代码检索和审批式 Git 操作"},
     "web": {"tools": ["web_search", "web_fetch"], "risk": "medium", "model_profile": "fresh_context", "retrieval": "web_then_rag", "requires_confirmation": ["web_fetch"], "description": "联网搜索和网页正文抓取"},
-    "general": {"tools": ["memory_history", "tools_list", "note_save"], "risk": "low", "model_profile": "balanced", "retrieval": "memory_optional", "requires_confirmation": [], "description": "通用对话、记忆和轻量记录"},
+    "general": {"tools": ["weather", "time_now", "calc", "todo_list", "note_save", "note_read", "note_list", "text_stats", "knowledge_search", "memory_history", "memory_profile_get", "memory_preference_get", "memory_stats", "tools_list", "skill_list"], "risk": "low", "model_profile": "balanced", "retrieval": "memory_optional", "requires_confirmation": [], "description": "通用对话、记忆和轻量记录"},
 }
 
 
@@ -499,7 +503,8 @@ def score_scenarios(text: str) -> list[dict[str, Any]]:
         keys = SCENARIO_ROUTING_KEYWORDS.get(scenario, [])
         hits = [key for key in keys if key.lower() in low]
         score = 0.18 if scenario == "general" else 0.0
-        score += min(0.62, 0.16 * len(hits))
+        if hits:
+            score += 0.26 + min(0.48, 0.12 * (len(hits) - 1))
         if scenario == "research" and any(k in low for k in ["pdf", "docx", "rag", "chunk", "引用", "文献"]):
             score += 0.16
         if scenario == "web" and any(k in low for k in ["http://", "https://", "url", "网页"]):
@@ -527,6 +532,32 @@ def score_scenarios(text: str) -> list[dict[str, Any]]:
         rows[0]["score"] = 0.52
         rows[0]["reason"] = "default_low_risk"
     return rows
+
+
+def build_routing_strategy(text: str) -> dict[str, Any]:
+    candidates = score_scenarios(text)
+    selected = candidates[0] if candidates else {"scenario": classify_scenario(text), "score": 0.0}
+    scenario = selected["scenario"]
+    policy = SCENARIO_ROUTING_POLICY[scenario]
+    return {
+        "mode": "enforced_scenario_routing",
+        "scenario": scenario,
+        "confidence": selected.get("score", 0.0),
+        "matched_keywords": selected.get("matched_keywords", []),
+        "model_profile": policy.get("model_profile", "balanced"),
+        "retrieval": policy.get("retrieval", "memory_optional"),
+        "risk": policy.get("risk", "low"),
+        "allowed_tools": list(policy.get("tools", [])),
+        "requires_confirmation": list(policy.get("requires_confirmation", [])),
+    }
+
+
+def tools_for_routing_strategy(strategy: dict[str, Any]) -> list[dict[str, Any]]:
+    allowed = set(strategy.get("allowed_tools") or [])
+    return [
+        item for item in tools_def
+        if str((item.get("function") or {}).get("name") or "") in allowed
+    ]
 
 
 def rule_based_tool(user_text: str) -> tuple[str, dict[str, Any]] | None:
@@ -566,6 +597,9 @@ async def run_tool_loop(
 ) -> dict[str, Any]:
     """Tool detection + execution loop."""
     confirmed_tools = confirmed_tools or set()
+    routing_strategy = build_routing_strategy(user_text)
+    allowed_tool_names = set(routing_strategy.get("allowed_tools") or [])
+    routed_tools = tools_for_routing_strategy(routing_strategy)
     # Fast path: known solidified skills should bypass the LLM router.
     try:
         from skills.skill_registry import match_skill_by_text
@@ -580,6 +614,7 @@ async def run_tool_loop(
                     "final_text": "",
                     "routing_rounds": 0,
                     "matched_skill": matched_skill["name"],
+                    "routing_strategy": routing_strategy,
                 }
             if logger:
                 logger.info("Skill fast path needs parameters or failed: %s", matched_skill["name"])
@@ -597,12 +632,13 @@ async def run_tool_loop(
             "final_text": "",
             "routing_rounds": 0,
             "matched_skill": "",
+            "routing_strategy": routing_strategy,
         }
 
     if not has_api_key("routing"):
         lang_zh = bool(re.search(r"[\u4e00-\u9fff]", user_text))
         text = "当前未配置 DEEPSEEK_API_KEY，复杂自然语言路由暂不可用；你仍可在 MemoryOS 页面维护记忆，或配置本地 OpenAI 兼容模型端点。" if lang_zh else "DEEPSEEK_API_KEY is not configured, so complex natural-language routing is unavailable. You can still manage MemoryOS in the UI or configure a local OpenAI-compatible model endpoint."
-        return {"used_tools": False, "tool_calls": [], "final_text": text, "routing_rounds": 0}
+        return {"used_tools": False, "tool_calls": [], "final_text": text, "routing_rounds": 0, "routing_strategy": routing_strategy}
 
     # Use MemoryOS to build messages with context
     if g_context_builder:
@@ -615,7 +651,7 @@ async def run_tool_loop(
 
     for ri in range(1, max_rounds + 1):
         try:
-            resp = await call_routing_llm(messages)
+            resp = await call_routing_llm(messages, routed_tools)
         except Exception as e:
             logger.warning(f"Routing LLM error round {ri}: {e}")
             break
@@ -626,7 +662,7 @@ async def run_tool_loop(
         content = msg.get("content", "")
 
         if not tcs:
-            return {"used_tools": used, "tool_calls": tc_log, "final_text": content, "routing_rounds": ri}
+            return {"used_tools": used, "tool_calls": tc_log, "final_text": content, "routing_rounds": ri, "routing_strategy": routing_strategy}
 
         used = True
         tc_msgs = []
@@ -638,7 +674,15 @@ async def run_tool_loop(
             tc_id = tc.get("id", f"call_{fn_name}_{ri}")
             tc_msgs.append({"id": tc_id, "type": "function", "function": {"name": fn_name, "arguments": fn_args}})
             logger.info(f"Tool: {fn_name}({fn_args[:150]})")
-            result = execute_tool_call(fn_name, fn_args, session_id, confirmed_tools, task_id=task_id)
+            if fn_name not in allowed_tool_names:
+                result = {
+                    "ok": False,
+                    "status": "denied",
+                    "tool": fn_name,
+                    "error": f"tool is outside the enforced {routing_strategy['scenario']} scenario policy",
+                }
+            else:
+                result = execute_tool_call(fn_name, fn_args, session_id, confirmed_tools, task_id=task_id)
             tc_log.append({"name": fn_name, "arguments": fn_args, "result": result})
             tool_messages.append({"role": "tool", "tool_call_id": tc_id, "name": fn_name, "content": json.dumps(result, ensure_ascii=False)})
         assistant_msg = {"role": "assistant", "content": content or "", "tool_calls": tc_msgs}
@@ -646,7 +690,7 @@ async def run_tool_loop(
         messages.append(assistant_msg)
         messages.extend(tool_messages)
 
-    return {"used_tools": used, "tool_calls": tc_log, "final_text": "", "routing_rounds": max_rounds}
+    return {"used_tools": used, "tool_calls": tc_log, "final_text": "", "routing_rounds": max_rounds, "routing_strategy": routing_strategy}
 
 
 def build_openai_response(content: str, model: str | None = None, extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1549,6 +1593,7 @@ async def chat_completions(request: Request):
     attachment_context, attachment_meta = _build_uploaded_document_context(req_data.get("clawos_attachments", []), user_text)
     effective_user_text = user_text + attachment_context
     stream = req_data.get("stream", False)
+    routing_strategy = build_routing_strategy(effective_user_text)
 
     if not user_text:
         resp = await proxy_upstream(req_data, stream)
@@ -1584,7 +1629,7 @@ async def chat_completions(request: Request):
     elif g_memory_store:
         g_memory_store.add_message(session_id, "user", user_text)
 
-    if g_mtclaw_adapter and g_mtclaw_adapter.enabled and not stream:
+    if g_mtclaw_adapter and g_mtclaw_adapter.enabled:
         mtclaw_messages = (
             g_context_builder.build_messages(session_id, effective_user_text)
             if g_context_builder
@@ -1629,8 +1674,11 @@ async def chat_completions(request: Request):
                     }
                     for item in trace
                 ],
+                "routing_strategy": routing_strategy,
             }
             finish_runtime_task(task_id, "succeeded", result_payload=raw)
+            if stream:
+                return sse_from_text(text, task_id=task_id, extra=raw["clawos"])
             return JSONResponse(raw)
         if not g_mtclaw_adapter.fallback_on_error:
             finish_runtime_task(task_id, "failed", mtclaw_result["error"])
@@ -1658,6 +1706,7 @@ async def chat_completions(request: Request):
             "needs_confirmation": True,
             "routing_rounds": tool_result.get("routing_rounds", 0),
             "matched_skill": tool_result.get("matched_skill", ""),
+            "routing_strategy": tool_result.get("routing_strategy", routing_strategy),
             "attachments": attachment_meta,
             "task_id": task_id,
         }
@@ -1705,6 +1754,7 @@ async def chat_completions(request: Request):
             "reflection": reflection_result,
             "routing_rounds": tool_result.get("routing_rounds", 0),
             "matched_skill": tool_result.get("matched_skill", ""),
+            "routing_strategy": tool_result.get("routing_strategy", routing_strategy),
             "task_id": task_id,
         }
         if not has_api_key("upstream"):
@@ -1740,6 +1790,7 @@ async def chat_completions(request: Request):
             "routing_rounds": tool_result.get("routing_rounds", 0),
             "attachments": attachment_meta,
             "task_id": task_id,
+            "routing_strategy": tool_result.get("routing_strategy", routing_strategy),
         })
 
     resp_payload = build_openai_response(final_text, extra={
@@ -1748,6 +1799,7 @@ async def chat_completions(request: Request):
         "routing_rounds": tool_result.get("routing_rounds", 0),
         "attachments": attachment_meta,
         "task_id": task_id,
+        "routing_strategy": tool_result.get("routing_strategy", routing_strategy),
     })
     if g_memory_store and final_text:
         g_memory_store.add_message(session_id, "assistant", final_text[:4000])
@@ -5581,20 +5633,14 @@ async def api_tools_accuracy(session_id: str = "", limit: int = 200):
 @app.get("/api/routing/policy")
 async def api_routing_policy(q: str = ""):
     candidates = score_scenarios(q)
-    scenario = candidates[0]["scenario"] if candidates else classify_scenario(q)
+    strategy = build_routing_strategy(q)
+    scenario = strategy["scenario"]
     selected = SCENARIO_ROUTING_POLICY[scenario]
     return JSONResponse({
         "scenario": scenario,
         "selected": selected,
         "candidates": candidates,
-        "strategy": {
-            "mode": "scored_policy_routing",
-            "model_profile": selected.get("model_profile", "balanced"),
-            "retrieval": selected.get("retrieval", "memory_optional"),
-            "tools": selected.get("tools", []),
-            "risk": selected.get("risk", "low"),
-            "requires_confirmation": selected.get("requires_confirmation", []),
-        },
+        "strategy": strategy,
         "policies": SCENARIO_ROUTING_POLICY,
     })
 

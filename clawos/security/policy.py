@@ -140,6 +140,9 @@ class ToolSecurityPolicy:
         "find_todos": ("path",),
         "dir_tree": ("path",),
         "text_stats": ("file_path",),
+        "meeting_action_items": ("transcript_path", "output_path"),
+        "paper_deep_read": ("file_path", "output_path"),
+        "exam_practice_builder": ("output_path",),
         "file_write": ("path",),
         "file_organize": ("path",),
         "batch_rename": ("path",),
@@ -217,7 +220,8 @@ class ToolSecurityPolicy:
             return grant_result
         decision = "allow"
         reason = "policy checks passed"
-        if tool_name in self.WRITE_TOOLS or tool_name in self.NETWORK_TOOLS:
+        writes_optional_output = tool_name in {"meeting_action_items", "paper_deep_read", "exam_practice_builder"} and bool(args.get("output_path"))
+        if tool_name in self.WRITE_TOOLS or tool_name in self.NETWORK_TOOLS or writes_optional_output:
             decision = "confirm"
             reason = f"{risk_level} risk tool requires confirmation"
         return {
@@ -262,6 +266,8 @@ class ToolSecurityPolicy:
             action = str(arguments.get("action", "")).lower()
             return "high" if action in {"approve", "rollback"} else "medium"
         if tool_name in self.WRITE_TOOLS:
+            return "medium"
+        if tool_name in {"meeting_action_items", "paper_deep_read", "exam_practice_builder"} and arguments.get("output_path"):
             return "medium"
         if tool_name in self.NETWORK_TOOLS or tool_name in self.EXTERNAL_API_TOOLS:
             return "medium"

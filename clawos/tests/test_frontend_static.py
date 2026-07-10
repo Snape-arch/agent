@@ -1141,7 +1141,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("/api/documents/${Number(id)}/ocr", js)
         self.assertIn("/api/documents/citation-answer", js)
         self.assertIn("loadRoutingStrategy", js)
-        self.assertIn("scored_policy_routing", self.read_page("../clawos_server.py"))
+        self.assertIn("enforced_scenario_routing", self.read_page("../clawos_server.py"))
+        self.assertIn("lastRoutingStrategy", self.read_page("assets/console.js"))
+        self.assertIn("场景路由", self.read_page("assets/console.js"))
 
 
 if __name__ == "__main__":

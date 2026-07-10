@@ -1,0 +1,11 @@
+{
+  "schema": "clawos.mtclaw.vertical-acceptance.v1",
+  "description": "Deterministic contract cases proving that vertical scenarios are routed to a least-privilege MTClaw-capable function surface.",
+  "cases": [
+    {"id": "meeting_minutes", "prompt": "请从会议纪要中提取决策和行动项", "scenario": "office", "required_tool": "meeting_action_items"},
+    {"id": "paper_evidence", "prompt": "请检索科研论文知识并提供引用", "scenario": "research", "required_tool": "knowledge_search"},
+    {"id": "paper_deep_read", "prompt": "请精读这篇论文并分析方法和局限", "scenario": "research", "required_tool": "paper_deep_read"},
+    {"id": "learning_mastery", "prompt": "请查看学习目标的长期掌握度评估", "scenario": "learning", "required_tool": "learning_workspace"},
+    {"id": "coding_inspection", "prompt": "请扫描代码项目中的 TODO", "scenario": "project", "required_tool": "find_todos"}
+  ]
+}

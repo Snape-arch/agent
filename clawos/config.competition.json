@@ -1,0 +1,40 @@
+{
+  "listen_host": "0.0.0.0",
+  "listen_port": 18790,
+  "model_provider": {
+    "provider": "${MODEL_PROVIDER:-qwen}",
+    "base_url": "${MODEL_BASE_URL:-http://127.0.0.1:8000/v1}",
+    "model": "${MODEL_NAME:-Qwen3.5-9B-Q4_K_M}",
+    "api_key": "${MODEL_API_KEY:-}",
+    "requires_api_key": "${MODEL_REQUIRES_API_KEY:-false}",
+    "timeout_s": 120.0
+  },
+  "mtclaw": {
+    "enabled": true,
+    "base_url": "${MTCLAW_BASE_URL:-http://127.0.0.1:18791}",
+    "model": "function-router",
+    "timeout_s": 120.0,
+    "fallback_on_error": false
+  },
+  "routing": {"temperature": 0.0},
+  "upstream": {"temperature": 0.2},
+  "model_fallbacks": [],
+  "max_tool_rounds": 8,
+  "tool_exec_timeout_s": 30,
+  "routing_timeout_s": 15.0,
+  "vector_store": {
+    "provider": "${VECTOR_PROVIDER:-chroma}",
+    "chroma_dir": "${CHROMA_DIR:-./data/chroma}",
+    "embedding_provider": "${EMBEDDING_PROVIDER:-local}",
+    "embedding_model_path": "${EMBEDDING_MODEL_PATH:-../tools/models/qwen3-embedding-0.6b}",
+    "embedding_dim": "${EMBEDDING_DIM:-1024}",
+    "reranker_provider": "${RERANKER_PROVIDER:-local}",
+    "reranker_model_path": "${RERANKER_MODEL_PATH:-../tools/models/qwen3-reranker-0.6b}",
+    "reranker_recall_k": "${RERANKER_RECALL_K:-30}",
+    "reranker_top_k": "${RERANKER_TOP_K:-5}"
+  },
+  "fr_completion_check": {"enabled": true, "mode": "strict", "always_true": false},
+  "fr_context_history": {"enabled": true},
+  "fr_context_preserve": {"enabled": false},
+  "debug_logging": {"enabled": true}
+}
