@@ -14,6 +14,7 @@ class QwenProvider(OpenAICompatibleProvider):
             "base_url": "http://127.0.0.1:8000/v1",
             "model": "Qwen3.5-9B-Q4_K_M",
             "requires_api_key": False,
+            "chat_template_kwargs": {"enable_thinking": False},
             **cfg,
         }
         super().__init__(merged)

@@ -29,9 +29,14 @@ from scripts.run_frozen_benchmarks import _run_tool
 def _provider_config(args: argparse.Namespace) -> dict[str, Any]:
     provider = args.provider or os.environ.get("MODEL_PROVIDER") or "mock"
     provider_key = str(provider or "").lower()
-    model = args.model or os.environ.get("MODEL_NAME") or ("mock-evaluator" if provider_key == "mock" else "")
-    base_url = args.base_url or os.environ.get("MODEL_BASE_URL") or ""
-    api_key = os.environ.get(args.api_key_env or "MODEL_API_KEY", "")
+    if provider_key == "qwen":
+        model = args.model or os.environ.get("QWEN_MODEL") or ""
+        base_url = args.base_url or os.environ.get("QWEN_BASE_URL") or ""
+        api_key = ""
+    else:
+        model = args.model or os.environ.get("MODEL_NAME") or ("mock-evaluator" if provider_key == "mock" else "")
+        base_url = args.base_url or os.environ.get("MODEL_BASE_URL") or ""
+        api_key = os.environ.get(args.api_key_env or "MODEL_API_KEY", "")
     cfg = {
         "provider": provider,
         "timeout_s": args.timeout_s,

@@ -19,6 +19,7 @@ class OpenAICompatibleProvider:
         self.api_key = str(cfg.get("api_key") or "")
         self.timeout_s = float(cfg.get("timeout_s", 120.0) or 120.0)
         self.requires_api_key = _as_bool(cfg.get("requires_api_key", True))
+        self.chat_template_kwargs = cfg.get("chat_template_kwargs")
 
     def is_configured(self) -> bool:
         has_endpoint = bool(self.base_url and self.model)
@@ -61,6 +62,9 @@ class OpenAICompatibleProvider:
             payload["tools"] = options["tools"]
         if options.get("tool_choice") is not None:
             payload["tool_choice"] = options["tool_choice"]
+        chat_template_kwargs = options.get("chat_template_kwargs", self.chat_template_kwargs)
+        if chat_template_kwargs is not None:
+            payload["chat_template_kwargs"] = chat_template_kwargs
 
         headers = {"Content-Type": "application/json"}
         if self.api_key:

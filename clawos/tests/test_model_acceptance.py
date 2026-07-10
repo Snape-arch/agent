@@ -106,7 +106,12 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
         old_model = os.environ.pop("MODEL_NAME", None)
         old_base = os.environ.pop("MODEL_BASE_URL", None)
         old_key = os.environ.pop("MODEL_API_KEY", None)
+        old_qwen_model = os.environ.pop("QWEN_MODEL", None)
+        old_qwen_base = os.environ.pop("QWEN_BASE_URL", None)
         try:
+            os.environ["MODEL_NAME"] = "deepseek-chat"
+            os.environ["MODEL_BASE_URL"] = "https://api.deepseek.com/v1"
+            os.environ["MODEL_API_KEY"] = "must-not-leak"
             args = argparse.Namespace(
                 provider="qwen",
                 model="",
@@ -121,10 +126,20 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
                 os.environ["MODEL_PROVIDER"] = old_provider
             if old_model is not None:
                 os.environ["MODEL_NAME"] = old_model
+            else:
+                os.environ.pop("MODEL_NAME", None)
             if old_base is not None:
                 os.environ["MODEL_BASE_URL"] = old_base
+            else:
+                os.environ.pop("MODEL_BASE_URL", None)
             if old_key is not None:
                 os.environ["MODEL_API_KEY"] = old_key
+            else:
+                os.environ.pop("MODEL_API_KEY", None)
+            if old_qwen_model is not None:
+                os.environ["QWEN_MODEL"] = old_qwen_model
+            if old_qwen_base is not None:
+                os.environ["QWEN_BASE_URL"] = old_qwen_base
 
         self.assertEqual(cfg["provider"], "qwen")
         self.assertFalse(cfg["requires_api_key"])

@@ -79,6 +79,23 @@ class ModelProviderTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(client.calls[0]["url"], "http://127.0.0.1:8000/v1/chat/completions")
         self.assertNotIn("Authorization", client.calls[0]["headers"])
+        self.assertEqual(client.calls[0]["json"]["chat_template_kwargs"], {"enable_thinking": False})
+
+    def test_qwen_provider_allows_thinking_override(self):
+        from providers import create_model_provider
+
+        response = FakeResponse({"choices": [{"message": {"role": "assistant", "content": "ok"}}]})
+        client = FakeHttpClient(response)
+        provider = create_model_provider({"provider": "qwen"})
+
+        result = asyncio.run(provider.complete(
+            [{"role": "user", "content": "think"}],
+            {"chat_template_kwargs": {"enable_thinking": True}},
+            http_client=client,
+        ))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(client.calls[0]["json"]["chat_template_kwargs"], {"enable_thinking": True})
 
     def test_openai_provider_forwards_json_mode_grammar_and_limits(self):
         from providers import create_model_provider
@@ -552,6 +569,7 @@ class ModelProviderTests(unittest.TestCase):
         payload = client.calls[0]["json"]
         self.assertEqual(payload["response_format"], {"type": "json_object"})
         self.assertIn("grammar", payload)
+        self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": False})
         self.assertLessEqual(payload["max_tokens"], 320)
         self.assertIn("Return JSON only", payload["messages"][1]["content"])
         self.assertEqual(result["root_cause"], "missing path")

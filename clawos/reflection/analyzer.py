@@ -77,6 +77,7 @@ class ReflectionAnalyzer:
             if is_local_qwen:
                 payload["grammar"] = JSON_OBJECT_GRAMMAR
                 payload["stop"] = ["</s>", "<|im_end|>"]
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
             headers = {
                 "Content-Type": "application/json"
             }
