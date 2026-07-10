@@ -74,8 +74,10 @@ def _case_prompt(case: dict[str, Any], result: dict[str, Any]) -> list[dict[str,
         {
             "role": "system",
             "content": (
-                "You are a ClawOS acceptance evaluator. Give a concise verdict. "
-                "Do not invent facts. Mention whether the tool evidence is sufficient."
+                "You are a ClawOS acceptance evaluator. Treat the supplied JSON as the authoritative "
+                "frozen benchmark result. If passed is true and error is empty, return PASS and state "
+                "that the tool evidence is sufficient; otherwise return FAIL and name the error. "
+                "Include the exact case, scenario, and tool values in the concise verdict. Do not invent facts."
             ),
         },
         {

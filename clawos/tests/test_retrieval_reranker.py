@@ -1,3 +1,4 @@
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -9,6 +10,29 @@ if str(ROOT) not in sys.path:
 
 
 class RetrievalRerankerTests(unittest.TestCase):
+    def test_local_retrieval_models_default_to_cpu_with_env_override(self):
+        from memoryos.services.retrieval import CrossEncoderReranker
+        from memoryos.services.vector_store import SentenceTransformerEncoder
+
+        old_embedding = os.environ.pop("CLAWOS_EMBEDDING_DEVICE", None)
+        old_reranker = os.environ.pop("CLAWOS_RERANKER_DEVICE", None)
+        try:
+            self.assertEqual(SentenceTransformerEncoder("embedding").device, "cpu")
+            self.assertEqual(CrossEncoderReranker("reranker").device, "cpu")
+            os.environ["CLAWOS_EMBEDDING_DEVICE"] = "cuda:0"
+            os.environ["CLAWOS_RERANKER_DEVICE"] = "cuda:1"
+            self.assertEqual(SentenceTransformerEncoder("embedding").device, "cuda:0")
+            self.assertEqual(CrossEncoderReranker("reranker").device, "cuda:1")
+        finally:
+            if old_embedding is None:
+                os.environ.pop("CLAWOS_EMBEDDING_DEVICE", None)
+            else:
+                os.environ["CLAWOS_EMBEDDING_DEVICE"] = old_embedding
+            if old_reranker is None:
+                os.environ.pop("CLAWOS_RERANKER_DEVICE", None)
+            else:
+                os.environ["CLAWOS_RERANKER_DEVICE"] = old_reranker
+
     def test_semantic_rerank_uses_vector_recall_then_reranks_top_k(self):
         from memoryos.services.retrieval import RetrievalService
 

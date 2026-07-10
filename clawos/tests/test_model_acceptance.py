@@ -32,6 +32,20 @@ class FakeHttpClient:
 
 
 class ModelAcceptanceScriptTests(unittest.TestCase):
+    def test_case_prompt_requires_exact_acceptance_context(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from scripts.evaluate_model_acceptance import _case_prompt
+
+        messages = _case_prompt(
+            {"name": "case-a", "scenario": "meeting", "tool": "meeting_workflow", "expected": {}},
+            {"passed": True, "error": "", "data": {}},
+        )
+
+        system = messages[0]["content"]
+        self.assertIn("authoritative frozen benchmark result", system)
+        self.assertIn("exact case, scenario, and tool", system)
+
     def test_model_acceptance_script_runs_with_mock_provider(self):
         script = ROOT / "scripts" / "evaluate_model_acceptance.py"
         result = subprocess.run(

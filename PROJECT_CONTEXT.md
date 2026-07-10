@@ -2461,27 +2461,38 @@ Completed:
 - Changed llama.cpp and Qwen downloads to prefer resumable `curl.exe -C -` transfers, with the existing PowerShell/Hugging Face alternatives retained when curl is unavailable.
 - Installed the ignored local llama.cpp b9946 CUDA 12.4 runtime and companion files under `tools/llama.cpp/runtime`.
 - Updated `MaintenanceService.local_model_assets()` to recognize the downloader's `tools/llama.cpp/runtime/llama-server.exe` install path instead of falsely reporting the installed server as missing.
+- Completed the Qwen3.5-9B Q4_K_M download by resuming a verified GGUF prefix, then copied the verified model to its manifest path.
+- Disabled Qwen thinking by default through `chat_template_kwargs`, while preserving an explicit per-request override.
+- Prevented local Qwen requests from leaking through environment HTTP proxies by using a no-proxy client for loopback model endpoints; cloud provider proxy behavior remains unchanged.
+- Made local embedding and reranker model loaders default to CPU, with environment device overrides, so they do not compete with the 9B model for the laptop GPU.
+- Tuned the single-user llama.cpp default to one 8192-token slot and 20 GPU layers for this 8 GB RTX 5060 Laptop GPU.
 
 Verification:
 ```powershell
 tools\llama.cpp\runtime\llama-server.exe --version
 tools\llama.cpp\runtime\llama-cli.exe --list-devices
+clawos\.venv\Scripts\python.exe clawos\scripts\provider_smoke.py
+clawos\.venv\Scripts\python.exe clawos\scripts\evaluate_model_acceptance.py --provider qwen --limit 2 --json
 $env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_frontend_static
-$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider.ModelProviderTests.test_maintenance_service_reports_missing_local_qwen_assets
+$env:PYTHONDONTWRITEBYTECODE='1'; clawos\.venv\Scripts\python.exe -m unittest clawos.tests.test_model_provider clawos.tests.test_model_acceptance clawos.tests.test_retrieval_reranker
 ```
 
 Result:
 - llama.cpp reports build `9946 (fb30ba9a6)`.
 - CUDA device discovery reports `NVIDIA GeForce RTX 5060 Laptop GPU` with 8150 MiB total VRAM.
-- Static frontend/downloader regression suite: `35 tests OK`.
-- Targeted maintenance-service runtime-path regression: `1 test OK`.
+- GGUF size verified at `5,680,522,464` bytes and SHA256 verified as `03B74727A860A56338E042C4420BB3F04B2FEC5734175F4CB9FA853DAF52B7E8`.
+- Provider smoke passed direct completion, tool calling, and reflection JSON; observed durations were about `0.32s`, `0.49s`, and `1.84s`.
+- Real Qwen model acceptance passed `2/2` cases with `10/10` score and no provider errors in three consecutive runs under the 20-GPU-layer profile; each run took about `5.0-5.2s` and model identity was `Qwen3.5-9B-Q4_K_M`.
+- ClawOS `POST /api/workbench/local-qwen-smoke` returned `LOCAL_OK` and persisted a passing `workbench_qwen_smoke` history record.
+- Under the 20-GPU-layer configuration, the 9B server retained roughly `1.8-2.3 GB` free VRAM, generated about `23.5 tok/s`, and passed `8/8` requests at concurrency 8 through the single queued slot.
+- Combined frontend/provider/model-acceptance/retrieval regression: `74 tests OK` after the final acceptance-prompt regression was added.
 - Both modified PowerShell scripts pass parser validation.
 
 Known notes:
-- The Qwen GGUF is still not installed. Hugging Face xet repeatedly hit CDN TLS `unexpected EOF` failures and eventually stalled on one connection; the task-owned download processes were stopped cleanly.
-- Interrupted xet `.incomplete` files remain under the ignored Hugging Face local download cache, but there is no verified 5,680,522,464-byte target GGUF and no SHA256 acceptance evidence yet.
-- Real local Qwen server smoke and model acceptance therefore remain pending.
-- Embedding and reranker model directories are also still absent locally.
+- Qwen3.5-9B is now locally usable and verified. The configured primary ClawOS provider remains DeepSeek until the user switches model mode; explicit local Qwen health/smoke paths are operational.
+- Embedding and reranker weights are still incomplete. Embedding small repository files were downloaded, but the main safetensors download was stopped after xet stalled and the follow-up curl request was blocked by the environment usage limit.
+- `torch`, `sentence-transformers`, and `chromadb` are not installed in the current venv, so ClawOS falls back to the lightweight local vector store.
+- Interrupted Hugging Face `.incomplete` cache files remain untouched; no cache files were deleted.
 
 Recommended next step:
-- When network approval is available, rerun `clawos\scripts\download_qwen_model.ps1`, verify the manifest size/SHA256, start `start_qwen_llama_server.ps1`, then run `/v1/models`, `/api/workbench/local-qwen-smoke`, and `evaluate_model_acceptance.py --provider qwen --limit 2 --json`.
+- After network approval recovers, finish Qwen3-Embedding-0.6B and Qwen3-Reranker-0.6B, install/verify the local Chroma and sentence-transformers runtime, then run `vector_db_acceptance.py` and `paper_rag_acceptance.py` before enabling semantic embedding/reranking by default.

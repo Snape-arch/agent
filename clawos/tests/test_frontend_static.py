@@ -628,6 +628,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertNotIn("start_qwen_llama_server.ps1", launcher)
         self.assertIn("[switch]$Download", qwen_starter)
         self.assertIn("rerun this script with -Download", qwen_starter)
+        self.assertIn("[int]$Parallel = 1", qwen_starter)
+        self.assertIn("-np $Parallel", qwen_starter)
+        self.assertIn('[string]$GpuLayers = "20"', qwen_starter)
 
     def test_llama_cpp_downloader_ignores_cudart_only_archives(self):
         downloader = (REPO_ROOT / "clawos" / "scripts" / "download_llama_cpp.ps1").read_text(encoding="utf-8-sig")

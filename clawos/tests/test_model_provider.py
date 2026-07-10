@@ -37,6 +37,13 @@ class FakeHttpClient:
 
 
 class ModelProviderTests(unittest.TestCase):
+    def test_openai_provider_recognizes_only_loopback_urls(self):
+        from providers.openai_compatible import _is_loopback_url
+
+        self.assertTrue(_is_loopback_url("http://127.0.0.1:8000/v1"))
+        self.assertTrue(_is_loopback_url("http://localhost:8000/v1"))
+        self.assertFalse(_is_loopback_url("https://api.deepseek.com/v1"))
+
     def test_mock_provider_returns_model_result_envelope(self):
         from providers import create_model_provider
 
