@@ -83,6 +83,22 @@ Invoke-RestMethod http://127.0.0.1:18790/health
 
 输出摘要包含通过数、失败数、通过率和关键失败原因。脚本使用临时数据库，避免污染 `clawos\.env`、本地数据库或仓库状态。
 
+比赛架构与 MTClaw 垂直路由验收：
+
+```powershell
+python clawos\scripts\run_mtclaw_vertical_acceptance.py
+python clawos\scripts\validate_competition_architecture.py
+```
+
+目标 MTT Linux 的严格比赛入口为：
+
+```bash
+cd clawos
+bash scripts/start_competition_stack.sh
+```
+
+该入口使用 `config.competition.json`，要求本地 Qwen 和 MTClaw 可用，关闭 MTClaw fallback，且不配置云模型 fallback。真实设备验收前不要把离线合同测试表述为 MTT 实机通过。
+
 ## 真实 API 手动验收
 
 不要默认运行真实 API。需要手动验收 DeepSeek 时，由用户先确认额度和 Key，再运行：

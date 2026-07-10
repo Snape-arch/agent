@@ -9,14 +9,29 @@ import stat
 from pathlib import Path
 
 try:
-    from .bridge_runner import SAFE_TOOLS
+    from .bridge_runner import NO_WRITE_ARGUMENTS, SAFE_ACTIONS, SAFE_TOOLS
 except ImportError:
-    from bridge_runner import SAFE_TOOLS
+    from bridge_runner import NO_WRITE_ARGUMENTS, SAFE_ACTIONS, SAFE_TOOLS
 
 
 ROOT = Path(__file__).resolve().parents[1]
 FUNCTIONS = ROOT / "functions.jsonl"
 RUNTIME = ROOT / "mtclaw_runtime"
+
+
+def _least_privilege_schema(function: dict) -> dict:
+    item = json.loads(json.dumps(function))
+    name = str(item.get("name") or "")
+    parameters = item.get("parameters") or {}
+    properties = parameters.get("properties") or {}
+    for key in NO_WRITE_ARGUMENTS.get(name, set()):
+        properties.pop(key, None)
+        parameters["required"] = [value for value in parameters.get("required", []) if value != key]
+    if name in SAFE_ACTIONS and "action" in properties:
+        properties["action"]["enum"] = sorted(SAFE_ACTIONS[name])
+    parameters["properties"] = properties
+    item["parameters"] = parameters
+    return item
 
 
 def prepare(runtime_dir: Path = RUNTIME) -> dict:
@@ -31,7 +46,7 @@ def prepare(runtime_dir: Path = RUNTIME) -> dict:
                 continue
             function = json.loads(line)
             if function.get("name") in SAFE_TOOLS:
-                selected.append(function)
+                selected.append(_least_privilege_schema(function))
 
     functions_path = runtime_dir / "functions.jsonl"
     functions_path.write_text(

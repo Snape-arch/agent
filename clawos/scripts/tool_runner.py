@@ -1137,6 +1137,33 @@ def tool_memory_history():
         print(json.dumps({"session_id": session_id, "messages": msgs, "count": len(msgs)}, ensure_ascii=False))
     except Exception as e:
         print(json.dumps({"error": str(e)})); sys.exit(1)
+
+
+def tool_knowledge_search():
+    """Search indexed local knowledge without mutating the knowledge base."""
+    query = str(input_data.get("query") or input_data.get("q") or "").strip()
+    category = str(input_data.get("category") or "").strip()
+    limit = max(1, min(int(input_data.get("limit", 8) or 8), 20))
+    if not query:
+        print(json.dumps({"error": "query required"})); sys.exit(1)
+    try:
+        from memoryos.memory_store import MemoryStore
+        store = MemoryStore(_memory_db_path())
+        rows = store.search_knowledge(query, category, limit)
+        compact = []
+        for row in rows:
+            item = dict(row)
+            item["content"] = str(item.get("content") or "")[:1200]
+            compact.append(item)
+        print(json.dumps({
+            "query": query,
+            "category": category,
+            "results": compact,
+            "count": len(compact),
+            "evidence_required": True,
+        }, ensure_ascii=False))
+    except Exception as e:
+        print(json.dumps({"error": str(e)})); sys.exit(1)
 REFLECTION_DIR = os.path.join(BASE_DIR, "reflection")
 if REFLECTION_DIR not in sys.path:
     sys.path.insert(0, REFLECTION_DIR)
@@ -1255,6 +1282,7 @@ handlers = {
     "memory_preference_get": tool_memory_preference_get,
     "memory_stats": tool_memory_stats,
     "memory_history": tool_memory_history,
+    "knowledge_search": tool_knowledge_search,
     "reflection_trigger": tool_reflection_trigger,
     "reflection_list": tool_reflection_list,
     "file_write": tool_file_write,

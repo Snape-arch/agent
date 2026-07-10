@@ -11,9 +11,9 @@
 
 ## 当前状态
 
-- 当前分支：`codex/fix-routing-memory-ui`
+- 当前分支：`master`
 - 远程仓库：`https://github.com/Snape-arch/agent.git`
-- 当前提交：本开发块提交信息为 `收束 ClawOS Windows MVP 验收闭环`；具体 hash 用 `git log -1 --oneline` 查看。
+- 当前提交：以 `git log -1 --oneline` 为准；2026-07-10 已完成比赛架构与 MTClaw 垂直路由闭环。
 - 当前定位：Windows 本地个人 Agent OS 原型的 MVP+ 收束版。
 - 当前目标：可交接、可启动、可验收、可演示。
 - Windows 双服务入口：根目录 `start_clawos.bat`
@@ -2192,3 +2192,29 @@ Known notes:
 
 Recommended next step:
 - Make the scored scenario policy control execution, add low-risk vertical wrappers to the MTClaw route, and freeze five trace-backed Stage 1 demo cases before expanding UI breadth.
+
+### 2026-07-10 - Competition architecture and MTClaw vertical-routing closure
+
+Completed:
+- Converted scenario routing from an informational API into an enforced execution policy that filters model-visible tools and denies policy-outside calls.
+- Expanded the generated MTClaw surface from 18 to 24 low-risk tools with six vertical entries: local knowledge search, meeting extraction, paper deep reading, exam practice, research read actions, and learning read actions.
+- Added three-layer least-privilege controls for vertical wrappers: schema removal, read-only action enums, and bridge-time denial.
+- Removed the streaming bypass: MTClaw handles the request first and ClawOS emits SSE with routing and trace metadata.
+- Added strict local competition configuration and launcher: MTClaw required, fallback disabled, no cloud model fallback.
+- Added vendored MTClaw provenance fingerprints, a five-case vertical routing benchmark, an offline architecture gate, regression tests, and a new enterprise-standard acceptance report.
+
+Verification:
+- `python -m unittest discover -s clawos\tests`: `229 tests OK`.
+- `python clawos\scripts\run_frozen_benchmarks.py`: `30/30 passed`, P95 `500.27 ms`.
+- `python clawos\scripts\evaluate_model_acceptance.py --provider mock`: `150/150`, rate `1.0`.
+- `python clawos\scripts\run_mtclaw_vertical_acceptance.py`: `5/5 passed`, contract P95 `0.062 ms`.
+- `python clawos\scripts\validate_competition_architecture.py`: architecture gate `95/100`, competition architecture ready `true`, enterprise release ready `false`.
+
+Known notes:
+- The original GitHub URL and upstream commit SHA for the vendored MTClaw snapshot were not retained; `MTClaw-框架代码/UPSTREAM.md` records local commits and SHA256 fingerprints but needs owner-supplied upstream identity.
+- MTT AIBOOK/Qwen performance, real model quality, real ASR, and paper claim-to-citation gold-set acceptance remain external blockers and were not simulated as passed.
+- Existing `clawos/skills/skill_registry.jsonl` worktree state and untracked `tmp/` files remain outside this development block.
+- FastAPI `on_event` and Chroma telemetry emit non-blocking deprecation warnings.
+
+Recommended next step:
+- Record the exact MTClaw upstream URL/SHA, then run `scripts/start_competition_stack.sh` and the same frozen/vertical gates on MTT AIBOOK with resource, latency, routing-accuracy, ASR, and paper-quality evidence.

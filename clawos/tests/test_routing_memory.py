@@ -320,7 +320,8 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertEqual(payload["scenario"], "research")
         self.assertIn("candidates", payload)
         self.assertGreater(payload["candidates"][0]["score"], 0)
-        self.assertEqual(payload["strategy"]["mode"], "scored_policy_routing")
+        self.assertEqual(payload["strategy"]["mode"], "enforced_scenario_routing")
+        self.assertIn("paper_deep_read", payload["strategy"]["allowed_tools"])
         self.assertEqual(payload["strategy"]["retrieval"], "citations_required")
 
     def test_document_ocr_citation_and_graph_endpoints(self):

@@ -2,6 +2,7 @@ const API = location.origin;
 let currentSession = "default";
 let busy = false;
 let lastToolCalls = [];
+let lastRoutingStrategy = null;
 let dailyLocalAcceptanceSummary = "";
 let allTools = [];
 let pendingConfirmation = null;
@@ -283,6 +284,7 @@ async function submitMessage(text, confirmedTools, attachments) {
     }
     const tools = data.clawos?.tool_calls || [];
     lastToolCalls = tools;
+    lastRoutingStrategy = data.clawos?.routing_strategy || null;
     lastTaskId = data.clawos?.task_id || lastTaskId;
     if (data.clawos?.needs_confirmation) {
       const toolNames = tools.map(t => t.name).filter(Boolean);
@@ -1838,7 +1840,11 @@ async function loadToolAccuracy() {
 function renderLastTools() {
   const target = $("lastTools");
   if (!target) return;
-  target.innerHTML = lastToolCalls.length ? lastToolCalls.map(tool => `<div class="item"><b>${esc(tool.name || "tool")}</b><span>${esc(JSON.stringify(tool.result || {}).slice(0, 180))}</span></div>`).join("") : '<div class="item"><span>暂无工具调用</span></div>';
+  const route = lastRoutingStrategy
+    ? `<div class="item"><b>场景路由 · ${esc(lastRoutingStrategy.scenario || "general")}</b><span>${esc(lastRoutingStrategy.mode || "")} · ${esc(lastRoutingStrategy.model_profile || "balanced")} · 允许 ${Number(lastRoutingStrategy.allowed_tools?.length || 0)} 个工具</span></div>`
+    : "";
+  const tools = lastToolCalls.length ? lastToolCalls.map(tool => `<div class="item"><b>${esc(tool.name || "tool")}</b><span>${esc(JSON.stringify(tool.result || {}).slice(0, 180))}</span></div>`).join("") : '<div class="item"><span>暂无工具调用</span></div>';
+  target.innerHTML = route + tools;
 }
 
 function renderLastReflection(reflection) {

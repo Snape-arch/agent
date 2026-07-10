@@ -39,13 +39,20 @@ ClawOS Web / API
 
 ## 低风险策略
 
-比赛版 MTClaw 仅暴露 18 个只读或低风险工具：
+比赛版 MTClaw 暴露 24 个只读或低风险工具：
 
 - 时间、计算、文本统计
 - 文件列表、读取、搜索、元数据
 - 代码统计、TODO 扫描、目录树
 - MemoryOS 只读查询
 - Reflection、Skill、工具列表查询
+- 本地知识库检索
+- 会议纪要结构化提取（禁止输出文件）
+- 论文精读与练习生成（禁止输出文件）
+- 科研 PDF 的搜索、引用校验、对比矩阵只读动作
+- 学习目标的查询、图谱和掌握度评估只读动作
+
+垂直工具同时经过三层约束：生成给 MTClaw 的 JSON Schema 删除写参数、`action` 枚举缩减为只读动作、bridge 执行前再次拒绝越权参数。ClawOS 自身的场景路由还会根据 research/learning/office/project/web/general 策略缩减模型可见工具；模型即使返回策略外工具也会被拒绝。
 
 以下能力不通过 MTClaw 自动执行：
 
@@ -56,6 +63,29 @@ ClawOS Web / API
 - 项目创建及其他写操作
 
 这些工具继续使用 ClawOS 原有确认机制，避免误操作。
+
+## 比赛严格配置
+
+`config.competition.json` 是本地 Qwen 比赛配置：
+
+- MTClaw 默认启用。
+- `fallback_on_error=false`，成功请求可以证明经过 MTClaw。
+- 不配置云模型 fallback。
+- 默认启用本地 embedding 和 reranker 配置位。
+- `stream=true` 也先经过 MTClaw，再由 ClawOS 转换为 SSE，不再绕过 Function Router。
+
+启动：
+
+```bash
+bash scripts/start_competition_stack.sh
+```
+
+离线架构验收：
+
+```bash
+python scripts/run_mtclaw_vertical_acceptance.py
+python scripts/validate_competition_architecture.py
+```
 
 ## 启动
 
@@ -136,6 +166,14 @@ MTClaw；现场演示可设置为 `true`，降低环境意外导致的失败风�
 4. ClawOS 主聊天接口实际选择 MTClaw Adapter。
 5. Trace 被持久化到 ClawOS 数据库。
 6. 生成运行目录只包含安全工具。
+
+`tests/test_competition_architecture.py` 进一步验证：
+
+1. 场景策略实际缩减模型工具面。
+2. 垂直工具写参数和变更动作被 bridge 拒绝。
+3. 生成的 MTClaw schema 遵循最小权限。
+4. 流式请求仍经过 MTClaw。
+5. 五条垂直路由合同全部闭环。
 
 ## 本地双服务验收结果
 
