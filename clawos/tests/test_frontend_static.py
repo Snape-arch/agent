@@ -453,6 +453,44 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertIn(token, clean_css)
 
+    def test_console_has_readable_history_and_expandable_knowledge_graph(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.clean.css")
+
+        for token in (
+            "knowledgeGraphExplorer",
+            "graphExplorerStage",
+            "graphExplorerNodes",
+            "graphExplorerEdges",
+            "graphInspector",
+            "graphTypeFilter",
+            "graphRelationFilter",
+            "graphNodeQuery",
+            "openKnowledgeGraphExplorer",
+        ):
+            self.assertIn(token, html)
+        for token in (
+            "lastKnowledgeGraph",
+            "renderKnowledgeGraphExplorer",
+            "selectKnowledgeGraphNode",
+            "graphNodeColor",
+            "visibleEdges",
+            "graph-explorer-open",
+        ):
+            self.assertIn(token, js)
+        for token in (
+            "Championship readability and density pass",
+            "Recent history is navigation",
+            "Knowledge graph explorer",
+            ".aether-console .graph-explorer-shell",
+            ".aether-console .graph-node",
+            ".aether-console .graph-inspector",
+            ".aether-console .session-result",
+            "font-size:13px",
+        ):
+            self.assertIn(token, css)
+
     def test_console_chat_uses_clean_chatgpt_like_message_layout(self):
         js = self.read_page("assets/console.js")
         css = self.read_page("assets/console.css")

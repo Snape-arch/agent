@@ -29,6 +29,7 @@ let skillVersions = [];
 let skillRuns = [];
 let skillReviews = [];
 let selectedSkillName = "";
+let lastKnowledgeGraph = { nodes: [], edges: [], category: "all" };
 
 const $ = id => document.getElementById(id);
 const VIEW_META = {
@@ -2389,6 +2390,7 @@ async function loadKnowledgeGraph() {
   try {
     const query = knowledgeCategory ? "?category=" + encodeURIComponent(knowledgeCategory) : "";
     const graph = await api("/api/knowledge/graph" + query);
+    lastKnowledgeGraph = { nodes: graph.nodes || [], edges: graph.edges || [], category: graph.category || "all" };
     const nodes = (graph.nodes || []).slice(0, 26);
     if (!nodes.length) return;
     const root = nodes.find(node => node.type === "category") || nodes[0];
@@ -2414,7 +2416,81 @@ async function loadKnowledgeGraph() {
     if ($("knowledgeMapHint")) $("knowledgeMapHint").textContent = summary;
     if ($("knowledgeGraphSummary")) $("knowledgeGraphSummary").textContent = summary;
     if ($("knowledgeMapHint")) $("knowledgeMapHint").textContent = `${graph.category || "all"} · ${nodes.length} 个真实节点 · ${graph.edges?.length || 0} 条语义关系`;
+    if ($("knowledgeGraphExplorer")?.classList.contains("on")) renderKnowledgeGraphExplorer();
   } catch (err) {}
+}
+
+function openKnowledgeGraphExplorer() {
+  const explorer = $("knowledgeGraphExplorer");
+  if (!explorer) return;
+  explorer.classList.add("on");
+  explorer.setAttribute("aria-hidden", "false");
+  document.body.classList.add("graph-explorer-open");
+  renderKnowledgeGraphExplorer();
+  if (!lastKnowledgeGraph.nodes.length) loadKnowledgeGraph();
+}
+
+function closeKnowledgeGraphExplorer() {
+  const explorer = $("knowledgeGraphExplorer");
+  if (!explorer) return;
+  explorer.classList.remove("on");
+  explorer.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("graph-explorer-open");
+}
+
+function graphNodeColor(type) {
+  return ({ category: "#315cf5", knowledge: "#17865d", document: "#e87524", tag: "#7659d6" }[type] || "#697386");
+}
+
+function renderKnowledgeGraphExplorer() {
+  const stage = $("graphExplorerNodes");
+  const edgesTarget = $("graphExplorerEdges");
+  if (!stage || !edgesTarget) return;
+  const type = $("graphTypeFilter")?.value || "";
+  const relation = $("graphRelationFilter")?.value || "";
+  const query = ($("graphNodeQuery")?.value || "").trim().toLowerCase();
+  const sourceNodes = lastKnowledgeGraph.nodes || [];
+  const visibleNodes = sourceNodes.filter(node => (!type || node.type === type) && (!query || JSON.stringify(node).toLowerCase().includes(query))).slice(0, 56);
+  const visibleIds = new Set(visibleNodes.map(node => String(node.id)));
+  const visibleEdges = (lastKnowledgeGraph.edges || []).filter(edge => visibleIds.has(String(edge.source)) && visibleIds.has(String(edge.target)) && (!relation || edge.type === relation)).slice(0, 140);
+  const centerX = 48;
+  const centerY = 48;
+  const positions = {};
+  visibleNodes.forEach((node, index) => {
+    const band = Math.floor(index / 14);
+    const bandStart = band * 14;
+    const bandSize = Math.min(14, visibleNodes.length - bandStart);
+    const angle = ((index - bandStart) / Math.max(bandSize, 1)) * Math.PI * 2 - Math.PI / 2;
+    const radiusX = 18 + band * 13;
+    const radiusY = 15 + band * 11;
+    positions[String(node.id)] = { left: centerX + Math.cos(angle) * radiusX, top: centerY + Math.sin(angle) * radiusY };
+  });
+  const edgeColor = edgeType => ({ contains: "#aeb7c5", cites: "#6f8cff", tagged: "#64b990", links_to: "#9a84e5", backlink: "#e36c78", sourced_from: "#e7a269", mentions: "#61aec2" }[edgeType] || "#c2c8d0");
+  edgesTarget.innerHTML = visibleEdges.map(edge => {
+    const from = positions[String(edge.source)];
+    const to = positions[String(edge.target)];
+    if (!from || !to) return "";
+    return `<line x1="${from.left}%" y1="${from.top}%" x2="${to.left}%" y2="${to.top}%" stroke="${edgeColor(edge.type)}" stroke-width="1.35" opacity=".72"><title>${esc(edge.type || "relation")}</title></line>`;
+  }).join("");
+  stage.innerHTML = visibleNodes.map(node => {
+    const pos = positions[String(node.id)] || { left: centerX, top: centerY };
+    const label = String(node.label || node.title || node.id || "node").slice(0, 24);
+    const nodeId = encodeURIComponent(String(node.id || ""));
+    return `<button class="graph-node graph-node-${esc(node.type || "other")}" style="left:${pos.left}%;top:${pos.top}%;--node-color:${graphNodeColor(node.type)}" onclick="selectKnowledgeGraphNode('${nodeId}')" title="${esc(node.label || node.id)}"><span></span><b>${esc(label)}</b><small>${esc(node.type || "node")}</small></button>`;
+  }).join("") || '<div class="graph-empty">没有匹配的节点，调整筛选条件后重试。</div>';
+  if ($("graphExplorerStats")) $("graphExplorerStats").textContent = `${visibleNodes.length} 节点 · ${visibleEdges.length} 关系`;
+  if ($("graphExplorerSummary")) $("graphExplorerSummary").textContent = `${knowledgeCategoryLabel(knowledgeCategory)} · ${sourceNodes.length} 个节点 · ${(lastKnowledgeGraph.edges || []).length} 条关系`;
+}
+
+function selectKnowledgeGraphNode(encodedId) {
+  const id = decodeURIComponent(encodedId || "");
+  const node = (lastKnowledgeGraph.nodes || []).find(item => String(item.id) === id);
+  const inspector = $("graphInspector");
+  if (!node || !inspector) return;
+  const connected = (lastKnowledgeGraph.edges || []).filter(edge => String(edge.source) === id || String(edge.target) === id);
+  const relationCounts = connected.reduce((acc, edge) => { acc[edge.type || "relation"] = (acc[edge.type || "relation"] || 0) + 1; return acc; }, {});
+  inspector.innerHTML = `<span class="eyebrow">NODE INSPECTOR</span><div class="graph-inspector-type" style="--node-color:${graphNodeColor(node.type)}">${esc(node.type || "node")}</div><h3>${esc(node.label || node.title || node.id)}</h3><p>${esc(node.summary || node.source || "该节点来自本地知识库，可沿关系继续探索。")}</p><dl><div><dt>权重</dt><dd>${esc(node.weight || 1)}</dd></div><div><dt>相邻关系</dt><dd>${connected.length}</dd></div><div><dt>关系类型</dt><dd>${esc(Object.entries(relationCounts).map(([key, value]) => `${key} ${value}`).join(" · ") || "暂无")}</dd></div></dl><button class="primary" type="button" onclick="closeKnowledgeGraphExplorer()">返回知识库</button>`;
+  document.querySelectorAll(".graph-node").forEach(button => button.classList.toggle("on", decodeURIComponent((button.getAttribute("onclick") || "").split("'")[1] || "") === id));
 }
 
 async function loadOcrQueue() {

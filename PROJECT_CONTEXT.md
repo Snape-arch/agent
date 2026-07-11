@@ -2743,3 +2743,27 @@ Known notes:
 
 Recommended next step:
 - Resume the reranker with `download_qwen_model.ps1 -ManifestPath clawos\models\qwen3_reranker_0_6b.json -Proxy http://127.0.0.1:7890`, verify its manifest hash, then run `vector_db_acceptance.py --json` and `paper_rag_acceptance.py --json` before enabling Qwen3 semantic retrieval by default.
+
+### 2026-07-11 - Console readability and knowledge explorer closure
+
+Completed:
+- Replaced the remaining history conversation cards with compact, high-contrast navigation rows and strengthened the shared Chinese/English typography hierarchy across controls, tables and metadata.
+- Added a standalone full-screen knowledge relationship explorer with node-type, relation and text filters, responsive relationship rendering, counts, legend and a contextual node inspector.
+- Kept Home, Product and AI Academy navigation available while preserving the single-rail, content-first console structure established by the accepted product references.
+- Added static regression contracts for readable history styling and the knowledge explorer structure and behavior.
+
+Visual verification:
+- Loaded the live console in the in-app browser at 1440 x 1024 and inspected workbench, history/search, knowledge library and expanded graph states.
+- Confirmed the legacy dark/diagonal overlays and composer obstruction are absent; history rows and knowledge controls remain readable without overlap.
+- Confirmed the full-screen graph fits the viewport and provides filters, canvas, legend and inspector as a distinct analysis workspace.
+- Browser console was empty during the workbench validation pass. Local screenshots are retained under `tmp/ui-qa/` and intentionally excluded from Git.
+
+Verification:
+- Bundled Node syntax check for `clawos/static/assets/console.js`: passed.
+- Frontend static suite: `37 tests OK`.
+- Full regression suite: `259 tests OK (skipped=1)`.
+- Bundled Node syntax check and `git diff --check`: passed.
+
+Known notes:
+- Knowledge graph coordinates are deterministic and client-rendered; very large production graphs should later add semantic clustering and canvas/WebGL virtualization.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.

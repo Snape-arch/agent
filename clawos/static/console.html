@@ -271,7 +271,7 @@
           <section class="knowledge-graph-card">
             <b>图谱与节点</b>
             <span id="knowledgeGraphSummary">等待加载真实节点和语义关系。</span>
-            <button class="secondary" type="button" onclick="loadKnowledgeGraph()">刷新图谱</button>
+            <div class="knowledge-graph-actions"><button class="secondary" type="button" onclick="loadKnowledgeGraph()">刷新图谱</button><button class="primary" type="button" onclick="openKnowledgeGraphExplorer()">展开图谱</button></div>
           </section>
           <section class="knowledge-admin-entry">
             <span>后台管理</span>
@@ -350,7 +350,7 @@
             <div class="action-row"><button class="primary" onclick="saveKnowledge()">保存到知识库</button><button class="secondary" onclick="clearKnowledgeEditor()">清空草稿</button><span class="hint" id="knowledgeStatus">等待导入或编辑</span></div>
           </section>
           <section class="knowledge-map">
-            <div class="map-title"><b>知识图谱</b><span id="knowledgeMapHint">按分类、引用和语义关系动态排列</span></div>
+            <div class="map-title"><div><b>知识图谱</b><span id="knowledgeMapHint">按分类、引用和语义关系动态排列</span></div><button class="secondary" type="button" onclick="openKnowledgeGraphExplorer()">全屏探索</button></div>
             <svg id="knowledgeEdges" aria-hidden="true"></svg>
             <div class="map-nodes" id="knowledgeMap"></div>
           </section>
@@ -385,6 +385,30 @@
     <section class="view" id="view-security"><div class="panel-view glass-panel security-workspace"><div class="library-head"><div><h2>权限中心</h2><p class="hint">统一查看联网、Shell、文件写入、Git、外部 API 的风险分级、审批状态和审计记录。</p></div><button class="secondary" onclick="loadSecurityCenter()">刷新</button></div><div class="security-grid"><div class="section-block"><h2>策略矩阵</h2><table class="table" id="securityPolicyTable"></table></div><div class="section-block"><h2>允许边界</h2><table class="table" id="securityBoundaryTable"></table></div></div><div class="section-block"><h2>细粒度授权</h2><div class="permission-editor"><select id="securityGrantTool"><option value="web_fetch">web_fetch</option><option value="web_search">web_search</option><option value="file_write">file_write</option><option value="shell_exec">shell_exec</option><option value="git_workspace">git_workspace</option><option value="*">全部工具</option></select><select id="securityGrantDecision"><option value="allow">允许</option><option value="confirm">确认</option><option value="deny">拒绝</option></select><select id="securityGrantScopeType"><option value="tool">工具</option><option value="url_host">URL 域名</option><option value="path_prefix">路径前缀</option><option value="command">命令前缀</option></select><input id="securityGrantScopeValue" placeholder="example.com / C:\Users\34712\Desktop / git status"><input id="securityGrantMinutes" type="number" min="1" placeholder="有效分钟"><input id="securityGrantReason" placeholder="授权原因"><button class="primary" onclick="saveSecurityGrant()">保存授权</button></div><table class="table" id="securityGrantTable"></table></div><div class="section-block"><h2>审计事件</h2><table class="table" id="securityAuditTable"></table></div></div></section>
     <section class="view" id="view-ops"><div class="panel-view glass-panel ops-workspace"><div class="library-head"><div><h2>Ops Center</h2><p class="hint">备份、恢复、配置检查、后台 worker 和真实长任务。</p></div><button class="secondary" onclick="loadOps()">刷新</button></div><div class="ops-score" id="opsReadinessScore">Readiness: --</div><div class="ops-grid"><div class="section-block"><h2>Readiness</h2><table class="table" id="opsReadinessTable"></table></div><div class="section-block"><h2>配置检查</h2><div class="action-row"><button class="primary" onclick="runConfigCheck()">运行检查</button><span class="hint" id="opsConfigStatus"></span></div><table class="table" id="opsConfigTable"></table></div></div><div class="ops-grid"><div class="section-block"><h2>备份 / 恢复</h2><div class="ops-form"><input id="opsBackupDir" placeholder="output/backups"><input id="opsBackupLabel" placeholder="label"><button class="primary icon-text" onclick="createBackup()"><span class="ui-ico">↓</span>创建备份</button><input id="opsRestorePath" class="wide" placeholder="backup file path"><label><input id="opsRestoreConfirm" type="checkbox"> 确认恢复</label><button class="secondary icon-text" onclick="restoreBackup()"><span class="ui-ico">↺</span>恢复</button></div><pre class="result-box" id="opsBackupResult"></pre></div><div class="section-block"><h2>Worker</h2><div class="action-row"><button class="primary" onclick="startWorker()">启动</button><button class="secondary" onclick="stopWorker()">停止</button><button class="secondary" onclick="tickWorker()">执行一次</button><span class="hint" id="opsWorkerStatus"></span></div><table class="table" id="opsWorkerTable"></table></div></div><div class="section-block"><h2>业务长任务</h2><div class="job-grid"><div><b>后台生成报告</b><select id="opsReportDocumentSelect"></select><select id="opsReportStyle"><option value="journal">Journal</option><option value="learning_notes">Learning notes</option><option value="business_brief">Business brief</option><option value="compact">Compact</option></select><input id="opsReportOutputDir" placeholder="output/reports"><button class="primary" onclick="queueReportJob()">排队报告任务</button></div><div><b>OCR 队列</b><select id="opsOcrCategory"><option value="">全部库</option><option value="research">Research</option><option value="learning">Learning</option><option value="project">Project</option><option value="writing">Writing</option></select><input id="opsOcrLimit" type="number" min="1" max="50" value="12"><button class="primary" onclick="queueOcrJob()">排队 OCR 任务</button></div><div><b>批量文档解析</b><textarea id="opsBatchFiles" placeholder="每行一个本地文件路径"></textarea><select id="opsBatchCategory"><option value="research">Research</option><option value="learning">Learning</option><option value="project">Project</option><option value="domain">Domain</option></select><button class="primary" onclick="queueBatchIngestJob()">排队解析任务</button></div></div><pre class="result-box" id="opsJobResult"></pre></div></div></section>
   </main>
+
+  <div class="graph-explorer" id="knowledgeGraphExplorer" aria-hidden="true">
+    <div class="graph-explorer-backdrop" onclick="closeKnowledgeGraphExplorer()"></div>
+    <section class="graph-explorer-shell" role="dialog" aria-modal="true" aria-labelledby="graphExplorerTitle">
+      <header class="graph-explorer-head">
+        <div><span class="eyebrow">KNOWLEDGE EXPLORER</span><h2 id="graphExplorerTitle">知识关系图谱</h2><p id="graphExplorerSummary">加载节点、引用与语义关系</p></div>
+        <div class="graph-explorer-actions"><button class="secondary" type="button" onclick="loadKnowledgeGraph()">刷新数据</button><button class="icon-button" type="button" onclick="closeKnowledgeGraphExplorer()" aria-label="关闭知识图谱">×</button></div>
+      </header>
+      <div class="graph-explorer-toolbar">
+        <label>节点类型<select id="graphTypeFilter" onchange="renderKnowledgeGraphExplorer()"><option value="">全部类型</option><option value="category">分类</option><option value="knowledge">知识</option><option value="document">文档</option><option value="tag">标签</option></select></label>
+        <label>关系<select id="graphRelationFilter" onchange="renderKnowledgeGraphExplorer()"><option value="">全部关系</option><option value="contains">包含</option><option value="cites">引用</option><option value="links_to">链接</option><option value="tagged">标签</option><option value="mentions">提及</option></select></label>
+        <label class="graph-search">检索节点<input id="graphNodeQuery" placeholder="输入标题、标签或来源" oninput="renderKnowledgeGraphExplorer()"></label>
+        <span id="graphExplorerStats">0 节点 · 0 关系</span>
+      </div>
+      <div class="graph-explorer-body">
+        <div class="graph-stage" id="graphExplorerStage">
+          <svg id="graphExplorerEdges" aria-hidden="true"></svg>
+          <div id="graphExplorerNodes" class="graph-explorer-nodes"></div>
+          <div class="graph-legend"><span><i class="category"></i>分类</span><span><i class="knowledge"></i>知识</span><span><i class="document"></i>文档</span><span><i class="tag"></i>标签</span></div>
+        </div>
+        <aside class="graph-inspector" id="graphInspector"><span class="eyebrow">NODE INSPECTOR</span><h3>选择一个节点</h3><p>查看节点权重、类型、相邻关系与来源，并可回到知识库继续编辑。</p></aside>
+      </div>
+    </section>
+  </div>
 
   <div class="command-drawer" id="commandDrawer" aria-hidden="true">
     <div class="command-backdrop" onclick="closeCommandDrawer()"></div>
