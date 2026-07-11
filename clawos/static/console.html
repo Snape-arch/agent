@@ -17,6 +17,9 @@
       </div>
       <button class="side-collapse" type="button" aria-label="收起侧栏" onclick="toggleSidebar()">‹</button>
     </div>
+    <nav class="side-site-links" aria-label="ClawOS 产品页面">
+      <a href="/">首页</a><a href="/product">产品</a><a href="/academy">Academy</a>
+    </nav>
 
     <div class="side-search">
       <input id="consoleSearch" placeholder="搜索会话、知识或任务">
@@ -50,6 +53,11 @@
       <h1 id="viewTitle">今日工作台</h1>
       <p id="viewSub">任务、进度、交付与审批集中在一个工作面</p>
     </div>
+    <nav class="console-site-links" aria-label="ClawOS 产品页面">
+      <a href="/">首页</a>
+      <a href="/product">产品</a>
+      <a href="/academy">AI Academy</a>
+    </nav>
     <div class="model-mode-panel" id="modelModePanel">
       <b id="modelModeLabel">工作模式检测中</b>
       <span id="modelModeDetail">安全执行 · 全程可审计</span>
@@ -139,6 +147,23 @@
               </div>
             </div>
           </div>
+          <div class="composer">
+            <div class="confirmbar" id="confirmBar">
+              <span id="confirmText">等待确认</span>
+              <button class="secondary" onclick="cancelPending()">取消</button>
+              <button class="primary" onclick="confirmPending()">确认执行</button>
+            </div>
+            <div class="attachment-tray" id="attachmentTray" aria-live="polite"></div>
+            <div class="compose-inner">
+              <button class="attach-button" onclick="chooseLocalFile()" title="添加本地文件" aria-label="添加本地文件">+</button>
+              <textarea id="prompt" placeholder="描述目标、交付物或需要处理的文件…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+              <label class="web-search-toggle" title="优先调用联网搜索并保留来源链接"><input id="webSearchToggle" type="checkbox"><span>联网搜索</span></label>
+              <button class="primary" id="send" onclick="sendMessage()">发送</button>
+              <button class="secondary" id="stop" onclick="stopGeneration()" disabled>停止</button>
+              <input id="filePicker" type="file" multiple hidden onchange="handlePickedFiles(event)">
+            </div>
+            <span class="composer-help">添加文件后，Agent 会作为上下文自动读取；外部动作仍遵循当前审批级别。</span>
+          </div>
         </section>
 
         <div class="workbench-quick" aria-label="常用任务">
@@ -203,22 +228,6 @@
           <div class="agent-row"><span class="agent-mark">QA</span><b>质量代理</b><span>等待演示文稿视觉复核</span><em class="waiting">等待中</em></div>
         </section>
 
-        <div class="composer">
-          <div class="confirmbar" id="confirmBar">
-            <span id="confirmText">等待确认</span>
-            <button class="secondary" onclick="cancelPending()">取消</button>
-            <button class="primary" onclick="confirmPending()">确认执行</button>
-          </div>
-          <div class="attachment-tray" id="attachmentTray" aria-live="polite"></div>
-          <div class="compose-inner">
-            <button class="attach-button" onclick="chooseLocalFile()" title="添加本地文件">+</button>
-            <textarea id="prompt" placeholder="有问题，尽管问。点 + 添加文件，Agent 会作为上下文自动读取。" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
-            <label class="web-search-toggle" title="让本次回答优先调用联网搜索，并在结果里保留网页链接"><input id="webSearchToggle" type="checkbox"><span>联网搜索</span></label>
-            <button class="primary" id="send" onclick="sendMessage()">发送</button>
-            <button class="secondary" id="stop" onclick="stopGeneration()" disabled>停止</button>
-            <input id="filePicker" type="file" multiple hidden onchange="handlePickedFiles(event)">
-          </div>
-        </div>
       </div>
     </section>
 

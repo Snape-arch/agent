@@ -6,6 +6,13 @@
 - state: default workbench (`#chat`)
 - implementation screenshot: unavailable
 
+## 2026-07-11 screenshot remediation
+
+- user evidence: `C:\Users\34712\AppData\Local\Temp\codex-clipboard-a58f4872-4796-4f11-b3e0-65e923893710.png`
+- observed P1 issues: legacy dark workspace overlay remained behind the light workbench; sticky composer covered the delivery table; decorative traffic lights and old button highlights leaked into the new theme; global product navigation had been removed.
+- fixes: removed legacy workspace pseudo-layers and dark backgrounds from the active shell, disabled inherited highlight pseudo-elements, moved the composer into the intent panel, restored desktop and narrow-screen links to Home/Product/Academy, and added regression contracts for unique composer IDs and overlay removal.
+- post-fix browser screenshot: still unavailable through the in-app browser loopback surface, so the final result remains honestly blocked pending one user-visible reload/capture.
+
 **Findings**
 
 - [P1] Browser-rendered comparison unavailable
@@ -27,6 +34,7 @@
 
 - Initial implementation review found duplicated navigation, fake task progress, an incorrectly closed task-list container, global API refresh on every navigation, and glass/HUD styling.
 - Fixes applied: one primary rail, dynamic `/api/tasks` rendering, corrected DOM structure, per-view refresh, persistent accessible autonomy control, restrained workbench tokens, backstage drawer consolidation.
+- User screenshot then exposed remaining legacy overlay and composer stacking; these were fixed structurally rather than by adding another theme.
 - Post-fix visual evidence: blocked by browser loopback isolation; static frontend tests and JavaScript syntax checks pass.
 
 **Implementation Checklist**

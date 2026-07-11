@@ -1,5 +1,30 @@
 # Project Context
 
+## 2026-07-11 - 控制台视觉冲突与遮挡整改
+
+Completed:
+
+- 根据用户实际截图定位并清除旧深色 workspace 伪层、按钮高光、红黄绿窗口装饰与新明亮工作台的样式串层。
+- 将 composer 从页面底部 sticky 浮层移动到任务意图面板内部，消除对交付表格的遮挡；输入、附件、联网搜索、发送和停止能力保持不变。
+- 顶部恢复首页、产品与 AI Academy 跳转；窄屏在侧栏提供同等入口。
+- 增加截图故障回归契约：全页只有一个 composer/prompt，工作台无旧伪层，输入区为普通文档流，产品链接完整。
+
+Verification:
+
+- bundled Node `--check clawos/static/assets/console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: 36 tests OK.
+- `cd clawos && python -m unittest discover -s tests`: 258 tests OK, 1 skipped.
+- `git diff --check`: passed.
+
+Known notes:
+
+- 用户截图作为修复前浏览器证据；应用内浏览器仍无法访问宿主机 loopback，修复后截图需要用户刷新页面补充，因此 `design-qa.md` 继续如实标为 blocked。
+- `clawos/skills/skill_registry.jsonl`、`clawos/output/` 与 `tmp/` 仍不纳入提交。
+
+Recommended next step:
+
+- 用户强制刷新 `/console` 后补一张同视口截图；若无残留遮挡，将 `design-qa.md` 更新为 passed。
+
 ## 2026-07-11 - 控制台冠军向任务工作台重构
 
 Completed:

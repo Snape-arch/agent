@@ -416,6 +416,30 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertIn(token, css)
 
+    def test_console_remediation_removes_legacy_overlay_and_restores_site_navigation(self):
+        html = self.read_page("console.html")
+        css = self.read_page("assets/console.css")
+
+        for href in ('href="/"', 'href="/product"', 'href="/academy"'):
+            self.assertIn(href, html)
+        self.assertIn("console-site-links", html)
+        self.assertIn("side-site-links", html)
+        intent = html.split('<section class="intent-panel"', 1)[1].split("</section>", 1)[0]
+        self.assertIn('class="composer"', intent)
+        self.assertEqual(html.count('id="prompt"'), 1)
+        self.assertEqual(html.count('class="composer"'), 1)
+        for token in (
+            "Screenshot remediation",
+            ".aether-console .workbench-shell:before",
+            "background-image:none!important",
+            ".aether-console .intent-panel .composer",
+            "position:static",
+            ".aether-console .intent-panel .compose-inner",
+            ".aether-console .side:before",
+            "content:none!important",
+        ):
+            self.assertIn(token, css)
+
     def test_console_chat_uses_clean_chatgpt_like_message_layout(self):
         js = self.read_page("assets/console.js")
         css = self.read_page("assets/console.css")
