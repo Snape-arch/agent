@@ -1,0 +1,57 @@
+{
+  "schema": "clawos.coding-office-subagent-acceptance.v1",
+  "live_model": false,
+  "ok": true,
+  "checks": {
+    "coding_retry_test_review_checkpoint": true,
+    "office_six_format_reopen_gate": true,
+    "autonomous_isolated_dag_checkpoint": true
+  },
+  "coding": {
+    "status": "passed",
+    "rounds": 2,
+    "restored_on_failure": false,
+    "human_review_required": true
+  },
+  "office": {
+    "quality_gate": "pass",
+    "formats": [
+      "docx",
+      "eml",
+      "ics",
+      "md",
+      "pdf",
+      "xlsx"
+    ],
+    "artifact_count": 6
+  },
+  "subagents": {
+    "passed": true,
+    "execution_completed": true,
+    "status": "passed",
+    "execution_mode": "model_driven_autonomous",
+    "roles_completed": 2,
+    "providers": [
+      "deterministic"
+    ],
+    "models": [
+      "acceptance-fixture"
+    ],
+    "model_calls": 2,
+    "checkpoint_exists": true,
+    "average_confidence": 0.93,
+    "arbitration": {
+      "status": "passed",
+      "hard_gate_failures": [],
+      "human_gate_reasons": [],
+      "average_confidence": 0.93,
+      "rule": "hard safety/test/evidence gates override judge or majority"
+    },
+    "role_summaries": {
+      "planner": "Evidence reviewed; bounded workflow is ready for human release approval.",
+      "reviewer": "Evidence reviewed; bounded workflow is ready for human release approval."
+    },
+    "duration_ms": 3.2
+  },
+  "duration_ms": 1607.99
+}

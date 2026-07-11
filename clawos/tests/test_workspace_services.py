@@ -438,6 +438,31 @@ class WorkspaceServicesTests(unittest.TestCase):
         self.assertEqual(rolled["status"], "rolled_back")
         self.assertIn("Revert", log)
 
+    def test_git_change_request_rejects_head_and_diff_drift(self):
+        with tempfile.TemporaryDirectory() as td:
+            _, services = self._services(td)
+            repo = Path(td) / "repo"
+            repo.mkdir()
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.com"], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-m", "Initial"], check=True, capture_output=True)
+            (repo / "README.md").write_text("# Demo\nApproved content\n", encoding="utf-8")
+            request = services.create_git_change_request(repo, "Update README", ["README.md"])
+            (repo / "README.md").write_text("# Demo\nUnreviewed content\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "diff changed"):
+                services.approve_git_change_request(request["id"], "reviewer")
+
+            (repo / "README.md").write_text("# Demo\nSecond request\n", encoding="utf-8")
+            request = services.create_git_change_request(repo, "Second update", ["README.md"])
+            (repo / "other.txt").write_text("other", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "other.txt"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-m", "Move head"], check=True, capture_output=True)
+            with self.assertRaisesRegex(ValueError, "HEAD changed"):
+                services.approve_git_change_request(request["id"], "reviewer")
+
     def test_template_center_instantiates_atomically_and_blocks_traversal(self):
         with tempfile.TemporaryDirectory() as td:
             _, services = self._services(td)

@@ -1,0 +1,45 @@
+{
+  "schema": "clawos.coding-office-subagent-acceptance.v1",
+  "live_model": true,
+  "ok": false,
+  "checks": {
+    "coding_retry_test_review_checkpoint": true,
+    "office_six_format_reopen_gate": true,
+    "autonomous_isolated_dag_checkpoint": false
+  },
+  "coding": {
+    "status": "passed",
+    "rounds": 2,
+    "restored_on_failure": false,
+    "human_review_required": true
+  },
+  "office": {
+    "quality_gate": "pass",
+    "formats": [
+      "docx",
+      "eml",
+      "ics",
+      "md",
+      "pdf",
+      "xlsx"
+    ],
+    "artifact_count": 6
+  },
+  "subagents": {
+    "passed": false,
+    "status": "failed",
+    "execution_mode": "model_driven_autonomous",
+    "roles_completed": 2,
+    "providers": [
+      "qwen"
+    ],
+    "models": [
+      "Qwen3.5-9B-Q4_K_M"
+    ],
+    "model_calls": 2,
+    "checkpoint_exists": true,
+    "average_confidence": 0.95,
+    "duration_ms": 90435.67
+  },
+  "duration_ms": 92109.96
+}

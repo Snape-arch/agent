@@ -1,6 +1,7 @@
 """Scenario-oriented tools for meetings, research, learning, office, and projects."""
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -1809,6 +1810,63 @@ def office_artifact(payload):
     return {"artifact": result}
 
 
+def office_productivity(payload):
+    from memoryos.memory_store import MemoryStore
+    from services.office_productivity_service import OfficeProductivityService
+    from security.policy import ToolSecurityPolicy
+    store = MemoryStore(_memory_db_path())
+    service = OfficeProductivityService(store, list(ToolSecurityPolicy().allowed_roots))
+    action = payload.get("action", "inspect")
+    if action == "create":
+        return service.create(payload.get("output_path", ""), title=payload.get("title", ""), sections=payload.get("sections") or [], data=payload.get("data"), metadata=payload.get("metadata") or {}, confirmed=bool(payload.get("confirmed")))
+    if action == "edit":
+        return service.edit(payload.get("file_path", ""), payload.get("output_path", ""), replacements=payload.get("replacements") or {}, updates=payload.get("updates") or [], confirmed=bool(payload.get("confirmed")))
+    if action == "inspect":
+        return service.inspect(payload.get("file_path", ""))
+    if action == "meeting_package":
+        return service.meeting_package(payload.get("meeting") or {}, payload.get("output_dir", ""), recipients=payload.get("recipients") or [], confirmed=bool(payload.get("confirmed")))
+    if action == "email_draft":
+        return service.create_email_draft(payload.get("output_path", ""), subject=payload.get("subject", ""), body=payload.get("body", ""), to=payload.get("to") or [], cc=payload.get("cc") or [], attachments=payload.get("attachments") or [], confirmed=bool(payload.get("confirmed")))
+    if action == "calendar_draft":
+        return service.create_calendar_event(payload.get("output_path", ""), summary=payload.get("summary", ""), start=payload.get("start", ""), duration_minutes=payload.get("duration_minutes", 60), attendees=payload.get("attendees") or [], description=payload.get("description", ""), location=payload.get("location", ""), organizer=payload.get("organizer", ""), alarm_minutes=payload.get("alarm_minutes", 15), confirmed=bool(payload.get("confirmed")))
+    if action == "email_send":
+        return service.send_email(payload.get("file_path", ""), payload.get("connector") or {}, confirmed=bool(payload.get("confirmed")), idempotency_key=payload.get("idempotency_key", ""))
+    if action == "calendar_publish":
+        return service.publish_calendar(payload.get("file_path", ""), payload.get("connector") or {}, confirmed=bool(payload.get("confirmed")), idempotency_key=payload.get("idempotency_key", ""))
+    return {"error": f"unknown action: {action}"}
+
+
+def coding_workflow(payload):
+    from memoryos.memory_store import MemoryStore
+    from services.coding_workflow_service import CodingWorkflowService
+    service = CodingWorkflowService(MemoryStore(_memory_db_path()), Path(BASE_DIR).parent / "output" / "coding")
+    action = payload.get("action", "inspect")
+    if action == "inspect":
+        return service.inspect(payload.get("repo_path", ""), payload.get("query", ""), payload.get("limit", 80))
+    if action == "plan":
+        return service.plan(payload.get("repo_path", ""), payload.get("objective", ""), payload.get("changes") or [], payload.get("test_commands") or [])
+    if action == "execute":
+        return service.execute(payload.get("repo_path", ""), payload.get("objective", ""), payload.get("changes") or [], payload.get("test_commands") or [], confirmed=bool(payload.get("confirmed")), repair_rounds=payload.get("repair_rounds") or [], max_rounds=payload.get("max_rounds", 2), timeout_seconds=payload.get("timeout_seconds", 180), actor=payload.get("actor", "coding-agent"))
+    if action == "rollback":
+        return service.rollback(payload.get("repo_path", ""), payload.get("checkpoint", ""), confirmed=bool(payload.get("confirmed")), actor=payload.get("actor", "user"))
+    return {"error": f"unknown action: {action}"}
+
+
+def autonomous_subagents(payload):
+    from memoryos.memory_store import MemoryStore
+    from providers import create_model_provider
+    from services.autonomous_subagent_service import AutonomousSubagentService
+    provider = create_model_provider({
+        "provider": os.environ.get("MODEL_PROVIDER", "qwen"),
+        "base_url": os.environ.get("MODEL_BASE_URL", "http://127.0.0.1:8000/v1"),
+        "model": os.environ.get("MODEL_NAME", "Qwen3.5-9B-Q4_K_M"),
+        "api_key": os.environ.get("MODEL_API_KEY", ""),
+        "requires_api_key": os.environ.get("MODEL_REQUIRES_API_KEY", "false").lower() == "true",
+    })
+    service = AutonomousSubagentService(lambda _spec: provider, store=MemoryStore(_memory_db_path()), checkpoint_root=Path(BASE_DIR).parent / "output" / "subagents")
+    return asyncio.run(service.run(payload.get("objective", ""), payload.get("roles") or [], shared_evidence=payload.get("shared_evidence") or [], confirmed_side_effect_tools=payload.get("confirmed_tools") or [], run_budget=payload.get("budget") or {}, resume_checkpoint=payload.get("resume_checkpoint", ""), actor=payload.get("actor", "coordinator")))
+
+
 def git_workspace(payload):
     services = _workspace_services()
     action = payload.get("action", "snapshot")
@@ -1868,6 +1926,9 @@ HANDLERS = {
     "scholarly_download": scholarly_download,
     "learning_workspace": learning_workspace,
     "office_artifact": office_artifact,
+    "office_productivity": office_productivity,
+    "coding_workflow": coding_workflow,
+    "autonomous_subagents": autonomous_subagents,
     "git_workspace": git_workspace,
     "skill_governance": skill_governance,
     "competition_delivery_package": competition_delivery_package,

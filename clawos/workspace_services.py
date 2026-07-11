@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -1619,7 +1620,10 @@ class WorkspaceServices:
 
     def prepare_commit_plan(self, repo_path, message, files=None):
         snapshot = self.git_snapshot(repo_path)
-        selected = files or [line[3:] for line in snapshot["status"] if len(line) > 3]
+        repo = Path(snapshot["repo"])
+        selected = self._normalize_git_files(repo, files or [line[3:] for line in snapshot["status"] if len(line) > 3])
+        if not str(message or "").strip() or not selected:
+            raise ValueError("commit message and at least one changed file are required")
         return {
             "repo": snapshot["repo"],
             "branch": snapshot["branch"],
@@ -1637,8 +1641,8 @@ class WorkspaceServices:
         plan = self.prepare_commit_plan(repo_path, message, files)
         repo = Path(plan["repo"])
         selected = plan["files"]
-        diff_args = ["diff", "--binary", "--", *selected] if selected else ["diff", "--binary"]
-        diff_preview = self._git(repo, *diff_args)
+        diff_preview, diff_fingerprint = self._git_change_snapshot(repo, selected)
+        diff_preview = f"{diff_preview}\n# CLAWOS_DIFF_SHA256={diff_fingerprint}\n"
         checkpoint = self._git(repo, "rev-parse", "HEAD").strip()
         with self.store._conn() as c:
             cursor = c.execute(
@@ -1665,6 +1669,13 @@ class WorkspaceServices:
             if request["status"] != "pending_approval":
                 raise ValueError("change request is not pending approval")
         repo = self.security.resolve_path(request["repo_path"])
+        current_head = self._git(repo, "rev-parse", "HEAD").strip()
+        if current_head != request["checkpoint_ref"]:
+            raise ValueError("repository HEAD changed after approval request; create a new request")
+        current_preview, current_fingerprint = self._git_change_snapshot(repo, request["files"])
+        marker = re.search(r"# CLAWOS_DIFF_SHA256=([a-f0-9]{64})", request["diff_preview"])
+        if not marker or marker.group(1) != current_fingerprint:
+            raise ValueError("approved diff changed after request; create a new request")
         self._git(repo, "add", "--", *request["files"])
         self._git(repo, "commit", "-m", request["message"])
         after = self._git(repo, "rev-parse", "HEAD").strip()
@@ -1690,6 +1701,10 @@ class WorkspaceServices:
             if request["status"] != "committed" or not request["after_ref"]:
                 raise ValueError("only committed change requests can be rolled back")
         repo = self.security.resolve_path(request["repo_path"])
+        if self._git(repo, "rev-parse", "HEAD").strip() != request["after_ref"]:
+            raise ValueError("repository HEAD moved after the approved commit; rollback requires manual review")
+        if self._git(repo, "status", "--porcelain").strip():
+            raise ValueError("rollback requires a clean working tree")
         self._git(repo, "revert", "--no-edit", request["after_ref"])
         with self.store._conn() as c:
             c.execute(
@@ -1703,6 +1718,36 @@ class WorkspaceServices:
             return self._git_request_from_row(c.execute(
                 "SELECT * FROM git_change_requests WHERE id=?", (int(request_id),)
             ).fetchone())
+
+    @staticmethod
+    def _normalize_git_files(repo, files):
+        rows = []
+        for raw in files or []:
+            rel = str(raw or "").replace("\\", "/").strip()
+            if " -> " in rel:
+                rel = rel.split(" -> ", 1)[1]
+            path = (repo / rel).resolve()
+            try:
+                path.relative_to(repo.resolve())
+            except ValueError as exc:
+                raise ValueError(f"Git file escapes repository: {rel}") from exc
+            if not rel or rel.startswith(".git/"):
+                raise ValueError(f"invalid Git file: {rel}")
+            rows.append(rel)
+        return sorted(set(rows))
+
+    def _git_change_snapshot(self, repo, selected):
+        preview = self._git(repo, "diff", "--binary", "--", *selected)
+        payload = [preview]
+        tracked = set(self._git(repo, "ls-files", "--", *selected).splitlines())
+        for rel in selected:
+            path = repo / rel
+            if rel not in tracked and path.is_file():
+                data = path.read_bytes()
+                excerpt = data.decode("utf-8", errors="replace")[:20000]
+                payload.append(f"\n--- /dev/null\n+++ b/{rel}\n# untracked sha256={hashlib.sha256(data).hexdigest()} bytes={len(data)}\n{excerpt}")
+        rendered = "".join(payload)
+        return rendered, hashlib.sha256(rendered.encode("utf-8")).hexdigest()
 
     # ---- TEMPLATE CENTER ----
 

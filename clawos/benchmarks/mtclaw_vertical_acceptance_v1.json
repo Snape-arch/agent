@@ -6,6 +6,8 @@
     {"id": "paper_evidence", "prompt": "请检索科研论文知识并提供引用", "scenario": "research", "required_tool": "knowledge_search"},
     {"id": "paper_deep_read", "prompt": "请精读这篇论文并分析方法和局限", "scenario": "research", "required_tool": "paper_deep_read"},
     {"id": "learning_mastery", "prompt": "请查看学习目标的长期掌握度评估", "scenario": "learning", "required_tool": "learning_workspace"},
-    {"id": "coding_inspection", "prompt": "请扫描代码项目中的 TODO", "scenario": "project", "required_tool": "find_todos"}
+    {"id": "coding_inspection", "prompt": "请扫描代码项目中的 TODO", "scenario": "project", "required_tool": "find_todos"},
+    {"id": "coding_workflow_plan", "prompt": "请先检查仓库并生成安全的代码修复计划", "scenario": "project", "required_tool": "coding_workflow"},
+    {"id": "office_document_inspect", "prompt": "请检查这个 DOCX 办公文件的格式和质量", "scenario": "office", "required_tool": "office_productivity"}
   ]
 }

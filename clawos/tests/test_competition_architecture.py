@@ -20,12 +20,12 @@ for path in (ROOT, ROOT / "scripts", MTCLAW_ROOT):
 
 
 class CompetitionArchitectureTests(unittest.TestCase):
-    def test_vertical_acceptance_dataset_closes_five_routes(self):
+    def test_vertical_acceptance_dataset_closes_seven_routes(self):
         from scripts.run_mtclaw_vertical_acceptance import run
 
         result = run(ROOT / "benchmarks" / "mtclaw_vertical_acceptance_v1.json")
         self.assertTrue(result["passed"])
-        self.assertEqual(result["passed_count"], 5)
+        self.assertEqual(result["passed_count"], 7)
         self.assertEqual(result["failed_count"], 0)
 
     def test_scenario_strategy_filters_tools_and_prefers_specific_route(self):
@@ -119,6 +119,11 @@ class CompetitionArchitectureTests(unittest.TestCase):
         )
         self.assertNotIn("scholarly_search", functions)
         self.assertNotIn("scholarly_download", functions)
+        self.assertEqual(set(functions["coding_workflow"]["parameters"]["properties"]["action"]["enum"]), {"inspect", "plan"})
+        self.assertEqual(set(functions["office_productivity"]["parameters"]["properties"]["action"]["enum"]), {"inspect"})
+        self.assertNotIn("confirmed", functions["coding_workflow"]["parameters"]["properties"])
+        self.assertNotIn("output_path", functions["office_productivity"]["parameters"]["properties"])
+        self.assertNotIn("autonomous_subagents", functions)
 
     def test_knowledge_search_tool_returns_local_evidence(self):
         from memoryos.memory_store import MemoryStore

@@ -55,6 +55,8 @@ def validate() -> dict:
         "exam_practice_builder",
         "research_pdf",
         "paper_intelligence",
+        "coding_workflow",
+        "office_productivity",
         "learning_workspace",
     }
     with tempfile.TemporaryDirectory() as td:
@@ -74,6 +76,8 @@ def validate() -> dict:
     paper_actions = set(
         runtime_by_name["paper_intelligence"]["parameters"]["properties"]["action"].get("enum") or []
     )
+    coding_actions = set(runtime_by_name["coding_workflow"]["parameters"]["properties"]["action"].get("enum") or [])
+    office_actions = set(runtime_by_name["office_productivity"]["parameters"]["properties"]["action"].get("enum") or [])
     schemas_remove_write_args = all(
         not (set((runtime_by_name[name].get("parameters") or {}).get("properties") or {}) & denied)
         for name, denied in NO_WRITE_ARGUMENTS.items()
@@ -85,7 +89,7 @@ def validate() -> dict:
         _check("upstream_identity", exact_upstream_recorded, 5, "exact upstream URL/SHA recorded" if exact_upstream_recorded else "original upstream URL/SHA still needs owner confirmation"),
         _check("function_handler_parity", function_names == handler_names, 15, f"functions={len(function_names)} handlers={len(handler_names)}"),
         _check("vertical_mtclaw_surface", vertical <= SAFE_TOOLS, 15, f"vertical_safe_tools={len(vertical & SAFE_TOOLS)}/{len(vertical)}"),
-        _check("action_level_guard", set(SAFE_ACTIONS["research_pdf"]) == research_actions and set(SAFE_ACTIONS["learning_workspace"]) == learning_actions and set(SAFE_ACTIONS["paper_intelligence"]) == paper_actions, 15, f"research={sorted(research_actions)} paper={sorted(paper_actions)} learning={sorted(learning_actions)}"),
+        _check("action_level_guard", set(SAFE_ACTIONS["research_pdf"]) == research_actions and set(SAFE_ACTIONS["learning_workspace"]) == learning_actions and set(SAFE_ACTIONS["paper_intelligence"]) == paper_actions and set(SAFE_ACTIONS["coding_workflow"]) == coding_actions and set(SAFE_ACTIONS["office_productivity"]) == office_actions, 15, f"research={sorted(research_actions)} paper={sorted(paper_actions)} coding={sorted(coding_actions)} office={sorted(office_actions)} learning={sorted(learning_actions)}"),
         _check("least_privilege_schemas", schemas_remove_write_args, 10, "write-capable arguments are absent from generated MTClaw schemas"),
         _check("strict_competition_profile", competition["mtclaw"]["enabled"] is True and competition["mtclaw"]["fallback_on_error"] is False and competition.get("model_fallbacks") == [], 15, "MTClaw required, fallback disabled, no cloud model fallback"),
         _check("enforced_scenario_routing", strategy["mode"] == "enforced_scenario_routing" and strategy["scenario"] == "research" and "paper_deep_read" in strategy["allowed_tools"], 15, json.dumps(strategy, ensure_ascii=False)),

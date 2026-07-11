@@ -1,5 +1,32 @@
 # Project Context
 
+## 2026-07-11 - Coding、办公与自治 Subagent 闭环
+
+Completed:
+
+- 新增受确认门禁保护的 coding 完整循环：仓库检查、计划、范围化修改、测试、有限修复重试、diff 评审、checkpoint、失败恢复和人工 change request；服务本身不自动 commit/push。
+- 新增统一办公生产力服务，覆盖 DOCX/XLSX/PPTX/PDF/MD/TXT/JSON/CSV/EML/ICS 的创建、编辑、检查和质量门禁，并打通会议包、邮件草稿/发送、日历草稿/发布、幂等和审计。
+- 新增模型驱动自治 subagent 编排：隔离角色上下文、依赖 DAG、并发、token/时间/模型/工具预算、最小工具权限、副作用确认、checkpoint/resume、证据汇总和硬门禁仲裁。
+- 将 coding 的 inspect/plan 与 office 的 inspect 作为低风险能力接入 MTClaw；写操作继续由 ClawOS 显式确认执行。
+- 新增确定性与 live-model 验收制品，以及 `clawos/CODING_OFFICE_SUBAGENT_ENTERPRISE_ACCEPTANCE_2026-07-11.md` 产业评分报告。
+
+Verification:
+
+- `python -m unittest discover -s tests`: 254 tests OK。
+- `python scripts\run_mtclaw_vertical_acceptance.py`: 7/7 passed，P95 0.056 ms（离线合同延迟）。
+- `python scripts\validate_competition_architecture.py`: 95/100，competition architecture ready=true；缺 upstream identity，enterprise release ready=false。
+- `python scripts\coding_office_subagent_acceptance.py --out benchmarks\coding_office_subagent_acceptance_deterministic_2026-07-11.json`: 三项闭环全部通过。
+
+Known notes:
+
+- 2026-07-10 live Qwen subagent 验收真实调用了 Qwen，但硬门禁失败；报告保留为失败证据，未计为通过。
+- 当前未具备 MTT AIBOOK 实机、真实 ASR 音频集或企业邮件/日历测试租户条件；这些均为外部验收门禁。
+- FastAPI `on_event`、Chroma telemetry 和 Python 3.14 asyncio 产生非阻塞弃用警告。
+
+Recommended next step:
+
+- 在目标实机重复全量、MTClaw 和 live-model 验收；用真实会议音频与测试邮件/日历租户补齐质量、延迟、资源、回执和长稳证据；由项目方补 MTClaw 原始 upstream URL/SHA。
+
 这个文件是 ClawOS 的协作交接入口。下一位 Codex 或协作者应先读这里，再按需读具体模块，避免重新扫描整个仓库。
 
 ## 维护规则

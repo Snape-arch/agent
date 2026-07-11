@@ -149,6 +149,8 @@ class ToolSecurityPolicy:
         "project_init": ("root",),
         "meeting_workflow": ("audio_path", "transcript_path", "output_dir"),
         "research_pdf": ("file_path", "output_path", "output_dir"),
+        "coding_workflow": ("repo_path", "checkpoint"),
+        "office_productivity": ("file_path", "output_path", "output_dir"),
         "scholarly_download": ("output_dir",),
         "office_artifact": ("file_path", "output_path"),
         "git_workspace": ("path",),
@@ -163,11 +165,12 @@ class ToolSecurityPolicy:
         "file_write", "file_organize", "batch_rename", "project_init",
         "note_save", "meeting_template", "template_instantiate",
         "office_artifact", "git_workspace",
+        "meeting_workflow", "coding_workflow", "office_productivity", "autonomous_subagents",
         "competition_delivery_package",
         "multi_agent_review_committee",
         "scholarly_download",
     }
-    HIGH_RISK_TOOLS = {"shell_exec", "template_instantiate", "scholarly_download"}
+    HIGH_RISK_TOOLS = {"shell_exec", "template_instantiate", "scholarly_download", "coding_workflow", "autonomous_subagents"}
     ALLOWED_COMMANDS = {
         "python", "python3", "py", "git", "pytest", "npm", "node",
         "uv", "pip", "pip3", "cargo", "go", "java", "javac", "echo",
@@ -223,7 +226,8 @@ class ToolSecurityPolicy:
         decision = "allow"
         reason = "policy checks passed"
         writes_optional_output = tool_name in {"meeting_action_items", "paper_deep_read", "exam_practice_builder"} and bool(args.get("output_path"))
-        if tool_name in self.WRITE_TOOLS or tool_name in self.NETWORK_TOOLS or writes_optional_output:
+        readonly_action = (tool_name == "coding_workflow" and str(args.get("action") or "") in {"inspect", "plan"}) or (tool_name == "office_productivity" and str(args.get("action") or "") == "inspect")
+        if (tool_name in self.WRITE_TOOLS and not readonly_action) or tool_name in self.NETWORK_TOOLS or writes_optional_output:
             decision = "confirm"
             reason = f"{risk_level} risk tool requires confirmation"
         return {
@@ -262,6 +266,10 @@ class ToolSecurityPolicy:
 
     def risk_level(self, tool_name, arguments=None):
         arguments = arguments or {}
+        if tool_name == "office_productivity" and str(arguments.get("action") or "") in {"email_send", "calendar_publish"}:
+            return "high"
+        if tool_name == "coding_workflow" and str(arguments.get("action") or "") in {"inspect", "plan"}:
+            return "low"
         if tool_name in self.HIGH_RISK_TOOLS:
             return "high"
         if tool_name == "git_workspace":

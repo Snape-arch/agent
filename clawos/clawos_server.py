@@ -15,11 +15,14 @@ from providers import create_model_provider
 from memoryos.document_ingestion import ingest_file, safe_filename
 from services import (
     AgentOrchestrationService,
+    AutonomousSubagentService,
     ArtifactStorage,
     EvaluationService,
     KnowledgeService,
     MaintenanceService,
     ModelService,
+    CodingWorkflowService,
+    OfficeProductivityService,
     PaperIntelligenceService,
     ScholarlySearchService,
     SecurityService,
@@ -83,6 +86,8 @@ g_maintenance_service: MaintenanceService | None = None
 g_evaluation_service: EvaluationService | None = None
 g_workflow_engine: WorkflowEngine | None = None
 g_agent_orchestration_service: AgentOrchestrationService | None = None
+g_coding_workflow_service: CodingWorkflowService | None = None
+g_office_productivity_service: OfficeProductivityService | None = None
 g_background_worker_task: asyncio.Task | None = None
 g_background_worker_status: dict[str, Any] = {
     "running": False,
@@ -469,8 +474,8 @@ def has_api_key(section: str = "routing") -> bool:
 SCENARIO_ROUTING_POLICY = {
     "research": {"tools": ["knowledge_search", "web_search", "web_fetch", "research_pdf", "paper_intelligence", "scholarly_search", "scholarly_download", "paper_deep_read", "research_experiment_plan", "text_stats"], "risk": "medium", "model_profile": "deep_reasoning", "retrieval": "citations_required", "requires_confirmation": ["web_fetch", "scholarly_search", "scholarly_download"], "description": "科研检索、开放获取下载、结构化论文解析、跨论文比较和可引用 RAG"},
     "learning": {"tools": ["knowledge_search", "learning_workspace", "web_fetch", "exam_practice_builder", "text_stats"], "risk": "medium", "model_profile": "tutor", "retrieval": "knowledge_first", "requires_confirmation": ["web_fetch"], "description": "学习目标、资料入库、练习题和掌握度"},
-    "office": {"tools": ["knowledge_search", "meeting_action_items", "meeting_workflow", "office_artifact", "work_brief_builder", "text_stats"], "risk": "medium", "model_profile": "structured_output", "retrieval": "workspace_context", "requires_confirmation": ["office_artifact"], "description": "会议、简报、表格和演示文稿产物"},
-    "project": {"tools": ["ls", "cat", "find_files", "grep_text", "file_info", "code_stats", "find_todos", "dir_tree", "git_workspace", "shell_exec", "file_write"], "risk": "high", "model_profile": "code_agent", "retrieval": "repo_context", "requires_confirmation": ["git_workspace", "shell_exec", "file_write"], "description": "项目分析、代码检索和审批式 Git 操作"},
+    "office": {"tools": ["knowledge_search", "meeting_action_items", "meeting_workflow", "office_artifact", "office_productivity", "autonomous_subagents", "work_brief_builder", "text_stats"], "risk": "medium", "model_profile": "structured_output", "retrieval": "workspace_context", "requires_confirmation": ["meeting_workflow", "office_artifact", "office_productivity", "autonomous_subagents"], "description": "会议、邮件、日历和多格式办公产物"},
+    "project": {"tools": ["ls", "cat", "find_files", "grep_text", "file_info", "code_stats", "find_todos", "dir_tree", "coding_workflow", "autonomous_subagents", "git_workspace", "shell_exec", "file_write"], "risk": "high", "model_profile": "code_agent", "retrieval": "repo_context", "requires_confirmation": ["coding_workflow", "autonomous_subagents", "git_workspace", "shell_exec", "file_write"], "description": "项目分析、审批式编码循环、测试审查和 Git 操作"},
     "web": {"tools": ["web_search", "web_fetch"], "risk": "medium", "model_profile": "fresh_context", "retrieval": "web_then_rag", "requires_confirmation": ["web_fetch"], "description": "联网搜索和网页正文抓取"},
     "general": {"tools": ["weather", "time_now", "calc", "todo_list", "note_save", "note_read", "note_list", "text_stats", "knowledge_search", "memory_history", "memory_profile_get", "memory_preference_get", "memory_stats", "tools_list", "skill_list"], "risk": "low", "model_profile": "balanced", "retrieval": "memory_optional", "requires_confirmation": [], "description": "通用对话、记忆和轻量记录"},
 }
@@ -479,7 +484,7 @@ SCENARIO_ROUTING_POLICY = {
 SCENARIO_ROUTING_KEYWORDS = {
     "research": ["论文", "科研", "文献", "引用", "citation", "paper", "research", "zotero", "实验", "复现"],
     "learning": ["学习", "考试", "复习", "课程", "题目", "掌握", "exam", "learn", "quiz"],
-    "office": ["会议", "纪要", "汇报", "ppt", "excel", "brief", "meeting", "邮件", "表格"],
+    "office": ["会议", "纪要", "汇报", "ppt", "excel", "brief", "meeting", "邮件", "表格", "办公", "文档", "docx", "calendar", "日历"],
     "project": ["代码", "项目", "git", "repo", "bug", "测试", "commit", "重构", "架构"],
     "web": ["搜索", "联网", "网页", "爬取", "url", "http", "search", "crawl", "fetch"],
 }
@@ -490,7 +495,7 @@ def classify_scenario(text: str) -> str:
     mapping = [
         ("research", ["论文", "科研", "文献", "paper", "research", "citation"]),
         ("learning", ["学习", "考试", "复习", "课程", "exam", "learn"]),
-        ("office", ["会议", "纪要", "汇报", "ppt", "excel", "meeting", "brief"]),
+        ("office", ["会议", "纪要", "汇报", "ppt", "excel", "meeting", "brief", "办公", "文档", "docx", "邮件", "日历", "calendar"]),
         ("project", ["代码", "项目", "git", "repo", "bug", "测试", "commit"]),
         ("web", ["搜索", "联网", "网页", "url", "http", "search", "crawl"]),
     ]
@@ -2415,10 +2420,11 @@ async def api_workspace_capabilities():
             "txt_read_write": True,
             "project_create": True,
             "template_create": True,
-            "structured_file_generation": ["markdown", "pdf", "json", "txt", "xlsx", "pptx"],
+            "structured_file_generation": ["docx", "xlsx", "pptx", "pdf", "markdown", "json", "csv", "txt", "eml", "ics"],
             "requires_confirmation_for_writes": True,
         },
         "office_artifacts": {
+            "docx": {"create": True, "replace_text": True, "inspect": True, "validate": True, "engine": "python-docx" if has("docx") else "stdlib-openxml"},
             "xlsx": {
                 "create": True,
                 "edit_cells": True,
@@ -2433,6 +2439,9 @@ async def api_workspace_capabilities():
                 "requires_microsoft_office": False,
                 "requires_extra_python_packages": not has("pptx"),
             },
+            "pdf": {"create": True, "inspect": True, "validate": True, "engine": "reportlab", "generic_edit": False},
+            "markdown_txt_json_csv": {"create": True, "edit": True, "inspect": True, "validate": True, "csv_formula_injection_guard": True},
+            "quality_pipeline": ["create_or_edit", "reopen", "validate", "sha256", "run_record"],
         },
         "document_understanding": {
             "txt": True,
@@ -2477,15 +2486,28 @@ async def api_workspace_capabilities():
             "auto_transcription": local_asr_capability()["available"],
         },
         "connectors": {
-            "calendar": "ics_draft",
-            "email": "eml_draft",
+            "calendar": {"draft": "rfc5545_ics", "publish": "approval_gated_caldav", "credentials": "environment_reference"},
+            "email": {"draft": "rfc5322_mime_eml", "send": "approval_gated_smtp", "credentials": "environment_reference"},
             "auto_send": False,
+            "idempotency_required": True,
         },
         "git": {
             "snapshot": True,
             "patch_preview": True,
             "approval_commit": True,
             "rollback": "git_revert",
+            "coding_workflow": ["inspect", "plan", "checkpoint", "patch", "test", "review", "retry", "rollback"],
+            "coding_writes_require_confirmation": True,
+        },
+        "autonomous_subagents": {
+            "execution_mode": "model_driven_autonomous",
+            "isolated_context": True,
+            "dependency_dag": True,
+            "bounded_concurrency": True,
+            "tool_allowlist": True,
+            "budget_ledger": True,
+            "checkpoint_resume": True,
+            "hard_gates_override_judge": True,
         },
         "templates": {
             "count": len(templates),
@@ -2497,6 +2519,8 @@ async def api_workspace_capabilities():
 @app.post("/api/workspace/office/spreadsheets")
 async def api_office_spreadsheet_create(request: Request):
     data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(409, "confirmed=true is required for office writes")
     try:
         artifact = g_workspace_services.create_spreadsheet(
             data.get("output_path", ""),
@@ -2511,6 +2535,8 @@ async def api_office_spreadsheet_create(request: Request):
 @app.post("/api/workspace/office/spreadsheets/edit")
 async def api_office_spreadsheet_edit(request: Request):
     data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(409, "confirmed=true is required for office writes")
     try:
         artifact = g_workspace_services.edit_spreadsheet(
             data.get("file_path", ""),
@@ -2525,6 +2551,8 @@ async def api_office_spreadsheet_edit(request: Request):
 @app.post("/api/workspace/office/presentations")
 async def api_office_presentation_create(request: Request):
     data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(409, "confirmed=true is required for office writes")
     try:
         artifact = g_workspace_services.create_presentation(
             data.get("output_path", ""),
@@ -2539,6 +2567,8 @@ async def api_office_presentation_create(request: Request):
 @app.post("/api/workspace/office/presentations/edit")
 async def api_office_presentation_edit(request: Request):
     data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(409, "confirmed=true is required for office writes")
     try:
         artifact = g_workspace_services.edit_presentation(
             data.get("file_path", ""),
@@ -2550,9 +2580,40 @@ async def api_office_presentation_edit(request: Request):
     return JSONResponse({"artifact": artifact})
 
 
+@app.post("/api/workspace/office/productivity")
+async def api_office_productivity(request: Request):
+    data = await request.json()
+    action = str(data.get("action") or "inspect")
+    service = get_office_productivity_service()
+    try:
+        if action == "create":
+            result = service.create(data.get("output_path", ""), title=data.get("title", ""), sections=data.get("sections") or [], data=data.get("data"), metadata=data.get("metadata") or {}, confirmed=bool(data.get("confirmed")))
+        elif action == "edit":
+            result = service.edit(data.get("file_path", ""), data.get("output_path", ""), replacements=data.get("replacements") or {}, updates=data.get("updates") or [], confirmed=bool(data.get("confirmed")))
+        elif action == "inspect":
+            result = service.inspect(data.get("file_path", ""))
+        elif action == "meeting_package":
+            result = service.meeting_package(data.get("meeting") or {}, data.get("output_dir", ""), recipients=data.get("recipients") or [], confirmed=bool(data.get("confirmed")))
+        elif action == "email_draft":
+            result = service.create_email_draft(data.get("output_path", ""), subject=data.get("subject", ""), body=data.get("body", ""), to=data.get("to") or [], cc=data.get("cc") or [], attachments=data.get("attachments") or [], confirmed=bool(data.get("confirmed")))
+        elif action == "calendar_draft":
+            result = service.create_calendar_event(data.get("output_path", ""), summary=data.get("summary", ""), start=data.get("start", ""), duration_minutes=data.get("duration_minutes", 60), attendees=data.get("attendees") or [], description=data.get("description", ""), location=data.get("location", ""), organizer=data.get("organizer", ""), alarm_minutes=data.get("alarm_minutes", 15), confirmed=bool(data.get("confirmed")))
+        elif action == "email_send":
+            result = service.send_email(data.get("file_path", ""), data.get("connector") or {}, confirmed=bool(data.get("confirmed")), idempotency_key=data.get("idempotency_key", ""))
+        elif action == "calendar_publish":
+            result = service.publish_calendar(data.get("file_path", ""), data.get("connector") or {}, confirmed=bool(data.get("confirmed")), idempotency_key=data.get("idempotency_key", ""))
+        else:
+            raise ValueError(f"unknown office productivity action: {action}")
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(409 if isinstance(exc, PermissionError) else 400, str(exc))
+    return JSONResponse(result)
+
+
 @app.post("/api/workspace/meetings")
 async def api_meeting_create(request: Request):
     data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(409, "confirmed=true is required for meeting writes")
     meeting = g_workspace_services.create_meeting(
         data.get("title", "Untitled meeting"),
         data.get("meeting_date", ""),
@@ -2565,6 +2626,8 @@ async def api_meeting_create(request: Request):
 @app.post("/api/workspace/meetings/{meeting_id}/transcript")
 async def api_meeting_transcript(meeting_id: int, request: Request):
     data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(409, "confirmed=true is required for meeting writes")
     meeting = g_workspace_services.process_meeting_transcript(
         meeting_id, data.get("transcript", "")
     )
@@ -2577,6 +2640,8 @@ async def api_meeting_transcript(meeting_id: int, request: Request):
 @app.post("/api/workspace/meetings/audio")
 async def api_meeting_audio_import(request: Request):
     data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(409, "confirmed=true is required for meeting writes")
     try:
         result = g_workspace_services.import_meeting_audio(
             data.get("audio_path", ""),
@@ -2599,7 +2664,10 @@ async def api_meeting_audio_upload(
     title: str = Form(""),
     transcript: str = Form(""),
     meeting_id: str = Form(""),
+    confirmed: bool = Form(False),
 ):
+    if confirmed is not True:
+        raise HTTPException(409, "confirmed=true is required for meeting audio processing")
     filename = safe_filename(audio.filename or "meeting.wav")
     suffix = Path(filename).suffix.lower()
     if suffix not in {".wav", ".mp3", ".m4a", ".flac", ".ogg"}:
@@ -2608,13 +2676,21 @@ async def api_meeting_audio_upload(
     upload_root.mkdir(parents=True, exist_ok=True)
     stamp = int(time.time() * 1000)
     audio_path = upload_root / f"{stamp}_{filename}"
-    audio_path.write_bytes(await audio.read())
+    audio_bytes = await audio.read()
+    if not audio_bytes or len(audio_bytes) > 100_000_000:
+        raise HTTPException(400, "meeting audio must be between 1 byte and 100 MB")
+    if suffix == ".wav" and not (audio_bytes.startswith(b"RIFF") and b"WAVE" in audio_bytes[:16]):
+        raise HTTPException(400, "invalid WAV signature")
+    audio_path.write_bytes(audio_bytes)
 
     transcript_path = ""
     if transcript_file and transcript_file.filename:
         transcript_name = safe_filename(transcript_file.filename or "transcript.txt")
         transcript_path_obj = upload_root / f"{stamp}_{transcript_name}"
-        transcript_path_obj.write_bytes(await transcript_file.read())
+        transcript_bytes = await transcript_file.read()
+        if len(transcript_bytes) > 5_000_000:
+            raise HTTPException(400, "transcript file exceeds 5 MB")
+        transcript_path_obj.write_bytes(transcript_bytes)
         transcript_path = str(transcript_path_obj)
 
     try:
@@ -2635,6 +2711,8 @@ async def api_meeting_audio_upload(
 @app.post("/api/workspace/meetings/{meeting_id}/connector-drafts")
 async def api_meeting_connector_drafts(meeting_id: int, request: Request):
     data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(409, "confirmed=true is required for connector draft writes")
     try:
         result = g_workspace_services.draft_meeting_connectors(
             meeting_id,
@@ -3025,6 +3103,51 @@ async def api_git_change_request_rollback(request_id: int, request: Request):
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse({"change_request": item})
+
+
+@app.post("/api/workspace/coding/workflow")
+async def api_coding_workflow(request: Request):
+    data = await request.json()
+    action = str(data.get("action") or "inspect")
+    service = get_coding_workflow_service()
+    try:
+        if action == "inspect":
+            result = service.inspect(data.get("repo_path", ""), data.get("query", ""), data.get("limit", 80))
+        elif action == "plan":
+            result = service.plan(data.get("repo_path", ""), data.get("objective", ""), data.get("changes") or [], data.get("test_commands") or [])
+        elif action == "execute":
+            result = await asyncio.to_thread(service.execute, data.get("repo_path", ""), data.get("objective", ""), data.get("changes") or [], data.get("test_commands") or [], confirmed=bool(data.get("confirmed")), repair_rounds=data.get("repair_rounds") or [], max_rounds=data.get("max_rounds", 2), timeout_seconds=data.get("timeout_seconds", 180), actor=data.get("actor", "coding-agent"))
+            if result.get("status") == "passed" and data.get("create_change_request"):
+                files = sorted({str(item.get("path") or "") for item in (data.get("changes") or []) if item.get("path")})
+                result["change_request"] = g_workspace_services.create_git_change_request(data.get("repo_path", ""), data.get("commit_message") or data.get("objective") or "Coding workflow change", files, created_by=data.get("actor", "coding-agent"))
+        elif action == "rollback":
+            result = await asyncio.to_thread(service.rollback, data.get("repo_path", ""), data.get("checkpoint", ""), confirmed=bool(data.get("confirmed")), actor=data.get("actor", "user"))
+        else:
+            raise ValueError(f"unknown coding workflow action: {action}")
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(409 if isinstance(exc, PermissionError) else 400, str(exc))
+    return JSONResponse(result)
+
+
+@app.post("/api/subagents/run")
+async def api_autonomous_subagents(request: Request):
+    data = await request.json()
+    roles = data.get("roles") or []
+    if not isinstance(roles, list) or not roles:
+        raise HTTPException(400, "roles must be a non-empty list")
+    try:
+        result = await get_autonomous_subagent_service().run(
+            data.get("objective", ""),
+            roles,
+            shared_evidence=data.get("shared_evidence") or [],
+            confirmed_side_effect_tools=data.get("confirmed_tools") or [],
+            run_budget=data.get("budget") or {},
+            resume_checkpoint=data.get("resume_checkpoint", ""),
+            actor=data.get("actor", "coordinator"),
+        )
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(409 if isinstance(exc, PermissionError) else 400, str(exc))
+    return JSONResponse(result)
 
 
 @app.get("/api/workspace/templates")
@@ -3629,6 +3752,45 @@ def get_scholarly_search_service() -> ScholarlySearchService:
     if not g_scholarly_search_service:
         g_scholarly_search_service = ScholarlySearchService(BASE_DIR / "data" / "scholarly")
     return g_scholarly_search_service
+
+
+def get_coding_workflow_service() -> CodingWorkflowService:
+    global g_coding_workflow_service
+    if not g_coding_workflow_service or getattr(g_coding_workflow_service, "store", None) is not g_memory_store:
+        g_coding_workflow_service = CodingWorkflowService(g_memory_store, BASE_DIR.parent / "output" / "coding")
+    return g_coding_workflow_service
+
+
+def get_office_productivity_service() -> OfficeProductivityService:
+    global g_office_productivity_service
+    if not g_office_productivity_service or getattr(g_office_productivity_service, "store", None) is not g_memory_store:
+        roots = list(getattr(g_security_policy, "allowed_roots", ()) or [BASE_DIR.parent])
+        g_office_productivity_service = OfficeProductivityService(g_memory_store, roots)
+    return g_office_productivity_service
+
+
+def get_autonomous_subagent_service() -> AutonomousSubagentService:
+    if not g_upstream_provider:
+        raise HTTPException(503, "model provider is not initialized")
+
+    async def execute(name: str, arguments: dict[str, Any], context: dict[str, Any]):
+        confirmed = set(context.get("confirmed_tools") or [])
+        return await asyncio.to_thread(
+            execute_tool_call,
+            name,
+            json.dumps(arguments, ensure_ascii=False),
+            f"subagent-{context.get('role_id', 'role')}",
+            confirmed,
+        )
+
+    return AutonomousSubagentService(
+        lambda _spec: g_upstream_provider,
+        tool_executor=execute,
+        tool_definitions=tools_def,
+        store=g_memory_store,
+        checkpoint_root=BASE_DIR.parent / "output" / "subagents",
+        max_concurrency=3,
+    )
 
 
 def _academy_project_item_summary(run: dict[str, Any]) -> dict[str, Any]:

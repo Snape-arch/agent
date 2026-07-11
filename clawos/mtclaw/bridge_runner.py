@@ -42,12 +42,16 @@ SAFE_TOOLS = {
     "exam_practice_builder",
     "research_pdf",
     "paper_intelligence",
+    "coding_workflow",
+    "office_productivity",
     "learning_workspace",
 }
 
 SAFE_ACTIONS = {
     "research_pdf": {"search", "validate_citations", "compare_matrix"},
     "paper_intelligence": {"structure", "align_claims", "compare", "readiness"},
+    "coding_workflow": {"inspect", "plan"},
+    "office_productivity": {"inspect"},
     "learning_workspace": {"get", "graph", "assessment"},
 }
 
@@ -56,6 +60,8 @@ NO_WRITE_ARGUMENTS = {
     "paper_deep_read": {"output_path"},
     "exam_practice_builder": {"output_path"},
     "research_pdf": {"file_path", "output_path", "output_dir", "steps", "formats"},
+    "coding_workflow": {"confirmed", "repair_rounds", "checkpoint", "create_change_request", "commit_message"},
+    "office_productivity": {"output_path", "output_dir", "confirmed", "connector", "idempotency_key", "attachments"},
 }
 
 

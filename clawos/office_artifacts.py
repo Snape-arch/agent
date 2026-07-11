@@ -21,11 +21,152 @@ REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 AML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+WML_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
 ET.register_namespace("", MAIN_NS)
 ET.register_namespace("r", REL_NS)
 ET.register_namespace("p", PML_NS)
 ET.register_namespace("a", AML_NS)
+ET.register_namespace("w", WML_NS)
+
+
+def create_docx(path, title="", sections=None, metadata=None):
+    """Create a structured DOCX with a dependency-free OpenXML fallback."""
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt
+
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        document = Document()
+        section = document.sections[0]
+        section.top_margin = Inches(0.75)
+        section.bottom_margin = Inches(0.75)
+        styles = document.styles
+        styles["Normal"].font.name = "Arial"
+        styles["Normal"].font.size = Pt(10.5)
+        document.add_heading(str(title or target.stem), 0)
+        for item in sections or []:
+            heading = str(item.get("heading") or "").strip()
+            if heading:
+                document.add_heading(heading, level=max(1, min(int(item.get("level") or 1), 3)))
+            for paragraph in item.get("paragraphs") or []:
+                document.add_paragraph(str(paragraph))
+            bullets = item.get("bullets") or []
+            for bullet in bullets:
+                document.add_paragraph(str(bullet), style="List Bullet")
+            table = item.get("table") or []
+            if table:
+                width = max(len(row) for row in table)
+                word_table = document.add_table(rows=0, cols=width)
+                word_table.style = "Table Grid"
+                for row_index, row in enumerate(table):
+                    cells = word_table.add_row().cells
+                    for col_index, value in enumerate(row):
+                        cells[col_index].text = str(value)
+                        if row_index == 0:
+                            for run in cells[col_index].paragraphs[0].runs:
+                                run.bold = True
+        document.core_properties.title = str(title or target.stem)
+        document.core_properties.subject = str((metadata or {}).get("subject") or "ClawOS Office Artifact")
+        document.save(target)
+        return str(target)
+    except ImportError:
+        return _create_docx_stdlib(path, title, sections)
+
+
+def _create_docx_stdlib(path, title, sections):
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    paragraphs = [(str(title or target.stem), "Title")]
+    for section in sections or []:
+        if section.get("heading"):
+            paragraphs.append((str(section["heading"]), "Heading1"))
+        paragraphs.extend((str(item), "Normal") for item in (section.get("paragraphs") or []))
+        paragraphs.extend((f"• {item}", "Normal") for item in (section.get("bullets") or []))
+        for row in section.get("table") or []:
+            paragraphs.append((" | ".join(str(value) for value in row), "Normal"))
+    body = []
+    for text, style in paragraphs:
+        style_xml = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style != "Normal" else ""
+        body.append(f'<w:p>{style_xml}<w:r><w:t xml:space="preserve">{html.escape(text)}</w:t></w:r></w:p>')
+    document_xml = _xml_header(
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f'<w:body>{"".join(body)}<w:sectPr/></w:body></w:document>'
+    )
+    content_types = _xml_header(
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        '</Types>'
+    )
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", _rels({"rId1": ("http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "word/document.xml")}))
+        archive.writestr("word/document.xml", document_xml)
+    return str(target)
+
+
+def replace_docx_text(path, replacements, output_path=None):
+    source = Path(path)
+    output = Path(output_path) if output_path else source
+    files = _read_zip(source)
+    for name, content in list(files.items()):
+        if not name.startswith("word/") or not name.endswith(".xml"):
+            continue
+        text = content.decode("utf-8")
+        for old, new in (replacements or {}).items():
+            text = text.replace(html.escape(str(old)), html.escape(str(new)))
+        files[name] = text.encode("utf-8")
+    _write_zip(output, files)
+    return str(output)
+
+
+def create_pdf(path, title="", sections=None, metadata=None):
+    """Create a polished, searchable PDF using the installed ReportLab engine."""
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_CENTER
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except ImportError as exc:
+        raise RuntimeError("reportlab is required for PDF creation") from exc
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="ArtifactTitle", parent=styles["Title"], alignment=TA_CENTER, fontSize=22, leading=27, textColor=colors.HexColor("#172033"), spaceAfter=12 * mm))
+    styles.add(ParagraphStyle(name="ArtifactBody", parent=styles["BodyText"], fontSize=10.5, leading=16, textColor=colors.HexColor("#243047"), spaceAfter=3 * mm))
+    doc = SimpleDocTemplate(str(target), pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm, topMargin=18 * mm, bottomMargin=18 * mm, title=str(title or target.stem), author="ClawOS")
+    story = [Paragraph(html.escape(str(title or target.stem)), styles["ArtifactTitle"])]
+    for item in sections or []:
+        if item.get("page_break") and len(story) > 1:
+            story.append(PageBreak())
+        heading = str(item.get("heading") or "").strip()
+        if heading:
+            story.extend([Paragraph(html.escape(heading), styles["Heading2"]), Spacer(1, 2 * mm)])
+        for paragraph in item.get("paragraphs") or []:
+            story.append(Paragraph(html.escape(str(paragraph)).replace("\n", "<br/>"), styles["ArtifactBody"]))
+        for bullet in item.get("bullets") or []:
+            story.append(Paragraph(f"• {html.escape(str(bullet))}", styles["ArtifactBody"]))
+        table = item.get("table") or []
+        if table:
+            rows = [[Paragraph(html.escape(str(value)), styles["ArtifactBody"]) for value in row] for row in table]
+            artifact_table = Table(rows, repeatRows=1, hAlign="LEFT")
+            artifact_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#172033")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]))
+            story.extend([artifact_table, Spacer(1, 4 * mm)])
+    doc.build(story)
+    return str(target)
 
 
 def _xml_header(text):

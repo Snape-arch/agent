@@ -1156,6 +1156,7 @@ async function runMeetingAudioUpload() {
   }
   const form = new FormData();
   form.append("audio", audio);
+  form.append("confirmed", "true");
   form.append("title", ($("meetingAsrTitle")?.value || audio.name || "Meeting audio").trim());
   const transcriptText = ($("meetingTranscriptText")?.value || "").trim();
   if (transcriptText) form.append("transcript", transcriptText);
