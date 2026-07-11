@@ -491,6 +491,19 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertIn(token, css)
 
+    def test_console_final_legibility_contract_covers_loaded_chat_and_knowledge(self):
+        css = self.read_page("assets/console.clean.css")
+        for token in (
+            "Final legibility contract",
+            ".workbench-chat .msg .message-body",
+            "border-left:3px solid var(--c-blue)",
+            ".sessions .session b",
+            "grid-template-columns:1.18fr 1fr 1fr",
+            ".knowledge-admin-entry{grid-column:1/-1",
+            "--c-muted:#536071",
+        ):
+            self.assertIn(token, css)
+
     def test_console_chat_uses_clean_chatgpt_like_message_layout(self):
         js = self.read_page("assets/console.js")
         css = self.read_page("assets/console.css")

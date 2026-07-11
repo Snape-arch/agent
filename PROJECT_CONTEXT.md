@@ -2767,3 +2767,27 @@ Verification:
 Known notes:
 - Knowledge graph coordinates are deterministic and client-rendered; very large production graphs should later add semantic clustering and canvas/WebGL virtualization.
 - Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+
+### 2026-07-11 - Console residual legibility closure
+
+Completed:
+- Removed the last inherited glass-message presentation from loaded history conversations. User and agent turns now use compact document-flow rows with dark text, consistent 13 px body copy, restrained role markers and no floating-card geometry.
+- Standardized the knowledge library on a 24/16/13/11 px hierarchy, strengthened neutral text contrast, and aligned tabs, controls, forms, metrics and zone labels to the workbench design language.
+- Rebalanced the knowledge capability area from four uneven columns into three primary cards plus a compact full-width admin row; converted runtime admin status labels back to consistent Chinese.
+- Added a regression contract covering loaded-chat presentation, knowledge layout and contrast tokens.
+
+Visual verification:
+- Compared the two new user screenshots with live 1440 x 1024 browser captures in one composite image.
+- Verified loaded messages have transparent backgrounds, zero radius, dark text and approximately 78 px content-driven row height instead of oversized legacy cards.
+- Verified knowledge page computed typography and inspected its top, form and graph states; browser warning/error log was empty.
+- QA evidence remains under `tmp/ui-qa/` and is intentionally excluded from Git; `design-qa.md` remains `final result: passed`.
+
+Verification:
+- Bundled Node syntax check: passed.
+- Frontend static suite: `38 tests OK`.
+- Full regression suite: `260 tests OK (skipped=1)`.
+- `git diff --check`: passed.
+
+Known notes:
+- The sidebar intentionally truncates long conversation titles to one line; the full searchable title remains available in the history view.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.

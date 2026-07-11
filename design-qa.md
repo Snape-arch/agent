@@ -38,3 +38,25 @@ The implementation and the two accepted references were reviewed together at the
 - [x] Browser-rendered visual acceptance at 1440 x 1024.
 
 final result: passed
+
+## Final residual legibility review — 2026-07-11
+
+- new user evidence: `codex-clipboard-fc4f11dd-cd26-452d-accc-95a0783b9492.png` and `codex-clipboard-71925e72-1dad-4bbf-8b20-2295b5450cdc.png`
+- implementation evidence: `tmp/ui-qa/final-knowledge-top.png` and `tmp/ui-qa/final-history-conversation.png`
+- combined comparison: `tmp/ui-qa/final-comparison.png` (local QA only; excluded from Git)
+
+Resolved findings:
+
+- [P1] Loaded conversation messages still inherited the former translucent bubble geometry, producing oversized white cards and unreadable white text. The workbench now renders both roles as compact, full-width document rows with dark 13 px copy, restrained role rails, normal content height and no glass effects.
+- [P1] Knowledge typography mixed 9–26 px labels with low-contrast grey. The view now follows a fixed 24 px page title, 16 px card title, 13 px body/control and 11–12 px metadata hierarchy with WCAG-oriented darker neutral tokens.
+- [P1] The knowledge hero used four uneven columns and isolated the admin state in a narrow card. It is now a balanced three-column capability grid with the admin control consolidated into one compact horizontal row.
+- [P2] Backend state text switched to English after JavaScript initialization. Open/closed state and its action now remain consistently Chinese.
+
+Browser validation:
+
+- Rechecked live knowledge and loaded-history states at 1440 x 1024.
+- Measured loaded message rows at 78 px rather than the former oversized floating cards; backgrounds are transparent, radii are zero and text is dark.
+- Verified knowledge title/body/metric hierarchy from computed styles and inspected the full visual comparison alongside the supplied screenshots.
+- Browser warning/error log: empty.
+
+final result: passed

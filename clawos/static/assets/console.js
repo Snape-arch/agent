@@ -620,9 +620,9 @@ function renderKnowledgeWorkspaceShell() {
 function toggleKnowledgeAdminTools() {
   const workspace = document.querySelector("#view-knowledge .knowledge-workspace");
   const expanded = workspace ? workspace.classList.toggle("show-knowledge-admin") : false;
-  if ($("knowledgeAdminState")) $("knowledgeAdminState").textContent = expanded ? "Open" : "Closed";
-  if ($("knowledgeBackendState")) $("knowledgeBackendState").textContent = expanded ? "Open" : "Closed";
-  if ($("knowledgeAdminToggle")) $("knowledgeAdminToggle").textContent = expanded ? "Hide admin" : "Open admin";
+  if ($("knowledgeAdminState")) $("knowledgeAdminState").textContent = expanded ? "已展开" : "已收起";
+  if ($("knowledgeBackendState")) $("knowledgeBackendState").textContent = expanded ? "展开" : "收起";
+  if ($("knowledgeAdminToggle")) $("knowledgeAdminToggle").textContent = expanded ? "收起后台" : "打开后台";
 }
 
 function updateKnowledgeFrontstageStats() {
@@ -637,9 +637,9 @@ function updateKnowledgeFrontstageStats() {
   }
   const workspace = document.querySelector("#view-knowledge .knowledge-workspace");
   const expanded = !!workspace?.classList.contains("show-knowledge-admin");
-  if ($("knowledgeAdminState")) $("knowledgeAdminState").textContent = expanded ? "Open" : "Closed";
-  if ($("knowledgeBackendState")) $("knowledgeBackendState").textContent = expanded ? "Open" : "Closed";
-  if ($("knowledgeAdminToggle")) $("knowledgeAdminToggle").textContent = expanded ? "Hide admin" : "Open admin";
+  if ($("knowledgeAdminState")) $("knowledgeAdminState").textContent = expanded ? "已展开" : "已收起";
+  if ($("knowledgeBackendState")) $("knowledgeBackendState").textContent = expanded ? "展开" : "收起";
+  if ($("knowledgeAdminToggle")) $("knowledgeAdminToggle").textContent = expanded ? "收起后台" : "打开后台";
 }
 
 function renderKnowledgeSessionSelect() {
