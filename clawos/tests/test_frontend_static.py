@@ -419,7 +419,9 @@ class FrontendStaticTests(unittest.TestCase):
     def test_console_remediation_removes_legacy_overlay_and_restores_site_navigation(self):
         html = self.read_page("console.html")
         css = self.read_page("assets/console.css")
+        clean_css = self.read_page("assets/console.clean.css")
 
+        self.assertIn('href="/assets/console.clean.css"', html)
         for href in ('href="/"', 'href="/product"', 'href="/academy"'):
             self.assertIn(href, html)
         self.assertIn("console-site-links", html)
@@ -439,6 +441,17 @@ class FrontendStaticTests(unittest.TestCase):
             "content:none!important",
         ):
             self.assertIn(token, css)
+        for token in (
+            "ClawOS Console Clean UI",
+            "Absolute legacy kill-switches",
+            ".aether-console .panel-view:before",
+            ".aether-console .knowledge-workspace:before",
+            ".aether-console .runtime-record-grid>*",
+            ".aether-console .session-results",
+            ".aether-console .command-sheet",
+            "background-image:none!important",
+        ):
+            self.assertIn(token, clean_css)
 
     def test_console_chat_uses_clean_chatgpt_like_message_layout(self):
         js = self.read_page("assets/console.js")

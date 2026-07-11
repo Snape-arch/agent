@@ -1,5 +1,31 @@
 # Project Context
 
+## 2026-07-11 - 控制台全视图 Clean UI 重构
+
+Completed:
+
+- 根据工作台、运行轨迹、搜索与知识库四张真实截图，确认旧玻璃样式通过高特异度 selector 污染所有控制台视图；不再逐页补丁，新增最终加载的 `console.clean.css` 作为统一渲染契约。
+- 全局清除 workspace/panel/dashboard/knowledge/ops/scenes 斜切伪层、按钮高光、深色背景、白字继承、玻璃阴影和 backdrop filter。
+- 对动态 runtime records、failure library、搜索结果、知识库多模式、项目、会议/场景、技能、权限、运维、抽屉和模型设置建立同一套暖白/墨黑/钴蓝组件规范。
+- 统一 auto-height 文档流、局部表格横向滚动、grid `min-width:0`、媒体限宽和 1100/900/760/480 响应式收束，避免全页遮挡与横向溢出。
+- 保留原有功能和 DOM/JS 接口；首页、产品、Academy 跳转以及移动端侧栏入口继续可用。
+
+Verification:
+
+- bundled Node syntax check passed.
+- frontend static suite: 36 tests OK.
+- full suite: 258 tests OK, 1 skipped.
+- `git diff --check`: passed.
+
+Known notes:
+
+- 四张截图是修复前证据；应用内浏览器无法访问宿主机 loopback，因此修复后最终截图仍需用户刷新补充，`design-qa.md` 保持 blocked 而不冒充视觉验收通过。
+- `clawos/skills/skill_registry.jsonl`、`clawos/output/` 与 `tmp/` 不纳入提交。
+
+Recommended next step:
+
+- 强制刷新 `/console` 并依次检查工作台、任务、搜索、知识库；补一组修复后截图即可完成最终视觉签收。
+
 ## 2026-07-11 - 控制台视觉冲突与遮挡整改
 
 Completed:

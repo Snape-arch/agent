@@ -13,6 +13,14 @@
 - fixes: removed legacy workspace pseudo-layers and dark backgrounds from the active shell, disabled inherited highlight pseudo-elements, moved the composer into the intent panel, restored desktop and narrow-screen links to Home/Product/Academy, and added regression contracts for unique composer IDs and overlay removal.
 - post-fix browser screenshot: still unavailable through the in-app browser loopback surface, so the final result remains honestly blocked pending one user-visible reload/capture.
 
+## 2026-07-11 full-view residual removal
+
+- user evidence: four screenshots covering Workbench, Task Trace, Search and Knowledge Library.
+- observed P1 issue: legacy selectors continued to leak into every non-workbench view, including diagonal `panel-view` overlays, white-on-grey text, dark runtime cards and glass-form controls.
+- structural fix: `console.clean.css` is now loaded last as the sole final presentation contract. It resets every legacy pseudo-layer, dynamic runtime card, search result, knowledge mode, project/scenario surface, backend table, drawer and modal to one light editorial token system. It also enforces auto-height document flow, local table overflow and responsive grid collapse.
+- automated evidence: clean-style contract tests, JavaScript syntax, 36 frontend tests and 258 full tests pass.
+- post-fix browser capture: still requires a user-visible reload because the in-app browser cannot reach the host loopback service.
+
 **Findings**
 
 - [P1] Browser-rendered comparison unavailable
