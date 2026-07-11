@@ -504,6 +504,19 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertIn(token, css)
 
+    def test_console_codex_reduction_contract(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.clean.css")
+        self.assertIn("后台中心", html)
+        self.assertIn("openKnowledgeBackstage()", html)
+        self.assertIn("开始一个新任务", js)
+        self.assertNotIn("检查 MemoryOS", js)
+        self.assertIn("Codex-like reduction", css)
+        self.assertIn(".workbench-chat .msg.user{justify-content:flex-end", css)
+        self.assertIn(".command-drawer.on,.aether-console .settings-modal.on{display:grid", css)
+        self.assertIn(".section-block:has(#ocrQueueTable)", css)
+
     def test_console_chat_uses_clean_chatgpt_like_message_layout(self):
         js = self.read_page("assets/console.js")
         css = self.read_page("assets/console.css")

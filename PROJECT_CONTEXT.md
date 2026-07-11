@@ -2791,3 +2791,28 @@ Verification:
 Known notes:
 - The sidebar intentionally truncates long conversation titles to one line; the full searchable title remains available in the history view.
 - Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+
+### 2026-07-11 - Codex-style foreground/backstage reduction
+
+Completed:
+- Replaced the legacy new-task glass state with a concise task prompt and retained the single composer as the primary action.
+- Restored clear conversational roles: user turns align right in a restrained neutral bubble; Agent answers align left in the reading column.
+- Reduced knowledge foreground to the user workflow: upload, session capture, editing, graph exploration, search and compact knowledge items. OCR, reports, acceptance, delivery and other operations no longer compete in the visible page.
+- Consolidated backend navigation into four product-level groups—runtime, capability/quality, governance/permissions and model configuration—while preserving existing view routes for compatibility.
+- Rebuilt Backstage and model configuration as centered, viewport-bounded modals; simplified the model chooser and removed inherited offsets and horizontal overflow.
+- Reduced knowledge item columns from six to three and removed raw file paths, tag noise, visit counts and destructive actions from the default foreground.
+
+Visual verification:
+- Exercised new task, loaded chat, knowledge, Backstage and model settings in the in-app browser and compared all four supplied screenshots with implementation captures in one composite.
+- Confirmed Backstage and settings are centered at the effective viewport midpoint, with bounded height and local scrolling.
+- Confirmed user/Agent alignment, hidden operational knowledge panels, four Backstage cards and an empty browser warning/error log after final reload.
+
+Verification:
+- Bundled Node syntax check: passed.
+- Frontend static suite: `39 tests OK`.
+- Full regression suite: `261 tests OK (skipped=1)`.
+- `git diff --check`: passed.
+
+Known notes:
+- The first full-suite attempt ran while the local UI server held the mutable skill registry and produced one Windows replace-permission failure; after stopping the server, the complete suite passed. This was an environment lock, not a product regression.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.

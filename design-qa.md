@@ -39,6 +39,30 @@ The implementation and the two accepted references were reviewed together at the
 
 final result: passed
 
+## Codex-style foreground/backstage reduction — 2026-07-11
+
+- source screenshots: `codex-clipboard-0ec35122-2888-4869-a8df-4b66a04a25cf.png`, `codex-clipboard-c18fc990-5152-445d-81ce-ae507aaf076e.png`, `codex-clipboard-bd1a51d7-2544-4488-a054-1910cae6dd55.png`, `codex-clipboard-4215613e-8980-45d7-80ff-e35151c613c8.png`
+- implementation evidence: `tmp/ui-qa/codex-reduced-new-task.png`, `codex-reduced-chat.png`, `codex-reduced-knowledge.png`, `codex-reduced-backstage.png`, `codex-reduced-settings.png`
+- paired comparison: `tmp/ui-qa/codex-reduction-comparison.png` (local QA only; excluded from Git)
+
+Resolved findings:
+
+- [P1] New-task state inherited the old oversized glass surface and shortcut cards. It is now a compact task empty state with one instruction and the existing composer.
+- [P1] Conversation roles were visually ambiguous. User turns are right-aligned in restrained neutral bubbles; Agent turns remain left-aligned in the reading column.
+- [P1] Knowledge mixed foreground creation with reporting, OCR, validation and delivery administration. The visible page now retains upload, session capture, editor, graph, search and knowledge items; operational detail is consolidated behind one Backstage entry.
+- [P1] Model settings inherited viewport offsets and horizontal overflow. Both settings and Backstage now use centered, bounded modal geometry with local scrolling.
+- [P2] Backstage exposed ten equally weighted low-frequency pages. It now presents four product-level groups: runtime, capabilities, governance and model configuration.
+- [P2] Knowledge item tables exposed raw source paths, tags and visit counters. The foreground table now keeps only title, library and primary actions.
+
+Browser verification:
+
+- New task, loaded conversation, knowledge foreground, Backstage and model settings were exercised in the in-app browser.
+- Backstage center measured `760 x 305` with center `(633, 360)` in a `1280 x 720` effective viewport.
+- Model settings measured `720 x 441` with the same centered Y axis; no page-level horizontal overflow appeared.
+- Browser warning/error log was empty after the final reload.
+
+final result: passed
+
 ## Final residual legibility review — 2026-07-11
 
 - new user evidence: `codex-clipboard-fc4f11dd-cd26-452d-accc-95a0783b9492.png` and `codex-clipboard-71925e72-1dad-4bbf-8b20-2295b5450cdc.png`

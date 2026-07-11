@@ -411,7 +411,7 @@ function cancelPending() {
 
 function newChat() {
   currentSession = "s_" + Date.now();
-  $("chatInner").innerHTML = `<div class="empty"><b>新的任务空间</b><span>短期上下文已清空，长期 MemoryOS、技能库与反思经验继续共享。</span><div class="quick-grid"><button class="quick" onclick="usePrompt('分析当前项目，并给出下一步开发计划')">分析项目与开发计划</button><button class="quick" onclick="usePrompt('查看我的长期记忆和偏好')">检查 MemoryOS</button></div></div>`;
+  $("chatInner").innerHTML = `<div class="empty workbench-empty task-empty"><b>开始一个新任务</b><span>输入目标，或添加需要处理的文件。</span></div>`;
   loadSessions();
   setView("chat");
 }
@@ -666,18 +666,15 @@ async function loadKnowledge() {
     const data = await api("/api/knowledge" + query);
     knowledgeItems = data.items || [];
     updateKnowledgeFrontstageStats();
-    target.innerHTML = table(["标题", "库", "来源", "标签", "访问", "操作"], knowledgeItems.map(item => [
+    target.innerHTML = table(["标题", "知识库", "操作"], knowledgeItems.map(item => [
       item.title,
       knowledgeCategoryLabel(item.category),
-      item.source || "",
-      formatTags(item.tags),
-      item.access_count || 0,
-      { html: `<button class="secondary" onclick="loadKnowledgeItem(${Number(item.id)})">编辑</button> <button class="secondary" onclick="appendKnowledgeToPrompt(${Number(item.id)})">追问</button> <button class="secondary" onclick="deleteKnowledgeItem(${Number(item.id)})">删除</button>` }
+      { html: `<button class="secondary" onclick="loadKnowledgeItem(${Number(item.id)})">打开</button> <button class="secondary" onclick="appendKnowledgeToPrompt(${Number(item.id)})">提问</button>` }
     ]));
     renderKnowledgeMap(knowledgeItems);
     if ($("knowledgeStatus")) $("knowledgeStatus").textContent = `${knowledgeCategoryLabel(knowledgeCategory)} · ${knowledgeItems.length} 条资料`;
   } catch (err) {
-    target.innerHTML = table(["标题", "库", "来源", "标签", "访问", "操作"], []);
+    target.innerHTML = table(["标题", "知识库", "操作"], []);
     renderKnowledgeMap([]);
     if ($("knowledgeStatus")) $("knowledgeStatus").textContent = "知识库加载失败：" + err.message;
   }
@@ -2418,6 +2415,10 @@ async function loadKnowledgeGraph() {
     if ($("knowledgeMapHint")) $("knowledgeMapHint").textContent = `${graph.category || "all"} · ${nodes.length} 个真实节点 · ${graph.edges?.length || 0} 条语义关系`;
     if ($("knowledgeGraphExplorer")?.classList.contains("on")) renderKnowledgeGraphExplorer();
   } catch (err) {}
+}
+
+function openKnowledgeBackstage() {
+  toggleCommandDrawer();
 }
 
 function openKnowledgeGraphExplorer() {

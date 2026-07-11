@@ -276,7 +276,7 @@
           <section class="knowledge-admin-entry">
             <span>后台管理</span>
             <b id="knowledgeAdminState">已收起</b>
-            <button class="secondary knowledge-admin-toggle" id="knowledgeAdminToggle" type="button" onclick="toggleKnowledgeAdminTools()">打开后台</button>
+            <button class="secondary knowledge-admin-toggle" id="knowledgeAdminToggle" type="button" onclick="openKnowledgeBackstage()">打开后台中心</button>
           </section>
         </div>
         <div class="knowledge-frontstage-metrics" id="knowledgeFrontstageMetrics">
@@ -413,18 +413,15 @@
   <div class="command-drawer" id="commandDrawer" aria-hidden="true">
     <div class="command-backdrop" onclick="closeCommandDrawer()"></div>
     <section class="command-sheet liquid-panel">
-      <div class="settings-head"><div><h2>更多应用</h2><p>低频但专业的运行、评测、治理和系统页面集中在这里。</p></div><button class="icon-button" onclick="closeCommandDrawer()" aria-label="关闭">×</button></div>
+      <div class="settings-head"><div><h2>后台中心</h2><p>运行、能力、治理与模型配置集中管理。</p></div><button class="icon-button" onclick="closeCommandDrawer()" aria-label="关闭">×</button></div>
       <div class="app-grid">
-        <button data-view="ops"><b>Ops Center</b><span>备份、恢复、worker jobs</span></button>
-        <button data-view="dash"><b>状态总览</b><span>模型、工具、系统健康</span></button>
-        <button data-view="memory"><b>记忆治理</b><span>画像、偏好、审查和个人上下文</span></button>
-        <button data-view="tools"><b>工具路由</b><span>函数清单与调用轨迹</span></button>
-        <button data-view="reflection"><b>反思循环</b><span>复盘、改进、回滚</span></button>
-        <button data-view="evolution"><b>Self-Evolution</b><span>候选生成、回归门禁、灰度发布</span></button>
-        <button data-view="skills"><b>固化技能</b><span>Skill 发布与质量</span></button>
-        <button data-view="benchmarks"><b>冻结基准</b><span>离线基准和 P95</span></button>
-        <button data-view="security"><b>权限中心</b><span>联网、Shell、文件、Git 和外部 API 审批</span></button>
-        <button onclick="openModelSettings()"><b>模型配置</b><span>DeepSeek/API/本地模型</span></button>
+        <button data-view="ops"><b>运行与状态</b><span>健康、任务、备份与恢复</span></button>
+        <button data-view="skills"><b>能力与评测</b><span>工具、技能与质量门禁</span></button>
+        <button data-view="security"><b>治理与权限</b><span>审批、记忆与审计</span></button>
+        <button onclick="openModelSettings()"><b>模型配置</b><span>API、本地与离线模式</span></button>
+      </div>
+      <div class="backstage-routes" aria-hidden="true">
+        <button data-view="dash" tabindex="-1"></button><button data-view="memory" tabindex="-1"></button><button data-view="tools" tabindex="-1"></button><button data-view="reflection" tabindex="-1"></button><button data-view="evolution" tabindex="-1"></button><button data-view="benchmarks" tabindex="-1"></button>
       </div>
     </section>
   </div>

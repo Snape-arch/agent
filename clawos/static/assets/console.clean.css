@@ -337,3 +337,40 @@ body.aether-console{--c-muted:#536071;--c-faint:#737e8d;color:var(--c-text)}
 
 @media(max-width:1100px){.aether-console #view-knowledge .knowledge-front-stage{grid-template-columns:1fr 1fr!important}.aether-console #view-knowledge .knowledge-admin-entry{grid-column:1/-1!important}}
 @media(max-width:760px){.aether-console #view-knowledge .knowledge-front-stage{grid-template-columns:1fr!important}.aether-console #view-knowledge .knowledge-admin-entry{grid-column:auto!important;grid-template-columns:1fr auto!important}.aether-console #view-knowledge .knowledge-admin-entry span{grid-column:1/-1}}
+
+/* Codex-like reduction: foreground work is simple; operational detail lives in one backstage center. */
+.aether-console .task-empty{min-height:112px!important;align-items:center!important;text-align:center!important}
+.aether-console .task-empty b{font-size:18px!important}.aether-console .task-empty span{margin-top:5px;color:#687384!important;font-size:13px!important}
+.aether-console .workbench-chat .msg.user{justify-content:flex-end!important}
+.aether-console .workbench-chat .msg.user .message-body{width:auto!important;max-width:min(72%,720px)!important;padding:11px 14px!important;color:#27313f!important;background:#f0f1ef!important;border:0!important;border-radius:14px 14px 4px 14px!important}
+.aether-console .workbench-chat .msg.agent{justify-content:flex-start!important}
+.aether-console .workbench-chat .msg.agent .message-body{max-width:min(86%,820px)!important;padding:2px 0!important;border:0!important}
+
+.aether-console #view-knowledge .knowledge-frontstage-metrics,.aether-console #view-knowledge .knowledge-zone-label{display:none!important}
+.aether-console #view-knowledge .knowledge-backstage-label,.aether-console #view-knowledge .obsidian-panel,
+.aether-console #view-knowledge .report-style-panel,.aether-console #view-knowledge .enterprise-delivery-panel,
+.aether-console #view-knowledge #reportResultBlock,.aether-console #view-knowledge #enterpriseDeliveryResultBlock,
+.aether-console #view-knowledge #committeeResultBlock,.aether-console #view-knowledge #acceptanceReportBlock,
+.aether-console #view-knowledge #liveSearchReportBlock,.aether-console #view-knowledge #obsidianResultBlock,
+.aether-console #view-knowledge .section-block:has(#ocrQueueTable),.aether-console #view-knowledge .section-block:has(#citationAnswerTable),
+.aether-console #view-knowledge .section-block:has(#knowledgeSearchTable){display:none!important}
+.aether-console #view-knowledge .knowledge-admin-entry span,.aether-console #view-knowledge .knowledge-admin-entry b{display:none!important}
+.aether-console #view-knowledge .knowledge-mode-card>span,.aether-console #view-knowledge .knowledge-mode-card p,
+.aether-console #view-knowledge .knowledge-upload-hero span,.aether-console #view-knowledge .knowledge-graph-card span,
+.aether-console #view-knowledge .knowledge-editor label:has(#knowledgeSource),.aether-console #view-knowledge #knowledgeStatus{display:none!important}
+.aether-console #view-knowledge .knowledge-admin-entry{grid-template-columns:minmax(0,1fr) auto!important}.aether-console #view-knowledge .knowledge-admin-entry:before{content:"后台能力";color:#303846;font-size:13px;font-weight:680}
+.aether-console #view-knowledge .knowledge-toolbar{margin:0!important}.aether-console #view-knowledge>.knowledge-workspace>.searchbar{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:8px!important;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.aether-console #view-knowledge>.knowledge-workspace>.searchbar input{width:100%!important;background:#fff!important}
+.aether-console #view-knowledge .section-block:has(#knowledgeTable){padding:0!important;overflow:hidden!important}.aether-console #view-knowledge .section-block:has(#knowledgeTable) h2{padding:17px 18px 10px!important;margin:0!important}
+.aether-console #knowledgeTable th:nth-child(1),.aether-console #knowledgeTable td:nth-child(1){width:55%}.aether-console #knowledgeTable th:nth-child(2),.aether-console #knowledgeTable td:nth-child(2){width:20%}.aether-console #knowledgeTable th:nth-child(3),.aether-console #knowledgeTable td:nth-child(3){width:25%}
+
+.aether-console .command-drawer.on,.aether-console .settings-modal.on{display:grid!important;place-items:center!important;padding:24px!important}
+.aether-console .command-backdrop,.aether-console .settings-backdrop{position:absolute!important;inset:0!important}
+.aether-console .command-sheet,.aether-console .settings-sheet{position:relative!important;inset:auto!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;transform:none!important;margin:0!important;overflow:auto!important;border-radius:16px!important}
+.aether-console .command-sheet{width:min(760px,calc(100vw - 48px))!important;max-height:min(680px,calc(100vh - 48px))!important}
+.aether-console .settings-sheet{width:min(720px,calc(100vw - 48px))!important;max-height:min(760px,calc(100vh - 48px))!important}
+.aether-console .settings-head{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:18px!important;margin-bottom:18px!important}.aether-console .settings-head h2{margin:0!important;font-size:22px!important}.aether-console .settings-head p{margin:5px 0 0!important;color:#667283!important;font-size:13px!important}
+.aether-console .command-sheet .app-grid{grid-template-columns:1fr 1fr!important;gap:10px!important}.aether-console .command-sheet .app-grid button{min-height:86px!important}.aether-console .command-sheet .app-grid b{font-size:15px!important}.aether-console .command-sheet .app-grid span{font-size:12px!important}
+.aether-console .backstage-routes{display:none!important}
+.aether-console .settings-sheet .model-choice-actions{grid-template-columns:repeat(3,1fr)!important;padding:0!important;border:0!important}.aether-console .settings-sheet .mode-caption,.aether-console .settings-sheet .model-mode-card span{display:none!important}.aether-console .settings-sheet .model-mode-card{min-height:62px!important;justify-content:center!important}.aether-console .settings-sheet .settings-grid{display:grid!important;grid-template-columns:1fr 1fr!important;align-items:end!important}.aether-console .settings-sheet .settings-grid .wide{grid-column:auto!important}.aether-console .settings-sheet .settings-note{margin:14px 0 0!important;padding:11px 13px!important;color:#5d6878!important;background:#f6f7f5!important;border:1px solid #e2e5e8!important;border-radius:9px!important;box-shadow:none!important}.aether-console .settings-sheet .settings-actions{margin-top:16px!important}
+@media(max-width:680px){.aether-console .command-sheet .app-grid,.aether-console .settings-sheet .settings-grid,.aether-console .settings-sheet .model-choice-actions{grid-template-columns:1fr!important}.aether-console .command-drawer.on,.aether-console .settings-modal.on{padding:12px!important}.aether-console .command-sheet,.aether-console .settings-sheet{width:calc(100vw - 24px)!important;max-height:calc(100vh - 24px)!important}}
