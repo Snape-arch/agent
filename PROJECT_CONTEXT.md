@@ -2646,17 +2646,23 @@ Completed:
 - Installed the declared local retrieval dependencies in `clawos/.venv`: CPU-only PyTorch `2.13.0`, sentence-transformers `5.6.0`, transformers `5.13.0`, and ChromaDB `1.5.9`.
 - Verified a real temporary Chroma persistent store can index, reopen its local collection contract, and return an offline vector query without cloud APIs.
 - Searched the Hugging Face cache and common user/download/project model locations for reusable Qwen3 embedding/reranker weights. No complete local copy was found; an existing valid embedding safetensors prefix was reused.
-- Resumed `Qwen3-Embedding-0.6B/model.safetensors` to `453,032,503 / 1,191,586,416` bytes. The file remains incomplete and must not be enabled until its manifest SHA256 is verified.
+- Completed `Qwen3-Embedding-0.6B/model.safetensors`: size `1,191,586,416` bytes and SHA256 `0437E45C94563B09E13CB7A64478FC406947A93CB34A7E05870FC8DCD48E23FD` both match the committed manifest.
+- Verified the real ClawOS `MemoryVectorStore -> Chroma -> Qwen3-Embedding` path on CPU with a 1024-dimensional multilingual query; the relevant local-workbench document ranked first with no fallback.
+- Extended `download_qwen_model.ps1` to support repository-style embedding/reranker manifests, metadata/tokenizer sync, resilient range retries, exact safetensors verification, and an optional explicit `-Proxy` without hard-coding a personal proxy.
+- Downloaded the complete Qwen3-Reranker repository metadata/tokenizer set and resumed its main weight to `168,019,048 / 1,191,588,280` bytes before the next network quota pause.
 
 Verification:
 - Dependency imports and versions passed; `torch.cuda.is_available()` is `False`, matching the CPU isolation policy for embedding/reranking.
 - Chroma smoke: provider `chroma`, fallback reason empty, one persisted knowledge vector indexed and retrieved successfully.
 - `python -m unittest tests.test_memoryos_mvp tests.test_retrieval_reranker tests.test_memoryos_governance`: `18 tests OK`.
+- Qwen3 embedding load/encode smoke: shape `[3, 1024]`, CPU load succeeded, and the cross-language related pair scored above the unrelated pair.
+- Qwen3-backed Chroma integration smoke: provider `chroma`, embedding provider `qwen3`, dimension `1024`, fallback reason empty, and the expected document ranked first.
+- PowerShell parser validation passed for `download_qwen_model.ps1`; provider/retrieval regression: `31 tests OK`.
 
 Known notes:
-- Reranker model files are not present yet.
-- Further Hugging Face transfer was paused when the environment network usage limit rejected the retry request. The embedding target is resumable with `curl.exe -L -C -` after network approval recovers.
-- `vector_db_acceptance.py` and `paper_rag_acceptance.py` have not been run with Qwen3 models because neither model asset set is complete.
+- Reranker metadata is complete but its main safetensors file is still partial and must not be enabled before size/SHA256 verification.
+- FlClash exposes a working mixed proxy at `http://127.0.0.1:7890`. A proxy resume attempt was paused when the environment network usage limit rejected the request; the partial target remains resumable.
+- `vector_db_acceptance.py` and `paper_rag_acceptance.py` have not been run with reranking because the reranker weight is incomplete.
 
 Recommended next step:
-- Resume and SHA256-verify the embedding weight, download and verify the complete Qwen3-Reranker-0.6B repository, then run `vector_db_acceptance.py --json` and `paper_rag_acceptance.py --json` before enabling Qwen3 semantic retrieval by default.
+- Resume the reranker with `download_qwen_model.ps1 -ManifestPath clawos\models\qwen3_reranker_0_6b.json -Proxy http://127.0.0.1:7890`, verify its manifest hash, then run `vector_db_acceptance.py --json` and `paper_rag_acceptance.py --json` before enabling Qwen3 semantic retrieval by default.

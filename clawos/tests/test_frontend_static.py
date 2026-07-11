@@ -643,7 +643,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn('ggml-cuda.dll', downloader)
         self.assertIn('cudart64*.dll', downloader)
         self.assertIn('if ($curl)', model_downloader)
-        self.assertIn('-L -C - --retry 8', model_downloader)
+        self.assertIn('$curlArgs = @("-L")', model_downloader)
+        self.assertIn('$curlArgs += @("-C", "-")', model_downloader)
+        self.assertIn('"--retry", "20", "--retry-all-errors"', model_downloader)
 
     def test_console_exposes_report_style_presets(self):
         html = self.read_page("console.html")

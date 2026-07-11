@@ -284,6 +284,16 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(reranker["default_top_k"], 5)
         self.assertEqual(config["vector_store"]["reranker_model_path"], "${RERANKER_MODEL_PATH:-../tools/models/qwen3-reranker-0.6b}")
 
+    def test_qwen_downloader_supports_repository_models_and_proxy_resume(self):
+        script = (ROOT / "scripts" / "download_qwen_model.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("model_safetensors_size_bytes", script)
+        self.assertIn("model_safetensors_sha256", script)
+        self.assertIn("--exclude $filename", script)
+        self.assertIn("--retry-all-errors", script)
+        self.assertIn('[string]$Proxy = ""', script)
+        self.assertIn('@("--proxy", $Proxy)', script)
+
     def test_server_normalizes_qwen_defaults_for_local_endpoint(self):
         import os
         import clawos_server as server
