@@ -1,5 +1,31 @@
 # Project Context
 
+## 2026-07-11 - 控制台冠军向任务工作台重构
+
+Completed:
+
+- 依据 Product Design 审计与用户选定的方案 1+3，控制台从三层导航和深色玻璃后台重构为单一明亮任务工作台；后台治理能力收束到次级抽屉。
+- 工作台首屏统一暴露目标输入、Coding/会议/数据分析/论文精读快捷入口、真实任务进度、自主执行级别、办公交付质量预览和 subagent 角色状态。
+- `/api/tasks` 结果会动态渲染到工作台；无任务时显示诚实空态。自主级别具备 `aria-pressed` 与本地持久化。
+- 将每次导航触发的全量后台刷新改为按视图加载，保留原有全部后台页面与功能入口。
+- 新增统一暖白/墨黑/钴蓝视觉 tokens、清晰选中态、低阴影、响应式断点和数据表横向保护；移除核心工作面的机器人/HUD/重复导航表达。
+
+Verification:
+
+- bundled Node `--check clawos/static/assets/console.js`: passed.
+- `python -m unittest clawos.tests.test_frontend_static`: 35 tests OK.
+- `cd clawos && python -m unittest discover -s tests`: 257 tests OK, 1 skipped.
+- 本地 HTTP `/console` 与 `/health` 返回 200；应用内浏览器因 loopback 隔离返回 `ERR_CONNECTION_REFUSED`，因此 `design-qa.md` 如实记录视觉 QA blocked，未冒充浏览器验收通过。
+
+Known notes:
+
+- `clawos/skills/skill_registry.jsonl` 的既有工作树状态、`clawos/output/` 与 `tmp/` 未纳入本次提交。
+- 交付中心当前明确标注为示例布局；真实任务进度已接入，统一 artifact 列表后续可再接真实交付记录。
+
+Recommended next step:
+
+- 在可访问本机 loopback 的浏览器中以 1440×1024 打开 `/console`，对照选定 mock 完成最后一轮截图比较并把 `design-qa.md` 从 blocked 更新为 passed；随后再接统一 artifact API 替换交付示例。
+
 ## 2026-07-11 - 办公视觉质量与高级数据分析闭环
 
 Completed:

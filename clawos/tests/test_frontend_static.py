@@ -53,15 +53,13 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("Console", product)
 
         self.assertNotIn("console-layer-strip", console)
-        self.assertIn("console-product-nav", console)
-        self.assertIn("前台工作", console)
-        self.assertIn("后台系统", console)
-        self.assertIn("Console", console)
-        self.assertIn('href="/"', console)
-        self.assertIn('href="/product"', console)
-        self.assertIn('href="/academy"', console)
-        self.assertIn("首页", console)
-        self.assertIn("产品页", console)
+        self.assertNotIn("console-product-nav", console)
+        self.assertNotIn('id="spaceSwitcher"', console)
+        self.assertIn("workbench-shell", console)
+        self.assertIn("workbenchTaskList", console)
+        self.assertIn("autonomy-options", console)
+        self.assertIn("delivery-center", console)
+        self.assertIn("agent-roster", console)
         for token in (
             "--claw-card-radius",
             "--claw-pill-radius",
@@ -74,10 +72,10 @@ class FrontendStaticTests(unittest.TestCase):
             ".academy-layer-graph",
         ):
             self.assertIn(token, site_css)
-        self.assertIn(".aether-console .console-product-nav", console_css)
-        self.assertIn(".aether-console .space-group", console_css)
-        self.assertIn(".aether-console .work-front", console_css)
-        self.assertIn(".aether-console .system-back", console_css)
+        self.assertIn("Champion workbench", console_css)
+        self.assertIn("--workbench-canvas", console_css)
+        self.assertIn(".aether-console .workbench-shell", console_css)
+        self.assertIn(".aether-console .delivery-table", console_css)
 
         expected_links = {
             "/console#memory": "MemoryOS",
@@ -245,10 +243,9 @@ class FrontendStaticTests(unittest.TestCase):
         html = self.read_page("console.html")
         css = self.read_page("assets/console.css")
 
-        self.assertIn("space-group work-front", html)
-        self.assertIn("space-group system-back", html)
-        self.assertIn("工作前台", html)
-        self.assertIn("系统后台", html)
+        self.assertNotIn("space-group work-front", html)
+        self.assertNotIn("space-group system-back", html)
+        self.assertIn("delivery-table", html)
         for token in (
             "Anti-compression layer",
             "writing-mode:horizontal-tb",
@@ -343,7 +340,10 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn('href="/assets/site.css"', html)
         self.assertIn('href="/assets/console.css"', html)
         self.assertIn('data-view="chat"', html)
-        self.assertIn('data-action="new-chat"', html)
+        self.assertIn("workbench-new", html)
+        self.assertIn("useWorkbenchPrompt", html + js)
+        self.assertIn("renderWorkbenchTasks", js)
+        self.assertIn("refreshView(viewName)", js)
         self.assertIn("toggleSidebar", html + js)
         self.assertIn(".aether-console.sidebar-collapsed .side", css)
         self.assertIn("width:52px", css)
@@ -386,8 +386,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertTrue(expected_spaces <= view_ids)
         self.assertTrue(expected_spaces <= data_views)
         self.assertFalse(data_views - view_ids)
-        self.assertIn('id="spaceSwitcher"', html)
-        self.assertIn(".aether-console .space-switcher", css)
+        self.assertNotIn('id="spaceSwitcher"', html)
+        self.assertNotIn("console-product-nav", html)
+        self.assertNotIn("floating-actions", html)
         self.assertIn('document.querySelectorAll("button[data-view]")', js)
         self.assertIn("VIEW_META", js)
         self.assertIn("aria-current", js)
@@ -398,24 +399,20 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn('target="_blank"', js)
         self.assertNotIn('document.querySelectorAll(".side-nav button[data-view]")', js)
 
-    def test_console_adopts_desktop_liquid_glass_reference_style(self):
+    def test_console_adopts_calm_enterprise_workbench_style(self):
         css = self.read_page("assets/console.css")
 
         for token in (
-            "Sarito-style desktop console pass",
-            "--glass-ink",
-            "--glass-inner",
-            "AI Action Dock",
-            ".aether-console .floating-actions",
-            ".aether-console .header-orbit",
-            "backdrop-filter:blur(28px)",
-            "rgba(18,19,20,.66)",
-            "#ff5f57",
-            "#ffbd2e",
-            "#28c840",
-            "mix-blend-mode:screen",
-            "background-attachment:fixed",
-            "@media(max-width:980px)",
+            "Champion workbench",
+            "--workbench-canvas",
+            "--workbench-surface",
+            "--workbench-ink",
+            "--workbench-blue",
+            ".aether-console .workbench-columns",
+            ".aether-console .active-task-row",
+            ".aether-console .autonomy-options",
+            ".aether-console .delivery-table",
+            "@media(max-width:760px)",
         ):
             self.assertIn(token, css)
 

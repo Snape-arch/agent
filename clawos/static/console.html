@@ -18,25 +18,18 @@
       <button class="side-collapse" type="button" aria-label="收起侧栏" onclick="toggleSidebar()">‹</button>
     </div>
 
-    <nav class="console-product-nav" aria-label="ClawOS 页面跳转">
-      <a href="/">首页</a>
-      <a href="/product">产品页</a>
-      <a href="/academy">Academy</a>
-      <span>控制台</span>
-    </nav>
-
     <div class="side-search">
-      <span>⌕</span>
       <input id="consoleSearch" placeholder="搜索会话、知识或任务">
     </div>
 
-    <div class="side-label">前台工作</div>
+    <div class="side-label">工作空间</div>
     <div class="side-nav">
-      <button class="on" data-view="chat" data-action="new-chat"><span class="nav-ico">＋</span>新聊天</button>
-      <button data-view="search"><span class="nav-ico">⌕</span>搜索聊天</button>
-      <button data-view="knowledge"><span class="nav-ico">□</span>知识库</button>
-      <button data-view="projects"><span class="nav-ico">▣</span>项目</button>
-      <button type="button" onclick="toggleCommandDrawer()"><span class="nav-ico">⋯</span>更多</button>
+      <button class="on" data-view="chat">工作台</button>
+      <button data-view="tasks">任务与进度</button>
+      <button data-view="search">历史与搜索</button>
+      <button data-view="knowledge">知识库</button>
+      <button data-view="projects">项目</button>
+      <button data-view="scenes">场景与模板</button>
     </div>
 
     <button class="mobile-more-entry" type="button" onclick="toggleCommandDrawer()"><span class="nav-ico">⋯</span>更多应用</button>
@@ -45,55 +38,28 @@
     <div class="sessions" id="sessions"></div>
 
     <div class="side-bottom">
-      <div class="side-label side-bottom-label">后台系统</div>
-      <button data-view="dash"><span class="nav-ico">▦</span>后台管理</button>
-      <button onclick="openModelSettings()"><span class="nav-ico">⚙</span>系统设置</button>
-      <button onclick="toggleCommandDrawer()"><span class="nav-ico">◇</span>工具与评测</button>
+      <div class="side-label side-bottom-label">系统</div>
+      <button type="button" onclick="toggleCommandDrawer()">后台与治理</button>
+      <button onclick="openModelSettings()">模型与设置</button>
       <div class="health"><span class="dot" id="healthDot"></span><span id="healthText">启动中</span></div>
     </div>
   </aside>
 
   <header class="console-head">
     <div>
-      <h1 id="viewTitle">新聊天</h1>
-      <p id="viewSub">发起任务，连接工具、知识库、文件和项目上下文</p>
+      <h1 id="viewTitle">今日工作台</h1>
+      <p id="viewSub">任务、进度、交付与审批集中在一个工作面</p>
     </div>
-    <div class="header-orbit" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
     <div class="model-mode-panel" id="modelModePanel">
-      <b id="modelModeLabel">模型模式检测中</b>
-      <span id="modelModeDetail">DeepSeek API / Local Qwen / Mock offline</span>
+      <b id="modelModeLabel">工作模式检测中</b>
+      <span id="modelModeDetail">安全执行 · 全程可审计</span>
     </div>
     <div class="head-actions">
       <span class="badge" id="modelBadge">模型：-</span>
       <span class="badge" id="toolBadge">工具：-</span>
-      <button class="round-action" aria-label="通知"><span class="notify-dot"></span>·</button>
-      <button class="profile-action">C</button>
+      <button class="profile-action" aria-label="用户账户">C</button>
     </div>
   </header>
-
-  <nav class="space-switcher" id="spaceSwitcher" aria-label="Console spaces">
-    <div class="space-group work-front">
-      <span class="space-group-label">工作前台</span>
-      <button data-view="chat" data-action="new-chat">新聊天</button>
-      <button data-view="search">搜索</button>
-      <button data-view="knowledge">知识库</button>
-      <button data-view="projects">项目</button>
-      <button data-view="scenes">场景</button>
-    </div>
-    <div class="space-group system-back">
-      <span class="space-group-label">系统后台</span>
-      <button data-view="dash">状态</button>
-      <button data-view="memory">记忆</button>
-      <button data-view="tools">工具</button>
-      <button data-view="tasks">任务</button>
-      <button data-view="reflection">反思</button>
-      <button data-view="evolution">自进化</button>
-      <button data-view="skills">技能</button>
-      <button data-view="benchmarks">基准</button>
-      <button data-view="security">权限</button>
-      <button data-view="ops">运维</button>
-    </div>
-  </nav>
 
   <main class="console-main">
     <section class="view" id="view-dash">
@@ -154,21 +120,89 @@
     </section>
 
     <section class="view on" id="view-chat">
-      <div class="workspace glass-panel">
-        <div class="chat" id="chat">
-          <div class="chat-inner" id="chatInner">
-            <div class="empty">
-              <b>准备好了，随时开始</b>
-              <span>直接提问，或把知识库、项目和本地文件作为上下文交给 ClawOS。</span>
-              <div class="quick-grid">
-                <button class="quick" onclick="usePrompt('分析当前项目，并给出下一步开发计划')">分析项目与开发计划</button>
-                <button class="quick" onclick="usePrompt('检索我的知识库和长期记忆，回答这个问题：')">检索知识库</button>
-                <button class="quick" onclick="usePrompt('列出当前可用工具和固化技能')">探索工具与技能</button>
-                <button class="quick" onclick="usePrompt('复盘最近一次任务，并总结改进建议')">运行反思复盘</button>
+      <div class="workspace workbench-shell">
+        <section class="workbench-intro" aria-labelledby="workbenchHeading">
+          <div>
+            <span class="eyebrow">CLAWOS · PERSONAL WORKSPACE</span>
+            <h2 id="workbenchHeading">上午好，今天要完成什么？</h2>
+            <p>描述目标或交付物，ClawOS 会拆解任务、分配能力，并在关键动作前等待你确认。</p>
+          </div>
+          <button class="secondary workbench-new" type="button" onclick="newChat()">新建任务</button>
+        </section>
+
+        <section class="intent-panel" aria-label="任务输入">
+          <div class="chat workbench-chat" id="chat">
+            <div class="chat-inner" id="chatInner">
+              <div class="empty workbench-empty">
+                <b>从目标开始，而不是从工具开始</b>
+                <span>可以附上项目、文档、表格、会议材料或论文，系统会自动选择合适的执行路径。</span>
               </div>
             </div>
           </div>
+        </section>
+
+        <div class="workbench-quick" aria-label="常用任务">
+          <button type="button" onclick="useWorkbenchPrompt('编写与开发')"><b>编写与开发</b><span>代码、重构与测试闭环</span></button>
+          <button type="button" onclick="useWorkbenchPrompt('会议纪要')"><b>会议纪要</b><span>转写、决策与行动项</span></button>
+          <button type="button" onclick="useWorkbenchPrompt('数据分析')"><b>数据分析</b><span>清洗、公式、图表与洞察</span></button>
+          <button type="button" onclick="useWorkbenchPrompt('论文精读')"><b>论文精读</b><span>证据、对比与知识沉淀</span></button>
         </div>
+
+        <div class="workbench-columns">
+          <section class="workbench-section active-work" aria-labelledby="activeWorkHeading">
+            <div class="section-heading"><div><span class="eyebrow">ACTIVE WORK</span><h3 id="activeWorkHeading">正在进行</h3></div><button class="text-action" type="button" onclick="setView('tasks')">查看全部任务</button></div>
+            <div id="workbenchTaskList" class="active-task-list" aria-live="polite">
+            <article class="active-task-row">
+              <div class="task-index">01</div>
+              <div class="task-summary"><b>产品需求文档与交互方案</b><span>文档代理 · 正在统一信息架构与视觉规范</span></div>
+              <div class="task-progress"><span><i style="width:68%"></i></span><b>68%</b></div>
+              <button class="secondary compact" type="button" onclick="setView('tasks')">查看进度</button>
+            </article>
+            <article class="active-task-row">
+              <div class="task-index">02</div>
+              <div class="task-summary"><b>Q2 运营数据分析报告</b><span>数据代理 · 公式校验与图表生成</span></div>
+              <div class="task-progress"><span><i style="width:45%"></i></span><b>45%</b></div>
+              <button class="secondary compact" type="button" onclick="setView('tasks')">查看进度</button>
+            </article>
+            <article class="active-task-row">
+              <div class="task-index">03</div>
+              <div class="task-summary"><b>行业研究汇报</b><span>研究代理 · 证据核验与演示文稿排版</span></div>
+              <div class="task-progress"><span><i style="width:32%"></i></span><b>32%</b></div>
+              <button class="secondary compact" type="button" onclick="setView('tasks')">查看进度</button>
+            </article>
+            </div>
+          </section>
+
+          <aside class="workbench-section autonomy-panel" aria-labelledby="autonomyHeading">
+            <div class="section-heading"><div><span class="eyebrow">CONTROL</span><h3 id="autonomyHeading">自主执行控制</h3></div><span class="status-live">运行正常</span></div>
+            <div class="autonomy-options" role="group" aria-label="自主执行级别">
+              <button type="button" data-autonomy="suggest" onclick="setAutonomyMode('suggest')"><b>建议</b><span>只提供方案</span></button>
+              <button class="on" type="button" data-autonomy="approve" onclick="setAutonomyMode('approve')"><b>需批准</b><span>关键步骤确认</span></button>
+              <button type="button" data-autonomy="auto" onclick="setAutonomyMode('auto')"><b>自动执行</b><span>按规则完成</span></button>
+            </div>
+            <p id="autonomyHint">文件发布、外部沟通、数据写入等关键动作将请求批准。</p>
+            <button class="text-action" type="button" onclick="openDrawerView('security')">管理规则与权限</button>
+          </aside>
+        </div>
+
+        <section class="workbench-section delivery-center" aria-labelledby="deliveryHeading">
+          <div class="section-heading"><div><span class="eyebrow">DELIVERABLES</span><h3 id="deliveryHeading">交付质量预览</h3></div><span class="delivery-note">示例布局 · 实际任务完成后替换</span></div>
+          <div class="delivery-table" role="table" aria-label="最近交付文件">
+            <div class="delivery-row delivery-head" role="row"><span>文件</span><span>类型</span><span>质量检查</span><span>完成时间</span><span>状态</span></div>
+            <button class="delivery-row" type="button" onclick="setView('knowledge')"><span><b>产品需求文档 v1.2.docx</b><small>产品工作区</small></span><span>DOCX</span><span>分页与中英混排通过</span><span>今天 10:24</span><span class="quality-pass">可交付</span></button>
+            <button class="delivery-row" type="button" onclick="setView('scenes')"><span><b>Q2 运营分析.xlsx</b><small>数据工作区</small></span><span>XLSX</span><span>公式、筛选与冻结检查通过</span><span>今天 09:48</span><span class="quality-pass">可交付</span></button>
+            <button class="delivery-row" type="button" onclick="setView('scenes')"><span><b>行业研究汇报.pptx</b><small>研究工作区</small></span><span>PPTX</span><span>溢出与遮挡检查中</span><span>昨天 18:32</span><span class="quality-review">待复核</span></button>
+            <button class="delivery-row" type="button" onclick="setView('knowledge')"><span><b>合同扫描件.pdf</b><small>知识库</small></span><span>PDF</span><span>OCR 与页面渲染通过</span><span>昨天 17:15</span><span class="quality-pass">可检索</span></button>
+          </div>
+        </section>
+
+        <section class="workbench-section agent-roster" aria-labelledby="agentRosterHeading">
+          <div class="section-heading"><div><span class="eyebrow">SUBAGENTS</span><h3 id="agentRosterHeading">协作代理角色</h3></div><button class="text-action" type="button" onclick="openDrawerView('skills')">管理能力</button></div>
+          <div class="agent-row"><span class="agent-mark">RD</span><b>研究代理</b><span>已完成 28 份证据收集</span><em class="done">已交接</em></div>
+          <div class="agent-row"><span class="agent-mark">DA</span><b>数据代理</b><span>正在校验分析公式</span><em>进行中</em></div>
+          <div class="agent-row"><span class="agent-mark">QA</span><b>质量代理</b><span>等待演示文稿视觉复核</span><em class="waiting">等待中</em></div>
+        </section>
+
         <div class="composer">
           <div class="confirmbar" id="confirmBar">
             <span id="confirmText">等待确认</span>
@@ -342,11 +376,6 @@
     <section class="view" id="view-ops"><div class="panel-view glass-panel ops-workspace"><div class="library-head"><div><h2>Ops Center</h2><p class="hint">备份、恢复、配置检查、后台 worker 和真实长任务。</p></div><button class="secondary" onclick="loadOps()">刷新</button></div><div class="ops-score" id="opsReadinessScore">Readiness: --</div><div class="ops-grid"><div class="section-block"><h2>Readiness</h2><table class="table" id="opsReadinessTable"></table></div><div class="section-block"><h2>配置检查</h2><div class="action-row"><button class="primary" onclick="runConfigCheck()">运行检查</button><span class="hint" id="opsConfigStatus"></span></div><table class="table" id="opsConfigTable"></table></div></div><div class="ops-grid"><div class="section-block"><h2>备份 / 恢复</h2><div class="ops-form"><input id="opsBackupDir" placeholder="output/backups"><input id="opsBackupLabel" placeholder="label"><button class="primary icon-text" onclick="createBackup()"><span class="ui-ico">↓</span>创建备份</button><input id="opsRestorePath" class="wide" placeholder="backup file path"><label><input id="opsRestoreConfirm" type="checkbox"> 确认恢复</label><button class="secondary icon-text" onclick="restoreBackup()"><span class="ui-ico">↺</span>恢复</button></div><pre class="result-box" id="opsBackupResult"></pre></div><div class="section-block"><h2>Worker</h2><div class="action-row"><button class="primary" onclick="startWorker()">启动</button><button class="secondary" onclick="stopWorker()">停止</button><button class="secondary" onclick="tickWorker()">执行一次</button><span class="hint" id="opsWorkerStatus"></span></div><table class="table" id="opsWorkerTable"></table></div></div><div class="section-block"><h2>业务长任务</h2><div class="job-grid"><div><b>后台生成报告</b><select id="opsReportDocumentSelect"></select><select id="opsReportStyle"><option value="journal">Journal</option><option value="learning_notes">Learning notes</option><option value="business_brief">Business brief</option><option value="compact">Compact</option></select><input id="opsReportOutputDir" placeholder="output/reports"><button class="primary" onclick="queueReportJob()">排队报告任务</button></div><div><b>OCR 队列</b><select id="opsOcrCategory"><option value="">全部库</option><option value="research">Research</option><option value="learning">Learning</option><option value="project">Project</option><option value="writing">Writing</option></select><input id="opsOcrLimit" type="number" min="1" max="50" value="12"><button class="primary" onclick="queueOcrJob()">排队 OCR 任务</button></div><div><b>批量文档解析</b><textarea id="opsBatchFiles" placeholder="每行一个本地文件路径"></textarea><select id="opsBatchCategory"><option value="research">Research</option><option value="learning">Learning</option><option value="project">Project</option><option value="domain">Domain</option></select><button class="primary" onclick="queueBatchIngestJob()">排队解析任务</button></div></div><pre class="result-box" id="opsJobResult"></pre></div></div></section>
   </main>
 
-  <div class="floating-actions">
-    <button class="secondary" onclick="loadHealth()">运行诊断</button>
-    <button class="primary" onclick="setView('chat')">打开会话</button>
-  </div>
-
   <div class="command-drawer" id="commandDrawer" aria-hidden="true">
     <div class="command-backdrop" onclick="closeCommandDrawer()"></div>
     <section class="command-sheet liquid-panel">
@@ -356,12 +385,10 @@
         <button data-view="dash"><b>状态总览</b><span>模型、工具、系统健康</span></button>
         <button data-view="memory"><b>记忆治理</b><span>画像、偏好、审查和个人上下文</span></button>
         <button data-view="tools"><b>工具路由</b><span>函数清单与调用轨迹</span></button>
-        <button data-view="tasks"><b>运行轨迹</b><span>任务、队列、事件审计</span></button>
         <button data-view="reflection"><b>反思循环</b><span>复盘、改进、回滚</span></button>
         <button data-view="evolution"><b>Self-Evolution</b><span>候选生成、回归门禁、灰度发布</span></button>
         <button data-view="skills"><b>固化技能</b><span>Skill 发布与质量</span></button>
         <button data-view="benchmarks"><b>冻结基准</b><span>离线基准和 P95</span></button>
-        <button data-view="scenes"><b>场景工作台</b><span>会议、科研、办公、学习</span></button>
         <button data-view="security"><b>权限中心</b><span>联网、Shell、文件、Git 和外部 API 审批</span></button>
         <button onclick="openModelSettings()"><b>模型配置</b><span>DeepSeek/API/本地模型</span></button>
       </div>

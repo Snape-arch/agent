@@ -32,7 +32,7 @@ let selectedSkillName = "";
 
 const $ = id => document.getElementById(id);
 const VIEW_META = {
-  chat: ["新聊天", "发起任务，连接工具、知识库、文件和项目上下文"],
+  chat: ["今日工作台", "任务、进度、交付与审批集中在一个工作面"],
   search: ["搜索聊天", "查找历史会话并继续上下文"],
   knowledge: ["知识库", "管理用户主动构建的 RAG 资料、文档和学习沉淀"],
   dash: ["状态总览", "查看模型、工具、任务和记忆系统的运行状态"],
@@ -65,6 +65,76 @@ function usePrompt(text) {
   if (!prompt) return;
   prompt.value = text;
   prompt.focus();
+}
+
+const WORKBENCH_PROMPTS = {
+  "编写与开发": "请分析当前项目，给出可执行的开发计划，完成编码、测试、审查与交付闭环。",
+  "会议纪要": "请处理会议材料，输出结构化纪要、决策、行动项、负责人和日历跟进建议。",
+  "数据分析": "请分析所附数据，完成清洗、统计、公式、图表、洞察和高质量工作簿交付。",
+  "论文精读": "请精读所附论文，提取方法、实验、发现、局限与引用证据，并沉淀到知识库。"
+};
+
+function useWorkbenchPrompt(kind) {
+  usePrompt(WORKBENCH_PROMPTS[kind] || "请描述需要完成的目标和交付物。");
+  $("prompt")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function setAutonomyMode(mode) {
+  const hints = {
+    suggest: "只生成计划与建议，不执行写入或外部动作。",
+    approve: "文件发布、外部沟通、数据写入等关键动作将请求批准。",
+    auto: "仅在已授权范围内自动执行；越界动作仍会请求批准。"
+  };
+  document.querySelectorAll("[data-autonomy]").forEach(button => {
+    const active = button.dataset.autonomy === mode;
+    button.classList.toggle("on", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  if ($("autonomyHint")) $("autonomyHint").textContent = hints[mode] || hints.approve;
+  localStorage.setItem("clawos-autonomy-mode", mode);
+}
+
+function workbenchProgress(task) {
+  const status = String(task.status || "").toLowerCase();
+  if (status === "succeeded") return 100;
+  if (["failed", "canceled", "cancelled", "interrupted"].includes(status)) return 100;
+  if (["running", "in_progress", "processing"].includes(status)) return 68;
+  if (["queued", "pending", "waiting"].includes(status)) return 18;
+  return 8;
+}
+
+function workbenchStatusLabel(status) {
+  const labels = {
+    succeeded: "已完成", running: "进行中", in_progress: "进行中", processing: "处理中",
+    queued: "排队中", pending: "待开始", waiting: "等待中", failed: "需处理",
+    canceled: "已取消", cancelled: "已取消", interrupted: "可恢复"
+  };
+  return labels[String(status || "").toLowerCase()] || "已记录";
+}
+
+function renderWorkbenchTasks(tasks) {
+  const target = $("workbenchTaskList");
+  if (!target) return;
+  const rows = (tasks || []).slice(0, 3);
+  if (!rows.length) {
+    target.innerHTML = `<div class="workbench-empty-state"><b>暂无运行中的任务</b><span>从上方输入目标，任务启动后会在这里显示真实进度与状态。</span></div>`;
+    return;
+  }
+  target.innerHTML = rows.map((task, index) => {
+    const progress = workbenchProgress(task);
+    const id = Number(task.id) || 0;
+    return `<article class="active-task-row">
+      <div class="task-index">${String(index + 1).padStart(2, "0")}</div>
+      <div class="task-summary"><b>${esc(task.title || `任务 #${id}`)}</b><span>${esc(task.source || "ClawOS")} · ${esc(workbenchStatusLabel(task.status))}</span></div>
+      <div class="task-progress" role="progressbar" aria-label="${esc(task.title || "任务")}进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span><i style="width:${progress}%"></i></span><b>${progress}%</b></div>
+      <button class="secondary compact" type="button" onclick="openWorkbenchTask(${id})">查看进度</button>
+    </article>`;
+  }).join("");
+}
+
+function openWorkbenchTask(id) {
+  if (id) lastTaskId = id;
+  setView("tasks");
 }
 
 function projectPromptText(kind) {
@@ -139,7 +209,7 @@ function setView(viewName) {
   $("viewSub").textContent = (VIEW_META[viewName] || VIEW_META.chat)[1];
   if (location.hash !== "#" + viewName) history.replaceState(null, "", "#" + viewName);
   closeCommandDrawer();
-  refreshAll();
+  refreshView(viewName);
 }
 
 document.querySelectorAll("button[data-view]").forEach(button => {
@@ -2092,11 +2162,13 @@ async function loadTasks() {
   try {
     const data = await api("/api/tasks?session_id=" + encodeURIComponent(currentSession) + "&limit=20");
     const rows = data.tasks || [];
+    renderWorkbenchTasks(rows);
     if (!lastTaskId && rows[0]) lastTaskId = rows[0].id;
     if ($("taskTable")) $("taskTable").innerHTML = table(["ID", "状态", "尝试", "标题", "来源", "开始", "操作"], rows.map(task => [task.id, { html: statusBadge(task.status) }, task.attempt || 1, task.title, task.source, task.started_at, { html: taskActions(task) }]));
     await loadTaskQueue();
     if (lastTaskId) await showTask(lastTaskId);
   } catch (err) {
+    renderWorkbenchTasks([]);
     if ($("taskTable")) $("taskTable").innerHTML = table(["ID", "状态", "尝试", "标题", "来源", "开始", "操作"], []);
   }
 }
@@ -2571,9 +2643,33 @@ async function refreshAll() {
   if (window.loadRuntimeRecords) window.loadRuntimeRecords();
 }
 
+async function refreshView(viewName) {
+  const common = [loadHealth(), loadRoutingStrategy()];
+  const viewLoads = {
+    chat: [loadTasks()],
+    search: [],
+    knowledge: [loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue()],
+    projects: [loadKnowledgeDocuments()],
+    dash: [loadDash(), refreshOfflineReadiness(), loadLocalAcceptanceHistory()],
+    memory: [loadMemory()],
+    reflection: [loadReflection()],
+    evolution: [loadEvolution()],
+    skills: [loadSkills()],
+    tools: [loadTools(), loadToolExecutions()],
+    tasks: [loadTasks()],
+    benchmarks: [loadBenchmarks()],
+    scenes: [loadCapabilities()],
+    security: [loadSecurityCenter()],
+    ops: [loadOps()]
+  };
+  await Promise.allSettled(common.concat(viewLoads[viewName] || []));
+  if (["chat", "tasks"].includes(viewName) && window.loadRuntimeRecords) window.loadRuntimeRecords();
+}
+
 if ($("cfgProvider")) $("cfgProvider").addEventListener("change", () => applyProviderPreset(true));
 applyReportPreset();
 renderKnowledgeWorkspaceShell();
+setAutonomyMode(localStorage.getItem("clawos-autonomy-mode") || "approve");
 loadSessions();
 startTaskStream();
 const initialView = (location.hash || "").replace("#", "");
