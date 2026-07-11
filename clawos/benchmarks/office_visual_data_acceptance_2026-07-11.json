@@ -1,0 +1,415 @@
+{
+  "schema": "clawos.office-visual-data-acceptance.v1",
+  "ok": true,
+  "checks": {
+    "docx_structure": true,
+    "template_fidelity": true,
+    "pdf_rendered": true,
+    "pptx_no_overflow": true,
+    "xlsx_analysis": true,
+    "ocr_pdf_rejected": true,
+    "advanced_data_team": true
+  },
+  "audits": {
+    "docx": {
+      "schema": "clawos.office-visual-quality.v1",
+      "path": "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-office-visual-7bmr_207\\quality.docx",
+      "format": "docx",
+      "quality_gate": "pass",
+      "visual_status": "structural_only",
+      "strict_visual": false,
+      "checks": [
+        {
+          "name": "semantic_styles",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "headings": 1
+          }
+        },
+        {
+          "name": "table_repeat_headers",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "tables": 1
+          }
+        },
+        {
+          "name": "mixed_language",
+          "passed": true,
+          "severity": "warning",
+          "detail": "Chinese/English mixed text present"
+        },
+        {
+          "name": "rendered_pages",
+          "passed": false,
+          "severity": "warning",
+          "detail": {
+            "available": false,
+            "engine": "",
+            "pages": 0,
+            "images": []
+          }
+        }
+      ],
+      "hard_failures": [],
+      "warnings": [
+        "rendered_pages"
+      ],
+      "render": {
+        "available": false,
+        "engine": "",
+        "pages": 0,
+        "images": []
+      }
+    },
+    "docx_template": {
+      "schema": "clawos.office-visual-quality.v1",
+      "path": "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-office-visual-7bmr_207\\quality.docx",
+      "format": "docx",
+      "quality_gate": "pass",
+      "visual_status": "structural_only",
+      "strict_visual": false,
+      "checks": [
+        {
+          "name": "semantic_styles",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "headings": 1
+          }
+        },
+        {
+          "name": "table_repeat_headers",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "tables": 1
+          }
+        },
+        {
+          "name": "mixed_language",
+          "passed": true,
+          "severity": "warning",
+          "detail": "Chinese/English mixed text present"
+        },
+        {
+          "name": "template_fidelity",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "template": "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-office-visual-7bmr_207\\quality.docx",
+            "style_retention": 1.0
+          }
+        },
+        {
+          "name": "rendered_pages",
+          "passed": false,
+          "severity": "warning",
+          "detail": {
+            "available": false,
+            "engine": "",
+            "pages": 0,
+            "images": []
+          }
+        }
+      ],
+      "hard_failures": [],
+      "warnings": [
+        "rendered_pages"
+      ],
+      "render": {
+        "available": false,
+        "engine": "",
+        "pages": 0,
+        "images": []
+      }
+    },
+    "pdf": {
+      "schema": "clawos.office-visual-quality.v1",
+      "path": "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-office-visual-7bmr_207\\quality.pdf",
+      "format": "pdf",
+      "quality_gate": "pass",
+      "visual_status": "rendered",
+      "strict_visual": true,
+      "checks": [
+        {
+          "name": "pdf_pages",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "pages": 3
+          }
+        },
+        {
+          "name": "searchable_or_ocr_required",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "text_chars_per_page": [
+              904,
+              998,
+              729
+            ],
+            "ocr_required_pages": []
+          }
+        },
+        {
+          "name": "rendered_pages",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "available": true,
+            "engine": "pdftoppm",
+            "pages": 3,
+            "images": [
+              "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-pdf-render-p7on08m1\\page-1.png",
+              "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-pdf-render-p7on08m1\\page-2.png",
+              "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-pdf-render-p7on08m1\\page-3.png"
+            ],
+            "stderr": ""
+          }
+        }
+      ],
+      "hard_failures": [],
+      "warnings": [],
+      "render": {
+        "available": true,
+        "engine": "pdftoppm",
+        "pages": 3,
+        "images": [
+          "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-pdf-render-p7on08m1\\page-1.png",
+          "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-pdf-render-p7on08m1\\page-2.png",
+          "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-pdf-render-p7on08m1\\page-3.png"
+        ],
+        "stderr": ""
+      }
+    },
+    "pptx": {
+      "schema": "clawos.office-visual-quality.v1",
+      "path": "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-office-visual-7bmr_207\\quality.pptx",
+      "format": "pptx",
+      "quality_gate": "pass",
+      "visual_status": "structural_only",
+      "strict_visual": false,
+      "checks": [
+        {
+          "name": "slide_canvas_overflow",
+          "passed": true,
+          "severity": "high",
+          "detail": []
+        },
+        {
+          "name": "text_shape_overlap",
+          "passed": true,
+          "severity": "high",
+          "detail": []
+        },
+        {
+          "name": "minimum_body_font_16pt",
+          "passed": true,
+          "severity": "high",
+          "detail": []
+        },
+        {
+          "name": "rendered_pages",
+          "passed": false,
+          "severity": "warning",
+          "detail": {
+            "available": false,
+            "engine": "",
+            "pages": 0,
+            "images": []
+          }
+        }
+      ],
+      "hard_failures": [],
+      "warnings": [
+        "rendered_pages"
+      ],
+      "render": {
+        "available": false,
+        "engine": "",
+        "pages": 0,
+        "images": []
+      }
+    },
+    "xlsx": {
+      "schema": "clawos.office-visual-quality.v1",
+      "path": "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-office-visual-7bmr_207\\analysis.xlsx",
+      "format": "xlsx",
+      "quality_gate": "pass",
+      "visual_status": "structural_only",
+      "strict_visual": false,
+      "checks": [
+        {
+          "name": "formula_integrity",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "formulas": 20,
+            "errors": []
+          }
+        },
+        {
+          "name": "filters",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "sheets": 3,
+            "with_filters": 3
+          }
+        },
+        {
+          "name": "freeze_panes",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "with_freeze": 3
+          }
+        },
+        {
+          "name": "semantic_formatting",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "styled_cells": 49
+          }
+        },
+        {
+          "name": "analysis_visual",
+          "passed": true,
+          "severity": "warning",
+          "detail": {
+            "charts": 1,
+            "sheets": 3
+          }
+        },
+        {
+          "name": "rendered_pages",
+          "passed": false,
+          "severity": "warning",
+          "detail": {
+            "available": false,
+            "engine": "",
+            "pages": 0,
+            "images": []
+          }
+        }
+      ],
+      "hard_failures": [],
+      "warnings": [
+        "rendered_pages"
+      ],
+      "render": {
+        "available": false,
+        "engine": "",
+        "pages": 0,
+        "images": []
+      }
+    },
+    "ocr_detection": {
+      "schema": "clawos.office-visual-quality.v1",
+      "path": "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-office-visual-7bmr_207\\ocr_required.pdf",
+      "format": "pdf",
+      "quality_gate": "revision_required",
+      "visual_status": "rendered",
+      "strict_visual": false,
+      "checks": [
+        {
+          "name": "pdf_pages",
+          "passed": true,
+          "severity": "high",
+          "detail": {
+            "pages": 1
+          }
+        },
+        {
+          "name": "searchable_or_ocr_required",
+          "passed": false,
+          "severity": "high",
+          "detail": {
+            "text_chars_per_page": [
+              0
+            ],
+            "ocr_required_pages": [
+              1
+            ]
+          }
+        },
+        {
+          "name": "rendered_pages",
+          "passed": true,
+          "severity": "warning",
+          "detail": {
+            "available": true,
+            "engine": "pdftoppm",
+            "pages": 1,
+            "images": [
+              "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-pdf-render-njqq424t\\page-1.png"
+            ],
+            "stderr": ""
+          }
+        }
+      ],
+      "hard_failures": [
+        "searchable_or_ocr_required"
+      ],
+      "warnings": [],
+      "render": {
+        "available": true,
+        "engine": "pdftoppm",
+        "pages": 1,
+        "images": [
+          "C:\\Users\\34712\\AppData\\Local\\Temp\\clawos-pdf-render-njqq424t\\page-1.png"
+        ],
+        "stderr": ""
+      }
+    }
+  },
+  "analysis": {
+    "rows": 3,
+    "summary": {
+      "revenue": {
+        "count": 3,
+        "sum": 400.0,
+        "mean": 133.33333333333334,
+        "median": 120.0,
+        "min": 100.0,
+        "max": 180.0,
+        "stdev": 41.63331998932266
+      },
+      "cost": {
+        "count": 3,
+        "sum": 225.0,
+        "mean": 75.0,
+        "median": 70.0,
+        "min": 65.0,
+        "max": 90.0,
+        "stdev": 13.228756555322953
+      }
+    },
+    "grouped": {
+      "East": {
+        "revenue": 300.0,
+        "cost": 160.0,
+        "count": 2
+      },
+      "West": {
+        "revenue": 100.0,
+        "cost": 65.0,
+        "count": 1
+      }
+    },
+    "correlations": {
+      "revenue|cost": 0.9986254289035239
+    }
+  },
+  "subagent_roles": [
+    "data_profiler",
+    "data_analyst",
+    "workbook_builder",
+    "quality_reviewer"
+  ]
+}

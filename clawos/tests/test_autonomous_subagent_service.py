@@ -34,6 +34,24 @@ class FakeProvider:
 
 
 class AutonomousSubagentServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_advanced_data_team_and_output_contract_repair(self):
+        captures = {}
+        invalid = json.dumps({"summary": "first", "confidence": 2})
+        class RepairProvider(FakeProvider):
+            async def complete(self, messages, options=None, **kwargs):
+                if self.calls == 0:
+                    self.calls += 1; self.captures.setdefault(self.role, []).append(messages)
+                    return {"ok": True, "provider": "fake", "model": "fake", "content": invalid, "raw": {"choices": [{"message": {"content": invalid}}]}, "usage": {"total_tokens": 10}}
+                return await super().complete(messages, options, **kwargs)
+        with tempfile.TemporaryDirectory() as td:
+            roles = AutonomousSubagentService.advanced_data_team("Analyze sales", source_description="sales table")
+            self.assertEqual([item.role_id for item in roles], ["data_profiler", "data_analyst", "workbook_builder", "quality_reviewer"])
+            self.assertTrue(roles[-1].hard_gate)
+            service = AutonomousSubagentService(lambda spec: RepairProvider(spec.role_id, captures), checkpoint_root=Path(td), max_concurrency=2)
+            result = await service.run("Analyze sales", roles)
+            self.assertEqual(result["status"], "passed", result)
+            self.assertTrue(any(trace["type"] == "output_repair" for item in result["results"].values() for trace in item["trace"]))
+
     async def test_roles_use_independent_model_calls_and_dependency_packets(self):
         captures = {}
         with tempfile.TemporaryDirectory() as td:

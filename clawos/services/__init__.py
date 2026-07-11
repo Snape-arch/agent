@@ -14,6 +14,7 @@ from .workflow_engine import WorkflowEngine
 from .paper_intelligence_service import PaperIntelligenceService, ScholarlySearchService
 from .coding_workflow_service import CodingWorkflowService
 from .office_productivity_service import OfficeProductivityService
+from .office_visual_quality_service import OfficeVisualQualityService
 from .autonomous_subagent_service import AutonomousSubagentService, SubagentRoleSpec
 
 __all__ = [

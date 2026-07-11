@@ -1,5 +1,34 @@
 # Project Context
 
+## 2026-07-11 - 办公视觉质量与高级数据分析闭环
+
+Completed:
+
+- 新增 `OfficeVisualQualityService`，对 DOCX/PPTX/XLSX/PDF 输出统一机器可读质量门禁；支持 PDF/LibreOffice 渲染入口、PPTX 越界/文本框重叠/最小字号、XLSX 公式错误/格式/筛选/冻结窗格/图表、DOCX 语义样式/长表重复表头/中英文混排及模板样式保留检查。
+- 升级办公生成质量：DOCX 使用明确层级、页边距、页脚和重复表头；PPTX 使用固定画布、30pt 标题和 20pt 正文；XLSX 使用表格、筛选、冻结窗格、语义格式、公式和图表；PDF 嵌入本地 CJK 字体并使用专用表头样式。
+- 新增高级数据分析：数值概况、分组汇总、相关性、公式驱动 Summary/Group Analysis 工作表和分析图；验收工作簿含 20 个可审计公式、3 个筛选/冻结工作表和 1 张图。
+- 自治 subagent 新增 `advanced_data_analysis` 四角色团队（剖析、分析、工作簿、独立质检），并增加输出契约验证与定向 JSON repair 重试。
+- 新增 `office_visual_data_acceptance.py` 和冻结结果，覆盖中英文混排、80 行跨页长表、模板保真、PDF 真渲染、PPTX 越界、XLSX 高级分析、OCR PDF 拒绝和数据团队配置。
+
+Verification:
+
+- bundled Office runtime 定向测试：11 tests OK。
+- 系统运行时相关回归：38 tests OK，1 skipped（系统 Python 缺专业 Office 依赖；同项已在 bundled runtime 通过）。
+- 全量：256 tests OK，1 skipped。
+- 办公视觉/数据验收：7/7 checks passed。
+- PDF 三页 Poppler 真渲染并逐页目视复查；首轮发现 CJK 方块字、第二轮发现表头对比不足，修复后最终复查无缺字、裁切、重叠或分页缺陷。
+- 架构门禁 95/100；MTClaw 垂直合同 7/7 passed。
+
+Known notes:
+
+- 本机没有 LibreOffice，因此 DOCX/PPTX/XLSX 报告为 `structural_only`，没有冒充真渲染视觉通过；在装有 LibreOffice/WPS 转换能力的比赛环境应使用 `strict_visual=true` 重跑。
+- OCR PDF 当前实现检测并阻止无文本层文件通过；真正 OCR 识别仍依赖后续接入 Tesseract/PaddleOCR 或现有 OCR worker。
+- 这套能力接近高质量自动化办公生成/编辑与验收，不等同于完整 WPS 桌面交互编辑器内核。
+
+Recommended next step:
+
+- 在目标环境安装 LibreOffice 或接入 WPS 可自动化渲染接口，对 DOCX/PPTX/XLSX 全部执行逐页/逐幻灯片/逐工作表截图验收；补真实复杂企业模板、多图表仪表板、透视表、OCR 识别和 100+ 文件批量回归。
+
 ## 2026-07-11 - Coding、办公与自治 Subagent 闭环
 
 Completed:

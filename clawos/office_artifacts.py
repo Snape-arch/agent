@@ -34,18 +34,29 @@ def create_docx(path, title="", sections=None, metadata=None):
     """Create a structured DOCX with a dependency-free OpenXML fallback."""
     try:
         from docx import Document
-        from docx.shared import Inches, Pt
+        from docx.enum.section import WD_SECTION
+        from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        from docx.shared import Inches, Pt, RGBColor
 
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         document = Document()
         section = document.sections[0]
-        section.top_margin = Inches(0.75)
-        section.bottom_margin = Inches(0.75)
+        section.top_margin = Inches(0.72); section.bottom_margin = Inches(0.68)
+        section.left_margin = Inches(0.82); section.right_margin = Inches(0.82)
         styles = document.styles
-        styles["Normal"].font.name = "Arial"
+        styles["Normal"].font.name = "Aptos"
         styles["Normal"].font.size = Pt(10.5)
-        document.add_heading(str(title or target.stem), 0)
+        styles["Normal"].paragraph_format.space_after = Pt(6)
+        for name, size, color in (("Title", 26, "17365D"), ("Heading 1", 17, "17365D"), ("Heading 2", 13, "2F5597"), ("Heading 3", 11, "404040")):
+            style = styles[name]; style.font.name = "Aptos Display" if name != "Normal" else "Aptos"; style.font.size = Pt(size); style.font.color.rgb = RGBColor.from_string(color); style.font.bold = True
+        title_p = document.add_paragraph(style="Title"); title_p.add_run(str(title or target.stem)); title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        subtitle = str((metadata or {}).get("subtitle") or "")
+        if subtitle:
+            p=document.add_paragraph(subtitle); p.style=styles["Subtitle"]
         for item in sections or []:
             heading = str(item.get("heading") or "").strip()
             if heading:
@@ -59,14 +70,18 @@ def create_docx(path, title="", sections=None, metadata=None):
             if table:
                 width = max(len(row) for row in table)
                 word_table = document.add_table(rows=0, cols=width)
-                word_table.style = "Table Grid"
+                word_table.style = "Light Shading Accent 1"; word_table.autofit = False
                 for row_index, row in enumerate(table):
                     cells = word_table.add_row().cells
+                    if row_index == 0:
+                        trPr = cells[0]._tc.getparent().get_or_add_trPr(); marker=OxmlElement("w:tblHeader"); marker.set(qn("w:val"), "true"); trPr.append(marker)
                     for col_index, value in enumerate(row):
                         cells[col_index].text = str(value)
+                        cells[col_index].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
                         if row_index == 0:
                             for run in cells[col_index].paragraphs[0].runs:
-                                run.bold = True
+                                run.bold = True; run.font.color.rgb = RGBColor(255,255,255)
+        footer=section.footer.paragraphs[0]; footer.alignment=WD_ALIGN_PARAGRAPH.CENTER; footer.add_run(str((metadata or {}).get("footer") or "ClawOS • Auditable Office Artifact"))
         document.core_properties.title = str(title or target.stem)
         document.core_properties.subject = str((metadata or {}).get("subject") or "ClawOS Office Artifact")
         document.save(target)
@@ -132,13 +147,24 @@ def create_pdf(path, title="", sections=None, metadata=None):
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import mm
         from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
     except ImportError as exc:
         raise RuntimeError("reportlab is required for PDF creation") from exc
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    font_name = "Helvetica"
+    for font_path, candidate in ((Path("C:/Windows/Fonts/msyh.ttc"), "MicrosoftYaHei"), (Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"), "NotoSansCJK")):
+        if font_path.is_file():
+            try:
+                pdfmetrics.registerFont(TTFont(candidate, str(font_path), subfontIndex=0)); font_name=candidate; break
+            except Exception:
+                continue
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="ArtifactTitle", parent=styles["Title"], alignment=TA_CENTER, fontSize=22, leading=27, textColor=colors.HexColor("#172033"), spaceAfter=12 * mm))
-    styles.add(ParagraphStyle(name="ArtifactBody", parent=styles["BodyText"], fontSize=10.5, leading=16, textColor=colors.HexColor("#243047"), spaceAfter=3 * mm))
+    styles.add(ParagraphStyle(name="ArtifactTitle", parent=styles["Title"], fontName=font_name, alignment=TA_CENTER, fontSize=22, leading=27, textColor=colors.HexColor("#172033"), spaceAfter=12 * mm))
+    styles.add(ParagraphStyle(name="ArtifactHeading", parent=styles["Heading2"], fontName=font_name, fontSize=15, leading=20, textColor=colors.HexColor("#17365D"), spaceAfter=3 * mm))
+    styles.add(ParagraphStyle(name="ArtifactBody", parent=styles["BodyText"], fontName=font_name, fontSize=10.5, leading=16, textColor=colors.HexColor("#243047"), spaceAfter=3 * mm))
+    styles.add(ParagraphStyle(name="ArtifactTableHeader", parent=styles["BodyText"], fontName=font_name, fontSize=10.5, leading=16, textColor=colors.white, spaceAfter=0))
     doc = SimpleDocTemplate(str(target), pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm, topMargin=18 * mm, bottomMargin=18 * mm, title=str(title or target.stem), author="ClawOS")
     story = [Paragraph(html.escape(str(title or target.stem)), styles["ArtifactTitle"])]
     for item in sections or []:
@@ -146,14 +172,14 @@ def create_pdf(path, title="", sections=None, metadata=None):
             story.append(PageBreak())
         heading = str(item.get("heading") or "").strip()
         if heading:
-            story.extend([Paragraph(html.escape(heading), styles["Heading2"]), Spacer(1, 2 * mm)])
+            story.extend([Paragraph(html.escape(heading), styles["ArtifactHeading"]), Spacer(1, 2 * mm)])
         for paragraph in item.get("paragraphs") or []:
             story.append(Paragraph(html.escape(str(paragraph)).replace("\n", "<br/>"), styles["ArtifactBody"]))
         for bullet in item.get("bullets") or []:
             story.append(Paragraph(f"• {html.escape(str(bullet))}", styles["ArtifactBody"]))
         table = item.get("table") or []
         if table:
-            rows = [[Paragraph(html.escape(str(value)), styles["ArtifactBody"]) for value in row] for row in table]
+            rows = [[Paragraph(html.escape(str(value)), styles["ArtifactTableHeader"] if row_index == 0 else styles["ArtifactBody"]) for value in row] for row_index, row in enumerate(table)]
             artifact_table = Table(rows, repeatRows=1, hAlign="LEFT")
             artifact_table.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#172033")),
@@ -204,7 +230,9 @@ def create_xlsx(path, sheets):
 def _create_xlsx_openpyxl(path, sheets):
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill
+        from openpyxl.chart import BarChart, Reference
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.worksheet.table import Table, TableStyleInfo
         from openpyxl.utils import get_column_letter
     except Exception:
         return ""
@@ -222,10 +250,26 @@ def _create_xlsx_openpyxl(path, sheets):
                 if row_index == 1:
                     cell.font = Font(bold=True, color="FFFFFF")
                     cell.fill = PatternFill("solid", fgColor="1F2937")
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
         for col_index in range(1, ws.max_column + 1):
             width = max(10, min(36, max(len(str(ws.cell(row=row, column=col_index).value or "")) for row in range(1, ws.max_row + 1)) + 2))
             ws.column_dimensions[get_column_letter(col_index)].width = width
         ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+        ws.sheet_view.showGridLines = False
+        if ws.max_row >= 2 and ws.max_column >= 1:
+            table = Table(displayName=f"Table{len(wb.worksheets)}", ref=ws.dimensions)
+            table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True, showColumnStripes=False)
+            ws.add_table(table)
+        for item in sheet.get("formulas", []) or []:
+            ws[str(item.get("cell") or "A1")] = str(item.get("formula") or "")
+            ws[str(item.get("cell") or "A1")].number_format = str(item.get("number_format") or "#,##0.00")
+        chart_cfg = sheet.get("chart") or {}
+        if chart_cfg and ws.max_row > 1:
+            chart=BarChart(); chart.title=str(chart_cfg.get("title") or ws.title)
+            data_col=max(2,min(int(chart_cfg.get("data_column") or 2),ws.max_column)); category_col=max(1,min(int(chart_cfg.get("category_column") or 1),ws.max_column))
+            chart.add_data(Reference(ws,min_col=data_col,min_row=1,max_row=ws.max_row),titles_from_data=True)
+            chart.set_categories(Reference(ws,min_col=category_col,min_row=2,max_row=ws.max_row)); ws.add_chart(chart,str(chart_cfg.get("anchor") or "F2"))
     wb.save(path)
     return str(path)
 
@@ -298,6 +342,8 @@ def create_pptx(path, title="", slides=None):
 def _create_pptx_python_pptx(path, title="", slides=None):
     try:
         from pptx import Presentation
+        from pptx.dml.color import RGBColor
+        from pptx.enum.text import PP_ALIGN
         from pptx.util import Inches, Pt
     except Exception:
         return ""
@@ -306,19 +352,21 @@ def _create_pptx_python_pptx(path, title="", slides=None):
     slides = slides or [{"title": title or "ClawOS Deck", "bullets": []}]
     prs = Presentation()
     for slide_payload in slides:
-        layout = prs.slide_layouts[1]
+        layout = prs.slide_layouts[6]
         slide = prs.slides.add_slide(layout)
-        slide.shapes.title.text = str(slide_payload.get("title") or title or "ClawOS")
-        body = slide.placeholders[1]
-        body.text = ""
+        background=slide.background.fill; background.solid(); background.fore_color.rgb=RGBColor(248,250,252)
+        title_box=slide.shapes.add_textbox(Inches(.65),Inches(.48),Inches(8.7),Inches(.72)); title_frame=title_box.text_frame; title_frame.clear(); p=title_frame.paragraphs[0]; p.text=str(slide_payload.get("title") or title or "ClawOS"); p.font.size=Pt(30); p.font.bold=True; p.font.color.rgb=RGBColor(23,54,93)
+        body = slide.shapes.add_textbox(Inches(.8),Inches(1.55),Inches(8.3),Inches(4.7))
+        body.text_frame.clear(); body.text_frame.word_wrap=True
         for bullet in slide_payload.get("bullets", []) or []:
             paragraph = body.text_frame.add_paragraph()
             paragraph.text = str(bullet)
             paragraph.level = 0
-            paragraph.font.size = Pt(20)
+            paragraph.font.size = Pt(20); paragraph.font.color.rgb=RGBColor(36,48,71); paragraph.space_after=Pt(12)
         if slide_payload.get("notes"):
-            box = slide.shapes.add_textbox(Inches(0.6), Inches(6.4), Inches(8.2), Inches(0.4))
+            box = slide.shapes.add_textbox(Inches(0.7), Inches(6.65), Inches(8.6), Inches(0.25))
             box.text_frame.text = str(slide_payload["notes"])
+            box.text_frame.paragraphs[0].font.size=Pt(10); box.text_frame.paragraphs[0].font.color.rgb=RGBColor(100,116,139)
     if len(prs.slides) > len(slides):
         xml_slides = prs.slides._sldIdLst
         rel_id = xml_slides[0].rId

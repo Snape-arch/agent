@@ -51,6 +51,15 @@ class AutonomousSubagentService:
         self.checkpoint_root = Path(checkpoint_root).expanduser().resolve()
         self.max_concurrency = max(1, min(int(max_concurrency or 3), 8))
 
+    @staticmethod
+    def advanced_data_team(objective: str, *, source_description: str = "tabular dataset") -> list[SubagentRoleSpec]:
+        return [
+            SubagentRoleSpec("data_profiler", "Profile schema, types, missingness, duplicates and anomalies. Never invent values.", f"Profile {source_description} for: {objective}", allowed_tools=["office_productivity"], max_tokens=2200),
+            SubagentRoleSpec("data_analyst", "Perform auditable descriptive, grouped, trend, correlation and outlier analysis. Separate observation from inference.", f"Analyze {source_description} for: {objective}", allowed_tools=["office_productivity"], depends_on=["data_profiler"], max_tokens=3000),
+            SubagentRoleSpec("workbook_builder", "Build a traceable workbook with typed inputs, formulas, filters, freeze panes, semantic formats and useful charts.", f"Create the analysis workbook for: {objective}", allowed_tools=["office_productivity"], depends_on=["data_analyst"], max_tokens=2800),
+            SubagentRoleSpec("quality_reviewer", "Independently reconcile totals, scan formula errors and require visual QA evidence. Reject unsupported conclusions.", f"Gate the data analysis and workbook for: {objective}", allowed_tools=["office_productivity"], depends_on=["data_profiler", "data_analyst", "workbook_builder"], hard_gate=True, max_tokens=2200),
+        ]
+
     async def run(
         self,
         objective: str,
@@ -211,6 +220,17 @@ class AutonomousSubagentService:
                     break
                 continue
             output = self._parse_output(result.get("content") or raw_message.get("content") or "")
+            contract_errors = self._output_contract_errors(output)
+            if contract_errors:
+                error = "output contract: " + "; ".join(contract_errors)
+                trace.append({"type": "output_repair", "attempt": attempt, "errors": contract_errors})
+                if attempt < spec.max_model_calls:
+                    messages.append({"role": "assistant", "content": result.get("content") or ""})
+                    messages.append({"role": "user", "content": json.dumps({"repair": "Return one valid JSON object matching required_output.", "errors": contract_errors}, ensure_ascii=False)})
+                    continue
+                output = {**output, "hard_gate_failures": [error], "requires_human_approval": True}
+                status = "failed" if spec.hard_gate else "human_gate"
+                break
             status = "human_gate" if output.get("requires_human_approval") else "passed"
             break
         return {
@@ -280,6 +300,19 @@ class AutonomousSubagentService:
                 except json.JSONDecodeError:
                     pass
         return {"summary": text, "claims": [], "evidence": [], "artifacts": [], "proposed_actions": [], "confidence": 0.5, "open_risks": ["unstructured model output"], "hard_gate_failures": [], "requires_human_approval": True}
+
+    @staticmethod
+    def _output_contract_errors(output: dict[str, Any]) -> list[str]:
+        required_lists = ("claims", "evidence", "artifacts", "proposed_actions", "open_risks", "hard_gate_failures")
+        errors = []
+        if not isinstance(output.get("summary"), str) or not output.get("summary", "").strip(): errors.append("summary must be non-empty string")
+        errors.extend(f"{key} must be array" for key in required_lists if not isinstance(output.get(key), list))
+        if not isinstance(output.get("requires_human_approval"), bool): errors.append("requires_human_approval must be boolean")
+        try:
+            confidence = float(output.get("confidence"))
+            if not 0 <= confidence <= 1: errors.append("confidence must be between 0 and 1")
+        except (TypeError, ValueError): errors.append("confidence must be numeric")
+        return errors
 
     @staticmethod
     def _public_result(result: dict[str, Any]) -> dict[str, Any]:

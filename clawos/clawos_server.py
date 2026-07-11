@@ -2,6 +2,7 @@
 """ClawOS Server - Self-contained AI Agent with DeepSeek + Function Router."""
 from __future__ import annotations
 import argparse, asyncio, base64, importlib.util, json, logging, os, re, sys, time, subprocess, shutil
+from dataclasses import asdict
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any
@@ -2592,6 +2593,10 @@ async def api_office_productivity(request: Request):
             result = service.edit(data.get("file_path", ""), data.get("output_path", ""), replacements=data.get("replacements") or {}, updates=data.get("updates") or [], confirmed=bool(data.get("confirmed")))
         elif action == "inspect":
             result = service.inspect(data.get("file_path", ""))
+        elif action == "quality_audit":
+            result = service.quality_audit(data.get("file_path", ""), template_path=data.get("template_path", ""), strict_visual=bool(data.get("strict_visual")))
+        elif action == "data_analysis":
+            result = service.analyze_data(data.get("rows") or [], data.get("output_path", ""), title=data.get("title", "Data Analysis"), group_by=data.get("group_by", ""), metrics=data.get("metrics") or [], confirmed=bool(data.get("confirmed")))
         elif action == "meeting_package":
             result = service.meeting_package(data.get("meeting") or {}, data.get("output_dir", ""), recipients=data.get("recipients") or [], confirmed=bool(data.get("confirmed")))
         elif action == "email_draft":
@@ -3133,6 +3138,8 @@ async def api_coding_workflow(request: Request):
 async def api_autonomous_subagents(request: Request):
     data = await request.json()
     roles = data.get("roles") or []
+    if data.get("team_profile") == "advanced_data_analysis" and not roles:
+        roles = [asdict(item) for item in get_autonomous_subagent_service().advanced_data_team(data.get("objective", ""), source_description=data.get("source_description", "tabular dataset"))]
     if not isinstance(roles, list) or not roles:
         raise HTTPException(400, "roles must be a non-empty list")
     try:

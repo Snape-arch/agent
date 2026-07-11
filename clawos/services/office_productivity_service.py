@@ -23,6 +23,7 @@ from typing import Any, Callable
 
 from office_artifacts import create_docx, create_pdf, create_pptx, create_xlsx, edit_xlsx, replace_docx_text, replace_pptx_text
 from .runtime_records import RunRecord, now_iso
+from .office_visual_quality_service import OfficeVisualQualityService
 
 
 SUPPORTED_FORMATS = {"docx", "xlsx", "pptx", "pdf", "md", "txt", "json", "csv", "eml", "ics"}
@@ -36,6 +37,22 @@ class OfficeProductivityService:
         self.allowed_roots = tuple(Path(item).expanduser().resolve() for item in (allowed_roots or [Path.cwd(), Path.home() / "Desktop", Path.home() / "Documents"]))
         self.smtp_sender = smtp_sender
         self.calendar_sender = calendar_sender
+        self.visual_quality = OfficeVisualQualityService()
+
+    def quality_audit(self, file_path: str | Path, *, template_path: str | Path = "", strict_visual: bool = False) -> dict[str, Any]:
+        path = self._path(file_path)
+        template = self._path(template_path) if template_path else ""
+        result = self.visual_quality.audit(path, template_path=template, strict_visual=strict_visual)
+        self._save_run("office_visual_quality", f"Visual QA: {path.name}", result)
+        return result
+
+    def analyze_data(self, rows: list[dict[str, Any]], output_path: str | Path, *, title: str = "Data Analysis", group_by: str = "", metrics: list[str] | None = None, confirmed: bool = False) -> dict[str, Any]:
+        if confirmed is not True:
+            raise PermissionError("confirmed=true is required for analysis workbook writes")
+        output = self._path(output_path)
+        result = self.visual_quality.analyze_and_build(rows, output, title=title, group_by=group_by, metrics=metrics)
+        self._save_run("office_data_analysis", title, result)
+        return result
 
     def create(self, output_path: str | Path, *, title: str = "", sections: list[dict[str, Any]] | None = None, data: Any = None, metadata: dict[str, Any] | None = None, confirmed: bool = False) -> dict[str, Any]:
         if confirmed is not True:

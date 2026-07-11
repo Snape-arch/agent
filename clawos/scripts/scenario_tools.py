@@ -1823,6 +1823,10 @@ def office_productivity(payload):
         return service.edit(payload.get("file_path", ""), payload.get("output_path", ""), replacements=payload.get("replacements") or {}, updates=payload.get("updates") or [], confirmed=bool(payload.get("confirmed")))
     if action == "inspect":
         return service.inspect(payload.get("file_path", ""))
+    if action == "quality_audit":
+        return service.quality_audit(payload.get("file_path", ""), template_path=payload.get("template_path", ""), strict_visual=bool(payload.get("strict_visual")))
+    if action == "data_analysis":
+        return service.analyze_data(payload.get("rows") or [], payload.get("output_path", ""), title=payload.get("title", "Data Analysis"), group_by=payload.get("group_by", ""), metrics=payload.get("metrics") or [], confirmed=bool(payload.get("confirmed")))
     if action == "meeting_package":
         return service.meeting_package(payload.get("meeting") or {}, payload.get("output_dir", ""), recipients=payload.get("recipients") or [], confirmed=bool(payload.get("confirmed")))
     if action == "email_draft":

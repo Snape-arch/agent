@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import importlib.util
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
@@ -74,6 +75,34 @@ class OfficeProductivityServiceTests(unittest.TestCase):
             self.assertTrue(email["sent"])
             self.assertTrue(calendar["published"])
             self.assertEqual([item[0] for item in calls], ["email", "calendar"])
+
+    @unittest.skipUnless(importlib.util.find_spec("openpyxl") and importlib.util.find_spec("docx"), "professional office dependencies unavailable")
+    def test_visual_quality_gates_and_advanced_data_analysis(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            service = OfficeProductivityService(allowed_roots=[root])
+            sections = [{"heading": "中英文 Mixed-language summary", "paragraphs": ["收入 Revenue 增长稳定。"], "table": [["地区 Region", "收入 Revenue"], ["华东 East", "120"]]}]
+            docx = service.create(root / "mixed.docx", title="经营分析 Business Review", sections=sections, confirmed=True)
+            docx_quality = service.quality_audit(docx["path"])
+            self.assertEqual(docx_quality["quality_gate"], "pass")
+            self.assertEqual(docx_quality["visual_status"], "structural_only")
+            self.assertIn("rendered_pages", docx_quality["warnings"])
+
+            pdf = service.create(root / "mixed.pdf", title="经营分析 Business Review", sections=sections, confirmed=True)
+            pdf_quality = service.quality_audit(pdf["path"], strict_visual=True)
+            self.assertEqual(pdf_quality["quality_gate"], "pass", pdf_quality)
+            self.assertGreaterEqual(pdf_quality["render"]["pages"], 1)
+
+            rows = [
+                {"region": "East", "revenue": 120.0, "cost": 70.0},
+                {"region": "East", "revenue": 180.0, "cost": 90.0},
+                {"region": "West", "revenue": 100.0, "cost": 65.0},
+            ]
+            analysis = service.analyze_data(rows, root / "analysis.xlsx", title="Revenue Analysis", group_by="region", metrics=["revenue", "cost"], confirmed=True)
+            self.assertEqual(analysis["quality"]["quality_gate"], "pass", analysis)
+            self.assertEqual(analysis["grouped"]["East"]["revenue"], 300.0)
+            self.assertIn("revenue|cost", analysis["correlations"])
+            self.assertTrue((root / "analysis.xlsx").is_file())
 
 
 if __name__ == "__main__":
