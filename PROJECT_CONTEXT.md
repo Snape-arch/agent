@@ -2639,3 +2639,24 @@ Verification:
 
 Recommended next step:
 - Confirm the original MTClaw upstream URL/SHA, then finish the local embedding/reranker assets and run the vector database and Paper RAG acceptance gates.
+
+### 2026-07-11 - Local semantic retrieval runtime preparation
+
+Completed:
+- Installed the declared local retrieval dependencies in `clawos/.venv`: CPU-only PyTorch `2.13.0`, sentence-transformers `5.6.0`, transformers `5.13.0`, and ChromaDB `1.5.9`.
+- Verified a real temporary Chroma persistent store can index, reopen its local collection contract, and return an offline vector query without cloud APIs.
+- Searched the Hugging Face cache and common user/download/project model locations for reusable Qwen3 embedding/reranker weights. No complete local copy was found; an existing valid embedding safetensors prefix was reused.
+- Resumed `Qwen3-Embedding-0.6B/model.safetensors` to `453,032,503 / 1,191,586,416` bytes. The file remains incomplete and must not be enabled until its manifest SHA256 is verified.
+
+Verification:
+- Dependency imports and versions passed; `torch.cuda.is_available()` is `False`, matching the CPU isolation policy for embedding/reranking.
+- Chroma smoke: provider `chroma`, fallback reason empty, one persisted knowledge vector indexed and retrieved successfully.
+- `python -m unittest tests.test_memoryos_mvp tests.test_retrieval_reranker tests.test_memoryos_governance`: `18 tests OK`.
+
+Known notes:
+- Reranker model files are not present yet.
+- Further Hugging Face transfer was paused when the environment network usage limit rejected the retry request. The embedding target is resumable with `curl.exe -L -C -` after network approval recovers.
+- `vector_db_acceptance.py` and `paper_rag_acceptance.py` have not been run with Qwen3 models because neither model asset set is complete.
+
+Recommended next step:
+- Resume and SHA256-verify the embedding weight, download and verify the complete Qwen3-Reranker-0.6B repository, then run `vector_db_acceptance.py --json` and `paper_rag_acceptance.py --json` before enabling Qwen3 semantic retrieval by default.
