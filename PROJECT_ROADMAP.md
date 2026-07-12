@@ -1,5 +1,77 @@
 ﻿# ClawOS Project Roadmap
 
+## 2026-07-12 Handoff Plan
+
+### Planning decision
+
+Treat the current build as a **tentatively complete local-first daily-use baseline**, not as a finished enterprise platform. The next phase should operationalize and harden existing workflows instead of adding more top-level features.
+
+This decision was pressure-tested against four questions:
+
+1. **Is the core local model path real?** Yes. Qwen3.5-9B, llama.cpp CUDA, local embeddings, local reranking, and Chroma have real model/runtime acceptance evidence.
+2. **Are the named workbench workflows present?** Yes. Knowledge, documents, reports, project state, evidence/citations, learning, research, office, and coding paths exist with deterministic tests and persisted records.
+3. **Is a fresh default installation fully local and ready for unattended daily use?** Not yet. Defaults remain DeepSeek + hash embeddings + no reranker, services were stopped at handoff, and fresh-machine offline startup has not been re-proven after the latest UI refactor.
+4. **Should heavy semantic reranking become the default now?** No. Quality is excellent, but CPU query latency is about 20 seconds and the full Paper RAG stress gate takes about 22 minutes.
+
+### P0 - Make the baseline operational
+
+Execute in this order:
+
+1. **Explicit local profile**
+   - Provide a reviewed local profile selecting Qwen, Chroma, and Qwen3-Embedding.
+   - Keep Qwen3-Reranker opt-in until an interactive latency target is met.
+   - Never overwrite `.env` silently; show the selected provider in `/health` and the console.
+
+2. **One-command offline startup acceptance**
+   - Start llama.cpp and ClawOS from a fresh shell with outbound network disabled.
+   - Verify health, warm-up, stop/restart, port conflicts, and clean shutdown.
+   - Prove local requests do not route through environment proxies or cloud fallbacks.
+
+3. **Daily workflow acceptance**
+   - Freeze one end-to-end case for each workflow: knowledge capture, document analysis, report generation, project management, search evidence chain, and learning/research.
+   - Each case must persist inputs, task/step trace, citations, output artifact, checkpoint, and reopen/restore evidence.
+
+4. **Browser sign-off**
+   - Validate `/console` at desktop and mobile widths after the clean UI refactor.
+   - Check task-first view, uploads, long tables, drawers/modals, knowledge search, project views, and model state.
+   - Update `design-qa.md` from `blocked` to `passed` only with fresh screenshots.
+
+### P1 - Performance and data durability
+
+1. Cache model instances and embeddings across requests; avoid repeated 0.6B model loads.
+2. Make indexing incremental and batch new/changed chunks instead of rebuilding the corpus.
+3. Measure cold/warm P50/P95 for hash, embedding-only, and embedding+reranker modes.
+4. Define an interactive target before enabling reranking by default; recommended initial gate is warm P95 <= 3 seconds for a normal personal corpus.
+5. Run backup/restore and schema-migration drills for MemoryOS, Chroma, tasks, reports, checkpoints, and configuration metadata.
+6. Add integrity checks for orphaned uploads/chunks, stale vectors, missing artifacts, and report/package references.
+
+### P2 - Long-term personal-use hardening
+
+1. Run a multi-day burn-in with real personal documents and projects.
+2. Track model uptime, retrieval latency, citation validity, task recovery, artifact-open success, and user corrections.
+3. Promote repeated successful workflows into reviewed Skills; keep publication and rollback human-controlled.
+4. Add connectors only when they preserve a useful offline fallback and do not make cloud access mandatory.
+
+### Acceptance gates
+
+The next AI should not call the long-term goal complete until all of these are evidenced:
+
+- Fresh offline local profile starts with one command and `/health` reports local Qwen.
+- The same six daily workflows pass without cloud APIs.
+- Full unit suite passes from the documented working directory.
+- Vector DB and Paper RAG acceptance reports remain `ok=true` with manifest-verified assets.
+- Warm interactive retrieval meets the agreed latency gate.
+- Browser visual QA is signed off with current screenshots.
+- Backup/restore and restart recovery succeed on non-demo local data.
+- A multi-day burn-in shows no recurring data loss, hidden cloud dependency, or unrecoverable task failure.
+
+### Guardrails for handoff
+
+- Do not add another dashboard, agent framework, or vector database before the operational gates above are closed.
+- Do not enable the reranker by default based on quality scores alone.
+- Do not treat ignored reports, stale context entries, or historical tests as current evidence without rerunning the relevant gate.
+- Do not commit model weights, secrets, local databases, logs, caches, or generated personal artifacts.
+
 ## Product Positioning
 
 ClawOS is a Windows local personal Agent OS. It is not a SaaS product, a generic chatbot, or a plain file knowledge base. The system should help one user run long-term work across models, tools, tasks, memory, knowledge, skills, and review loops.
