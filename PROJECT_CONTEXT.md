@@ -1,5 +1,49 @@
 # Project Context
 
+## 2026-07-12 - Local-first daily-use baseline handoff
+
+Stage decision:
+
+- The local-first daily-use baseline is **tentatively complete** for continued personal use and iterative hardening.
+- The full long-term objective is not being claimed as permanently complete or enterprise-ready. Default configuration, visual sign-off, interactive retrieval latency, backup/migration, and long-duration daily-use evidence still need work.
+
+Current verified baseline:
+
+- Repository: `codex/p0-demo-polish` at `15e62ce`, aligned with `origin/master` (`0/0`) before this handoff edit.
+- Local generation: Qwen3.5-9B Q4_K_M is size/SHA256 verified, runs through llama.cpp CUDA on the RTX 5060 Laptop GPU, passed direct completion/tool/reflection smoke, passed three consecutive real-model acceptance runs, and passed `8/8` queued concurrency requests at about `23.5 tok/s` under the 20-GPU-layer profile.
+- Local semantic retrieval assets are complete and manifest-verified:
+  - Qwen3-Embedding-0.6B: `1,191,586,416` bytes, SHA256 `0437E45C94563B09E13CB7A64478FC406947A93CB34A7E05870FC8DCD48E23FD`.
+  - Qwen3-Reranker-0.6B: `1,191,588,280` bytes, SHA256 `27CD75A405B9C1B46B59ABFD88AAA209E6FED2A1972CDE9B70E7659537C5E65B`.
+  - Runtime: CPU PyTorch `2.13.0`, sentence-transformers `5.6.0`, transformers `5.13.0`, ChromaDB `1.5.9`.
+- `output/reports/vector_db_acceptance.json`: `ok=true`, Chroma + Qwen3 1024-dimensional embeddings, `12/12` vectors persisted, direct recall@30 `1.0`, hybrid recall@5 `1.0`, rerank recall@5 `1.0`, rerank MRR `1.0`.
+- `output/reports/paper_rag_acceptance.json`: `ok=true`, 16 pages, 32 chunks, 320 distractors, `352/352` vectors persisted, vector recall@30 `1.0`, rerank recall@5 `1.0`, rerank MRR `1.0`.
+- Product workflows already present in the repository cover knowledge capture, document parsing/chunking, citation Q&A, reports, project board/checkpoints/packages, task traces, search evidence, and learning/research/office/coding workflows.
+- The current task-first console baseline at `15e62ce` has Node syntax validation and `36 tests OK`; its upstream handoff records `258 tests OK, 1 skipped` for the full suite.
+
+Important operating facts:
+
+- No ClawOS, llama.cpp, Python acceptance, or curl process was running at this handoff snapshot.
+- Committed defaults remain API-first: `MODEL_PROVIDER=deepseek`, `EMBEDDING_PROVIDER=hash`, and `RERANKER_PROVIDER=none`. Local Qwen/Qwen3 paths are verified but require explicit local profile selection; do not claim that a fresh default start is fully local yet.
+- Qwen3 semantic quality gates pass, but CPU latency is not yet interactive: vector acceptance query P50/P95 is about `20.47/20.52s`; the full Paper RAG stress run took about `1,337.5s` (22.3 minutes). Keep heavy reranking opt-in until caching/incremental indexing or a faster device strategy is verified.
+- The model binaries and runtime reports are ignored local assets. Do not commit model weights, `.env`, databases, logs, caches, or generated reports.
+
+Handoff order for the next AI:
+
+1. Read this section and the top `2026-07-12` section in `PROJECT_ROADMAP.md`; do not re-scan the full repository first.
+2. Run a fresh full suite from `clawos`: `.\.venv\Scripts\python.exe -m unittest discover -s tests`, then restore the known `clawos/skills/skill_registry.jsonl` usage-count side effect if it changed.
+3. Add or verify an explicit local daily-use profile that selects Qwen + Chroma + Qwen3 embedding, while keeping reranker opt-in until latency improves. Do not silently rewrite the user's `.env`.
+4. Start the local stack, verify `/health`, local Qwen smoke, one document upload/citation/report/project/checkpoint flow, and confirm no cloud request is required in local mode.
+5. Complete real browser visual QA for `/console` and update `design-qa.md` only with fresh post-fix screenshots.
+6. Prioritize retrieval caching/incremental indexing, backup/restore drills, and a multi-day personal-use burn-in before adding more feature surfaces.
+
+Stage exit evidence still missing:
+
+- One-command fresh-machine local profile verification with outbound network disabled.
+- Fresh post-refactor browser screenshots and visual sign-off.
+- Interactive semantic-search latency target and warm-cache measurements.
+- Backup/restore plus schema migration drill against real local data.
+- Multi-day daily-use evidence across knowledge, report, project, evidence-chain, and learning/research workflows.
+
 ## 2026-07-11 - 控制台全视图 Clean UI 重构
 
 Completed:
