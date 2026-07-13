@@ -2860,3 +2860,27 @@ Verification:
 Known notes:
 - The first full-suite attempt ran while the local UI server held the mutable skill registry and produced one Windows replace-permission failure; after stopping the server, the complete suite passed. This was an environment lock, not a product regression.
 - Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+
+### 2026-07-13 - Truthful console and responsive closure
+
+Completed:
+- Removed fake model/tool counters, sample delivery files and invented task percentages from the console foreground. Running work now comes only from real active task states and backend-provided progress.
+- Reduced the knowledge foreground to upload, retrieval, graph entry and recent materials. Moved session capture and editing into a centered organizer dialog and sanitized graph source/path labels.
+- Rebuilt history as compact rows and retained explicit user-right / Agent-left conversation geometry. Added a collapsible real-task progress panel that stays out of the reading flow.
+- Unified foreground typography, contrast, truncation and focus-visible behavior; localized unnecessary graph micro-labels.
+- Fixed narrow-screen navigation by aligning the JavaScript state with the responsive sidebar contract and adding an accessible mobile menu trigger.
+
+Visual verification:
+- In-app browser passes at 1280 x 720, 1440 x 1024 and 390 x 844 covered workbench, history, chat, knowledge, organizer, graph and mobile navigation.
+- No page-level horizontal overflow at the narrow breakpoint; organizer centered and Escape-closeable; graph rendered without local path exposure; browser warning/error log was empty.
+- Current product-design assessment: 91/100. Remaining championship gains are mainly iconography/brand refinement and production-data demos, not structural UX defects.
+
+Verification:
+- Bundled Node syntax check: passed.
+- Frontend static suite: `39 tests OK`.
+- Full regression suite: `261 tests OK (skipped=1)`.
+- `git diff --check`: passed.
+
+Known notes:
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+- The local UI server on port 18790 was owned by another process and could not be stopped without elevation; the full suite still passed without registry contention.

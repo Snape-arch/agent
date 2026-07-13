@@ -570,13 +570,16 @@ class FrontendStaticTests(unittest.TestCase):
         for token in (
             "knowledgeFrontStage",
             "knowledgeModeTitle",
-            "knowledgeUploadHint",
             "knowledgeGraphSummary",
             "knowledge-admin-toggle",
             "knowledgeFrontstageMetrics",
             "knowledgeActiveLibrary",
             "knowledgeBackendState",
             "knowledge-backstage-label",
+            "knowledge-primary-search",
+            "knowledgeTableHeading",
+            "knowledgeResultCount",
+            "knowledgeOrganizer",
         ):
             self.assertIn(token, html)
         for token in (
@@ -584,10 +587,13 @@ class FrontendStaticTests(unittest.TestCase):
             "renderKnowledgeWorkspaceShell",
             "toggleKnowledgeAdminTools",
             "updateKnowledgeFrontstageStats",
-            "Research Library",
-            "Learning Library",
-            "Writing Library",
-            "Project Library",
+            "openKnowledgeOrganizer",
+            "closeKnowledgeOrganizer",
+            "publicKnowledgeNodeLabel",
+            "科研资料",
+            "学习资料",
+            "写作资料",
+            "项目资料",
         ):
             self.assertIn(token, js)
         for token in (

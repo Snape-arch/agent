@@ -50,6 +50,7 @@
   </aside>
 
   <header class="console-head">
+    <button class="mobile-nav-toggle" type="button" aria-label="打开导航" onclick="toggleSidebar()">菜单</button>
     <div>
       <h1 id="viewTitle">今日工作台</h1>
       <p id="viewSub">任务、进度、交付与审批集中在一个工作面</p>
@@ -64,8 +65,6 @@
       <span id="modelModeDetail">安全执行 · 全程可审计</span>
     </div>
     <div class="head-actions">
-      <span class="badge" id="modelBadge">模型：-</span>
-      <span class="badge" id="toolBadge">工具：-</span>
       <button class="profile-action" aria-label="用户账户">C</button>
     </div>
   </header>
@@ -132,7 +131,6 @@
       <div class="workspace workbench-shell">
         <section class="workbench-intro" aria-labelledby="workbenchHeading">
           <div>
-            <span class="eyebrow">CLAWOS · PERSONAL WORKSPACE</span>
             <h2 id="workbenchHeading">上午好，今天要完成什么？</h2>
             <p>描述目标或交付物，ClawOS 会拆解任务、分配能力，并在关键动作前等待你确认。</p>
           </div>
@@ -140,6 +138,11 @@
         </section>
 
         <section class="intent-panel" aria-label="任务输入">
+          <button class="chat-progress-toggle" type="button" aria-controls="chatProgressPanel" aria-expanded="false" onclick="toggleChatProgress()">任务进度</button>
+          <aside class="chat-progress-panel" id="chatProgressPanel" aria-hidden="true">
+            <div class="section-heading"><h3>任务进度</h3><button class="close-button" type="button" aria-label="关闭任务进度" onclick="toggleChatProgress(false)">×</button></div>
+            <div id="chatTaskSidebarList"><div class="truthful-empty compact"><b>暂无运行中的任务</b><span>任务启动后，这里会显示真实状态与验证证据。</span></div></div>
+          </aside>
           <div class="chat workbench-chat" id="chat">
             <div class="chat-inner" id="chatInner">
               <div class="empty workbench-empty">
@@ -176,31 +179,14 @@
 
         <div class="workbench-columns">
           <section class="workbench-section active-work" aria-labelledby="activeWorkHeading">
-            <div class="section-heading"><div><span class="eyebrow">ACTIVE WORK</span><h3 id="activeWorkHeading">正在进行</h3></div><button class="text-action" type="button" onclick="setView('tasks')">查看全部任务</button></div>
+            <div class="section-heading"><h3 id="activeWorkHeading">正在进行</h3><button class="text-action" type="button" onclick="setView('tasks')">查看全部任务</button></div>
             <div id="workbenchTaskList" class="active-task-list" aria-live="polite">
-            <article class="active-task-row">
-              <div class="task-index">01</div>
-              <div class="task-summary"><b>产品需求文档与交互方案</b><span>文档代理 · 正在统一信息架构与视觉规范</span></div>
-              <div class="task-progress"><span><i style="width:68%"></i></span><b>68%</b></div>
-              <button class="secondary compact" type="button" onclick="setView('tasks')">查看进度</button>
-            </article>
-            <article class="active-task-row">
-              <div class="task-index">02</div>
-              <div class="task-summary"><b>Q2 运营数据分析报告</b><span>数据代理 · 公式校验与图表生成</span></div>
-              <div class="task-progress"><span><i style="width:45%"></i></span><b>45%</b></div>
-              <button class="secondary compact" type="button" onclick="setView('tasks')">查看进度</button>
-            </article>
-            <article class="active-task-row">
-              <div class="task-index">03</div>
-              <div class="task-summary"><b>行业研究汇报</b><span>研究代理 · 证据核验与演示文稿排版</span></div>
-              <div class="task-progress"><span><i style="width:32%"></i></span><b>32%</b></div>
-              <button class="secondary compact" type="button" onclick="setView('tasks')">查看进度</button>
-            </article>
+              <div class="workbench-empty-state"><b>暂无运行中的任务</b><span>输入目标后，这里会显示真实状态与执行证据。</span></div>
             </div>
           </section>
 
           <aside class="workbench-section autonomy-panel" aria-labelledby="autonomyHeading">
-            <div class="section-heading"><div><span class="eyebrow">CONTROL</span><h3 id="autonomyHeading">自主执行控制</h3></div><span class="status-live">运行正常</span></div>
+            <div class="section-heading"><h3 id="autonomyHeading">自主执行控制</h3><span class="status-live" id="workbenchRuntimeState">正在检查</span></div>
             <div class="autonomy-options" role="group" aria-label="自主执行级别">
               <button type="button" data-autonomy="suggest" onclick="setAutonomyMode('suggest')"><b>建议</b><span>只提供方案</span></button>
               <button class="on" type="button" data-autonomy="approve" onclick="setAutonomyMode('approve')"><b>需批准</b><span>关键步骤确认</span></button>
@@ -211,22 +197,17 @@
           </aside>
         </div>
 
-        <section class="workbench-section delivery-center" aria-labelledby="deliveryHeading">
-          <div class="section-heading"><div><span class="eyebrow">DELIVERABLES</span><h3 id="deliveryHeading">交付质量预览</h3></div><span class="delivery-note">示例布局 · 实际任务完成后替换</span></div>
-          <div class="delivery-table" role="table" aria-label="最近交付文件">
-            <div class="delivery-row delivery-head" role="row"><span>文件</span><span>类型</span><span>质量检查</span><span>完成时间</span><span>状态</span></div>
-            <button class="delivery-row" type="button" onclick="setView('knowledge')"><span><b>产品需求文档 v1.2.docx</b><small>产品工作区</small></span><span>DOCX</span><span>分页与中英混排通过</span><span>今天 10:24</span><span class="quality-pass">可交付</span></button>
-            <button class="delivery-row" type="button" onclick="setView('scenes')"><span><b>Q2 运营分析.xlsx</b><small>数据工作区</small></span><span>XLSX</span><span>公式、筛选与冻结检查通过</span><span>今天 09:48</span><span class="quality-pass">可交付</span></button>
-            <button class="delivery-row" type="button" onclick="setView('scenes')"><span><b>行业研究汇报.pptx</b><small>研究工作区</small></span><span>PPTX</span><span>溢出与遮挡检查中</span><span>昨天 18:32</span><span class="quality-review">待复核</span></button>
-            <button class="delivery-row" type="button" onclick="setView('knowledge')"><span><b>合同扫描件.pdf</b><small>知识库</small></span><span>PDF</span><span>OCR 与页面渲染通过</span><span>昨天 17:15</span><span class="quality-pass">可检索</span></button>
+        <section class="workbench-section delivery-center delivery-table" aria-labelledby="deliveryHeading">
+          <div class="section-heading"><h3 id="deliveryHeading">最近交付</h3><button class="text-action" type="button" onclick="setView('tasks')">查看任务记录</button></div>
+          <div class="truthful-empty" id="workbenchDeliveries">
+            <b>还没有可交付文件</b>
+            <span>任务生成并通过质量检查后，文件、证据和状态会出现在这里。</span>
           </div>
         </section>
 
         <section class="workbench-section agent-roster" aria-labelledby="agentRosterHeading">
-          <div class="section-heading"><div><span class="eyebrow">SUBAGENTS</span><h3 id="agentRosterHeading">协作代理角色</h3></div><button class="text-action" type="button" onclick="openDrawerView('skills')">管理能力</button></div>
-          <div class="agent-row"><span class="agent-mark">RD</span><b>研究代理</b><span>已完成 28 份证据收集</span><em class="done">已交接</em></div>
-          <div class="agent-row"><span class="agent-mark">DA</span><b>数据代理</b><span>正在校验分析公式</span><em>进行中</em></div>
-          <div class="agent-row"><span class="agent-mark">QA</span><b>质量代理</b><span>等待演示文稿视觉复核</span><em class="waiting">等待中</em></div>
+          <div class="section-heading"><h3 id="agentRosterHeading">协作代理</h3><button class="text-action" type="button" onclick="openDrawerView('skills')">管理能力</button></div>
+          <div class="truthful-empty compact"><b>当前没有协作代理运行</b><span>需要研究、数据或质量复核时，角色与交接状态会按真实任务显示。</span></div>
         </section>
 
       </div>
@@ -256,18 +237,14 @@
         </div>
         <div class="knowledge-front-stage" id="knowledgeFrontStage" data-mode="all">
           <section class="knowledge-mode-card">
-            <span id="knowledgeModeEyebrow">Personal Knowledge Graph</span>
+            <span id="knowledgeModeEyebrow">个人知识图谱</span>
             <h3 id="knowledgeModeTitle">全部知识库</h3>
             <p id="knowledgeModeDesc">统一查看你的资料节点、图谱关系、上传入口和最近沉淀内容。</p>
             <div class="knowledge-mode-actions" id="knowledgeModeActions">
               <button class="primary" onclick="document.getElementById('knowledgeFilePicker').click()">上传资料</button>
-              <button class="secondary" onclick="searchKnowledge()">检索节点</button>
+              <button class="secondary" onclick="focusKnowledgeSearch()">检索资料</button>
             </div>
           </section>
-          <label class="knowledge-upload-hero" for="knowledgeFilePicker">
-            <b>拖入或选择资料</b>
-            <span id="knowledgeUploadHint">论文、课程笔记、项目文档、会议纪要都会进入当前库，并生成可检索节点。</span>
-          </label>
           <section class="knowledge-graph-card">
             <b>图谱与节点</b>
             <span id="knowledgeGraphSummary">等待加载真实节点和语义关系。</span>
@@ -286,7 +263,19 @@
           <div><span>后台</span><b id="knowledgeBackendState">收起</b></div>
         </div>
         <div class="knowledge-zone-label frontstage-zone-label"><span>前台工作区</span><b>上传、检索、图谱和知识条目</b></div>
-        <div class="knowledge-toolbar">
+        <div class="knowledge-primary-search" role="search">
+          <input id="knowledgeQuery" placeholder="搜索标题、摘要或学习笔记" onkeydown="if(event.key==='Enter')searchKnowledge()">
+          <button class="primary" onclick="searchKnowledge()">检索</button>
+          <button class="secondary" onclick="clearKnowledgeSearch()">清除</button>
+          <button class="secondary" onclick="openKnowledgeOrganizer()">整理资料</button>
+        </div>
+        <div class="section-block knowledge-recent"><div class="section-title-row"><h2 id="knowledgeTableHeading">最近资料</h2><span id="knowledgeResultCount" aria-live="polite"></span></div><table class="table" id="knowledgeTable"></table></div>
+
+        <div class="knowledge-organizer" id="knowledgeOrganizer" aria-hidden="true">
+          <button class="knowledge-organizer-backdrop" type="button" aria-label="关闭资料整理" onclick="closeKnowledgeOrganizer()"></button>
+          <section class="knowledge-organizer-sheet" role="dialog" aria-modal="true" aria-labelledby="knowledgeOrganizerTitle">
+            <div class="settings-head"><div><h2 id="knowledgeOrganizerTitle">整理资料</h2><p>从历史会话生成草稿，或手动编辑后存入当前知识库。</p></div><button class="close-button" type="button" aria-label="关闭" onclick="closeKnowledgeOrganizer()">×</button></div>
+            <div class="knowledge-toolbar">
           <label class="import-drop" for="knowledgeFilePicker">
             <input id="knowledgeFilePicker" type="file" multiple hidden onchange="handleKnowledgeFiles(event)">
             <b>上传文件到当前库</b>
@@ -296,6 +285,17 @@
             <label>从历史会话沉淀<select id="knowledgeSessionSelect"></select></label>
             <button class="secondary" onclick="draftKnowledgeFromSelectedSession()">生成文档草稿</button>
           </div>
+            </div>
+            <div class="knowledge-layout">
+              <section class="knowledge-editor">
+                <label>标题<input id="knowledgeTitle" placeholder="例如：Agent 工具调用评测"></label>
+                <label>分类<select id="knowledgeCategory"><option value="research">科研</option><option value="learning">学习</option><option value="writing">写作/博客</option><option value="project">项目资料</option><option value="domain">通用知识</option></select></label>
+                <label>来源<input id="knowledgeSource" placeholder="paper / note / chat / manual"></label>
+                <label class="wide">内容<textarea id="knowledgeContent" placeholder="粘贴资料摘要、学习笔记，或让 Agent 从对话中沉淀。"></textarea></label>
+                <div class="action-row"><button class="primary" onclick="saveKnowledge()">保存到知识库</button><button class="secondary" onclick="clearKnowledgeEditor()">清空草稿</button><span class="hint" id="knowledgeStatus">等待导入或编辑</span></div>
+              </section>
+            </div>
+          </section>
         </div>
         <div class="knowledge-zone-label knowledge-backstage-label"><span>后台管理</span><b>报告、验收、交付、OCR、引用问答</b></div>
         <div class="obsidian-panel">
@@ -341,24 +341,9 @@
         <div class="section-block compact-block" id="acceptanceReportBlock"><h2>复杂任务验收</h2><div class="report-result" id="acceptanceReportResult">点击刷新后读取 output/deepseek_hybrid_rag_acceptance.json。</div></div>
         <div class="section-block compact-block" id="liveSearchReportBlock"><h2>联网搜索验收</h2><div class="report-result" id="liveSearchReportResult">点击刷新后读取 output/search_evidence/live_search_report.json。</div></div>
         <div class="section-block compact-block" id="obsidianResultBlock"><h2>笔记库结果</h2><table class="table" id="obsidianCheckTable"></table></div>
-        <div class="knowledge-layout">
-          <section class="knowledge-editor">
-            <label>标题<input id="knowledgeTitle" placeholder="论文精读：Agent 工具调用评测"></label>
-            <label>分类<select id="knowledgeCategory"><option value="research">科研</option><option value="learning">学习</option><option value="writing">写作/博客</option><option value="project">项目资料</option><option value="domain">通用知识</option></select></label>
-            <label>来源<input id="knowledgeSource" placeholder="paper / note / chat / manual"></label>
-            <label class="wide">内容<textarea id="knowledgeContent" placeholder="粘贴资料摘要、学习笔记，或让 Agent 从对话中沉淀。"></textarea></label>
-            <div class="action-row"><button class="primary" onclick="saveKnowledge()">保存到知识库</button><button class="secondary" onclick="clearKnowledgeEditor()">清空草稿</button><span class="hint" id="knowledgeStatus">等待导入或编辑</span></div>
-          </section>
-          <section class="knowledge-map">
-            <div class="map-title"><div><b>知识图谱</b><span id="knowledgeMapHint">按分类、引用和语义关系动态排列</span></div><button class="secondary" type="button" onclick="openKnowledgeGraphExplorer()">全屏探索</button></div>
-            <svg id="knowledgeEdges" aria-hidden="true"></svg>
-            <div class="map-nodes" id="knowledgeMap"></div>
-          </section>
-        </div>
-        <div class="searchbar"><input id="knowledgeQuery" placeholder="搜索知识库、论文摘要、学习笔记" onkeydown="if(event.key==='Enter')searchKnowledge()"><button class="secondary" onclick="searchKnowledge()">检索</button></div>
+        <div class="knowledge-map-data" aria-hidden="true"><svg id="knowledgeEdges"></svg><div id="knowledgeMap"></div><span id="knowledgeMapHint"></span></div>
         <div class="section-block"><h2>OCR 队列</h2><table class="table" id="ocrQueueTable"></table></div>
         <div class="section-block"><h2>引用问答</h2><div class="searchbar"><input id="citationQuery" placeholder="输入问题，基于已入库文档 chunk 返回带引用的答案" onkeydown="if(event.key==='Enter')askCitationAnswer()"><button class="secondary" onclick="askCitationAnswer()">引用回答</button></div><table class="table" id="citationAnswerTable"></table></div>
-        <div class="section-block"><h2>知识条目</h2><table class="table" id="knowledgeTable"></table></div>
         <div class="section-block"><h2>检索结果</h2><table class="table" id="knowledgeSearchTable"></table></div>
       </div>
     </section>
@@ -390,7 +375,7 @@
     <div class="graph-explorer-backdrop" onclick="closeKnowledgeGraphExplorer()"></div>
     <section class="graph-explorer-shell" role="dialog" aria-modal="true" aria-labelledby="graphExplorerTitle">
       <header class="graph-explorer-head">
-        <div><span class="eyebrow">KNOWLEDGE EXPLORER</span><h2 id="graphExplorerTitle">知识关系图谱</h2><p id="graphExplorerSummary">加载节点、引用与语义关系</p></div>
+        <div><span class="eyebrow">知识图谱</span><h2 id="graphExplorerTitle">知识关系图谱</h2><p id="graphExplorerSummary">加载节点、引用与语义关系</p></div>
         <div class="graph-explorer-actions"><button class="secondary" type="button" onclick="loadKnowledgeGraph()">刷新数据</button><button class="icon-button" type="button" onclick="closeKnowledgeGraphExplorer()" aria-label="关闭知识图谱">×</button></div>
       </header>
       <div class="graph-explorer-toolbar">
@@ -405,7 +390,7 @@
           <div id="graphExplorerNodes" class="graph-explorer-nodes"></div>
           <div class="graph-legend"><span><i class="category"></i>分类</span><span><i class="knowledge"></i>知识</span><span><i class="document"></i>文档</span><span><i class="tag"></i>标签</span></div>
         </div>
-        <aside class="graph-inspector" id="graphInspector"><span class="eyebrow">NODE INSPECTOR</span><h3>选择一个节点</h3><p>查看节点权重、类型、相邻关系与来源，并可回到知识库继续编辑。</p></aside>
+        <aside class="graph-inspector" id="graphInspector"><span class="eyebrow">节点详情</span><h3>选择一个节点</h3><p>查看节点权重、类型、相邻关系与来源，并可回到知识库继续编辑。</p></aside>
       </div>
     </section>
   </div>

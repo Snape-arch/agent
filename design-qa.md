@@ -39,6 +39,30 @@ The implementation and the two accepted references were reviewed together at the
 
 final result: passed
 
+## Truthful console and responsive closure — 2026-07-13
+
+- reference: `codex-clipboard-adff59f0-83d7-43bd-ae63-f8b310c5dd82.png`
+- implementation: `http://127.0.0.1:18790/console`
+- tested viewports: 1280 × 720, 1440 × 1024, 390 × 844
+- tested states: truthful workbench empty state, loaded conversation, compact history, knowledge foreground, centered organizer, full-screen graph explorer, mobile navigation and collapsible task progress
+
+Resolved findings:
+
+- [P0] Removed the model/tool counters, sample deliveries and invented 100% progress. Active work now filters to real running states and only renders progress supplied by the backend; otherwise it shows a truthful state label or empty state.
+- [P0] Reduced the knowledge foreground to upload, search, graph entry and recent sources. Session capture and editing now live in a centered secondary dialog. Graph labels and inspector descriptions sanitize local paths.
+- [P1] Standardized the foreground to 14 px body copy and 12–13 px supporting copy, removed unnecessary English micro-labels and kept high-contrast neutral text.
+- [P1] Rebuilt history as compact title/summary/time/continue rows. Loaded chats keep user turns right and Agent turns left; real task progress is available in a keyboard-closeable side panel.
+- [P2] Fixed the mobile navigation state mismatch and added a visible menu trigger. Verified no page-level horizontal overflow at 390 px, centered modal geometry at 1440 px, focus-visible states and Escape dismissal.
+
+Browser verification:
+
+- Knowledge recent rows span the full content width; organizer measured 760 px wide and centered at x=340 in a 1440 px viewport.
+- Graph explorer contained no Windows drive, Users or Desktop path fragments.
+- Loaded conversation geometry placed user content on the right and Agent content at the left reading edge.
+- Browser warning/error log was empty after the final pass.
+
+final result: passed
+
 ## Codex-style foreground/backstage reduction — 2026-07-11
 
 - source screenshots: `codex-clipboard-0ec35122-2888-4869-a8df-4b66a04a25cf.png`, `codex-clipboard-c18fc990-5152-445d-81ce-ae507aaf076e.png`, `codex-clipboard-bd1a51d7-2544-4488-a054-1910cae6dd55.png`, `codex-clipboard-4215613e-8980-45d7-80ff-e35151c613c8.png`
