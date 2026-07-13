@@ -39,6 +39,28 @@ The implementation and the two accepted references were reviewed together at the
 
 final result: passed
 
+## Brand identity and professional workflow polish — 2026-07-13
+
+- source screenshots: `codex-clipboard-afbba9de-cd35-4383-8597-124ef830abbb.png`, `codex-clipboard-a1955c10-4477-4741-9f73-27e372ab4f0c.png`
+- implementation: `http://127.0.0.1:18790/console#scenes`, `http://127.0.0.1:18790/console#tasks`
+- paired comparison: `tmp/ui-qa/brand-runtime-comparison.png` (local QA only; excluded from Git)
+- tested viewports: 1440 x 1024, 1280 x 720, 760 x 900
+
+Resolved findings:
+
+- [P1] Replaced the uneven four-board form layout with a reusable Academy-aligned card system: numbered header, Chinese title and summary, three capabilities, an explicit quality gate and one primary next action.
+- [P1] Replaced raw English runtime keys with readable Chinese labels while retaining original service identifiers as title metadata. Normalized all card titles, supporting copy, metrics and failure samples to one hierarchy.
+- [P1] Added a unique ClawOS mark and applied it across Overview, Product, Academy and Console. Added restrained hover motion and a reduced-motion fallback.
+- [P2] Added four-to-two-to-one column reflow for scenarios and three-to-two-to-one reflow for runtime evidence. No overlap or horizontal overflow appeared at the tested states.
+
+Interaction verification:
+
+- The research scenario CTA resolved uniquely, switched to the workbench and inserted the expected research workflow prompt.
+- Runtime cards rendered real schema/run/failure counts from the existing APIs; no placeholder metrics were introduced.
+- The final 1280 x 720 and narrow screenshots retained readable type, complete card actions and unobstructed scrolling.
+
+final result: passed
+
 ## Truthful console and responsive closure — 2026-07-13
 
 - reference: `codex-clipboard-adff59f0-83d7-43bd-ae63-f8b310c5dd82.png`

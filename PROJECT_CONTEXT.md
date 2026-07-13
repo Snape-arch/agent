@@ -2884,3 +2884,26 @@ Verification:
 Known notes:
 - Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
 - The local UI server on port 18790 was owned by another process and could not be stopped without elevation; the full suite still passed without registry contention.
+
+### 2026-07-13 - Brand identity and professional workflow polish
+
+Completed:
+- Introduced a production PNG brand mark that combines the ClawOS loop, orchestration node and claw gesture, then applied it consistently to Overview, Product, Academy subpages and Console.
+- Rebuilt the four scenario entries as one Academy-aligned component system with numbered identity, concise capability chips, explicit quality gates and restrained per-domain accents.
+- Reframed runtime evidence into three coordinated Chinese cards for service boundaries, latest real run and failure samples; localized backend labels while preserving original identifiers in non-visual metadata.
+- Added brand/card hover details, reduced-motion fallbacks, responsive two-column/single-column behavior and static regression contracts.
+
+Visual verification:
+- Compared both user screenshots and the implementation in `tmp/ui-qa/brand-runtime-comparison.png` (local evidence only; excluded from Git).
+- In-app browser passes covered 1440 x 1024, 1280 x 720 and 760 x 900. Cards reflowed without overlap; runtime records stayed legible; the scenario CTA correctly transferred its workflow prompt into the workbench.
+- Final product-design assessment: 94/100. The remaining championship gap is authentic production/demo evidence and a final repository-wide replacement of legacy text-symbol icons, not this page structure.
+
+Verification:
+- Bundled Node syntax checks for `console.js` and `console.modules.js`: passed.
+- Frontend static suite: `40 tests OK`.
+- Full regression suite from the project environment: `262 tests OK (skipped=1)`.
+- `git diff --check`: passed.
+
+Known notes:
+- A first full-suite attempt used the generic bundled Python runtime, which lacks this repository's `httpx` and PDF-render dependencies. The correct project environment passed the complete suite.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.

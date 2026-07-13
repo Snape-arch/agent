@@ -921,8 +921,9 @@ class FrontendStaticTests(unittest.TestCase):
             "/api/runtime/runs/latest",
             "/api/runtime/failure-cases",
             "loadRuntimeRecords",
-            "Failure Library",
-            "Run / Artifact / Evidence",
+            "失败样本",
+            "服务边界",
+            "最近运行",
         ):
             self.assertIn(token, module_js)
         self.assertIn(".runtime-record-panel", css)
@@ -1084,19 +1085,35 @@ class FrontendStaticTests(unittest.TestCase):
         css = self.read_page("assets/console.css")
 
         for token in (
-            "Professional Template Board",
+            "专业场景工作流",
             "professionalBoardGrid",
-            "Research Board",
-            "Learning Board",
-            "Code Board",
-            "Office Board",
+            "科研工作流",
+            "学习工作流",
+            "开发工作流",
+            "办公工作流",
             "activateScenarioBoard",
-            "reproducibility gate",
-            "export quality gate",
+            "引用完整 · 复现可审计",
+            "格式有效 · 视觉验收",
         ):
             self.assertIn(token, js)
         self.assertIn(".professional-board-grid", css)
         self.assertIn(".board-card", css)
+
+    def test_brand_mark_is_consistent_across_primary_surfaces(self):
+        self.assertTrue((STATIC_DIR / "assets" / "clawos-mark.png").is_file())
+        for page in (
+            "index.html",
+            "product.html",
+            "academy.html",
+            "academy-code.html",
+            "academy-ingest.html",
+            "academy-notes.html",
+            "academy-paper.html",
+            "academy-path.html",
+            "academy-quiz.html",
+            "console.html",
+        ):
+            self.assertIn('/assets/clawos-mark.png', self.read_page(page))
 
     def test_console_exposes_skill_workbench_controls(self):
         html = self.read_page("console.html")

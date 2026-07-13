@@ -2361,15 +2361,21 @@ function ensureProfessionalBoard() {
   const target = $("professionalBoardGrid");
   if (!target || target.dataset.ready === "1") return;
   target.dataset.ready = "1";
-  const boardTitle = "Professional Template Board";
+  const boardTitle = "专业场景工作流";
   const boards = [
-    { kind: "research", title: "Research Board", summary: "论文入库、引用问答、期刊级报告、复现实验计划", input: "PDF / 文献 / 研究问题", output: "报告、引用证据、复现实验目录", gate: "citation evidence + reproducibility gate", action: "Open research flow" },
-    { kind: "learning", title: "Learning Board", summary: "概念图谱、掌握度证据、错题归因、间隔复习", input: "课程资料 / 错题 / 学习目标", output: "概念图、复习计划、自测题", gate: "mastery evidence + spaced review gate", action: "Open learning flow" },
-    { kind: "code", title: "Code Board", summary: "仓库扫描、任务拆分、测试闭环、交接记录", input: "repo / issue / 交付目标", output: "风险清单、测试结果、交接摘要", gate: "tests + handoff gate", action: "Open code flow" },
-    { kind: "office", title: "Office Board", summary: "简报、表格、幻灯片、会议纪要和导出检查", input: "会议 / 数据 / 汇报对象", output: "brief、sheet、slides、minutes", gate: "export quality gate", action: "Open office flow" }
+    { index: "01", kind: "research", meta: "研究与证据", title: "科研工作流", summary: "从论文入库到可追溯结论，保留引用与复现实验依据。", tags: ["论文入库", "引用问答", "复现实验"], gate: "引用完整 · 复现可审计", action: "进入科研工作流" },
+    { index: "02", kind: "learning", meta: "学习与掌握", title: "学习工作流", summary: "把课程资料转化为概念图谱、错题归因与长期复习计划。", tags: ["概念图谱", "错题归因", "间隔复习"], gate: "掌握度证据 · 复习闭环", action: "进入学习工作流" },
+    { index: "03", kind: "code", meta: "开发与交付", title: "开发工作流", summary: "围绕仓库完成任务拆分、风险识别、测试与可接续交付。", tags: ["仓库扫描", "测试闭环", "交接记录"], gate: "测试通过 · 交接完整", action: "进入开发工作流" },
+    { index: "04", kind: "office", meta: "办公与表达", title: "办公工作流", summary: "生成简报、表格、演示与会议纪要，并完成格式质量检查。", tags: ["数据分析", "演示文稿", "会议纪要"], gate: "格式有效 · 视觉验收", action: "进入办公工作流" }
   ];
   target.setAttribute("aria-label", boardTitle);
-  target.innerHTML = boards.map(board => `<article class="board-card"><b>${board.title}</b><span>${board.summary}</span><dl><dt>输入</dt><dd>${board.input}</dd><dt>产物</dt><dd>${board.output}</dd><dt>质量门</dt><dd>${board.gate}</dd><dt>下一步</dt><dd>${board.action}</dd></dl><button class="primary icon-text" onclick="activateScenarioBoard('${board.kind}')"><span class="ui-ico">→</span>${board.action}</button></article>`).join("");
+  target.innerHTML = boards.map(board => `<article class="board-card board-${board.kind}">
+    <div class="board-card-top"><span class="board-index">${board.index}</span><span class="board-meta">${board.meta}</span></div>
+    <h3>${board.title}</h3><p>${board.summary}</p>
+    <div class="board-capabilities">${board.tags.map(tag => `<span>${tag}</span>`).join("")}</div>
+    <div class="board-quality"><span>质量门</span><b>${board.gate}</b></div>
+    <button class="board-action" onclick="activateScenarioBoard('${board.kind}')">${board.action}</button>
+  </article>`).join("");
 }
 
 function activateScenarioBoard(kind) {

@@ -1331,3 +1331,10 @@
   .settings-actions{align-items:stretch;flex-wrap:wrap}
   .settings-actions .hint{width:100%;margin-right:0}
 }
+
+/* ClawOS identity: one mark across product, academy and console surfaces. */
+.mark,.claw-brand-mark{object-fit:contain;background:#11151c!important;box-shadow:none!important}
+.mark{display:block;padding:3px;border-radius:11px!important}
+.brand .mark{transition:transform .22s ease,box-shadow .22s ease}.brand:hover .mark{transform:rotate(-3deg) scale(1.045);box-shadow:0 8px 24px rgba(49,92,245,.16)!important}
+.claw-home-brand{align-items:center!important}.claw-brand-mark{width:34px;height:34px;padding:3px;border-radius:10px;transition:transform .22s ease,box-shadow .22s ease}.claw-home-brand:hover .claw-brand-mark{transform:rotate(-3deg) scale(1.045);box-shadow:0 8px 24px rgba(49,92,245,.16)!important}.claw-home-brand small{margin-left:1px}
+@media(prefers-reduced-motion:reduce){.brand .mark,.claw-brand-mark{transition:none}.brand:hover .mark,.claw-home-brand:hover .claw-brand-mark{transform:none}}
