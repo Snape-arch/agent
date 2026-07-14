@@ -4,13 +4,11 @@ This is the concise handoff source of truth for ClawOS. The complete historical
 handoff log through 2026-07-14 is archived in
 `clawos/docs/PROJECT_HISTORY_2026-07-14.md`.
 
-## Current state — 2026-07-14
+## Current state — 2026-07-15
 
 - Active branch: `codex/p0-demo-polish`.
-- Current local commit before this hygiene change: `cf98313`, which merges
-  `origin/master` at `5c09fef` with the local profile commit `b9e1618`.
-- The remote feature branch currently points to `b9e1618`; the local merge
-  commit has not been pushed.
+- Current local commit: `68c1a30`; the locally known
+  `origin/codex/p0-demo-polish` points to the same commit.
 - Latest full regression after the merge: `280 tests OK`, `1 skipped`.
 - The working local Qwen profile, Chroma/Qwen3 embedding assets, MTClaw route,
   office workflows, Academy surfaces, and five real-evidence chains remain the
@@ -18,6 +16,23 @@ handoff log through 2026-07-14 is archived in
 - Competition evidence is `5 / 5` for the repository/public-input campaign.
   Physical target-device acceptance and a consented live enterprise connector
   tenant remain unverified.
+
+## Feishu connector draft review — 2026-07-15
+
+- WorkBuddy has produced an uncommitted Feishu connector draft covering the
+  service, client, fake client, server routes, console surface, migration entry,
+  and 15 focused tests.
+- Focused verification passed: `15` Feishu tests, `42` frontend static tests,
+  Python AST parsing, Node syntax, and `git diff --check` before the plan update.
+- Review found blocking gaps in the draft: invalid real approval-instance
+  parameters, no verification of the actual approver, unauthenticated HTTP
+  event ingestion, a non-official and unstarted long-connection transport,
+  missing outbound-target enforcement, and incomplete concurrent-send recovery.
+- `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md` is now the v2 remediation and live
+  acceptance specification. `FEISHU_LIVE` must remain disabled until its
+  automated gates pass and the user explicitly authorizes test-tenant access.
+- No real Feishu tenant, approval instance, message receipt, or outbound send
+  has been verified yet.
 
 ## Repository hygiene block — 2026-07-14
 
@@ -67,15 +82,19 @@ Known local-only assets:
 
 ## Immediate handoff order
 
-1. Review and commit the repository-hygiene change; do not include local model,
-   database, log, upload, generated report, or runtime files.
-2. Push the local merge commit and hygiene commit through the shared PR flow.
-3. Give `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md` to WorkBuddy and implement only
-   the Feishu connector (message receive + native approval-gated bot send).
-4. Validate the connector with a dedicated Feishu test tenant and group: receive,
-   summarize, extract actions, reject once, approve once, actually send, save the
-   API receipt or failure, and prove idempotent replay does not send twice.
-5. Rehearse the five real-evidence chains on the competition device.
+1. Preserve the current uncommitted WorkBuddy draft and unrelated local changes;
+   do not reset, overwrite, or stage the skill-registry usage-count side effect.
+2. Give `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md` to WorkBuddy and execute its
+   Phase 0 through Phase 6 in order, starting with failing regression tests for
+   every identified blocker.
+3. Keep `FEISHU_LIVE=false` while fixing event trust, approval identity, target
+   whitelist, full snapshot hashing, transaction-level idempotency, and recovery.
+4. Run focused tests and the full regression, then review the resulting diff
+   before any commit or push.
+5. Only after explicit user approval, validate in a dedicated Feishu test tenant:
+   reject once, attempt an unauthorized approval once, approve once with an
+   authorized user, send once, and prove replay/restart does not duplicate it.
+6. Rehearse the five real-evidence chains on the competition device.
 
 ## Persistent operating rules
 

@@ -47,6 +47,7 @@ const VIEW_META = {
   ops: ["Ops Center", "备份恢复、配置检查、后台 worker 和真实业务长任务"],
   benchmarks: ["冻结基准", "运行离线基准套件，查看通过率和 P95 延迟"],
   scenes: ["场景工作台", "核对会议、科研、办公、学习、Git 和技能治理的交付边界"],
+  feishu: ["飞书连接器", "消息、纪要、审批与回执"],
   security: ["权限中心", "查看审批、授权、风险策略和安全审计"]
 };
 const esc = value => {
@@ -2681,6 +2682,71 @@ async function revokeSecurityGrant(id) {
   await loadSecurityCenter();
 }
 
+async function loadFeishuCenter() {
+  if (!$("feishuMessagesTable")) return;
+  const safe = (body) => api("/api/feishu", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(err => ({ error: err.message }));
+  try {
+    const [health, messages, summaries, approvals, dispatches] = await Promise.all([
+      safe({ action: "health" }),
+      safe({ action: "messages", limit: 50 }),
+      safe({ action: "summaries", limit: 50 }),
+      safe({ action: "approvals", limit: 50 }),
+      safe({ action: "dispatches", limit: 50 }),
+    ]);
+    const cfg = (health && health.config) || {};
+    const cli = (health && health.client) || {};
+    if ($("feishuHealth")) $("feishuHealth").innerHTML = table(["项", "值"], [
+      ["实时发送(live)", { html: statusBadge(health && health.live ? "ok" : "pending") }],
+      ["App 配置", cfg.configured ? "已配置" : "未配置(env)"],
+      ["Client 连接", cli.connection || (health && health.has_client ? "已连接" : "无")],
+      ["审批定义码", cfg.approval_definition_code || "—"],
+      ["允许聊天数", (cfg.allowed_chat_ids || []).length],
+      ["授权审批人数", (cfg.allowed_user_ids || []).length],
+      ["审批超时(分)", cfg.approval_timeout_minutes],
+    ]);
+    if ($("feishuMessagesTable")) $("feishuMessagesTable").innerHTML = table(["聊天", "发送者", "类型", "内容", "接收时间", "状态"], (messages || []).map(m => [m.chat_id, m.sender_id, m.message_type, m.text, m.create_time, { html: statusBadge(m.processed_status) }]));
+    if ($("feishuSummariesTable")) $("feishuSummariesTable").innerHTML = table(["ID", "主题", "结论数", "行动项数", "来源消息", "状态", "创建时间"], (summaries || []).map(s => [s.id, s.topic, (s.conclusions || []).length, (s.action_items || []).length, (s.source_message_ids || []).join(","), { html: statusBadge(s.status) }, s.created_at]));
+    const preview = (approvals || [])[0];
+    if ($("feishuPreview")) $("feishuPreview").textContent = preview ? (preview.body_text || "（空正文）") : "暂无待审批/待发送内容。";
+    if ($("feishuApprovalsTable")) $("feishuApprovalsTable").innerHTML = table(["ID", "目标", "状态", "审批人", "已用", "有效期", "创建时间"], (approvals || []).map(a => {
+      const expired = a.expires_at_epoch && a.expires_at_epoch < Math.floor(Date.now() / 1000);
+      return [a.id, (a.target_type || "") + ":" + (a.target_id || ""), { html: statusBadge(a.status) }, a.approver_id, { html: statusBadge(a.used ? "used" : "no") }, { html: statusBadge(expired ? "expired" : "valid") }, a.created_at_epoch ? new Date(a.created_at_epoch * 1000).toLocaleString() : ""];
+    }));
+    if ($("feishuDispatchesTable")) $("feishuDispatchesTable").innerHTML = table(["ID", "审批ID", "目标", "状态", "尝试", "飞书消息ID", "API码", "API消息", "追踪ID"], (dispatches || []).map(d => [d.id, d.approval_id, (d.target_type || "") + ":" + (d.target_id || ""), { html: statusBadge(d.status) }, d.attempts, d.feishu_message_id, d.api_code, d.api_msg, d.trace_id]));
+  } catch (err) {
+    if ($("feishuHealth")) $("feishuHealth").innerHTML = table(["状态", "说明"], [["加载失败", err.message]]);
+  }
+}
+
+async function feishuAction(body) {
+  const statusEl = $("feishuActionStatus");
+  if (statusEl) statusEl.textContent = "处理中…";
+  try {
+    const res = await api("/api/feishu", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (statusEl) statusEl.textContent = "成功：" + JSON.stringify(res).slice(0, 240);
+    await loadFeishuCenter();
+  } catch (err) {
+    if (statusEl) statusEl.textContent = "失败：" + err.message;
+  }
+}
+
+async function feishuCreateSummary() {
+  const ids = ($("feishuMsgIds").value || "").split(",").map(s => s.trim()).filter(Boolean).map(Number);
+  await feishuAction({ action: "summary_create", message_ids: ids });
+}
+
+async function feishuCreateApproval() {
+  await feishuAction({ action: "approval_create", confirmed: true, summary_id: Number($("feishuSummaryId").value), target_type: ($("feishuTargetType").value || "chat"), target_id: ($("feishuTargetId").value || ""), approver_id: ($("feishuApprover").value || "") });
+}
+
+async function feishuSyncApproval() {
+  await feishuAction({ action: "approval_sync", approval_id: Number($("feishuApprovalId").value) });
+}
+
+async function feishuSendApproved() {
+  await feishuAction({ action: "send", confirmed: true, approval_id: Number($("feishuApprovalId").value) });
+}
+
 async function loadSkills() {
   if (!$("skillsTable")) return;
   const data = await api("/api/skills").catch(() => ({ skills: [] }));
@@ -2838,6 +2904,7 @@ async function refreshView(viewName) {
     benchmarks: [loadBenchmarks()],
     scenes: [loadCapabilities()],
     security: [loadSecurityCenter()],
+    feishu: [loadFeishuCenter()],
     ops: [loadOps()]
   };
   await Promise.allSettled(common.concat(viewLoads[viewName] || []));

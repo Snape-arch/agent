@@ -33,6 +33,7 @@ from services import (
 )
 from services.artifact_storage import safe_artifact_slug
 from services.competition_evidence_service import CompetitionEvidenceService, EVIDENCE_CHAIN_SCHEMA
+from services.feishu import FeishuConnectorService, FeishuClient, load_feishu_config
 from services.runtime_records import RUN_SCHEMA_VERSION, RunRecord, now_iso, run_from_task
 
 # ---- PATHS ----
@@ -90,6 +91,7 @@ g_workflow_engine: WorkflowEngine | None = None
 g_agent_orchestration_service: AgentOrchestrationService | None = None
 g_coding_workflow_service: CodingWorkflowService | None = None
 g_office_productivity_service: OfficeProductivityService | None = None
+g_feishu_connector_service: Any = None
 g_background_worker_task: asyncio.Task | None = None
 g_background_worker_status: dict[str, Any] = {
     "running": False,
@@ -2615,6 +2617,68 @@ async def api_office_productivity(request: Request):
     return JSONResponse(result)
 
 
+@app.post("/api/feishu/event")
+async def api_feishu_event(request: Request):
+    # Event ingestion for webhook / long-connect bridge. Quick-ack then process.
+    try:
+        event = await request.json()
+    except Exception:
+        raise HTTPException(400, "invalid event payload")
+    service = get_feishu_connector_service()
+    try:
+        record = service.receive_event(event, received_via="http")
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(400 if isinstance(exc, ValueError) else 409, str(exc))
+    return JSONResponse({
+        "code": 0, "msg": "success",
+        "data": {"message_id": record.get("message_id"), "status": record.get("processed_status")},
+    })
+
+
+@app.post("/api/feishu")
+async def api_feishu(request: Request):
+    data = await request.json()
+    action = str(data.get("action") or "health")
+    service = get_feishu_connector_service()
+    try:
+        if action == "health":
+            if service.client is not None:
+                client_health = service.client.health_check()
+            else:
+                client_health = {"connection": "no_client", "configured": service.config.is_configured()}
+            result = {"config": service.config.redacted(), "client": client_health}
+        elif action == "messages":
+            result = service.list_messages(chat_id=str(data.get("chat_id") or ""), limit=int(data.get("limit") or 50))
+        elif action == "summary_create":
+            result = service.generate_summary(data.get("message_ids") or [], summarizer=None)
+        elif action == "summary_update":
+            result = service.update_summary(int(data.get("summary_id") or 0), data.get("fields") or {})
+        elif action == "approval_create":
+            result = service.create_approval(
+                int(data.get("summary_id") or 0), str(data.get("target_type") or "chat"),
+                str(data.get("target_id") or ""), confirmed=bool(data.get("confirmed")),
+                approver_id=str(data.get("approver_id") or ""),
+            )
+        elif action == "approval_sync":
+            result = service.sync_approval(int(data.get("approval_id") or 0))
+        elif action == "send":
+            result = service.send_after_approval(
+                int(data.get("approval_id") or 0), confirmed=bool(data.get("confirmed")),
+                new_body=data.get("body"),
+            )
+        elif action == "dispatches":
+            result = service.list_dispatches(limit=int(data.get("limit") or 50))
+        elif action == "summaries":
+            result = service.list_summaries(limit=int(data.get("limit") or 50))
+        elif action == "approvals":
+            result = service.list_approvals(limit=int(data.get("limit") or 50))
+        else:
+            raise ValueError(f"unknown feishu action: {action}")
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(409 if isinstance(exc, PermissionError) else 400, str(exc))
+    return JSONResponse(result)
+
+
 @app.post("/api/workspace/meetings")
 async def api_meeting_create(request: Request):
     data = await request.json()
@@ -3795,6 +3859,15 @@ def get_office_productivity_service() -> OfficeProductivityService:
         roots = list(getattr(g_security_policy, "allowed_roots", ()) or [BASE_DIR.parent])
         g_office_productivity_service = OfficeProductivityService(g_memory_store, roots)
     return g_office_productivity_service
+
+
+def get_feishu_connector_service() -> Any:
+    global g_feishu_connector_service
+    if not g_feishu_connector_service or getattr(g_feishu_connector_service, "store", None) is not g_memory_store:
+        cfg = load_feishu_config()
+        client = FeishuClient(cfg) if cfg.live else None
+        g_feishu_connector_service = FeishuConnectorService(g_memory_store, client, cfg)
+    return g_feishu_connector_service
 
 
 def get_autonomous_subagent_service() -> AutonomousSubagentService:
