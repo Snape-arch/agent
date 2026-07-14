@@ -522,6 +522,8 @@ class MemoryStore:
                     outputs TEXT NOT NULL DEFAULT '{}',
                     metrics TEXT NOT NULL DEFAULT '{}',
                     workflow TEXT NOT NULL DEFAULT '{}',
+                    provenance TEXT NOT NULL DEFAULT '{}',
+                    verification TEXT NOT NULL DEFAULT '{}',
                     parent_run_id TEXT DEFAULT '',
                     tags TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT DEFAULT (datetime('now')),
@@ -629,6 +631,8 @@ class MemoryStore:
                 "outputs": "TEXT NOT NULL DEFAULT '{}'",
                 "metrics": "TEXT NOT NULL DEFAULT '{}'",
                 "workflow": "TEXT NOT NULL DEFAULT '{}'",
+                "provenance": "TEXT NOT NULL DEFAULT '{}'",
+                "verification": "TEXT NOT NULL DEFAULT '{}'",
                 "parent_run_id": "TEXT DEFAULT ''",
                 "tags": "TEXT NOT NULL DEFAULT '[]'",
                 "updated_at": "TEXT DEFAULT ''",
@@ -1182,8 +1186,9 @@ class MemoryStore:
                 """
                 INSERT INTO run_records
                     (run_id, schema, run_type, title, status, actor, scenario, started_at,
-                     completed_at, inputs, outputs, metrics, workflow, parent_run_id, tags, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                     completed_at, inputs, outputs, metrics, workflow, provenance,
+                     verification, parent_run_id, tags, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(run_id) DO UPDATE SET
                     schema=excluded.schema,
                     run_type=excluded.run_type,
@@ -1197,6 +1202,8 @@ class MemoryStore:
                     outputs=excluded.outputs,
                     metrics=excluded.metrics,
                     workflow=excluded.workflow,
+                    provenance=excluded.provenance,
+                    verification=excluded.verification,
                     parent_run_id=excluded.parent_run_id,
                     tags=excluded.tags,
                     updated_at=datetime('now')
@@ -1215,6 +1222,8 @@ class MemoryStore:
                     json.dumps(record.get("outputs") or {}, ensure_ascii=False),
                     json.dumps(record.get("metrics") or {}, ensure_ascii=False),
                     json.dumps(record.get("workflow") or {}, ensure_ascii=False),
+                    json.dumps(record.get("provenance") or {}, ensure_ascii=False),
+                    json.dumps(record.get("verification") or {}, ensure_ascii=False),
                     str(record.get("parent_run_id") or ""),
                     json.dumps(record.get("tags") or [], ensure_ascii=False),
                 ),
@@ -1303,7 +1312,34 @@ class MemoryStore:
                 f"SELECT * FROM run_records{clause} ORDER BY updated_at DESC, created_at DESC LIMIT ?",
                 (*params, max(1, min(int(limit or 50), 200))),
             ).fetchall()
-            return [self._run_record_from_rows(row, [], [], []) for row in rows]
+            if not rows:
+                return []
+            run_ids = [str(row["run_id"]) for row in rows]
+            placeholders = ",".join("?" for _ in run_ids)
+            artifacts = c.execute(
+                f"SELECT * FROM run_artifacts WHERE run_id IN ({placeholders}) ORDER BY id",
+                run_ids,
+            ).fetchall()
+            evidence = c.execute(
+                f"SELECT * FROM run_evidence WHERE run_id IN ({placeholders}) ORDER BY id",
+                run_ids,
+            ).fetchall()
+            failures = c.execute(
+                f"SELECT * FROM run_failure_cases WHERE run_id IN ({placeholders}) ORDER BY id",
+                run_ids,
+            ).fetchall()
+            artifacts_by_run = self._group_run_rows(artifacts)
+            evidence_by_run = self._group_run_rows(evidence)
+            failures_by_run = self._group_run_rows(failures)
+            return [
+                self._run_record_from_rows(
+                    row,
+                    artifacts_by_run.get(str(row["run_id"]), []),
+                    evidence_by_run.get(str(row["run_id"]), []),
+                    failures_by_run.get(str(row["run_id"]), []),
+                )
+                for row in rows
+            ]
 
     def list_failure_cases(self, category="", severity="", limit=50) -> list[dict[str, Any]]:
         where, params = [], []
@@ -1328,6 +1364,8 @@ class MemoryStore:
             ("outputs", {}),
             ("metrics", {}),
             ("workflow", {}),
+            ("provenance", {}),
+            ("verification", {}),
             ("tags", []),
         ):
             item[key] = self._json_loads(item.get(key), default)
@@ -1335,6 +1373,13 @@ class MemoryStore:
         item["evidence"] = [self._run_evidence_row_to_dict(row) for row in evidence]
         item["failure_cases"] = [self._failure_case_row_to_dict(row) for row in failures]
         return item
+
+    @staticmethod
+    def _group_run_rows(rows) -> dict[str, list[Any]]:
+        grouped: dict[str, list[Any]] = {}
+        for row in rows:
+            grouped.setdefault(str(row["run_id"]), []).append(row)
+        return grouped
 
     def _artifact_row_to_dict(self, row) -> dict[str, Any]:
         item = dict(row)

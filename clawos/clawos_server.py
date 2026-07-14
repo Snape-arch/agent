@@ -3151,6 +3151,7 @@ async def api_autonomous_subagents(request: Request):
             confirmed_side_effect_tools=data.get("confirmed_tools") or [],
             run_budget=data.get("budget") or {},
             resume_checkpoint=data.get("resume_checkpoint", ""),
+            review_cycle=data.get("review_cycle") or None,
             actor=data.get("actor", "coordinator"),
         )
     except (ValueError, PermissionError, RuntimeError) as exc:

@@ -3,6 +3,8 @@ import json
 import uuid
 from datetime import datetime, timezone
 
+from .json_utils import parse_json_value
+
 class ReflectionMemoryWriter:
     """Writes structured ReflectionCards into MemoryOS experiences table."""
 
@@ -87,10 +89,7 @@ class ReflectionMemoryWriter:
         # Update skill records if tools were used
         for tc in trajectory.get("tool_calls", []):
             tool_name = tc.get("name", "")
-            result = tc.get("result", {})
-            if isinstance(result, str):
-                try: result = json.loads(result)
-                except: pass
+            result = parse_json_value(tc.get("result", {}))
             if isinstance(result, dict) and "ok" in result:
                 success = bool(result.get("ok"))
             else:

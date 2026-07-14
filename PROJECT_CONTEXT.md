@@ -2957,3 +2957,28 @@ Known notes:
 
 Recommended next step:
 - Run the five demonstrations against real user inputs, verify them with `scripts/verify_real_evidence.py`, and only then persist them to the competition MemoryOS database so the console moves from `0 / 5` to verified evidence.
+
+### 2026-07-14 - Five real evidence chains and live subagent review loop
+
+Completed:
+- Persisted and rehydrated provenance, verification, artifacts, evidence and failures in MemoryOS; strengthened the truth gate for timestamps, hashes, real providers, ordered traces, retrievable knowledge and bound V1-to-V2 rework.
+- Added a live evidence builder and public-input campaign covering repository Coding, Online Retail II Excel analysis, a long Efficient Transformers paper, AMI meeting audio, and a Hugging Face Agents Course learning loop. The latest catalog is `5 / 5`, with eight evidenced stages per chain.
+- Ran Qwen3.5-9B-Q4_K_M as Planner, Executor and independent Reviewer. The successful run made 5 real model calls, used 11,634 exact tokens over 895,410.89 ms, recorded one disagreement, one directed executor rework and Reviewer release; the preceding failed run remains retained as failure evidence.
+- Replaced unsafe broad JSON exception handling in reflection parsing with a focused helper and regression tests. Fixed LibreOffice visual QA isolation so the real management workbook rendered to six pages and passed formula, filter, freeze-pane, style and chart checks.
+- Added operator scripts for the live subagent run and five-chain campaign. Evidence payloads, public source files, model weights, generated documents and the local database remain excluded from Git.
+
+Verification:
+- Strict verifier and running API: `verified_count=5`, `required_count=5`, `competition_ready=true`.
+- Full Python suite: `277 tests OK`.
+- Frontend static contract: `42 tests OK`; bundled Node syntax check passed.
+- In-app browser: `5 / 5`, all cards `8 / 8`; no card clipping or page-level horizontal overflow at 1280 x 720, 1440 x 1024 or 768 x 900; browser warning/error log empty.
+- Real data checks: 1,067,371 retail rows across 43 countries; AMI audio processed by faster-whisper CPU int8 and reconciled against official annotations; office QA rendered six pages.
+
+Known notes:
+- The licensed public inputs are real external materials, not private customer data. Meeting email and calendar outputs are drafts/packages; no external message or calendar event was sent.
+- One shared live three-role model review run is attached to the coordinated five-domain campaign, satisfying the required at-least-once real-model loop; domain-specific tools and artifacts remain separate per chain.
+- Physical target-device acceptance and a live enterprise connector tenant remain unverified.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/`, `tmp/` and `tools/` remain outside this commit.
+
+Recommended next step:
+- Rehearse the five-chain demo on the competition device, then repeat the meeting chain in a consented enterprise tenant to verify actual mail/calendar send and receipt without weakening the approval gate.

@@ -18,10 +18,10 @@ Every chain must contain the same eight evidenced stages:
 | Scenario | Required real input | Minimum quality evidence | Final artifacts |
 |---|---|---|---|
 | `coding` | User repository and issue | failing test → patch → passing tests → diff review | patch/diff, test log, review record |
-| `meeting` | User-supplied audio; no generated tone or sidecar-only substitution | actual ASR engine, diarization review, decision/action reconciliation | transcript, minutes, `.eml`, `.ics`, knowledge record |
-| `data_analysis` | User-supplied workbook or CSV | formula integrity, totals reconciliation, filters/freeze panes and LibreOffice render | analysis workbook, management report, rendered QA |
-| `paper` | User-supplied long PDF | page-grounded citations, annotation persistence, evidence challenge and reproduction gate | annotated paper data, evidence Q&A, reproduction plan |
-| `learning` | Retrieved knowledge items from the user library | dependency graph, quiz evidence, wrong-answer cause and scheduled review | route graph, quiz result, error review, mastery record |
+| `meeting` | User-supplied or licensed public meeting audio; no generated tone or sidecar-only substitution | actual ASR engine, diarization review, decision/action reconciliation | transcript, minutes, `.eml`, `.ics`, knowledge record |
+| `data_analysis` | User-supplied or licensed public workbook/CSV | formula integrity, totals reconciliation, filters/freeze panes and LibreOffice render | analysis workbook, management report, rendered QA |
+| `paper` | User-supplied or openly licensed long PDF | page-grounded citations, annotation persistence, evidence challenge and reproduction gate | annotated paper data, evidence Q&A, reproduction plan |
+| `learning` | Retrieved user-library or openly licensed course knowledge | dependency graph, quiz evidence, wrong-answer cause and scheduled review | route graph, quiz result, error review, mastery record |
 
 ## Capture and verify
 
@@ -41,3 +41,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\test_all.ps1
 ```
 
 `requirements-test.txt` is the deterministic suite profile. Heavy local-model, vector and ASR backends remain in `requirements.txt` and can be added with `-IncludeLocalAI`; their model weights are external acceptance gates rather than prerequisites for the core suite.
+
+## Licensed public-input campaign
+
+The repository includes two operator scripts for a reproducible, non-fixture campaign:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_live_subagent_evidence.py
+.\.venv\Scripts\python.exe scripts\run_real_evidence_campaign.py
+```
+
+The first script records a live Planner / Executor / Reviewer cycle, including model/provider, exact token usage, timings, disagreement, directed rework, final release and checkpoint. The campaign then exercises the five domains with real repository or licensed public inputs. Large inputs, model weights, generated artifacts and the local MemoryOS database stay under ignored `output/` or `tools/` paths and are never committed.
+
+Current reproducible sources are UCI Online Retail II (CC BY 4.0), the arXiv Efficient Transformers survey, the AMI ES2002a meeting corpus (CC BY 4.0), and the Hugging Face Agents Course source (Apache-2.0). A public meeting corpus validates the audio-to-draft workflow; it does not prove delivery into a private mail or calendar tenant. External send/receipt and target-device acceptance remain separate production gates.

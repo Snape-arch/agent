@@ -982,7 +982,10 @@ def _format_fsize(b):
 def tool_code_stats():
     path = input_data.get("path", os.path.expanduser("~\\Desktop"))
     file_types = input_data.get("file_types", None)
-    exclude = input_data.get("exclude_dirs", ["node_modules",".git","__pycache__","venv",".venv"])
+    exclude = input_data.get("exclude_dirs", [
+        "node_modules", ".git", "__pycache__", "venv", ".venv",
+        "output", "uploads", "tmp", ".cache", "dist", "build",
+    ])
     if not os.path.isdir(path): print(json.dumps({"error": f"Not found: {path}"})); sys.exit(1)
     lang_map = {".py":"Python",".js":"JavaScript",".ts":"TypeScript",".tsx":"TSX",".jsx":"JSX",".html":"HTML",".css":"CSS",".json":"JSON",".md":"Markdown",".txt":"Text",".c":"C",".cpp":"C++",".h":"Header",".java":"Java",".go":"Go",".rs":"Rust",".sh":"Shell",".bat":"Batch",".yml":"YAML",".yaml":"YAML",".xml":"XML",".sql":"SQL",".ipynb":"Jupyter"}
     stats = {}; total_l, total_f = 0, 0

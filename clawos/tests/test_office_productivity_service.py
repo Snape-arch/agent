@@ -85,8 +85,11 @@ class OfficeProductivityServiceTests(unittest.TestCase):
             docx = service.create(root / "mixed.docx", title="经营分析 Business Review", sections=sections, confirmed=True)
             docx_quality = service.quality_audit(docx["path"])
             self.assertEqual(docx_quality["quality_gate"], "pass")
-            self.assertEqual(docx_quality["visual_status"], "structural_only")
-            self.assertIn("rendered_pages", docx_quality["warnings"])
+            self.assertIn(docx_quality["visual_status"], {"structural_only", "rendered"})
+            if docx_quality["visual_status"] == "structural_only":
+                self.assertIn("rendered_pages", docx_quality["warnings"])
+            else:
+                self.assertGreaterEqual(docx_quality["render"]["pages"], 1)
 
             pdf = service.create(root / "mixed.pdf", title="经营分析 Business Review", sections=sections, confirmed=True)
             pdf_quality = service.quality_audit(pdf["path"], strict_visual=True)

@@ -195,7 +195,14 @@ class OfficeVisualQualityService:
         if not soffice:
             return {"available": False, "engine": "", "pages": 0, "images": []}
         root = Path(tempfile.mkdtemp(prefix="clawos-office-render-"))
-        result = subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(root), str(path)], capture_output=True, text=True, timeout=180)
+        # A running desktop LibreOffice instance can absorb headless conversion
+        # commands and return 0 without producing a file. A per-run profile
+        # keeps visual QA isolated and reproducible on Windows.
+        profile = root / "profile"
+        result = subprocess.run([
+            soffice, f"-env:UserInstallation={profile.as_uri()}", "--headless",
+            "--convert-to", "pdf", "--outdir", str(root), str(path),
+        ], capture_output=True, text=True, timeout=180)
         pdf = root / f"{path.stem}.pdf"
         return self._render_pdf(pdf) if result.returncode == 0 and pdf.is_file() else {"available": False, "engine": "libreoffice", "pages": 0, "images": [], "stderr": result.stderr[-1000:]}
 

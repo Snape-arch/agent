@@ -2,6 +2,8 @@
 import json, re
 from datetime import datetime, timezone
 
+from .json_utils import parse_json_value
+
 class PerceptionLayer:
     """Collects execution trajectory and parses success/failure signals."""
 
@@ -41,9 +43,7 @@ class PerceptionLayer:
         events = []
         for tc in trajectory.get("tool_calls", []):
             result = tc.get("result", {})
-            if isinstance(result, str):
-                try: result = json.loads(result)
-                except: pass
+            result = parse_json_value(result)
             if isinstance(result, dict):
                 if "ok" in result and not result.get("ok"):
                     events.append({"type": "tool_error", "tool": tc.get("name", ""), "detail": str(result.get("error", ""))[:200]})
@@ -61,9 +61,7 @@ class PerceptionLayer:
 
         for tc in tool_calls:
             result = tc.get("result", {})
-            if isinstance(result, str):
-                try: result = json.loads(result)
-                except: pass
+            result = parse_json_value(result)
             if isinstance(result, dict):
                 if "ok" in result:
                     if result.get("ok"):
