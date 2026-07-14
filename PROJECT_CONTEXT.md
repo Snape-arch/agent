@@ -31,8 +31,8 @@ Completed:
   retaining the local files for reproducibility and inspection.
 - Consolidated ignore rules so all `output/`, `tmp/`, and literal
   `%SystemDrive%/` paths stay local.
-- Added `WORKBUDDY_REAL_EMAIL_CONNECTOR_PLAN.md` as the implementation plan for
-  the single real IMAP/SMTP connector closure.
+- Added `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md` as the implementation plan for
+  the single real Feishu message-and-approval connector closure.
 - Reverified the complete Qwen3.5 GGUF, Qwen3 embedding, and Qwen3 reranker
   files against their expected SHA256 values, then removed four independent
   Hugging Face `.incomplete` files totaling 8.117 GiB.
@@ -70,11 +70,11 @@ Known local-only assets:
 1. Review and commit the repository-hygiene change; do not include local model,
    database, log, upload, generated report, or runtime files.
 2. Push the local merge commit and hygiene commit through the shared PR flow.
-3. Give `WORKBUDDY_REAL_EMAIL_CONNECTOR_PLAN.md` to WorkBuddy and implement only
-   the email connector (IMAP read + approval-gated SMTP send).
-4. Validate the connector with a dedicated test mailbox: read, summarize,
-   action extraction, approval, actual send, SMTP acceptance receipt, failure
-   record, and idempotent replay.
+3. Give `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md` to WorkBuddy and implement only
+   the Feishu connector (message receive + native approval-gated bot send).
+4. Validate the connector with a dedicated Feishu test tenant and group: receive,
+   summarize, extract actions, reject once, approve once, actually send, save the
+   API receipt or failure, and prove idempotent replay does not send twice.
 5. Rehearse the five real-evidence chains on the competition device.
 
 ## Persistent operating rules
