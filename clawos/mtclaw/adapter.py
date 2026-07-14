@@ -102,17 +102,22 @@ class MTClawAdapter:
 
     async def _fetch_trace(self, session_id: str, since: str) -> list[dict[str, Any]]:
         try:
-            response = await self._client().get(
-                f"{self.base_url}/v1/tool_history",
-                params={"since": since, "limit": 20},
-                timeout=min(self.timeout_s, 10.0),
-            )
-            response.raise_for_status()
-            entries = response.json().get("entries") or []
-            matched = [
-                entry for entry in entries
-                if str(entry.get("session_key", "")) == str(session_id)
-            ]
+            async def fetch(params: dict[str, Any]) -> list[dict[str, Any]]:
+                response = await self._client().get(
+                    f"{self.base_url}/v1/tool_history", params=params,
+                    timeout=min(self.timeout_s, 10.0),
+                )
+                response.raise_for_status()
+                return response.json().get("entries") or []
+
+            entries = await fetch({"since": since, "limit": 20})
+            matched = [entry for entry in entries if str(entry.get("session_key", "")) == str(session_id)]
+            # Router history clocks may have coarser precision than the client
+            # request timestamp. Retry without `since`, still scoped to the
+            # exact session, instead of silently losing a real tool trace.
+            if not matched:
+                entries = await fetch({"limit": 50})
+                matched = [entry for entry in entries if str(entry.get("session_key", "")) == str(session_id)]
             return _normalize_history(matched)
         except Exception:
             return []

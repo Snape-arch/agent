@@ -106,6 +106,8 @@ class RunRecord:
     failure_cases: list[FailureCaseRecord] = field(default_factory=list)
     parent_run_id: str = ""
     tags: list[str] = field(default_factory=list)
+    provenance: dict[str, Any] = field(default_factory=dict)
+    verification: dict[str, Any] = field(default_factory=dict)
 
     def add_artifact(self, kind: str, title: str, uri: str = "", **metadata: Any) -> ArtifactRecord:
         item = ArtifactRecord(
@@ -175,6 +177,8 @@ class RunRecord:
             "failure_cases": [item.to_dict() for item in self.failure_cases],
             "parent_run_id": self.parent_run_id,
             "tags": self.tags,
+            "provenance": self.provenance,
+            "verification": self.verification,
         }
 
 

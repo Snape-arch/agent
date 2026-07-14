@@ -6,6 +6,7 @@ import shutil
 import statistics
 import subprocess
 import tempfile
+import os
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -176,7 +177,11 @@ class OfficeVisualQualityService:
 
     @staticmethod
     def _render_pdf(path: Path) -> dict[str, Any]:
-        executable = shutil.which("pdftoppm")
+        # Prefer the native executable on Windows. Some managed runtimes add a
+        # `pdftoppm.CMD` shim earlier in PATHEXT; that shim cannot resolve its
+        # relative payload when launched from a project virtual environment.
+        explicit = Path(os.environ.get("CLAWOS_POPPLER_BIN", "")) / "pdftoppm.exe" if os.environ.get("CLAWOS_POPPLER_BIN") else None
+        executable = str(explicit) if explicit and explicit.is_file() else (shutil.which("pdftoppm.exe") or shutil.which("pdftoppm"))
         if not executable:
             return {"available": False, "engine": "", "pages": 0, "images": []}
         root = Path(tempfile.mkdtemp(prefix="clawos-pdf-render-")); prefix = root / "page"
@@ -185,7 +190,8 @@ class OfficeVisualQualityService:
         return {"available": result.returncode == 0 and bool(images), "engine": "pdftoppm", "pages": len(images), "images": images, "stderr": result.stderr[-1000:]}
 
     def _render_via_office(self, path: Path) -> dict[str, Any]:
-        soffice = shutil.which("soffice") or shutil.which("libreoffice")
+        known = Path("C:/Program Files/LibreOffice/program/soffice.com")
+        soffice = str(known) if known.is_file() else (shutil.which("soffice.exe") or shutil.which("soffice") or shutil.which("libreoffice"))
         if not soffice:
             return {"available": False, "engine": "", "pages": 0, "images": []}
         root = Path(tempfile.mkdtemp(prefix="clawos-office-render-"))

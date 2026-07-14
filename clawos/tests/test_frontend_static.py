@@ -8,6 +8,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class FrontendStaticTests(unittest.TestCase):
+    def test_console_real_evidence_surface_excludes_mock_success(self):
+        html = (STATIC_DIR / "console.html").read_text(encoding="utf-8")
+        script = (STATIC_DIR / "assets" / "evidence-chains.js").read_text(encoding="utf-8")
+        self.assertIn("evidence-chains.js", html)
+        self.assertIn("/api/runtime/evidence-chains", script)
+        self.assertIn("等待真实运行", script)
+        self.assertNotIn("100%", script)
+
     def read_page(self, name: str) -> str:
         return (STATIC_DIR / name).read_text(encoding="utf-8")
 

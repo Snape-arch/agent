@@ -2933,3 +2933,27 @@ Verification:
 Known notes:
 - A first full-suite attempt used the generic bundled Python runtime, which lacks this repository's `httpx` and PDF-render dependencies. The correct project environment passed the complete suite.
 - Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+
+### 2026-07-14 - Reproducible environment and real-task evidence gate
+
+Completed:
+- Recreated `clawos/.venv` on Python 3.12.13 with a pinned deterministic suite profile, installed LibreOffice 26.2.4.2, and added reusable bootstrap, diagnostic and full-test PowerShell entry points.
+- Fixed Windows render discovery by preferring native `pdftoppm.exe` over a broken managed `.CMD` shim and using the headless `soffice.com` entry point.
+- Added the `clawos.real-task-evidence.v1` truth gate and five fixed evidence slots. Competition eligibility now requires real provenance, all eight evidenced stages, timestamps/duration, passed quality gate and SHA-256-backed artifacts.
+- Added verification/persistence CLI and operator documentation. Mock, deterministic, fixture and synthetic runs remain regression-only and are excluded from the default API and console score.
+- Added a clean responsive console evidence surface that shows truthful empty states until eligible executions exist; no sample progress or success data is injected.
+- Hardened MTClaw trace retrieval against client/router timestamp precision drift by retrying history without `since` while retaining exact session scoping.
+
+Verification:
+- Environment diagnostic: Python 3.12.13, httpx 0.28.1, FastAPI 0.115.12, Poppler 25.02.0 and LibreOffice 26.2.4.2 ready.
+- Full deterministic/integration suite: `269 tests OK`.
+- Frontend static contract: `42 tests OK`.
+- In-app browser: five empty evidence slots, `0 / 5`, no page/section overflow at default or 390 x 844, and no browser warnings/errors.
+
+Known notes:
+- The five competition slots intentionally remain empty until user-supplied/repository/live-connector tasks produce complete evidence. Existing deterministic acceptance reports do not count.
+- Local-model/ASR/vector packages and model weights remain optional external gates under `requirements.txt`; use `bootstrap_test_env.ps1 -IncludeLocalAI` when those assets are available.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+
+Recommended next step:
+- Run the five demonstrations against real user inputs, verify them with `scripts/verify_real_evidence.py`, and only then persist them to the competition MemoryOS database so the console moves from `0 / 5` to verified evidence.
