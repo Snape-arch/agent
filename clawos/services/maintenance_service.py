@@ -245,7 +245,13 @@ class MaintenanceService:
             local_path = (repo_root / local_path).resolve()
         exists = local_path.exists()
         expected = int(manifest.get(size_key) or 0) if size_key else 0
-        actual = self._directory_size(local_path) if exists and directory else (local_path.stat().st_size if exists and local_path.is_file() else 0)
+        weight_path = local_path / "model.safetensors" if directory else local_path
+        weight_expected = int(manifest.get("model_safetensors_size_bytes") or 0)
+        if directory and weight_expected:
+            expected = weight_expected
+            actual = weight_path.stat().st_size if weight_path.is_file() else 0
+        else:
+            actual = self._directory_size(local_path) if exists and directory else (local_path.stat().st_size if exists and local_path.is_file() else 0)
         size_ok = expected <= 0 or actual == expected
         return {
             "id": asset_id,

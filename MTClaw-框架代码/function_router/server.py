@@ -479,6 +479,15 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def model_headers(api_key: str = "", include_content_type: bool = False) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    if str(api_key or "").strip():
+        headers["Authorization"] = f"Bearer {api_key}"
+    if include_content_type:
+        headers["Content-Type"] = "application/json"
+    return headers
+
+
 def _truncate(text: str, max_len: int = 1024) -> str:
     """Return text capped to max_len with an explicit truncation marker."""
 
@@ -816,7 +825,7 @@ async def qwen_health_check() -> bool:
         return False
 
     url = f"{STATE.config.routing.base_url.rstrip('/')}/models"
-    headers = {"Authorization": f"Bearer {STATE.config.routing.api_key}"}
+    headers = model_headers(STATE.config.routing.api_key)
     try:
         response = await STATE.http_client.get(url, headers=headers, timeout=5.0)
         return response.status_code < 500
@@ -844,12 +853,9 @@ async def call_qwen(messages: list[dict[str, Any]]) -> dict[str, Any]:
         "repetition_penalty": 1.2,
         "frequency_penalty": 0.2,
         "parallel_tool_calls": False,
-        "enable_thinking": False,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
-    headers = {
-        "Authorization": f"Bearer {STATE.config.routing.api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = model_headers(STATE.config.routing.api_key, include_content_type=True)
     url = f"{STATE.config.routing.base_url.rstrip('/')}/chat/completions"
     timeout_s = STATE.config.routing_timeout_s
 
@@ -880,10 +886,7 @@ async def warmup_qwen() -> bool:
     if STATE.http_client is None or STATE.config is None or STATE.tools is None:
         return False
 
-    headers = {
-        "Authorization": f"Bearer {STATE.config.routing.api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = model_headers(STATE.config.routing.api_key, include_content_type=True)
     payload = {
         "model": STATE.config.routing.model,
         "messages": [
@@ -897,7 +900,7 @@ async def warmup_qwen() -> bool:
         "repetition_penalty": 1.2,
         "frequency_penalty": 0.2,
         "parallel_tool_calls": False,
-        "enable_thinking": False,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     try:
         response = await STATE.http_client.post(
@@ -1278,12 +1281,9 @@ async def call_qwen_completion_check(
         "temperature": 0.0,
         "repetition_penalty": 1.2,
         "frequency_penalty": 0.2,
-        "enable_thinking": False,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
-    headers = {
-        "Authorization": f"Bearer {STATE.config.routing.api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = model_headers(STATE.config.routing.api_key, include_content_type=True)
     llm_req_ts = now_iso()
     try:
         response = await STATE.http_client.post(
@@ -1463,11 +1463,15 @@ async def proxy_upstream(
             proxied_request["messages"] = msgs
 
     proxied_request["model"] = STATE.config.upstream.model
+    if (
+        STATE.config.upstream.base_url.rstrip("/")
+        == STATE.config.routing.base_url.rstrip("/")
+    ):
+        proxied_request.setdefault(
+            "chat_template_kwargs", {"enable_thinking": False}
+        )
 
-    headers = {
-        "Authorization": f"Bearer {STATE.config.upstream.api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = model_headers(STATE.config.upstream.api_key, include_content_type=True)
     target_url = f"{STATE.config.upstream.base_url.rstrip('/')}/chat/completions"
     upstream_req_ts = now_iso()
     stream_context = STATE.http_client.stream(

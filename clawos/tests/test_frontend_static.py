@@ -730,14 +730,20 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("\u4e0d\u4f1a\u81ea\u52a8\u4e0b\u8f7d\u6a21\u578b\u6743\u91cd", html + js)
         self.assertIn("\u624b\u52a8\u4e0b\u8f7d\u5e76\u542f\u52a8\u672c\u5730\u670d\u52a1", html + js)
 
-    def test_launcher_does_not_auto_download_or_start_local_qwen(self):
+    def test_launcher_keeps_local_qwen_opt_in_and_never_auto_downloads(self):
         launcher = (REPO_ROOT / "start_clawos.bat").read_text(encoding="utf-8")
         qwen_starter = (REPO_ROOT / "clawos" / "scripts" / "start_qwen_llama_server.ps1").read_text(encoding="utf-8-sig")
 
         self.assertIn("configuration-first mode", launcher)
         self.assertIn("No model weights or llama.cpp runtime will be downloaded", launcher)
-        self.assertNotIn("Starting local Qwen fallback", launcher)
-        self.assertNotIn("start_qwen_llama_server.ps1", launcher)
+        self.assertIn('if /I "%~1"=="--local" set "LOCAL_PROFILE=1"', launcher)
+        self.assertIn('set "CLAWOS_CONFIG_PATH=%CLAWOS_DIR%\\config.local.json"', launcher)
+        self.assertIn('set "EMBEDDING_PROVIDER=qwen3"', launcher)
+        self.assertIn('set "RERANKER_PROVIDER=none"', launcher)
+        self.assertIn('set "NO_PROXY=127.0.0.1,localhost,::1', launcher)
+        self.assertIn('if defined LOCAL_PROFILE (', launcher)
+        self.assertIn('start_qwen_llama_server.ps1', launcher)
+        self.assertNotIn('start_qwen_llama_server.ps1" -Download', launcher)
         self.assertIn("[switch]$Download", qwen_starter)
         self.assertIn("rerun this script with -Download", qwen_starter)
         self.assertIn("[int]$Parallel = 1", qwen_starter)

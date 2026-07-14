@@ -20,6 +20,18 @@ cd <your-cloned-agent-repo>
 .\start_clawos.bat
 ```
 
+For an explicit local daily-use profile after the verified Qwen, llama.cpp,
+embedding, and Chroma assets are installed:
+
+```powershell
+.\start_clawos.bat --local
+```
+
+`--local` selects `clawos/config.local.json` for the current launcher process,
+starts or reuses the local Qwen service, enables Chroma with Qwen3 embeddings,
+and keeps the CPU-heavy reranker disabled by default. It does not modify
+`clawos/.env` and does not download missing model/runtime files.
+
 启动脚本使用自身位置推导仓库路径，不依赖 `D:\Projects\agent`。默认端口：
 
 - ClawOS: `http://127.0.0.1:18790`

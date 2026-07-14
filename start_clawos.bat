@@ -12,10 +12,13 @@ set "CLAWOS_PORT=18790"
 set "QWEN_PORT=8000"
 set "MTCLAW_BASE_URL=http://127.0.0.1:%MTCLAW_PORT%"
 set "QWEN_BASE_URL=http://127.0.0.1:%QWEN_PORT%/v1"
+set "LOCAL_PROFILE="
+if /I "%~1"=="--local" set "LOCAL_PROFILE=1"
 
 echo ============================================
 echo   ClawOS + MTClaw Windows Launcher
 echo ============================================
+if defined LOCAL_PROFILE echo   Mode: local daily-use profile
 echo.
 
 call :check_port %MTCLAW_PORT% MTClaw
@@ -83,16 +86,62 @@ if not defined MODEL_API_KEY if defined DEEPSEEK_API_KEY (
     set "MODEL_API_KEY=%DEEPSEEK_API_KEY%"
 )
 
+if defined LOCAL_PROFILE (
+    set "CLAWOS_CONFIG_PATH=%CLAWOS_DIR%\config.local.json"
+    set "MODEL_PROVIDER=qwen"
+    set "MODEL_BASE_URL=%QWEN_BASE_URL%"
+    set "MODEL_NAME=Qwen3.5-9B-Q4_K_M"
+    set "MODEL_REQUIRES_API_KEY=false"
+    set "MODEL_API_KEY="
+    set "VECTOR_PROVIDER=chroma"
+    set "EMBEDDING_PROVIDER=qwen3"
+    set "EMBEDDING_MODEL_PATH=%ROOT%tools\models\qwen3-embedding-0.6b"
+    set "EMBEDDING_DIM=1024"
+    set "RERANKER_PROVIDER=none"
+    if defined NO_PROXY (
+        set "NO_PROXY=127.0.0.1,localhost,::1,%NO_PROXY%"
+    ) else (
+        set "NO_PROXY=127.0.0.1,localhost,::1"
+    )
+    echo [INFO] Local profile selected. Existing clawos\.env was not modified.
+)
 
 if not defined MODEL_API_KEY (
-    echo.
-    echo [INFO] MODEL_API_KEY not found. ClawOS will open in configuration-first mode.
-    echo        Choose API mode or local/offline Qwen from the web console when you are ready.
-    echo        No model weights or llama.cpp runtime will be downloaded by this launcher.
-    if not defined MODEL_PROVIDER set "MODEL_PROVIDER=mock"
-    if not defined MODEL_NAME set "MODEL_NAME=mock"
+    if defined LOCAL_PROFILE (
+        echo [LOCAL] No API key is required for the selected local profile.
+    ) else (
+        echo.
+        echo [INFO] MODEL_API_KEY not found. ClawOS will open in configuration-first mode.
+        echo        Choose API mode or local/offline Qwen from the web console when you are ready.
+        echo        No model weights or llama.cpp runtime will be downloaded by this launcher.
+        if not defined MODEL_PROVIDER set "MODEL_PROVIDER=mock"
+        if not defined MODEL_NAME set "MODEL_NAME=mock"
+    )
 ) else (
     echo [INFO] MODEL_API_KEY found. API provider remains primary.
+)
+
+if defined LOCAL_PROFILE (
+    call :qwen_health
+    if errorlevel 1 (
+        call :check_port %QWEN_PORT% "Local Qwen"
+        if errorlevel 1 (
+            pause
+            exit /b 1
+        )
+        echo.
+        echo [LOCAL] Starting Qwen on %QWEN_BASE_URL% ...
+        echo         This launcher will not download missing model or runtime files.
+        start "Qwen Local Model" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CLAWOS_DIR%\scripts\start_qwen_llama_server.ps1"
+        "%PYTHON%" "%CLAWOS_DIR%\scripts\windows_health_check.py" --url "http://127.0.0.1:%QWEN_PORT%/health" --name "Local Qwen" --timeout 90
+        if errorlevel 1 (
+            echo [ERROR] Local Qwen did not become healthy. Check the Qwen window and local model assets.
+            pause
+            exit /b 1
+        )
+    ) else (
+        echo [LOCAL] Reusing healthy Qwen service on %QWEN_BASE_URL%
+    )
 )
 
 for /d %%D in ("%ROOT%MTClaw-*") do (
@@ -160,3 +209,7 @@ if not errorlevel 1 (
 echo [ERROR] Port %1 is already in use. %2 cannot start on its default port.
 echo         Close the existing process or change the port in start_clawos.bat.
 exit /b 1
+
+:qwen_health
+powershell -NoProfile -Command "try { $response = Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:%QWEN_PORT%/health' -TimeoutSec 2; if ($response.StatusCode -eq 200) { exit 0 }; exit 1 } catch { exit 1 }"
+exit /b %errorlevel%

@@ -17,6 +17,11 @@ config.local.json
 *.db-shm
 clawos/mtclaw_runtime/
 
+# Generated outputs and accidental literal environment paths
+output/
+tmp/
+%SystemDrive%/
+
 # OS/editor noise
 Thumbs.db
 Desktop.ini
@@ -26,12 +31,4 @@ Desktop.ini
 # ClawOS local runtime artifacts
 clawos/uploads/
 clawos/data/chroma/
-output/reports/
-output/delivery/
-output/deepseek_*.json
-output/asr_real_eval/
-output/search_evidence/
-tmp/*.png
-output/obsidian/
 clawos/backups/
-output/playwright/
