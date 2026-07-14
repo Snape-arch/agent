@@ -15,7 +15,11 @@ class MaintenanceService:
         {
             "id": "2026_06_service_boundaries_and_ops",
             "description": "Track service-boundary split, config checks, and local backup support.",
-        }
+        },
+        {
+            "id": "2026_07_feishu_connector",
+            "description": "Feishu connector: feishu_messages, feishu_summaries, feishu_approvals, feishu_dispatches for an audited, approval-gated outbound loop.",
+        },
     ]
 
     def __init__(self, *, store: Any, db_path: Path, base_dir: Path, config: dict[str, Any]):
