@@ -8,6 +8,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class FrontendStaticTests(unittest.TestCase):
+    def test_console_real_evidence_surface_excludes_mock_success(self):
+        html = (STATIC_DIR / "console.html").read_text(encoding="utf-8")
+        script = (STATIC_DIR / "assets" / "evidence-chains.js").read_text(encoding="utf-8")
+        self.assertIn("evidence-chains.js", html)
+        self.assertIn("/api/runtime/evidence-chains", script)
+        self.assertIn("等待真实运行", script)
+        self.assertNotIn("100%", script)
+
     def read_page(self, name: str) -> str:
         return (STATIC_DIR / name).read_text(encoding="utf-8")
 
@@ -453,6 +461,70 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertIn(token, clean_css)
 
+    def test_console_has_readable_history_and_expandable_knowledge_graph(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.clean.css")
+
+        for token in (
+            "knowledgeGraphExplorer",
+            "graphExplorerStage",
+            "graphExplorerNodes",
+            "graphExplorerEdges",
+            "graphInspector",
+            "graphTypeFilter",
+            "graphRelationFilter",
+            "graphNodeQuery",
+            "openKnowledgeGraphExplorer",
+        ):
+            self.assertIn(token, html)
+        for token in (
+            "lastKnowledgeGraph",
+            "renderKnowledgeGraphExplorer",
+            "selectKnowledgeGraphNode",
+            "graphNodeColor",
+            "visibleEdges",
+            "graph-explorer-open",
+        ):
+            self.assertIn(token, js)
+        for token in (
+            "Championship readability and density pass",
+            "Recent history is navigation",
+            "Knowledge graph explorer",
+            ".aether-console .graph-explorer-shell",
+            ".aether-console .graph-node",
+            ".aether-console .graph-inspector",
+            ".aether-console .session-result",
+            "font-size:13px",
+        ):
+            self.assertIn(token, css)
+
+    def test_console_final_legibility_contract_covers_loaded_chat_and_knowledge(self):
+        css = self.read_page("assets/console.clean.css")
+        for token in (
+            "Final legibility contract",
+            ".workbench-chat .msg .message-body",
+            "border-left:3px solid var(--c-blue)",
+            ".sessions .session b",
+            "grid-template-columns:1.18fr 1fr 1fr",
+            ".knowledge-admin-entry{grid-column:1/-1",
+            "--c-muted:#536071",
+        ):
+            self.assertIn(token, css)
+
+    def test_console_codex_reduction_contract(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.clean.css")
+        self.assertIn("后台中心", html)
+        self.assertIn("openKnowledgeBackstage()", html)
+        self.assertIn("开始一个新任务", js)
+        self.assertNotIn("检查 MemoryOS", js)
+        self.assertIn("Codex-like reduction", css)
+        self.assertIn(".workbench-chat .msg.user{justify-content:flex-end", css)
+        self.assertIn(".command-drawer.on,.aether-console .settings-modal.on{display:grid", css)
+        self.assertIn(".section-block:has(#ocrQueueTable)", css)
+
     def test_console_chat_uses_clean_chatgpt_like_message_layout(self):
         js = self.read_page("assets/console.js")
         css = self.read_page("assets/console.css")
@@ -506,13 +578,16 @@ class FrontendStaticTests(unittest.TestCase):
         for token in (
             "knowledgeFrontStage",
             "knowledgeModeTitle",
-            "knowledgeUploadHint",
             "knowledgeGraphSummary",
             "knowledge-admin-toggle",
             "knowledgeFrontstageMetrics",
             "knowledgeActiveLibrary",
             "knowledgeBackendState",
             "knowledge-backstage-label",
+            "knowledge-primary-search",
+            "knowledgeTableHeading",
+            "knowledgeResultCount",
+            "knowledgeOrganizer",
         ):
             self.assertIn(token, html)
         for token in (
@@ -520,10 +595,13 @@ class FrontendStaticTests(unittest.TestCase):
             "renderKnowledgeWorkspaceShell",
             "toggleKnowledgeAdminTools",
             "updateKnowledgeFrontstageStats",
-            "Research Library",
-            "Learning Library",
-            "Writing Library",
-            "Project Library",
+            "openKnowledgeOrganizer",
+            "closeKnowledgeOrganizer",
+            "publicKnowledgeNodeLabel",
+            "科研资料",
+            "学习资料",
+            "写作资料",
+            "项目资料",
         ):
             self.assertIn(token, js)
         for token in (
@@ -857,8 +935,9 @@ class FrontendStaticTests(unittest.TestCase):
             "/api/runtime/runs/latest",
             "/api/runtime/failure-cases",
             "loadRuntimeRecords",
-            "Failure Library",
-            "Run / Artifact / Evidence",
+            "失败样本",
+            "服务边界",
+            "最近运行",
         ):
             self.assertIn(token, module_js)
         self.assertIn(".runtime-record-panel", css)
@@ -1020,19 +1099,115 @@ class FrontendStaticTests(unittest.TestCase):
         css = self.read_page("assets/console.css")
 
         for token in (
-            "Professional Template Board",
+            "专业场景工作流",
             "professionalBoardGrid",
-            "Research Board",
-            "Learning Board",
-            "Code Board",
-            "Office Board",
+            "科研工作流",
+            "学习工作流",
+            "开发工作流",
+            "办公工作流",
             "activateScenarioBoard",
-            "reproducibility gate",
-            "export quality gate",
+            "引用完整 · 复现可审计",
+            "格式有效 · 视觉验收",
         ):
             self.assertIn(token, js)
         self.assertIn(".professional-board-grid", css)
         self.assertIn(".board-card", css)
+
+    def test_brand_mark_is_consistent_across_primary_surfaces(self):
+        brand_dir = STATIC_DIR / "assets" / "brand"
+        for asset in (
+            "clawos-logo-dark.png",
+            "clawos-logo-light.png",
+            "favicon-16.png",
+            "favicon-32.png",
+            "favicon-48.png",
+            "apple-touch-icon.png",
+            "clawos-app-icon.png",
+            "clawos-app.ico",
+        ):
+            self.assertTrue((brand_dir / asset).is_file(), asset)
+        self.assertTrue((STATIC_DIR / "site.webmanifest").is_file())
+        self.assertTrue((REPO_ROOT / "clawos" / "BRAND_GUIDELINES.md").is_file())
+        for page in (
+            "index.html",
+            "product.html",
+            "academy.html",
+            "academy-code.html",
+            "academy-ingest.html",
+            "academy-notes.html",
+            "academy-paper.html",
+            "academy-path.html",
+            "academy-quiz.html",
+            "console.html",
+        ):
+            html = self.read_page(page)
+            self.assertIn('/assets/brand/clawos-logo-dark.png', html)
+            self.assertIn('/site.webmanifest', html)
+
+    def test_academy_reader_atlas_and_studios_have_production_contracts(self):
+        paper = self.read_page("academy-paper.html")
+        path = self.read_page("academy-path.html")
+        academy_js = self.read_page("assets/academy.js")
+        site_css = self.read_page("assets/site.css")
+
+        for token in (
+            "paper-reader-workspace",
+            "academyPdfFrame",
+            "academyPenToggle",
+            "academyHighlightToggle",
+            "academyTextNoteToggle",
+            "academyReaderNotes",
+            "academyResearchOps",
+        ):
+            self.assertIn(token, paper)
+        for token in (
+            "academyLayerSearch",
+            "atlas-view-switch",
+            "atlas-rail",
+            "academyLayerDetail",
+            'data-atlas-view="map"',
+            "history",
+            "practice",
+        ):
+            self.assertIn(token, path)
+        for token in (
+            "academyFilterLayers",
+            "academySetAtlasView",
+            "academyFilterDomain",
+            "academySwitchReaderTab",
+            "academyToggleResearchOps",
+            "academyExportReaderNotes",
+            "history:",
+            "domain:",
+            "era:",
+        ):
+            self.assertIn(token, academy_js)
+        for token in (
+            ".paper-reader-workspace",
+            ".atlas-rail",
+            ".atlas-inspector",
+            ".code-studio",
+            ".notes-studio",
+            ".ingest-studio",
+            ".quiz-studio",
+            ".fluent-icon",
+        ):
+            self.assertIn(token, site_css)
+
+        combined = "\n".join(
+            self.read_page(name)
+            for name in (
+                "index.html",
+                "product.html",
+                "console.html",
+                "academy.html",
+                "academy-paper.html",
+                "academy-path.html",
+                "assets/console.js",
+            )
+        )
+        for legacy_symbol in ("▶", "↺", "⟳"):
+            self.assertNotIn(legacy_symbol, combined)
 
     def test_console_exposes_skill_workbench_controls(self):
         html = self.read_page("console.html")

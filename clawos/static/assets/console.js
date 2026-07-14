@@ -29,6 +29,7 @@ let skillVersions = [];
 let skillRuns = [];
 let skillReviews = [];
 let selectedSkillName = "";
+let lastKnowledgeGraph = { nodes: [], edges: [], category: "all" };
 
 const $ = id => document.getElementById(id);
 const VIEW_META = {
@@ -95,12 +96,10 @@ function setAutonomyMode(mode) {
 }
 
 function workbenchProgress(task) {
-  const status = String(task.status || "").toLowerCase();
-  if (status === "succeeded") return 100;
-  if (["failed", "canceled", "cancelled", "interrupted"].includes(status)) return 100;
-  if (["running", "in_progress", "processing"].includes(status)) return 68;
-  if (["queued", "pending", "waiting"].includes(status)) return 18;
-  return 8;
+  const raw = task.progress_percent ?? task.progress;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, value));
 }
 
 function workbenchStatusLabel(status) {
@@ -114,22 +113,43 @@ function workbenchStatusLabel(status) {
 
 function renderWorkbenchTasks(tasks) {
   const target = $("workbenchTaskList");
-  if (!target) return;
-  const rows = (tasks || []).slice(0, 3);
+  const sidebarTarget = $("chatTaskSidebarList");
+  if (!target && !sidebarTarget) return;
+  const activeStatuses = new Set(["running", "in_progress", "processing", "queued", "pending", "waiting", "interrupted"]);
+  const rows = (tasks || []).filter(task => activeStatuses.has(String(task.status || "").toLowerCase())).slice(0, 3);
   if (!rows.length) {
-    target.innerHTML = `<div class="workbench-empty-state"><b>暂无运行中的任务</b><span>从上方输入目标，任务启动后会在这里显示真实进度与状态。</span></div>`;
+    const emptyMarkup = `<div class="workbench-empty-state"><b>暂无运行中的任务</b><span>从上方输入目标，任务启动后会在这里显示真实进度与状态。</span></div>`;
+    if (target) target.innerHTML = emptyMarkup;
+    if (sidebarTarget) sidebarTarget.innerHTML = emptyMarkup;
     return;
   }
-  target.innerHTML = rows.map((task, index) => {
+  const taskMarkup = rows.map((task, index) => {
     const progress = workbenchProgress(task);
     const id = Number(task.id) || 0;
+    const progressMarkup = progress === null
+      ? `<span class="task-live-state">${esc(workbenchStatusLabel(task.status))}</span>`
+      : `<div class="task-progress" role="progressbar" aria-label="${esc(task.title || "任务")}进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span><i style="width:${progress}%"></i></span><b>${progress}%</b></div>`;
     return `<article class="active-task-row">
       <div class="task-index">${String(index + 1).padStart(2, "0")}</div>
       <div class="task-summary"><b>${esc(task.title || `任务 #${id}`)}</b><span>${esc(task.source || "ClawOS")} · ${esc(workbenchStatusLabel(task.status))}</span></div>
-      <div class="task-progress" role="progressbar" aria-label="${esc(task.title || "任务")}进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span><i style="width:${progress}%"></i></span><b>${progress}%</b></div>
+      ${progressMarkup}
       <button class="secondary compact" type="button" onclick="openWorkbenchTask(${id})">查看进度</button>
     </article>`;
   }).join("");
+  if (target) target.innerHTML = taskMarkup;
+  if (sidebarTarget) sidebarTarget.innerHTML = taskMarkup;
+}
+
+function toggleChatProgress(force) {
+  const panel = $("chatProgressPanel");
+  const toggle = document.querySelector(".chat-progress-toggle");
+  if (!panel) return;
+  const open = typeof force === "boolean" ? force : !panel.classList.contains("on");
+  panel.classList.toggle("on", open);
+  panel.setAttribute("aria-hidden", open ? "false" : "true");
+  toggle?.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) window.setTimeout(() => panel.querySelector("button")?.focus(), 0);
+  else toggle?.focus();
 }
 
 function openWorkbenchTask(id) {
@@ -208,6 +228,7 @@ function setView(viewName) {
   $("viewTitle").textContent = (VIEW_META[viewName] || VIEW_META.chat)[0];
   $("viewSub").textContent = (VIEW_META[viewName] || VIEW_META.chat)[1];
   if (location.hash !== "#" + viewName) history.replaceState(null, "", "#" + viewName);
+  document.body.classList.remove("sidebar-open");
   closeCommandDrawer();
   refreshView(viewName);
 }
@@ -223,7 +244,8 @@ document.querySelectorAll("button[data-view]").forEach(button => {
 });
 
 function toggleSidebar() {
-  document.body.classList.toggle("sidebar-collapsed");
+  if (window.matchMedia("(max-width: 760px)").matches) document.body.classList.toggle("sidebar-open");
+  else document.body.classList.toggle("sidebar-collapsed");
 }
 
 function md(text) {
@@ -410,7 +432,7 @@ function cancelPending() {
 
 function newChat() {
   currentSession = "s_" + Date.now();
-  $("chatInner").innerHTML = `<div class="empty"><b>新的任务空间</b><span>短期上下文已清空，长期 MemoryOS、技能库与反思经验继续共享。</span><div class="quick-grid"><button class="quick" onclick="usePrompt('分析当前项目，并给出下一步开发计划')">分析项目与开发计划</button><button class="quick" onclick="usePrompt('查看我的长期记忆和偏好')">检查 MemoryOS</button></div></div>`;
+  $("chatInner").innerHTML = `<div class="empty workbench-empty task-empty"><b>开始一个新任务</b><span>输入目标，或添加需要处理的文件。</span></div>`;
   loadSessions();
   setView("chat");
 }
@@ -451,6 +473,13 @@ function sessionTags(session) {
   return (session.tags || []).slice(0, 4).map(tag => `<em>${esc(tag)}</em>`).join("");
 }
 
+function sessionSummary(session) {
+  const title = sessionTitle(session);
+  const raw = cleanSessionTitle(session.last_message || session.topic || "");
+  if (!raw || raw === "未命名会话" || raw === title) return "继续查看这段对话的上下文与结果";
+  return raw.replace(/\s+/g, " ").slice(0, 88);
+}
+
 function renderSessions(list) {
   const rows = list || [];
   $("sessions").innerHTML = rows.map(session => `<div class="session ${session.session_id === currentSession ? "on" : ""}" onclick="switchSession('${esc(session.session_id)}')"><b>${esc(sessionTitle(session).slice(0, 54))}</b>${session.tags?.length ? `<div class="session-tags">${sessionTags(session)}</div>` : ""}</div>`).join("") || '<div class="session">暂无会话</div>';
@@ -464,7 +493,11 @@ function renderSessionSearch() {
     const haystack = [session.title, session.topic, session.last_message, session.session_id, ...(session.tags || [])].join(" ").toLowerCase();
     return !query || haystack.includes(query);
   });
-  target.innerHTML = rows.map(session => `<button class="session-result" onclick="switchSession('${esc(session.session_id)}')"><b>${esc(sessionTitle(session).slice(0, 96))}</b><span>${esc(session.updated_at || session.session_id)}</span>${session.tags?.length ? `<div class="session-tags">${sessionTags(session)}</div>` : ""}</button>`).join("") || '<div class="empty-state">暂无匹配会话</div>';
+  target.innerHTML = rows.map(session => `<button class="session-result" onclick="switchSession('${esc(session.session_id)}')">
+    <span class="session-result-copy"><b>${esc(sessionTitle(session).slice(0, 96))}</b><small>${esc(sessionSummary(session))}</small></span>
+    <time>${esc(session.updated_at || session.session_id)}</time>
+    <span class="session-continue">继续</span>
+  </button>`).join("") || '<div class="empty-state">暂无匹配会话</div>';
 }
 
 function chooseLocalFile() {
@@ -478,7 +511,7 @@ function renderAttachmentTray() {
   tray.innerHTML = chatAttachments.map(item => {
     const loading = item.status === "loading";
     const label = loading ? "上传解析中" : item.status === "error" ? "解析失败" : `${item.chunk_count || 0} chunks`;
-    return `<div class="attachment-chip ${loading ? "loading" : ""} ${item.status === "error" ? "error" : ""}"><span class="attachment-spinner"></span><b>${esc(item.name)}</b><small>${esc(label)}</small><button type="button" onclick="removeAttachment('${esc(item.id)}')" title="移除附件">×</button></div>`;
+    return `<div class="attachment-chip ${loading ? "loading" : ""} ${item.status === "error" ? "error" : ""}"><span class="attachment-spinner"></span><b>${esc(item.name)}</b><small>${esc(label)}</small><button type="button" onclick="removeAttachment('${esc(item.id)}')" title="移除附件"><span class="fluent-icon" aria-hidden="true">&#xE711;</span></button></div>`;
   }).join("");
 }
 
@@ -568,35 +601,35 @@ const KNOWLEDGE_MODES = {
     title: "全部知识库",
     desc: "统一查看你的资料节点、图谱关系、上传入口和最近沉淀内容。",
     upload: "论文、课程笔记、项目文档、会议纪要都会进入当前库，并生成可检索节点。",
-    actions: [["上传资料", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["检索节点", "searchKnowledge()", "secondary"]],
+    actions: [["上传资料", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["检索资料", "focusKnowledgeSearch()", "secondary"]],
   },
   research: {
-    eyebrow: "Research Library",
+    eyebrow: "科研资料",
     title: "科研库",
     desc: "面向论文、实验、引用和研究问题，优先展示论文节点、证据关系和可复现材料。",
     upload: "上传论文 PDF、arXiv 笔记、实验记录或引用材料，自动沉淀为研究节点。",
-    actions: [["上传论文", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["生成论文报告", "generateKnowledgeReport()", "secondary"]],
+    actions: [["上传论文", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["检索资料", "focusKnowledgeSearch()", "secondary"]],
   },
   learning: {
-    eyebrow: "Learning Library",
+    eyebrow: "学习资料",
     title: "学习库",
     desc: "面向课程、路线、概念卡片和自测复盘，帮助你从资料走向掌握。",
     upload: "上传课程讲义、学习笔记、术语表或练习材料，形成学习路径节点。",
-    actions: [["上传课程资料", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["生成学习笔记", "generateKnowledgeReport()", "secondary"]],
+    actions: [["上传课程资料", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["检索资料", "focusKnowledgeSearch()", "secondary"]],
   },
   writing: {
-    eyebrow: "Writing Library",
+    eyebrow: "写作资料",
     title: "写作库",
     desc: "面向博客、答辩稿、商业计划书和表达素材，突出草稿、论点和引用。",
     upload: "上传草稿、素材、会议结论或参考文章，沉淀为可复用写作节点。",
-    actions: [["上传写作素材", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["从会话生成草稿", "draftKnowledgeFromSelectedSession()", "secondary"]],
+    actions: [["上传写作素材", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["整理资料", "openKnowledgeOrganizer()", "secondary"]],
   },
   project: {
-    eyebrow: "Project Library",
+    eyebrow: "项目资料",
     title: "项目库",
     desc: "面向本地项目、交付包、runbook、验收报告和风险清单，服务真实交付。",
     upload: "上传项目文档、架构图说明、验收报告或 runbook，形成交付节点。",
-    actions: [["上传项目资料", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["运行交付室", "runEnterpriseDeliveryRoom()", "secondary"]],
+    actions: [["上传项目资料", "document.getElementById('knowledgeFilePicker').click()", "primary"], ["检索资料", "focusKnowledgeSearch()", "secondary"]],
   },
 };
 
@@ -619,9 +652,9 @@ function renderKnowledgeWorkspaceShell() {
 function toggleKnowledgeAdminTools() {
   const workspace = document.querySelector("#view-knowledge .knowledge-workspace");
   const expanded = workspace ? workspace.classList.toggle("show-knowledge-admin") : false;
-  if ($("knowledgeAdminState")) $("knowledgeAdminState").textContent = expanded ? "Open" : "Closed";
-  if ($("knowledgeBackendState")) $("knowledgeBackendState").textContent = expanded ? "Open" : "Closed";
-  if ($("knowledgeAdminToggle")) $("knowledgeAdminToggle").textContent = expanded ? "Hide admin" : "Open admin";
+  if ($("knowledgeAdminState")) $("knowledgeAdminState").textContent = expanded ? "已展开" : "已收起";
+  if ($("knowledgeBackendState")) $("knowledgeBackendState").textContent = expanded ? "展开" : "收起";
+  if ($("knowledgeAdminToggle")) $("knowledgeAdminToggle").textContent = expanded ? "收起后台" : "打开后台";
 }
 
 function updateKnowledgeFrontstageStats() {
@@ -636,9 +669,9 @@ function updateKnowledgeFrontstageStats() {
   }
   const workspace = document.querySelector("#view-knowledge .knowledge-workspace");
   const expanded = !!workspace?.classList.contains("show-knowledge-admin");
-  if ($("knowledgeAdminState")) $("knowledgeAdminState").textContent = expanded ? "Open" : "Closed";
-  if ($("knowledgeBackendState")) $("knowledgeBackendState").textContent = expanded ? "Open" : "Closed";
-  if ($("knowledgeAdminToggle")) $("knowledgeAdminToggle").textContent = expanded ? "Hide admin" : "Open admin";
+  if ($("knowledgeAdminState")) $("knowledgeAdminState").textContent = expanded ? "已展开" : "已收起";
+  if ($("knowledgeBackendState")) $("knowledgeBackendState").textContent = expanded ? "展开" : "收起";
+  if ($("knowledgeAdminToggle")) $("knowledgeAdminToggle").textContent = expanded ? "收起后台" : "打开后台";
 }
 
 function renderKnowledgeSessionSelect() {
@@ -665,18 +698,17 @@ async function loadKnowledge() {
     const data = await api("/api/knowledge" + query);
     knowledgeItems = data.items || [];
     updateKnowledgeFrontstageStats();
-    target.innerHTML = table(["标题", "库", "来源", "标签", "访问", "操作"], knowledgeItems.map(item => [
+    if ($("knowledgeTableHeading")) $("knowledgeTableHeading").textContent = "最近资料";
+    if ($("knowledgeResultCount")) $("knowledgeResultCount").textContent = `${knowledgeItems.length} 条`;
+    target.innerHTML = table(["标题", "知识库", "操作"], knowledgeItems.map(item => [
       item.title,
       knowledgeCategoryLabel(item.category),
-      item.source || "",
-      formatTags(item.tags),
-      item.access_count || 0,
-      { html: `<button class="secondary" onclick="loadKnowledgeItem(${Number(item.id)})">编辑</button> <button class="secondary" onclick="appendKnowledgeToPrompt(${Number(item.id)})">追问</button> <button class="secondary" onclick="deleteKnowledgeItem(${Number(item.id)})">删除</button>` }
+      { html: `<button class="secondary" onclick="loadKnowledgeItem(${Number(item.id)})">打开</button> <button class="secondary" onclick="appendKnowledgeToPrompt(${Number(item.id)})">提问</button>` }
     ]));
     renderKnowledgeMap(knowledgeItems);
     if ($("knowledgeStatus")) $("knowledgeStatus").textContent = `${knowledgeCategoryLabel(knowledgeCategory)} · ${knowledgeItems.length} 条资料`;
   } catch (err) {
-    target.innerHTML = table(["标题", "库", "来源", "标签", "访问", "操作"], []);
+    target.innerHTML = table(["标题", "知识库", "操作"], []);
     renderKnowledgeMap([]);
     if ($("knowledgeStatus")) $("knowledgeStatus").textContent = "知识库加载失败：" + err.message;
   }
@@ -692,6 +724,7 @@ function renderKnowledgeMap(items) {
 async function loadKnowledgeItem(id) {
   const item = knowledgeItems.find(row => Number(row.id) === Number(id));
   if (!item) return;
+  openKnowledgeOrganizer();
   editingKnowledgeId = id;
   $("knowledgeTitle").value = item.title || "";
   $("knowledgeContent").value = item.content || "";
@@ -739,26 +772,59 @@ async function saveKnowledge() {
   });
   clearKnowledgeEditor();
   knowledgeCategory = body.category === "domain" ? "" : body.category;
+  closeKnowledgeOrganizer();
   await loadKnowledge();
-  await searchKnowledge();
 }
 
 async function searchKnowledge() {
-  const target = $("knowledgeSearchTable");
+  const target = $("knowledgeTable");
   if (!target) return;
   const query = $("knowledgeQuery").value.trim();
   if (!query) {
-    target.innerHTML = table(["标题", "库", "内容", "来源"], []);
+    $("knowledgeQuery")?.focus();
     return;
   }
   const category = knowledgeCategory ? "&category=" + encodeURIComponent(knowledgeCategory) : "";
   const data = await api("/api/knowledge/search?q=" + encodeURIComponent(query) + category + "&limit=12");
-  target.innerHTML = table(["标题", "库", "内容", "来源"], (data.items || []).map(item => [
+  const results = data.items || [];
+  knowledgeItems = [...new Map([...knowledgeItems, ...results].map(item => [Number(item.id), item])).values()];
+  if ($("knowledgeTableHeading")) $("knowledgeTableHeading").textContent = "检索结果";
+  if ($("knowledgeResultCount")) $("knowledgeResultCount").textContent = `${results.length} 条`;
+  target.innerHTML = table(["标题", "知识库", "操作"], results.map(item => [
     item.title,
     knowledgeCategoryLabel(item.category),
-    String(item.content || "").slice(0, 180),
-    item.source || ""
+    { html: `<button class="secondary" onclick="loadKnowledgeItem(${Number(item.id)})">打开</button> <button class="secondary" onclick="appendKnowledgeToPrompt(${Number(item.id)})">提问</button>` }
   ]));
+}
+
+function clearKnowledgeSearch() {
+  if ($("knowledgeQuery")) $("knowledgeQuery").value = "";
+  loadKnowledge();
+}
+
+function focusKnowledgeSearch() {
+  $("knowledgeQuery")?.focus();
+}
+
+let knowledgeOrganizerReturnFocus = null;
+
+function openKnowledgeOrganizer() {
+  const organizer = $("knowledgeOrganizer");
+  if (!organizer) return;
+  knowledgeOrganizerReturnFocus = document.activeElement;
+  organizer.classList.add("on");
+  organizer.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  window.setTimeout(() => $("knowledgeTitle")?.focus(), 0);
+}
+
+function closeKnowledgeOrganizer() {
+  const organizer = $("knowledgeOrganizer");
+  if (!organizer) return;
+  organizer.classList.remove("on");
+  organizer.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+  if (knowledgeOrganizerReturnFocus?.focus) knowledgeOrganizerReturnFocus.focus();
 }
 
 async function handleKnowledgeFiles(event) {
@@ -786,6 +852,7 @@ async function handleKnowledgeFiles(event) {
 }
 
 async function draftKnowledgeFromSelectedSession() {
+  openKnowledgeOrganizer();
   const sid = $("knowledgeSessionSelect")?.value;
   if (!sid) {
     $("knowledgeStatus").textContent = "请先选择一个历史会话";
@@ -1626,8 +1693,9 @@ async function loadHealth() {
     const ok = health.status === "ok" || health.ok;
     $("healthDot").className = "dot " + (ok ? "ok" : "bad");
     $("healthText").textContent = ok ? "运行正常" : "需要检查";
-    $("modelBadge").textContent = `模型：${health.model_provider?.provider || health.provider || "-"}`;
-    $("toolBadge").textContent = `工具：${health.tools || health.tool_count || "-"}`;
+    if ($("modelBadge")) $("modelBadge").textContent = `模型：${health.model_provider?.provider || health.provider || "-"}`;
+    if ($("toolBadge")) $("toolBadge").textContent = `工具：${health.tools || health.tool_count || "-"}`;
+    if ($("workbenchRuntimeState")) $("workbenchRuntimeState").textContent = ok ? "服务可用" : "需要检查";
     const provider = health.model_provider || {};
     const label = provider.provider === "mock" ? "Mock/offline test 模式" : provider.provider === "qwen" ? "Local Qwen 模式" : "DeepSeek/API 模式";
     if ($("modelModeLabel")) $("modelModeLabel").textContent = label;
@@ -1635,6 +1703,7 @@ async function loadHealth() {
   } catch (err) {
     $("healthDot").className = "dot bad";
     $("healthText").textContent = "服务不可用";
+    if ($("workbenchRuntimeState")) $("workbenchRuntimeState").textContent = "服务离线";
   }
 }
 
@@ -2155,7 +2224,7 @@ async function loadToolExecutions() {
 function taskActions(task) {
   const id = Number(task.id);
   const terminal = ["succeeded", "failed", "canceled", "interrupted"].includes(task.status);
-  return `<button class="secondary" onclick="showTask(${id})">查看</button> ${terminal ? "" : `<button class="secondary icon-text" onclick="cancelTask(${id})"><span class="ui-ico">■</span>取消</button>`} <button class="secondary icon-text" onclick="retryTask(${id})"><span class="ui-ico">↺</span>重试</button>`;
+  return `<button class="secondary" onclick="showTask(${id})">查看</button> ${terminal ? "" : `<button class="secondary icon-text" onclick="cancelTask(${id})"><span class="fluent-icon" aria-hidden="true">&#xE71A;</span>取消</button>`} <button class="secondary icon-text" onclick="retryTask(${id})"><span class="fluent-icon" aria-hidden="true">&#xE777;</span>重试</button>`;
 }
 
 async function loadTasks() {
@@ -2292,15 +2361,21 @@ function ensureProfessionalBoard() {
   const target = $("professionalBoardGrid");
   if (!target || target.dataset.ready === "1") return;
   target.dataset.ready = "1";
-  const boardTitle = "Professional Template Board";
+  const boardTitle = "专业场景工作流";
   const boards = [
-    { kind: "research", title: "Research Board", summary: "论文入库、引用问答、期刊级报告、复现实验计划", input: "PDF / 文献 / 研究问题", output: "报告、引用证据、复现实验目录", gate: "citation evidence + reproducibility gate", action: "Open research flow" },
-    { kind: "learning", title: "Learning Board", summary: "概念图谱、掌握度证据、错题归因、间隔复习", input: "课程资料 / 错题 / 学习目标", output: "概念图、复习计划、自测题", gate: "mastery evidence + spaced review gate", action: "Open learning flow" },
-    { kind: "code", title: "Code Board", summary: "仓库扫描、任务拆分、测试闭环、交接记录", input: "repo / issue / 交付目标", output: "风险清单、测试结果、交接摘要", gate: "tests + handoff gate", action: "Open code flow" },
-    { kind: "office", title: "Office Board", summary: "简报、表格、幻灯片、会议纪要和导出检查", input: "会议 / 数据 / 汇报对象", output: "brief、sheet、slides、minutes", gate: "export quality gate", action: "Open office flow" }
+    { index: "01", kind: "research", meta: "研究与证据", title: "科研工作流", summary: "从论文入库到可追溯结论，保留引用与复现实验依据。", tags: ["论文入库", "引用问答", "复现实验"], gate: "引用完整 · 复现可审计", action: "进入科研工作流" },
+    { index: "02", kind: "learning", meta: "学习与掌握", title: "学习工作流", summary: "把课程资料转化为概念图谱、错题归因与长期复习计划。", tags: ["概念图谱", "错题归因", "间隔复习"], gate: "掌握度证据 · 复习闭环", action: "进入学习工作流" },
+    { index: "03", kind: "code", meta: "开发与交付", title: "开发工作流", summary: "围绕仓库完成任务拆分、风险识别、测试与可接续交付。", tags: ["仓库扫描", "测试闭环", "交接记录"], gate: "测试通过 · 交接完整", action: "进入开发工作流" },
+    { index: "04", kind: "office", meta: "办公与表达", title: "办公工作流", summary: "生成简报、表格、演示与会议纪要，并完成格式质量检查。", tags: ["数据分析", "演示文稿", "会议纪要"], gate: "格式有效 · 视觉验收", action: "进入办公工作流" }
   ];
   target.setAttribute("aria-label", boardTitle);
-  target.innerHTML = boards.map(board => `<article class="board-card"><b>${board.title}</b><span>${board.summary}</span><dl><dt>输入</dt><dd>${board.input}</dd><dt>产物</dt><dd>${board.output}</dd><dt>质量门</dt><dd>${board.gate}</dd><dt>下一步</dt><dd>${board.action}</dd></dl><button class="primary icon-text" onclick="activateScenarioBoard('${board.kind}')"><span class="ui-ico">→</span>${board.action}</button></article>`).join("");
+  target.innerHTML = boards.map(board => `<article class="board-card board-${board.kind}">
+    <div class="board-card-top"><span class="board-index">${board.index}</span><span class="board-meta">${board.meta}</span></div>
+    <h3>${board.title}</h3><p>${board.summary}</p>
+    <div class="board-capabilities">${board.tags.map(tag => `<span>${tag}</span>`).join("")}</div>
+    <div class="board-quality"><span>质量门</span><b>${board.gate}</b></div>
+    <button class="board-action" onclick="activateScenarioBoard('${board.kind}')">${board.action}</button>
+  </article>`).join("");
 }
 
 function activateScenarioBoard(kind) {
@@ -2389,6 +2464,7 @@ async function loadKnowledgeGraph() {
   try {
     const query = knowledgeCategory ? "?category=" + encodeURIComponent(knowledgeCategory) : "";
     const graph = await api("/api/knowledge/graph" + query);
+    lastKnowledgeGraph = { nodes: graph.nodes || [], edges: graph.edges || [], category: graph.category || "all" };
     const nodes = (graph.nodes || []).slice(0, 26);
     if (!nodes.length) return;
     const root = nodes.find(node => node.type === "category") || nodes[0];
@@ -2414,7 +2490,109 @@ async function loadKnowledgeGraph() {
     if ($("knowledgeMapHint")) $("knowledgeMapHint").textContent = summary;
     if ($("knowledgeGraphSummary")) $("knowledgeGraphSummary").textContent = summary;
     if ($("knowledgeMapHint")) $("knowledgeMapHint").textContent = `${graph.category || "all"} · ${nodes.length} 个真实节点 · ${graph.edges?.length || 0} 条语义关系`;
+    if ($("knowledgeGraphExplorer")?.classList.contains("on")) renderKnowledgeGraphExplorer();
   } catch (err) {}
+}
+
+function openKnowledgeBackstage() {
+  toggleCommandDrawer();
+}
+
+function openKnowledgeGraphExplorer() {
+  const explorer = $("knowledgeGraphExplorer");
+  if (!explorer) return;
+  explorer.classList.add("on");
+  explorer.setAttribute("aria-hidden", "false");
+  document.body.classList.add("graph-explorer-open");
+  renderKnowledgeGraphExplorer();
+  if (!lastKnowledgeGraph.nodes.length) loadKnowledgeGraph();
+  window.setTimeout(() => explorer.querySelector("button, input, select")?.focus(), 0);
+}
+
+function closeKnowledgeGraphExplorer() {
+  const explorer = $("knowledgeGraphExplorer");
+  if (!explorer) return;
+  explorer.classList.remove("on");
+  explorer.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("graph-explorer-open");
+}
+
+function graphNodeColor(type) {
+  return ({ category: "#315cf5", knowledge: "#17865d", document: "#e87524", tag: "#7659d6" }[type] || "#697386");
+}
+
+function graphTypeLabel(type) {
+  return ({ category: "分类", knowledge: "知识", document: "文档", tag: "标签", source: "来源", concept: "概念" }[type] || "节点");
+}
+
+function graphRelationLabel(type) {
+  return ({ contains: "包含", cites: "引用", tagged: "标签", links_to: "链接", backlink: "反向链接", sourced_from: "来源", mentions: "提及" }[type] || "关系");
+}
+
+function isPrivateKnowledgePath(value) {
+  return /(?:^[a-z]:[\\/]|^\\\\|^\/(?:users|home|var|tmp)\/|file:\/\/)/i.test(String(value || "").trim());
+}
+
+function publicKnowledgeNodeLabel(node) {
+  const raw = String(node?.label || node?.title || node?.id || "知识节点").trim();
+  if (node?.type === "source" || isPrivateKnowledgePath(raw)) return "本地导入资料";
+  return raw.slice(0, 28);
+}
+
+function publicKnowledgeNodeDescription(node) {
+  const raw = String(node?.summary || node?.source || "该节点来自本地知识库，可沿关系继续探索。").trim();
+  return isPrivateKnowledgePath(raw) ? "本地导入资料，路径信息已隐藏。" : raw;
+}
+
+function renderKnowledgeGraphExplorer() {
+  const stage = $("graphExplorerNodes");
+  const edgesTarget = $("graphExplorerEdges");
+  if (!stage || !edgesTarget) return;
+  const type = $("graphTypeFilter")?.value || "";
+  const relation = $("graphRelationFilter")?.value || "";
+  const query = ($("graphNodeQuery")?.value || "").trim().toLowerCase();
+  const sourceNodes = lastKnowledgeGraph.nodes || [];
+  const visibleNodes = sourceNodes.filter(node => (!type || node.type === type) && (!query || JSON.stringify(node).toLowerCase().includes(query))).slice(0, 56);
+  const visibleIds = new Set(visibleNodes.map(node => String(node.id)));
+  const visibleEdges = (lastKnowledgeGraph.edges || []).filter(edge => visibleIds.has(String(edge.source)) && visibleIds.has(String(edge.target)) && (!relation || edge.type === relation)).slice(0, 140);
+  const centerX = 48;
+  const centerY = 48;
+  const positions = {};
+  visibleNodes.forEach((node, index) => {
+    const band = Math.floor(index / 14);
+    const bandStart = band * 14;
+    const bandSize = Math.min(14, visibleNodes.length - bandStart);
+    const angle = ((index - bandStart) / Math.max(bandSize, 1)) * Math.PI * 2 - Math.PI / 2;
+    const radiusX = 18 + band * 13;
+    const radiusY = 15 + band * 11;
+    positions[String(node.id)] = { left: centerX + Math.cos(angle) * radiusX, top: centerY + Math.sin(angle) * radiusY };
+  });
+  const edgeColor = edgeType => ({ contains: "#aeb7c5", cites: "#6f8cff", tagged: "#64b990", links_to: "#9a84e5", backlink: "#e36c78", sourced_from: "#e7a269", mentions: "#61aec2" }[edgeType] || "#c2c8d0");
+  edgesTarget.innerHTML = visibleEdges.map(edge => {
+    const from = positions[String(edge.source)];
+    const to = positions[String(edge.target)];
+    if (!from || !to) return "";
+    return `<line x1="${from.left}%" y1="${from.top}%" x2="${to.left}%" y2="${to.top}%" stroke="${edgeColor(edge.type)}" stroke-width="1.35" opacity=".72"><title>${esc(edge.type || "relation")}</title></line>`;
+  }).join("");
+  stage.innerHTML = visibleNodes.map(node => {
+    const pos = positions[String(node.id)] || { left: centerX, top: centerY };
+    const label = publicKnowledgeNodeLabel(node).slice(0, 24);
+    const nodeId = encodeURIComponent(String(node.id || ""));
+    return `<button class="graph-node graph-node-${esc(node.type || "other")}" style="left:${pos.left}%;top:${pos.top}%;--node-color:${graphNodeColor(node.type)}" onclick="selectKnowledgeGraphNode('${nodeId}')" title="${esc(label)}"><span></span><b>${esc(label)}</b><small>${esc(graphTypeLabel(node.type))}</small></button>`;
+  }).join("") || '<div class="graph-empty">没有匹配的节点，调整筛选条件后重试。</div>';
+  if ($("graphExplorerStats")) $("graphExplorerStats").textContent = `${visibleNodes.length} 节点 · ${visibleEdges.length} 关系`;
+  if ($("graphExplorerSummary")) $("graphExplorerSummary").textContent = `${knowledgeCategoryLabel(knowledgeCategory)} · ${sourceNodes.length} 个节点 · ${(lastKnowledgeGraph.edges || []).length} 条关系`;
+}
+
+function selectKnowledgeGraphNode(encodedId) {
+  const id = decodeURIComponent(encodedId || "");
+  const node = (lastKnowledgeGraph.nodes || []).find(item => String(item.id) === id);
+  const inspector = $("graphInspector");
+  if (!node || !inspector) return;
+  const connected = (lastKnowledgeGraph.edges || []).filter(edge => String(edge.source) === id || String(edge.target) === id);
+  const relationCounts = connected.reduce((acc, edge) => { acc[edge.type || "relation"] = (acc[edge.type || "relation"] || 0) + 1; return acc; }, {});
+  inspector.innerHTML = `<span class="eyebrow">节点详情</span><div class="graph-inspector-type" style="--node-color:${graphNodeColor(node.type)}">${esc(graphTypeLabel(node.type))}</div><h3>${esc(publicKnowledgeNodeLabel(node))}</h3><p>${esc(publicKnowledgeNodeDescription(node))}</p><dl><div><dt>权重</dt><dd>${esc(node.weight || 1)}</dd></div><div><dt>相邻关系</dt><dd>${connected.length}</dd></div><div><dt>关系类型</dt><dd>${esc(Object.entries(relationCounts).map(([key, value]) => `${graphRelationLabel(key)} ${value}`).join(" · ") || "暂无")}</dd></div></dl><button class="primary" type="button" onclick="closeKnowledgeGraphExplorer()">返回知识库</button>`;
+  document.querySelectorAll(".graph-node").forEach(button => button.classList.toggle("on", decodeURIComponent((button.getAttribute("onclick") || "").split("'")[1] || "") === id));
 }
 
 async function loadOcrQueue() {
@@ -2667,6 +2845,14 @@ async function refreshView(viewName) {
 }
 
 if ($("cfgProvider")) $("cfgProvider").addEventListener("change", () => applyProviderPreset(true));
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if ($("knowledgeOrganizer")?.classList.contains("on")) closeKnowledgeOrganizer();
+  else if ($("knowledgeGraphExplorer")?.classList.contains("on")) closeKnowledgeGraphExplorer();
+  else if ($("chatProgressPanel")?.classList.contains("on")) toggleChatProgress(false);
+  else if ($("modelSettings")?.classList.contains("on")) closeModelSettings();
+  else if ($("commandDrawer")?.classList.contains("on")) closeCommandDrawer();
+});
 applyReportPreset();
 renderKnowledgeWorkspaceShell();
 setAutonomyMode(localStorage.getItem("clawos-autonomy-mode") || "approve");

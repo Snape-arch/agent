@@ -5,6 +5,7 @@ import re
 import httpx
 
 from .json_repair import loads_repaired_json
+from .json_utils import parse_json_value
 
 
 JSON_OBJECT_GRAMMAR = r'''
@@ -159,9 +160,7 @@ Please analyze the root cause and provide insights."""
         error_tools = []
         for tc in trajectory.get("tool_calls", []):
             result = tc.get("result", {})
-            if isinstance(result, str):
-                try: result = json.loads(result)
-                except: pass
+            result = parse_json_value(result)
             if isinstance(result, dict) and "error" in result:
                 error_tools.append({"tool": tc.get("name", ""), "error": str(result["error"])[:200]})
         if error_tools:

@@ -6,6 +6,7 @@ import shutil
 import statistics
 import subprocess
 import tempfile
+import os
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -176,7 +177,11 @@ class OfficeVisualQualityService:
 
     @staticmethod
     def _render_pdf(path: Path) -> dict[str, Any]:
-        executable = shutil.which("pdftoppm")
+        # Prefer the native executable on Windows. Some managed runtimes add a
+        # `pdftoppm.CMD` shim earlier in PATHEXT; that shim cannot resolve its
+        # relative payload when launched from a project virtual environment.
+        explicit = Path(os.environ.get("CLAWOS_POPPLER_BIN", "")) / "pdftoppm.exe" if os.environ.get("CLAWOS_POPPLER_BIN") else None
+        executable = str(explicit) if explicit and explicit.is_file() else (shutil.which("pdftoppm.exe") or shutil.which("pdftoppm"))
         if not executable:
             return {"available": False, "engine": "", "pages": 0, "images": []}
         root = Path(tempfile.mkdtemp(prefix="clawos-pdf-render-")); prefix = root / "page"
@@ -185,11 +190,19 @@ class OfficeVisualQualityService:
         return {"available": result.returncode == 0 and bool(images), "engine": "pdftoppm", "pages": len(images), "images": images, "stderr": result.stderr[-1000:]}
 
     def _render_via_office(self, path: Path) -> dict[str, Any]:
-        soffice = shutil.which("soffice") or shutil.which("libreoffice")
+        known = Path("C:/Program Files/LibreOffice/program/soffice.com")
+        soffice = str(known) if known.is_file() else (shutil.which("soffice.exe") or shutil.which("soffice") or shutil.which("libreoffice"))
         if not soffice:
             return {"available": False, "engine": "", "pages": 0, "images": []}
         root = Path(tempfile.mkdtemp(prefix="clawos-office-render-"))
-        result = subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(root), str(path)], capture_output=True, text=True, timeout=180)
+        # A running desktop LibreOffice instance can absorb headless conversion
+        # commands and return 0 without producing a file. A per-run profile
+        # keeps visual QA isolated and reproducible on Windows.
+        profile = root / "profile"
+        result = subprocess.run([
+            soffice, f"-env:UserInstallation={profile.as_uri()}", "--headless",
+            "--convert-to", "pdf", "--outdir", str(root), str(path),
+        ], capture_output=True, text=True, timeout=180)
         pdf = root / f"{path.stem}.pdf"
         return self._render_pdf(pdf) if result.returncode == 0 and pdf.is_file() else {"available": False, "engine": "libreoffice", "pages": 0, "images": [], "stderr": result.stderr[-1000:]}
 

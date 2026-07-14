@@ -1,5 +1,31 @@
 # Project Context
 
+## 2026-07-14 - Academy reader, learning atlas, and brand asset closure
+
+Completed:
+
+- Rebuilt the Academy paper surface as a document-first reader with local PDF preview, outline, zoom/fit controls, pen/highlighter/text notes, evidence Q&A, guided writing, note export, and a secondary research-operations panel that preserves existing audit/checkpoint/project APIs.
+- Rebuilt the learning route as a 14-layer atlas with domain, difficulty, search, knowledge/history/practice views, detailed concept/history/paper/experiment/mastery inspectors, and truthful progress derived from saved learning records.
+- Polished the code, guided-notes, knowledge-ingest, and capability-quiz modules into one responsive Academy design system.
+- Replaced remaining play/refresh/retry text symbols with Fluent icon-font glyphs. Added light/dark logo assets, favicon sizes, Apple touch icon, desktop ICO/PNG, web manifest, and `clawos/BRAND_GUIDELINES.md` with safe-area and minimum-size rules.
+
+Verification:
+
+- Browser QA passed for all seven Academy surfaces at `1440x1024`; paper/path also passed at `1280x720`; all seven passed at `390x844` with no page-level horizontal overflow.
+- Paper reader interactions passed: note tab, research-ops disclosure, and highlighter activation. Atlas view/difficulty filtering passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `41 tests OK`.
+- Bundled Node syntax checks passed for `academy.js` and `console.js`; web manifest parsed successfully; `git diff --check` passed.
+- Full-suite attempt was not a valid project regression in this runtime: `88` import errors were caused by missing `httpx`/project environment dependencies, and three unrelated office/model tests failed because those dependencies and `pdftoppm` were unavailable. The pre-test skill registry was restored exactly.
+
+Known notes:
+
+- Stage one still lacks physical-device acceptance and a real user-supplied paper walkthrough. Browser QA therefore proves layout, interaction, and truthful empty-state quality, not final production performance on every PDF.
+- Preserve the existing uncommitted `clawos/skills/skill_registry.jsonl` change and continue excluding `clawos/output/`, `tmp/`, and `tools/` from commits.
+
+Recommended next step:
+
+- Run one real PDF with formulas/tables/CJK text through preview, annotation, evidence retrieval, report, checkpoint, and knowledge save on the target machine; then capture the resulting artifact chain as final competition evidence.
+
 ## 2026-07-12 - Local-first daily-use baseline handoff
 
 Stage decision:
@@ -2790,3 +2816,172 @@ Known notes:
 
 Recommended next step:
 - Resume the reranker with `download_qwen_model.ps1 -ManifestPath clawos\models\qwen3_reranker_0_6b.json -Proxy http://127.0.0.1:7890`, verify its manifest hash, then run `vector_db_acceptance.py --json` and `paper_rag_acceptance.py --json` before enabling Qwen3 semantic retrieval by default.
+
+### 2026-07-11 - Console readability and knowledge explorer closure
+
+Completed:
+- Replaced the remaining history conversation cards with compact, high-contrast navigation rows and strengthened the shared Chinese/English typography hierarchy across controls, tables and metadata.
+- Added a standalone full-screen knowledge relationship explorer with node-type, relation and text filters, responsive relationship rendering, counts, legend and a contextual node inspector.
+- Kept Home, Product and AI Academy navigation available while preserving the single-rail, content-first console structure established by the accepted product references.
+- Added static regression contracts for readable history styling and the knowledge explorer structure and behavior.
+
+Visual verification:
+- Loaded the live console in the in-app browser at 1440 x 1024 and inspected workbench, history/search, knowledge library and expanded graph states.
+- Confirmed the legacy dark/diagonal overlays and composer obstruction are absent; history rows and knowledge controls remain readable without overlap.
+- Confirmed the full-screen graph fits the viewport and provides filters, canvas, legend and inspector as a distinct analysis workspace.
+- Browser console was empty during the workbench validation pass. Local screenshots are retained under `tmp/ui-qa/` and intentionally excluded from Git.
+
+Verification:
+- Bundled Node syntax check for `clawos/static/assets/console.js`: passed.
+- Frontend static suite: `37 tests OK`.
+- Full regression suite: `259 tests OK (skipped=1)`.
+- Bundled Node syntax check and `git diff --check`: passed.
+
+Known notes:
+- Knowledge graph coordinates are deterministic and client-rendered; very large production graphs should later add semantic clustering and canvas/WebGL virtualization.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+
+### 2026-07-11 - Console residual legibility closure
+
+Completed:
+- Removed the last inherited glass-message presentation from loaded history conversations. User and agent turns now use compact document-flow rows with dark text, consistent 13 px body copy, restrained role markers and no floating-card geometry.
+- Standardized the knowledge library on a 24/16/13/11 px hierarchy, strengthened neutral text contrast, and aligned tabs, controls, forms, metrics and zone labels to the workbench design language.
+- Rebalanced the knowledge capability area from four uneven columns into three primary cards plus a compact full-width admin row; converted runtime admin status labels back to consistent Chinese.
+- Added a regression contract covering loaded-chat presentation, knowledge layout and contrast tokens.
+
+Visual verification:
+- Compared the two new user screenshots with live 1440 x 1024 browser captures in one composite image.
+- Verified loaded messages have transparent backgrounds, zero radius, dark text and approximately 78 px content-driven row height instead of oversized legacy cards.
+- Verified knowledge page computed typography and inspected its top, form and graph states; browser warning/error log was empty.
+- QA evidence remains under `tmp/ui-qa/` and is intentionally excluded from Git; `design-qa.md` remains `final result: passed`.
+
+Verification:
+- Bundled Node syntax check: passed.
+- Frontend static suite: `38 tests OK`.
+- Full regression suite: `260 tests OK (skipped=1)`.
+- `git diff --check`: passed.
+
+Known notes:
+- The sidebar intentionally truncates long conversation titles to one line; the full searchable title remains available in the history view.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+
+### 2026-07-11 - Codex-style foreground/backstage reduction
+
+Completed:
+- Replaced the legacy new-task glass state with a concise task prompt and retained the single composer as the primary action.
+- Restored clear conversational roles: user turns align right in a restrained neutral bubble; Agent answers align left in the reading column.
+- Reduced knowledge foreground to the user workflow: upload, session capture, editing, graph exploration, search and compact knowledge items. OCR, reports, acceptance, delivery and other operations no longer compete in the visible page.
+- Consolidated backend navigation into four product-level groups—runtime, capability/quality, governance/permissions and model configuration—while preserving existing view routes for compatibility.
+- Rebuilt Backstage and model configuration as centered, viewport-bounded modals; simplified the model chooser and removed inherited offsets and horizontal overflow.
+- Reduced knowledge item columns from six to three and removed raw file paths, tag noise, visit counts and destructive actions from the default foreground.
+
+Visual verification:
+- Exercised new task, loaded chat, knowledge, Backstage and model settings in the in-app browser and compared all four supplied screenshots with implementation captures in one composite.
+- Confirmed Backstage and settings are centered at the effective viewport midpoint, with bounded height and local scrolling.
+- Confirmed user/Agent alignment, hidden operational knowledge panels, four Backstage cards and an empty browser warning/error log after final reload.
+
+Verification:
+- Bundled Node syntax check: passed.
+- Frontend static suite: `39 tests OK`.
+- Full regression suite: `261 tests OK (skipped=1)`.
+- `git diff --check`: passed.
+
+Known notes:
+- The first full-suite attempt ran while the local UI server held the mutable skill registry and produced one Windows replace-permission failure; after stopping the server, the complete suite passed. This was an environment lock, not a product regression.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+
+### 2026-07-13 - Truthful console and responsive closure
+
+Completed:
+- Removed fake model/tool counters, sample delivery files and invented task percentages from the console foreground. Running work now comes only from real active task states and backend-provided progress.
+- Reduced the knowledge foreground to upload, retrieval, graph entry and recent materials. Moved session capture and editing into a centered organizer dialog and sanitized graph source/path labels.
+- Rebuilt history as compact rows and retained explicit user-right / Agent-left conversation geometry. Added a collapsible real-task progress panel that stays out of the reading flow.
+- Unified foreground typography, contrast, truncation and focus-visible behavior; localized unnecessary graph micro-labels.
+- Fixed narrow-screen navigation by aligning the JavaScript state with the responsive sidebar contract and adding an accessible mobile menu trigger.
+
+Visual verification:
+- In-app browser passes at 1280 x 720, 1440 x 1024 and 390 x 844 covered workbench, history, chat, knowledge, organizer, graph and mobile navigation.
+- No page-level horizontal overflow at the narrow breakpoint; organizer centered and Escape-closeable; graph rendered without local path exposure; browser warning/error log was empty.
+- Current product-design assessment: 91/100. Remaining championship gains are mainly iconography/brand refinement and production-data demos, not structural UX defects.
+
+Verification:
+- Bundled Node syntax check: passed.
+- Frontend static suite: `39 tests OK`.
+- Full regression suite: `261 tests OK (skipped=1)`.
+- `git diff --check`: passed.
+
+Known notes:
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+- The local UI server on port 18790 was owned by another process and could not be stopped without elevation; the full suite still passed without registry contention.
+
+### 2026-07-13 - Brand identity and professional workflow polish
+
+Completed:
+- Introduced a production PNG brand mark that combines the ClawOS loop, orchestration node and claw gesture, then applied it consistently to Overview, Product, Academy subpages and Console.
+- Rebuilt the four scenario entries as one Academy-aligned component system with numbered identity, concise capability chips, explicit quality gates and restrained per-domain accents.
+- Reframed runtime evidence into three coordinated Chinese cards for service boundaries, latest real run and failure samples; localized backend labels while preserving original identifiers in non-visual metadata.
+- Added brand/card hover details, reduced-motion fallbacks, responsive two-column/single-column behavior and static regression contracts.
+
+Visual verification:
+- Compared both user screenshots and the implementation in `tmp/ui-qa/brand-runtime-comparison.png` (local evidence only; excluded from Git).
+- In-app browser passes covered 1440 x 1024, 1280 x 720 and 760 x 900. Cards reflowed without overlap; runtime records stayed legible; the scenario CTA correctly transferred its workflow prompt into the workbench.
+- Final product-design assessment: 94/100. The remaining championship gap is authentic production/demo evidence and a final repository-wide replacement of legacy text-symbol icons, not this page structure.
+
+Verification:
+- Bundled Node syntax checks for `console.js` and `console.modules.js`: passed.
+- Frontend static suite: `40 tests OK`.
+- Full regression suite from the project environment: `262 tests OK (skipped=1)`.
+- `git diff --check`: passed.
+
+Known notes:
+- A first full-suite attempt used the generic bundled Python runtime, which lacks this repository's `httpx` and PDF-render dependencies. The correct project environment passed the complete suite.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+
+### 2026-07-14 - Reproducible environment and real-task evidence gate
+
+Completed:
+- Recreated `clawos/.venv` on Python 3.12.13 with a pinned deterministic suite profile, installed LibreOffice 26.2.4.2, and added reusable bootstrap, diagnostic and full-test PowerShell entry points.
+- Fixed Windows render discovery by preferring native `pdftoppm.exe` over a broken managed `.CMD` shim and using the headless `soffice.com` entry point.
+- Added the `clawos.real-task-evidence.v1` truth gate and five fixed evidence slots. Competition eligibility now requires real provenance, all eight evidenced stages, timestamps/duration, passed quality gate and SHA-256-backed artifacts.
+- Added verification/persistence CLI and operator documentation. Mock, deterministic, fixture and synthetic runs remain regression-only and are excluded from the default API and console score.
+- Added a clean responsive console evidence surface that shows truthful empty states until eligible executions exist; no sample progress or success data is injected.
+- Hardened MTClaw trace retrieval against client/router timestamp precision drift by retrying history without `since` while retaining exact session scoping.
+
+Verification:
+- Environment diagnostic: Python 3.12.13, httpx 0.28.1, FastAPI 0.115.12, Poppler 25.02.0 and LibreOffice 26.2.4.2 ready.
+- Full deterministic/integration suite: `269 tests OK`.
+- Frontend static contract: `42 tests OK`.
+- In-app browser: five empty evidence slots, `0 / 5`, no page/section overflow at default or 390 x 844, and no browser warnings/errors.
+
+Known notes:
+- The five competition slots intentionally remain empty until user-supplied/repository/live-connector tasks produce complete evidence. Existing deterministic acceptance reports do not count.
+- Local-model/ASR/vector packages and model weights remain optional external gates under `requirements.txt`; use `bootstrap_test_env.ps1 -IncludeLocalAI` when those assets are available.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/` and `tmp/` remain outside this commit.
+
+Recommended next step:
+- Run the five demonstrations against real user inputs, verify them with `scripts/verify_real_evidence.py`, and only then persist them to the competition MemoryOS database so the console moves from `0 / 5` to verified evidence.
+
+### 2026-07-14 - Five real evidence chains and live subagent review loop
+
+Completed:
+- Persisted and rehydrated provenance, verification, artifacts, evidence and failures in MemoryOS; strengthened the truth gate for timestamps, hashes, real providers, ordered traces, retrievable knowledge and bound V1-to-V2 rework.
+- Added a live evidence builder and public-input campaign covering repository Coding, Online Retail II Excel analysis, a long Efficient Transformers paper, AMI meeting audio, and a Hugging Face Agents Course learning loop. The latest catalog is `5 / 5`, with eight evidenced stages per chain.
+- Ran Qwen3.5-9B-Q4_K_M as Planner, Executor and independent Reviewer. The successful run made 5 real model calls, used 11,634 exact tokens over 895,410.89 ms, recorded one disagreement, one directed executor rework and Reviewer release; the preceding failed run remains retained as failure evidence.
+- Replaced unsafe broad JSON exception handling in reflection parsing with a focused helper and regression tests. Fixed LibreOffice visual QA isolation so the real management workbook rendered to six pages and passed formula, filter, freeze-pane, style and chart checks.
+- Added operator scripts for the live subagent run and five-chain campaign. Evidence payloads, public source files, model weights, generated documents and the local database remain excluded from Git.
+
+Verification:
+- Strict verifier and running API: `verified_count=5`, `required_count=5`, `competition_ready=true`.
+- Full Python suite: `277 tests OK`.
+- Frontend static contract: `42 tests OK`; bundled Node syntax check passed.
+- In-app browser: `5 / 5`, all cards `8 / 8`; no card clipping or page-level horizontal overflow at 1280 x 720, 1440 x 1024 or 768 x 900; browser warning/error log empty.
+- Real data checks: 1,067,371 retail rows across 43 countries; AMI audio processed by faster-whisper CPU int8 and reconciled against official annotations; office QA rendered six pages.
+
+Known notes:
+- The licensed public inputs are real external materials, not private customer data. Meeting email and calendar outputs are drafts/packages; no external message or calendar event was sent.
+- One shared live three-role model review run is attached to the coordinated five-domain campaign, satisfying the required at-least-once real-model loop; domain-specific tools and artifacts remain separate per chain.
+- Physical target-device acceptance and a live enterprise connector tenant remain unverified.
+- Existing user changes in `clawos/skills/skill_registry.jsonl`, `clawos/output/`, `tmp/` and `tools/` remain outside this commit.
+
+Recommended next step:
+- Rehearse the five-chain demo on the competition device, then repeat the meeting chain in a consented enterprise tenant to verify actual mail/calendar send and receipt without weakening the approval gate.

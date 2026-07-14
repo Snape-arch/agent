@@ -113,6 +113,27 @@ const AI_LAYERS = [
   }
 ];
 
+const ACADEMY_LAYER_META = {
+  foundation: { domain: "foundation", level: "基础", era: "1940s–1980s", history: [["1943", "人工神经元", "McCulloch–Pitts 把神经计算写成形式模型。"], ["1958", "感知机", "可学习的线性分类器开启统计学习实践。"], ["1986", "反向传播", "多层网络训练成为可操作方法。"]] },
+  ml: { domain: "foundation", level: "基础", era: "1980s–2010s", history: [["1995", "统计学习", "泛化、正则化与核方法形成系统框架。"], ["2001", "集成学习", "随机森林展示多模型组合的稳定性。"], ["2016", "Boosting 工程化", "XGBoost 让树模型成为强基线。"]] },
+  dl: { domain: "foundation", level: "进阶", era: "2006–至今", history: [["2006", "深层表示", "逐层预训练重新激活深度网络研究。"], ["2012", "AlexNet", "GPU、数据与卷积网络共同改变视觉基准。"], ["2015", "稳定训练", "残差、归一化与新优化器降低训练难度。"]] },
+  cv: { domain: "perception", level: "进阶", era: "2012–至今", history: [["2012", "卷积时代", "大规模图像分类推动深度视觉。"], ["2020", "Vision Transformer", "注意力开始统一视觉表征。"], ["2021", "视觉语言预训练", "CLIP 将开放词汇理解带入视觉任务。"]] },
+  nlp_llm: { domain: "perception", level: "进阶", era: "2017–至今", history: [["2017", "Transformer", "自注意力重写序列建模。"], ["2018", "预训练迁移", "BERT 展示通用语言表示。"], ["2022", "指令与对齐", "模型从续写器走向可协作助手。"]] },
+  vlm: { domain: "perception", level: "专业", era: "2021–至今", history: [["2021", "图文对齐", "CLIP 连接开放文本与视觉表示。"], ["2022", "少样本多模态", "Flamingo 展示跨模态上下文学习。"], ["2023", "视觉指令", "LLaVA 推动开放视觉对话。"]] },
+  genai: { domain: "perception", level: "进阶", era: "2014–至今", history: [["2014", "生成对抗", "GAN 推动高保真生成。"], ["2020", "扩散模型", "逐步去噪带来稳定生成范式。"], ["2022", "潜空间生成", "Stable Diffusion 推动开放创作生态。"]] },
+  agent: { domain: "systems", level: "专业", era: "2022–至今", history: [["2022", "推理与行动", "ReAct 将语言推理和工具行动交错。"], ["2023", "反思与记忆", "Reflexion 探索通过反馈改进策略。"], ["2025+", "可治理执行", "重点转向权限、证据、返工与真实交付。"]] },
+  aicoding: { domain: "systems", level: "专业", era: "2021–至今", history: [["2021", "代码生成", "大模型学习自然语言到程序的映射。"], ["2023", "仓库级任务", "SWE-bench 将评测推向真实软件维护。"], ["2025+", "软件工程 Agent", "能力从生成代码走向验证、审查与交付。"]] },
+  infra: { domain: "systems", level: "专业", era: "2015–至今", history: [["2015", "ML 平台化", "训练、发布、监控开始成为统一流水线。"], ["2020", "向量检索", "语义检索成为生成系统的关键基础设施。"], ["2023", "LLMOps", "提示、评测、成本与可观测性进入生产治理。"]] },
+  governance: { domain: "governance", level: "专业", era: "2020–至今", history: [["2020", "系统评测", "从单指标走向场景化、多维基准。"], ["2023", "风险管理", "NIST AI RMF 提供治理生命周期。"], ["2024+", "法规落地", "高风险系统需要透明、审计与人类监督。"]] },
+  rl: { domain: "foundation", level: "专业", era: "1950s–至今", history: [["1957", "动态规划", "序贯决策形成数学基础。"], ["2013", "深度强化学习", "DQN 联结感知和长期回报。"], ["2017", "PPO", "稳定策略优化成为常用工程方法。"]] },
+  application: { domain: "governance", level: "进阶", era: "持续演进", history: [["2016", "Human-AI Interaction", "产品开始系统研究人机分工。"], ["2023", "生成式应用", "检索、工作流与人工确认成为产品骨架。"], ["现在", "结果与证据", "价值由真实任务成功、质量和治理共同证明。"]] },
+  frontier: { domain: "governance", level: "专业", era: "正在形成", history: [["2018", "世界模型", "学习环境动态成为通用智能路径。"], ["2023", "具身与多智能体", "模型开始进入行动和社会模拟。"], ["未来", "持续学习", "开放环境中的长期适应仍是核心难题。"]] }
+};
+
+AI_LAYERS.forEach(layer => Object.assign(layer, ACADEMY_LAYER_META[layer.id] || { domain: "foundation", level: "进阶", era: "持续演进", history: [] }));
+
+const academyAtlasState = { domain: "all", view: "map", activeId: location.hash.replace("#", "") || "foundation" };
+
 const CODE_SNIPPETS = {
   embedding: `docs = chunk(pdf_text, size=800, overlap=120)
 vectors = qwen_embedding.embed(docs)
@@ -197,26 +218,50 @@ function academyRenderLayerStrip() {
   target.innerHTML = AI_LAYERS.map((layer, index) => `<a class="${layer.branch ? "branch" : ""}" href="/academy/path#${academyEsc(layer.id)}"><b>${String(index + 1).padStart(2, "0")}</b><span>${academyEsc(layer.short)}</span></a>`).join("");
 }
 
-function academyRenderLayerGraph(activeId = location.hash.replace("#", "") || "foundation") {
+function academyRenderLayerGraph(activeId = academyAtlasState.activeId) {
   const graph = document.getElementById("academyLayerGraph");
   const detail = document.getElementById("academyLayerDetail");
   if (!graph || !detail) return;
-  const active = AI_LAYERS.find(layer => layer.id === activeId) || AI_LAYERS[0];
-  graph.innerHTML = AI_LAYERS.map((layer, index) => {
+  const query = (document.getElementById("academyLayerSearch")?.value || "").trim().toLowerCase();
+  const level = document.getElementById("academyLayerLevel")?.value || "all";
+  const visible = AI_LAYERS.filter(layer => {
+    const domainMatch = academyAtlasState.domain === "all" || layer.domain === academyAtlasState.domain;
+    const levelMatch = level === "all" || layer.level === level;
+    const text = [layer.title, layer.short, layer.summary, ...layer.concepts, ...layer.papers, ...layer.experiments].join(" ").toLowerCase();
+    return domainMatch && levelMatch && (!query || text.includes(query));
+  });
+  const active = visible.find(layer => layer.id === activeId) || visible[0] || AI_LAYERS[0];
+  academyAtlasState.activeId = active.id;
+  document.getElementById("academyAtlasEmpty")?.toggleAttribute("hidden", visible.length > 0);
+  graph.innerHTML = visible.map((layer, index) => {
     const unlocked = academyState.completed.has(layer.id);
-    return `<button class="academy-layer-node ${layer.id === active.id ? "active" : ""} ${layer.branch ? "branch" : ""} ${unlocked ? "unlocked" : ""}" data-layer="${academyEsc(layer.id)}" style="--i:${index}"><b>${academyEsc(layer.short)}</b><span>${academyEsc(layer.title)}</span></button>`;
+    const secondary = academyAtlasState.view === "history" ? layer.era : academyAtlasState.view === "practice" ? `${layer.experiments.length} 个实践任务` : `${layer.level} · ${layer.concepts.length} 个核心概念`;
+    return `<button class="academy-layer-node ${layer.id === active.id ? "active" : ""} ${layer.branch ? "branch" : ""} ${unlocked ? "unlocked" : ""}" data-layer="${academyEsc(layer.id)}" style="--i:${index}"><b>${academyEsc(layer.short)}</b><span>${academyEsc(layer.title)}</span><small>${academyEsc(secondary)}</small></button>`;
   }).join("");
   detail.innerHTML = `
-    <div><span>${active.branch ? "Optional Branch" : "Main Layer"}</span><h3>${academyEsc(active.title)}</h3><p>${academyEsc(active.summary)}</p></div>
-    <section><b>具体内容</b><ul>${active.concepts.map(item => `<li>${academyEsc(item)}</li>`).join("")}</ul></section>
-    <section><b>代表资料 / 论文</b><ul>${active.papers.map(item => `<li>${academyEsc(item)}</li>`).join("")}</ul></section>
-    <section><b>实验任务</b><ul>${active.experiments.map(item => `<li>${academyEsc(item)}</li>`).join("")}</ul></section>
-    <section><b>掌握标准</b><ul>${active.mastery.map(item => `<li>${academyEsc(item)}</li>`).join("")}</ul></section>
-    <button class="pill solid dark" type="button" onclick="academyCompleteNode('${academyEsc(active.id)}')">点亮这一层</button>`;
+    <div class="atlas-inspector-head"><span>${active.branch ? "Exploration Branch" : "Knowledge Layer"}</span><h3>${academyEsc(active.title)}</h3><p>${academyEsc(active.summary)}</p><div class="atlas-meta"><i>${academyEsc(active.level)}</i><i>${academyEsc(active.era)}</i><i>${active.concepts.length} 个概念</i></div></div>
+    <section><b>核心知识</b><ul>${active.concepts.slice(0, 6).map(item => `<li>${academyEsc(item)}</li>`).join("")}</ul></section>
+    <section><b>发展脉络</b><div class="atlas-history">${active.history.map(item => `<article><span>${academyEsc(item[0])}</span><b>${academyEsc(item[1])}</b><small>${academyEsc(item[2])}</small></article>`).join("")}</div></section>
+    <section><b>代表资料</b><ul>${active.papers.map(item => `<li>${academyEsc(item)}</li>`).join("")}</ul></section>
+    <section><b>最小实践</b><ul>${active.experiments.map(item => `<li>${academyEsc(item)}</li>`).join("")}</ul></section>
+    <section><b>掌握证据</b><ul>${active.mastery.map(item => `<li>${academyEsc(item)}</li>`).join("")}</ul></section>
+    <button class="pill solid dark" type="button" onclick="academyCompleteNode('${academyEsc(active.id)}')"><span class="fluent-icon" aria-hidden="true">&#xE930;</span>${academyState.completed.has(active.id) ? "已记录掌握" : "记录掌握证据"}</button>`;
   graph.querySelectorAll(".academy-layer-node").forEach(btn => btn.addEventListener("click", () => {
     history.replaceState(null, "", `#${btn.dataset.layer}`);
     academyRenderLayerGraph(btn.dataset.layer);
   }));
+}
+
+function academyFilterLayers() { academyRenderLayerGraph(academyAtlasState.activeId); }
+function academyFilterDomain(domain) {
+  academyAtlasState.domain = domain;
+  document.querySelectorAll("[data-atlas-domain]").forEach(button => button.classList.toggle("active", button.dataset.atlasDomain === domain));
+  academyRenderLayerGraph(academyAtlasState.activeId);
+}
+function academySetAtlasView(view) {
+  academyAtlasState.view = view;
+  document.querySelectorAll("[data-atlas-view]").forEach(button => button.classList.toggle("active", button.dataset.atlasView === view));
+  academyRenderLayerGraph(academyAtlasState.activeId);
 }
 
 function academyRenderProgressNodes() {
@@ -920,6 +965,99 @@ function academySendPaperPrompt() {
   location.href = `/console#knowledge?prompt=${prompt}`;
 }
 
+let academyReaderScale = 1;
+let academyReaderTool = "none";
+let academyReaderNotes = JSON.parse(localStorage.getItem("clawos_academy_reader_notes") || "[]");
+
+function academyPreviewLocalPaper(file) {
+  if (!file) return;
+  const frame = document.getElementById("academyPdfFrame");
+  if (academyPaperState.pdfUrl) URL.revokeObjectURL(academyPaperState.pdfUrl);
+  academyPaperState.pdfUrl = URL.createObjectURL(file);
+  if (frame && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))) frame.src = academyPaperState.pdfUrl;
+  document.getElementById("academyReaderEmpty")?.setAttribute("hidden", "");
+  academySetText("academyReaderProgress", "原文已打开");
+  academySetText("academyPaperStatus", `${file.name} 已在本地打开；点击“解析原文”后启用证据检索。`);
+}
+
+function academyMirrorPaperFile(input) {
+  const target = document.getElementById("academyPaperFile");
+  if (target && input?.files?.length) {
+    target.files = input.files;
+    academyPreviewLocalPaper(input.files[0]);
+  }
+}
+
+function academyReaderZoom(delta) {
+  academyReaderScale = Math.min(1.6, Math.max(.7, Number((academyReaderScale + delta).toFixed(1))));
+  const frame = document.getElementById("academyPdfFrame");
+  if (frame) { frame.style.transform = `scale(${academyReaderScale})`; frame.style.width = `${100 / academyReaderScale}%`; frame.style.height = `${100 / academyReaderScale}%`; }
+  academySetText("academyReaderZoom", `${Math.round(academyReaderScale * 100)}%`);
+}
+
+function academyReaderFit() {
+  academyReaderScale = 1;
+  const frame = document.getElementById("academyPdfFrame");
+  if (frame) { frame.style.transform = "none"; frame.style.width = "100%"; frame.style.height = "100%"; }
+  academySetText("academyReaderZoom", "100%");
+}
+
+function academyToggleResearchOps() {
+  const panel = document.getElementById("academyResearchOps");
+  const button = document.querySelector(".reader-ops-toggle");
+  if (!panel) return;
+  const opening = panel.hasAttribute("hidden");
+  panel.toggleAttribute("hidden", !opening);
+  button?.setAttribute("aria-expanded", String(opening));
+  if (opening) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function academySwitchReaderTab(tab) {
+  document.querySelectorAll("[data-reader-tab]").forEach(button => button.classList.toggle("active", button.dataset.readerTab === tab));
+  document.querySelectorAll("[data-reader-panel]").forEach(panel => panel.classList.toggle("active", panel.dataset.readerPanel === tab));
+}
+
+function academySetGuidedPrompt(kind) {
+  const prompts = {
+    method: "这篇论文的核心机制是什么？它依赖哪些假设，关键变量如何相互作用？",
+    evidence: "哪些实验真正支持核心结论？基线、消融、数据和指标是否足够？",
+    limits: "方法在什么条件下会失败？作者未验证哪些外推场景或风险？"
+  };
+  const input = document.getElementById("paperAbstract");
+  if (input) { input.value = prompts[kind] || prompts.method; input.focus(); }
+}
+
+function academyRenderReaderNotes() {
+  const target = document.getElementById("academyReaderNotes");
+  if (!target) return;
+  target.innerHTML = academyReaderNotes.length ? academyReaderNotes.map(note => `<article><b>${academyEsc(note.tag || "阅读笔记")}</b><p>${academyEsc(note.text)}</p></article>`).join("") : "";
+}
+
+function academyAddReaderNote() {
+  const input = document.getElementById("academyReaderNote");
+  const text = input?.value.trim() || "";
+  if (!text) return;
+  academyReaderNotes.unshift({ text, tag: document.getElementById("academyReaderNoteTag")?.value.trim() || "阅读笔记", at: new Date().toISOString() });
+  academyReaderNotes = academyReaderNotes.slice(0, 30);
+  localStorage.setItem("clawos_academy_reader_notes", JSON.stringify(academyReaderNotes));
+  if (input) input.value = "";
+  academyRenderReaderNotes();
+}
+
+function academyDownloadText(filename, text) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+function academyExportReaderNotes() {
+  const title = document.getElementById("paperTitle")?.value || "Paper notes";
+  const body = academyReaderNotes.map(note => `## ${note.tag}\n\n${note.text}`).join("\n\n");
+  academyDownloadText("paper-reading-notes.md", `# ${title}\n\n${body || "尚无阅读笔记。"}\n`);
+}
+
 function academyResizeInkCanvas() {
   const canvas = document.getElementById("academyInkCanvas");
   const viewer = document.getElementById("academyPaperViewer");
@@ -946,13 +1084,15 @@ function academyDrawInk(event) {
   const ctx = canvas.getContext("2d");
   const next = academyCanvasPoint(event);
   const prev = academyPaperState.lastPoint || next;
-  ctx.strokeStyle = document.getElementById("academyPenColor")?.value || "#2563eb";
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = document.getElementById("academyPenColor")?.value || "#315cf5";
+  ctx.globalAlpha = academyReaderTool === "highlight" ? .28 : 1;
+  ctx.lineWidth = academyReaderTool === "highlight" ? 18 : 3;
   ctx.lineCap = "round";
   ctx.beginPath();
   ctx.moveTo(prev.x, prev.y);
   ctx.lineTo(next.x, next.y);
   ctx.stroke();
+  ctx.globalAlpha = 1;
   academyPaperState.lastPoint = next;
 }
 
@@ -962,10 +1102,24 @@ function academySetupInk() {
   academyResizeInkCanvas();
   window.addEventListener("resize", academyResizeInkCanvas);
   document.getElementById("academyPenToggle")?.addEventListener("click", event => {
-    academyPaperState.penEnabled = !academyPaperState.penEnabled;
+    academyReaderTool = academyReaderTool === "pen" ? "none" : "pen";
+    academyPaperState.penEnabled = academyReaderTool !== "none";
     canvas.classList.toggle("active", academyPaperState.penEnabled);
-    event.currentTarget.classList.toggle("solid", academyPaperState.penEnabled);
-    academySetText("academyPaperStatus", academyPaperState.penEnabled ? "画笔已开启，可以在论文预览区域直接标注。" : "画笔已关闭。");
+    document.querySelectorAll(".annotation-tools .tool-button").forEach(button => button.classList.remove("active"));
+    event.currentTarget.classList.toggle("active", academyReaderTool === "pen");
+    academySetText("academyPaperStatus", academyPaperState.penEnabled ? "画笔已开启，可在原文上直接标注。" : "批注工具已关闭。");
+  });
+  document.getElementById("academyHighlightToggle")?.addEventListener("click", event => {
+    academyReaderTool = academyReaderTool === "highlight" ? "none" : "highlight";
+    academyPaperState.penEnabled = academyReaderTool !== "none";
+    canvas.classList.toggle("active", academyPaperState.penEnabled);
+    document.querySelectorAll(".annotation-tools .tool-button").forEach(button => button.classList.remove("active"));
+    event.currentTarget.classList.toggle("active", academyReaderTool === "highlight");
+    academySetText("academyPaperStatus", academyPaperState.penEnabled ? "荧光笔已开启，可标记关键证据。" : "批注工具已关闭。");
+  });
+  document.getElementById("academyTextNoteToggle")?.addEventListener("click", () => {
+    academySwitchReaderTab("notes");
+    document.getElementById("academyReaderNote")?.focus();
   });
   canvas.addEventListener("pointerdown", event => {
     if (!academyPaperState.penEnabled) return;
@@ -1015,6 +1169,19 @@ function academyGenerateNote() {
   }
 }
 
+function academyInsertNotePrompt(kind) {
+  const input = document.getElementById("academyNoteInput");
+  if (!input) return;
+  const prompts = { explain: "\n\n请用自己的话解释：", example: "\n\n例子：\n反例：", question: "\n\n可验证问题：" };
+  input.value += prompts[kind] || prompts.explain;
+  input.focus();
+}
+
+function academyExportNote() {
+  const output = document.getElementById("academyNoteOutput")?.innerText || "尚无结构化笔记。";
+  academyDownloadText("academy-guided-note.md", `# Academy Guided Note\n\n${output}\n`);
+}
+
 function academyRenderCode(topic = "embedding") {
   document.querySelectorAll(".code-lab-tabs button").forEach(btn => btn.classList.toggle("active", btn.dataset.codeTopic === topic));
   const target = document.getElementById("academyCodeBlock");
@@ -1025,6 +1192,11 @@ function academyCompleteExperiment() {
   academyState.completed.add("infra");
   academyState.completed.add("governance");
   academySave();
+}
+
+async function academyCopyCode() {
+  const text = document.getElementById("academyCodeBlock")?.textContent || "";
+  await navigator.clipboard?.writeText(text);
 }
 
 function academyQueueKnowledge(kind) {
@@ -1068,6 +1240,8 @@ function academyBoot() {
   academyRenderCode("embedding");
   academyGenerateQuiz();
   academySetupInk();
+  academyRenderReaderNotes();
+  document.getElementById("academyPaperFile")?.addEventListener("change", event => academyPreviewLocalPaper(event.target.files?.[0]));
   academyRenderPaperRuntimeStatus();
   academyRefreshPaperAudit().catch(() => null);
   academyLoadPaperHistory().catch(() => null);

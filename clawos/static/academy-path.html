@@ -1,26 +1,49 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ClawOS AI Academy - 学习路线</title>
-  <link rel="stylesheet" href="/assets/site.css">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClawOS AI Academy - AI 学习路线图</title>
+  <meta name="theme-color" content="#315cf5"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/favicon-32.png"><link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><link rel="stylesheet" href="/assets/site.css">
 </head>
-<body class="academy-page" data-academy-page="path">
+<body class="academy-page academy-path-page" data-academy-page="path">
   <nav class="site-nav light claw-layer-nav" aria-label="AI Academy navigation">
-    <a class="brand" href="/academy"><span class="mark">C</span><span><b>AI Academy</b><small>Layered Map</small></span></a>
-    <div class="nav-links"><a href="/academy">Academy</a><a class="active" href="/academy/path">Path</a><a href="/academy/paper">Paper</a><a href="/console">Console</a></div>
-    <a class="pill solid dark" href="/academy/quiz">Generate Quiz</a>
+    <a class="brand" href="/academy"><img class="mark" src="/assets/brand/clawos-logo-dark.png" alt=""><span><b>AI Academy</b><small>Learning Atlas</small></span></a>
+    <div class="nav-links"><a href="/academy">Academy</a><a class="active" href="/academy/path">路线图</a><a href="/academy/paper">论文阅读</a><a href="/console">工作台</a></div>
+    <a class="pill solid dark" href="/academy/quiz"><span class="fluent-icon" aria-hidden="true">&#xE9D9;</span>能力测验</a>
   </nav>
-  <main>
-    <section class="academy-lab route-page">
-      <div class="academy-panel-head">
-        <span>Dynamic Layered Graph</span>
-        <h2>AI 学习路线动态图</h2>
-        <p>主线从基础支撑层一路走到 Evaluation / Safety / Governance，并保留 RL 支线。点击任一层会展开更细的概念、历史来源、代表论文、实验任务和掌握标准。</p>
+  <main class="academy-atlas-main">
+    <header class="atlas-header">
+      <div><span class="academy-kicker">AI Learning Atlas</span><h1>从知识结构，看见下一步。</h1><p>沿依赖关系理解概念、发展历史、代表工作、实验任务和掌握证据，而不是只浏览一张术语清单。</p></div>
+      <div class="atlas-progress"><span>已点亮</span><b id="academyProgress">0%</b><small>进度仅来自你的真实学习记录</small></div>
+    </header>
+
+    <section class="atlas-controls" aria-label="路线图筛选">
+      <label class="atlas-search"><span class="fluent-icon" aria-hidden="true">&#xE721;</span><input id="academyLayerSearch" placeholder="搜索概念、论文或实验" oninput="academyFilterLayers()"></label>
+      <div class="atlas-view-switch" role="group" aria-label="视图"><button class="active" type="button" data-atlas-view="map" onclick="academySetAtlasView('map')">知识层级</button><button type="button" data-atlas-view="history" onclick="academySetAtlasView('history')">发展脉络</button><button type="button" data-atlas-view="practice" onclick="academySetAtlasView('practice')">实践任务</button></div>
+      <select id="academyLayerLevel" onchange="academyFilterLayers()" aria-label="难度"><option value="all">全部难度</option><option value="基础">基础</option><option value="进阶">进阶</option><option value="专业">专业</option></select>
+    </section>
+
+    <section class="atlas-workspace">
+      <aside class="atlas-rail" aria-label="知识域">
+        <button class="active" type="button" data-atlas-domain="all" onclick="academyFilterDomain('all')"><span class="fluent-icon" aria-hidden="true">&#xECA5;</span><b>完整路线</b><small>14 个知识层</small></button>
+        <button type="button" data-atlas-domain="foundation" onclick="academyFilterDomain('foundation')"><span class="fluent-icon" aria-hidden="true">&#xE82D;</span><b>基础与模型</b><small>数学、ML、DL</small></button>
+        <button type="button" data-atlas-domain="perception" onclick="academyFilterDomain('perception')"><span class="fluent-icon" aria-hidden="true">&#xE890;</span><b>感知与生成</b><small>CV、NLP、VLM</small></button>
+        <button type="button" data-atlas-domain="systems" onclick="academyFilterDomain('systems')"><span class="fluent-icon" aria-hidden="true">&#xE950;</span><b>Agent 与系统</b><small>编排、代码、Infra</small></button>
+        <button type="button" data-atlas-domain="governance" onclick="academyFilterDomain('governance')"><span class="fluent-icon" aria-hidden="true">&#xEA18;</span><b>评测与治理</b><small>安全、应用、前沿</small></button>
+      </aside>
+
+      <div class="atlas-canvas">
+        <div class="atlas-legend"><span><i class="learned"></i>已掌握</span><span><i class="current"></i>当前</span><span><i></i>待学习</span><span><i class="branch"></i>拓展支线</span></div>
+        <div class="academy-layer-graph" id="academyLayerGraph"></div>
+        <div class="atlas-empty" id="academyAtlasEmpty" hidden><b>没有匹配的知识层</b><p>调整关键词、难度或知识域后重试。</p></div>
       </div>
-      <div class="academy-layer-graph" id="academyLayerGraph"></div>
-      <div class="academy-layer-detail" id="academyLayerDetail"></div>
+
+      <aside class="academy-layer-detail atlas-inspector" id="academyLayerDetail"></aside>
+    </section>
+
+    <section class="atlas-learning-plan">
+      <div><span class="academy-kicker">Next Steps</span><h2>把路线变成一周可执行计划</h2><p>选择当前节点后，从概念理解、代表资料、动手实验到掌握证据形成最短闭环。</p></div>
+      <div class="atlas-plan-steps" id="academyAtlasPlan"><article><span>01</span><b>建立概念模型</b><small>用自己的话解释核心对象与边界</small></article><article><span>02</span><b>阅读代表工作</b><small>追溯问题来源与方法演进</small></article><article><span>03</span><b>完成最小实验</b><small>记录输入、指标、失败与复现环境</small></article><article><span>04</span><b>提交掌握证据</b><small>通过测验或产物点亮节点</small></article></div>
     </section>
   </main>
   <script src="/assets/academy.js"></script>

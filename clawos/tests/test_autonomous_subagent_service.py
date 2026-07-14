@@ -120,6 +120,71 @@ class AutonomousSubagentServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["budget"]["model_calls"], 1)
             self.assertTrue(Path(result["checkpoint"]).is_file())
 
+    async def test_reviewer_rejection_drives_executor_rework_and_release(self):
+        captures = {}
+        calls = {}
+
+        class ReviewCycleProvider(FakeProvider):
+            async def complete(self, messages, options=None, **kwargs):
+                calls[self.role] = calls.get(self.role, 0) + 1
+                self.captures.setdefault(self.role, []).append(messages)
+                if self.role == "reviewer" and calls[self.role] == 1:
+                    content = payload("Reject v1", hard_gate_failures=["missing passing test evidence"])
+                elif self.role == "reviewer":
+                    content = payload("Release v2", confidence=0.97)
+                elif self.role == "executor" and calls[self.role] > 1:
+                    content = payload("Reworked v2 with passing test evidence", confidence=0.95)
+                else:
+                    content = payload(f"{self.role} v1")
+                return {"ok": True, "provider": "fake", "model": "fake", "content": content, "raw": {"choices": [{"message": {"content": content}}]}, "usage": {"total_tokens": 10}}
+
+        with tempfile.TemporaryDirectory() as td:
+            service = AutonomousSubagentService(lambda spec: ReviewCycleProvider(spec.role_id, captures), checkpoint_root=Path(td))
+            roles = [
+                SubagentRoleSpec("planner", "Plan", "Plan the change"),
+                SubagentRoleSpec("executor", "Execute", "Implement and test", depends_on=["planner"]),
+                SubagentRoleSpec("reviewer", "Review independently", "Gate evidence", depends_on=["executor"], hard_gate=True),
+            ]
+            result = await service.run(
+                "Repair a repository defect",
+                roles,
+                review_cycle={"executor_role": "executor", "reviewer_role": "reviewer", "max_rounds": 2},
+            )
+            self.assertEqual(result["status"], "passed", result)
+            self.assertEqual(calls, {"planner": 1, "executor": 2, "reviewer": 2})
+            self.assertEqual(len(result["review_cycle"]["disagreements"]), 1)
+            self.assertEqual(result["review_cycle"]["rounds"][0]["status"], "released")
+            self.assertEqual(result["review_cycle"]["release"]["reviewer_role"], "reviewer")
+            rework_packet = json.loads(captures["executor"][1][1]["content"])
+            self.assertEqual(rework_packet["evidence"][-1]["type"], "reviewer_rework_request")
+            checkpoint = json.loads(Path(result["checkpoint"]).read_text(encoding="utf-8"))
+            self.assertEqual(checkpoint["review_cycle"]["release"]["status"], "released")
+            event_names = [item["event"] for item in result["events"]]
+            self.assertIn("reviewer_rejected", event_names)
+            self.assertIn("reviewer_released", event_names)
+            self.assertTrue(all(item.get("timestamp") for item in result["events"]))
+
+    async def test_tool_trace_has_timestamp_duration_and_status(self):
+        captures = {}
+        with tempfile.TemporaryDirectory() as td:
+            service = AutonomousSubagentService(
+                lambda spec: FakeProvider(spec.role_id, captures, tool_call="shell_exec"),
+                checkpoint_root=Path(td),
+                tool_definitions=[{"function": {"name": "shell_exec", "parameters": {"type": "object"}}}],
+                tool_executor=lambda *_: {"ok": True},
+            )
+            result = await service.run(
+                "Audited tool call",
+                [SubagentRoleSpec("executor", "Execute", "Run approved check", allowed_tools=["shell_exec"])],
+                confirmed_side_effect_tools=["shell_exec"],
+            )
+            self.assertEqual(result["status"], "passed", result)
+            tool_trace = next(item for item in result["results"]["executor"]["trace"] if item["type"] == "tool")
+            self.assertEqual(tool_trace["status"], "passed")
+            self.assertIn("timestamp", tool_trace)
+            self.assertIn("completed_at", tool_trace)
+            self.assertGreaterEqual(tool_trace["duration_ms"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,6 +32,7 @@ from services import (
     WorkflowEngine,
 )
 from services.artifact_storage import safe_artifact_slug
+from services.competition_evidence_service import CompetitionEvidenceService, EVIDENCE_CHAIN_SCHEMA
 from services.runtime_records import RUN_SCHEMA_VERSION, RunRecord, now_iso, run_from_task
 
 # ---- PATHS ----
@@ -3150,6 +3151,7 @@ async def api_autonomous_subagents(request: Request):
             confirmed_side_effect_tools=data.get("confirmed_tools") or [],
             run_budget=data.get("budget") or {},
             resume_checkpoint=data.get("resume_checkpoint", ""),
+            review_cycle=data.get("review_cycle") or None,
             actor=data.get("actor", "coordinator"),
         )
     except (ValueError, PermissionError, RuntimeError) as exc:
@@ -3430,6 +3432,25 @@ async def api_runtime_failure_cases(limit: int = 50):
         "count": len(failures),
         "durable": False,
     })
+
+
+@app.get("/api/runtime/evidence-chains")
+async def api_runtime_evidence_chains(include_regression: bool = False, limit: int = 200):
+    """Return only judge-safe evidence by default; fixtures stay explicitly separated."""
+    capped = max(5, min(int(limit or 200), 500))
+    runs = g_memory_store.list_run_records(limit=capped) if g_memory_store else []
+    payload = CompetitionEvidenceService().catalog(runs, include_regression=bool(include_regression))
+    payload["durable"] = bool(g_memory_store)
+    return JSONResponse(payload)
+
+
+@app.post("/api/runtime/evidence-chains/verify")
+async def api_runtime_evidence_chain_verify(request: Request):
+    data = await request.json()
+    run = data.get("run") if isinstance(data, dict) and isinstance(data.get("run"), dict) else data
+    if not isinstance(run, dict):
+        raise HTTPException(400, "run must be an object")
+    return JSONResponse(CompetitionEvidenceService.validate(run))
 
 
 @app.post("/api/documents/upload")
