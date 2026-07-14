@@ -1100,7 +1100,20 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".board-card", css)
 
     def test_brand_mark_is_consistent_across_primary_surfaces(self):
-        self.assertTrue((STATIC_DIR / "assets" / "clawos-mark.png").is_file())
+        brand_dir = STATIC_DIR / "assets" / "brand"
+        for asset in (
+            "clawos-logo-dark.png",
+            "clawos-logo-light.png",
+            "favicon-16.png",
+            "favicon-32.png",
+            "favicon-48.png",
+            "apple-touch-icon.png",
+            "clawos-app-icon.png",
+            "clawos-app.ico",
+        ):
+            self.assertTrue((brand_dir / asset).is_file(), asset)
+        self.assertTrue((STATIC_DIR / "site.webmanifest").is_file())
+        self.assertTrue((REPO_ROOT / "clawos" / "BRAND_GUIDELINES.md").is_file())
         for page in (
             "index.html",
             "product.html",
@@ -1113,7 +1126,74 @@ class FrontendStaticTests(unittest.TestCase):
             "academy-quiz.html",
             "console.html",
         ):
-            self.assertIn('/assets/clawos-mark.png', self.read_page(page))
+            html = self.read_page(page)
+            self.assertIn('/assets/brand/clawos-logo-dark.png', html)
+            self.assertIn('/site.webmanifest', html)
+
+    def test_academy_reader_atlas_and_studios_have_production_contracts(self):
+        paper = self.read_page("academy-paper.html")
+        path = self.read_page("academy-path.html")
+        academy_js = self.read_page("assets/academy.js")
+        site_css = self.read_page("assets/site.css")
+
+        for token in (
+            "paper-reader-workspace",
+            "academyPdfFrame",
+            "academyPenToggle",
+            "academyHighlightToggle",
+            "academyTextNoteToggle",
+            "academyReaderNotes",
+            "academyResearchOps",
+        ):
+            self.assertIn(token, paper)
+        for token in (
+            "academyLayerSearch",
+            "atlas-view-switch",
+            "atlas-rail",
+            "academyLayerDetail",
+            'data-atlas-view="map"',
+            "history",
+            "practice",
+        ):
+            self.assertIn(token, path)
+        for token in (
+            "academyFilterLayers",
+            "academySetAtlasView",
+            "academyFilterDomain",
+            "academySwitchReaderTab",
+            "academyToggleResearchOps",
+            "academyExportReaderNotes",
+            "history:",
+            "domain:",
+            "era:",
+        ):
+            self.assertIn(token, academy_js)
+        for token in (
+            ".paper-reader-workspace",
+            ".atlas-rail",
+            ".atlas-inspector",
+            ".code-studio",
+            ".notes-studio",
+            ".ingest-studio",
+            ".quiz-studio",
+            ".fluent-icon",
+        ):
+            self.assertIn(token, site_css)
+
+        combined = "\n".join(
+            self.read_page(name)
+            for name in (
+                "index.html",
+                "product.html",
+                "console.html",
+                "academy.html",
+                "academy-paper.html",
+                "academy-path.html",
+                "assets/console.js",
+            )
+        )
+        for legacy_symbol in ("▶", "↺", "⟳"):
+            self.assertNotIn(legacy_symbol, combined)
 
     def test_console_exposes_skill_workbench_controls(self):
         html = self.read_page("console.html")

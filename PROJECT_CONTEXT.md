@@ -1,5 +1,31 @@
 # Project Context
 
+## 2026-07-14 - Academy reader, learning atlas, and brand asset closure
+
+Completed:
+
+- Rebuilt the Academy paper surface as a document-first reader with local PDF preview, outline, zoom/fit controls, pen/highlighter/text notes, evidence Q&A, guided writing, note export, and a secondary research-operations panel that preserves existing audit/checkpoint/project APIs.
+- Rebuilt the learning route as a 14-layer atlas with domain, difficulty, search, knowledge/history/practice views, detailed concept/history/paper/experiment/mastery inspectors, and truthful progress derived from saved learning records.
+- Polished the code, guided-notes, knowledge-ingest, and capability-quiz modules into one responsive Academy design system.
+- Replaced remaining play/refresh/retry text symbols with Fluent icon-font glyphs. Added light/dark logo assets, favicon sizes, Apple touch icon, desktop ICO/PNG, web manifest, and `clawos/BRAND_GUIDELINES.md` with safe-area and minimum-size rules.
+
+Verification:
+
+- Browser QA passed for all seven Academy surfaces at `1440x1024`; paper/path also passed at `1280x720`; all seven passed at `390x844` with no page-level horizontal overflow.
+- Paper reader interactions passed: note tab, research-ops disclosure, and highlighter activation. Atlas view/difficulty filtering passed.
+- `python -m unittest clawos.tests.test_frontend_static`: `41 tests OK`.
+- Bundled Node syntax checks passed for `academy.js` and `console.js`; web manifest parsed successfully; `git diff --check` passed.
+- Full-suite attempt was not a valid project regression in this runtime: `88` import errors were caused by missing `httpx`/project environment dependencies, and three unrelated office/model tests failed because those dependencies and `pdftoppm` were unavailable. The pre-test skill registry was restored exactly.
+
+Known notes:
+
+- Stage one still lacks physical-device acceptance and a real user-supplied paper walkthrough. Browser QA therefore proves layout, interaction, and truthful empty-state quality, not final production performance on every PDF.
+- Preserve the existing uncommitted `clawos/skills/skill_registry.jsonl` change and continue excluding `clawos/output/`, `tmp/`, and `tools/` from commits.
+
+Recommended next step:
+
+- Run one real PDF with formulas/tables/CJK text through preview, annotation, evidence retrieval, report, checkpoint, and knowledge save on the target machine; then capture the resulting artifact chain as final competition evidence.
+
 ## 2026-07-12 - Local-first daily-use baseline handoff
 
 Stage decision:

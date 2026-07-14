@@ -39,6 +39,29 @@ The implementation and the two accepted references were reviewed together at the
 
 final result: passed
 
+## Academy document reader and learning atlas - 2026-07-14
+
+- implementation: `http://127.0.0.1:18790/academy`, `/academy/paper`, `/academy/path`, `/academy/code`, `/academy/notes`, `/academy/ingest`, `/academy/quiz`
+- local evidence: `tmp/ui-qa/academy-redesign/` (intentionally excluded from Git)
+- tested viewports: 1440 x 1024, 1280 x 720, 390 x 844
+
+Resolved findings:
+
+- [P0] The paper page is now a document-first reader rather than a form dashboard: original PDF canvas, outline, zoom/fit, pen, highlighter, text notes, evidence questions and guided writing share one workspace.
+- [P0] Operational audit, timeline, checkpoints, project board and exports remain available but are consolidated behind one secondary disclosure, protecting the primary reading task.
+- [P1] The learning path now exposes 14 connected layers with domain and difficulty filters plus knowledge, history and practice views. Every node includes concepts, development history, representative material, experiments and mastery evidence.
+- [P1] Code, guided notes, ingest and quiz use the same typography, navigation, cards, controls and truthful states as the Academy reader and atlas.
+- [P1] Remaining text-symbol icons were replaced by the formal Fluent icon font, and brand assets now cover browser, desktop, light/dark and minimum-size applications.
+
+Interaction and responsive verification:
+
+- Reader note tab, research-operations disclosure and highlighter states changed correctly.
+- Atlas development-history view and professional difficulty filter reduced the visible graph to the expected seven nodes.
+- All seven Academy pages had document width less than or equal to viewport width at 1440 and 390; paper/path also passed 1280 x 720.
+- Desktop and mobile contact sheets were reviewed together. No overlapping panels, clipped primary actions or fake progress counters remained.
+
+final result: passed - visual/product score 93/100
+
 ## Brand identity and professional workflow polish — 2026-07-13
 
 - source screenshots: `codex-clipboard-afbba9de-cd35-4383-8597-124ef830abbb.png`, `codex-clipboard-a1955c10-4477-4741-9f73-27e372ab4f0c.png`

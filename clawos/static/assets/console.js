@@ -511,7 +511,7 @@ function renderAttachmentTray() {
   tray.innerHTML = chatAttachments.map(item => {
     const loading = item.status === "loading";
     const label = loading ? "上传解析中" : item.status === "error" ? "解析失败" : `${item.chunk_count || 0} chunks`;
-    return `<div class="attachment-chip ${loading ? "loading" : ""} ${item.status === "error" ? "error" : ""}"><span class="attachment-spinner"></span><b>${esc(item.name)}</b><small>${esc(label)}</small><button type="button" onclick="removeAttachment('${esc(item.id)}')" title="移除附件">×</button></div>`;
+    return `<div class="attachment-chip ${loading ? "loading" : ""} ${item.status === "error" ? "error" : ""}"><span class="attachment-spinner"></span><b>${esc(item.name)}</b><small>${esc(label)}</small><button type="button" onclick="removeAttachment('${esc(item.id)}')" title="移除附件"><span class="fluent-icon" aria-hidden="true">&#xE711;</span></button></div>`;
   }).join("");
 }
 
@@ -2224,7 +2224,7 @@ async function loadToolExecutions() {
 function taskActions(task) {
   const id = Number(task.id);
   const terminal = ["succeeded", "failed", "canceled", "interrupted"].includes(task.status);
-  return `<button class="secondary" onclick="showTask(${id})">查看</button> ${terminal ? "" : `<button class="secondary icon-text" onclick="cancelTask(${id})"><span class="ui-ico">■</span>取消</button>`} <button class="secondary icon-text" onclick="retryTask(${id})"><span class="ui-ico">↺</span>重试</button>`;
+  return `<button class="secondary" onclick="showTask(${id})">查看</button> ${terminal ? "" : `<button class="secondary icon-text" onclick="cancelTask(${id})"><span class="fluent-icon" aria-hidden="true">&#xE71A;</span>取消</button>`} <button class="secondary icon-text" onclick="retryTask(${id})"><span class="fluent-icon" aria-hidden="true">&#xE777;</span>重试</button>`;
 }
 
 async function loadTasks() {
