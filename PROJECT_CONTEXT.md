@@ -9,7 +9,7 @@ Stage decision:
 
 Current verified baseline:
 
-- Repository: `codex/p0-demo-polish` at `15e62ce`, aligned with `origin/master` (`0/0`) before this handoff edit.
+- Repository: `codex/p0-demo-polish` at local handoff commit `9101d45`, one commit ahead of `origin/master`; the local-profile implementation below remains an uncommitted working-tree change.
 - Local generation: Qwen3.5-9B Q4_K_M is size/SHA256 verified, runs through llama.cpp CUDA on the RTX 5060 Laptop GPU, passed direct completion/tool/reflection smoke, passed three consecutive real-model acceptance runs, and passed `8/8` queued concurrency requests at about `23.5 tok/s` under the 20-GPU-layer profile.
 - Local semantic retrieval assets are complete and manifest-verified:
   - Qwen3-Embedding-0.6B: `1,191,586,416` bytes, SHA256 `0437E45C94563B09E13CB7A64478FC406947A93CB34A7E05870FC8DCD48E23FD`.
@@ -22,17 +22,20 @@ Current verified baseline:
 
 Important operating facts:
 
-- No ClawOS, llama.cpp, Python acceptance, or curl process was running at this handoff snapshot.
-- Committed defaults remain API-first: `MODEL_PROVIDER=deepseek`, `EMBEDDING_PROVIDER=hash`, and `RERANKER_PROVIDER=none`. Local Qwen/Qwen3 paths are verified but require explicit local profile selection; do not claim that a fresh default start is fully local yet.
+- Qwen, MTClaw, and ClawOS were healthy on ports `8000`, `18791`, and `18790` at the latest snapshot. Qwen direct smoke returned `LOCAL_OK`; ClawOS local-Qwen smoke passed in about `363ms` when called with a JSON body.
+- The working tree now implements `start_clawos.bat --local` plus ignored `clawos/config.local.json`: Qwen + Chroma + Qwen3-Embedding are explicit, reranking stays opt-in, API keys are cleared for the profile, loopback bypasses environment proxies, `.env` is not rewritten, and the launcher does not download models.
+- MTClaw now omits empty bearer headers, disables Qwen thinking for internal routing, and adds the same setting when routing and upstream share the local Qwen endpoint. The final forwarding fix is covered by tests but is **not loaded into the currently running MTClaw process** because the service restart was rejected by the execution permission reviewer.
+- Local asset readiness now validates the declared `model.safetensors` weight size rather than requiring an exact total directory size, so tokenizer/cache metadata cannot cause a false missing-model result. This change also requires a ClawOS restart before the live readiness payload reflects it.
+- Default launch remains API-first; local behavior is explicit through `--local`. Do not claim that a fresh machine is fully proven offline until the restart and outbound-network-disabled drill is completed.
 - Qwen3 semantic quality gates pass, but CPU latency is not yet interactive: vector acceptance query P50/P95 is about `20.47/20.52s`; the full Paper RAG stress run took about `1,337.5s` (22.3 minutes). Keep heavy reranking opt-in until caching/incremental indexing or a faster device strategy is verified.
 - The model binaries and runtime reports are ignored local assets. Do not commit model weights, `.env`, databases, logs, caches, or generated reports.
 
 Handoff order for the next AI:
 
 1. Read this section and the top `2026-07-12` section in `PROJECT_ROADMAP.md`; do not re-scan the full repository first.
-2. Run a fresh full suite from `clawos`: `.\.venv\Scripts\python.exe -m unittest discover -s tests`, then restore the known `clawos/skills/skill_registry.jsonl` usage-count side effect if it changed.
-3. Add or verify an explicit local daily-use profile that selects Qwen + Chroma + Qwen3 embedding, while keeping reranker opt-in until latency improves. Do not silently rewrite the user's `.env`.
-4. Start the local stack, verify `/health`, local Qwen smoke, one document upload/citation/report/project/checkpoint flow, and confirm no cloud request is required in local mode.
+2. Restart only ClawOS and MTClaw so the existing working-tree fixes load; leave the already-loaded Qwen process running if healthy. Then verify an MTClaw plain completion has visible content and the ClawOS local-Qwen smoke reports all assets ready.
+3. Run a fresh full suite from `clawos`: `.\.venv\Scripts\python.exe -m unittest discover -s tests`. The final handoff run passed `261` tests with one skip. An immediately preceding run hit one transient Windows Chroma temporary-file lock, and the affected test then passed both in isolation and in the final full run; treat recurrence as a resource-release bug and do not hide it.
+4. Exercise `start_clawos.bat --local` from a fresh shell, then verify `/health`, one document upload/citation/report/project/checkpoint flow, and confirm no cloud request is required in local mode.
 5. Complete real browser visual QA for `/console` and update `design-qa.md` only with fresh post-fix screenshots.
 6. Prioritize retrieval caching/incremental indexing, backup/restore drills, and a multi-day personal-use burn-in before adding more feature surfaces.
 

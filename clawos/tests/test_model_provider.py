@@ -252,6 +252,18 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(vector["reranker_recall_k"], "${RERANKER_RECALL_K:-30}")
         self.assertEqual(vector["reranker_top_k"], "${RERANKER_TOP_K:-5}")
 
+    def test_local_daily_profile_is_qwen_embedding_first_and_reranker_opt_in(self):
+        config = json.loads((ROOT / "config.local.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(config["listen_host"], "127.0.0.1")
+        self.assertEqual(config["model_provider"]["provider"], "${MODEL_PROVIDER:-qwen}")
+        self.assertEqual(config["model_provider"]["base_url"], "${MODEL_BASE_URL:-http://127.0.0.1:8000/v1}")
+        self.assertEqual(config["model_provider"]["api_key"], "")
+        self.assertFalse(config["model_fallbacks"])
+        self.assertEqual(config["vector_store"]["provider"], "${VECTOR_PROVIDER:-chroma}")
+        self.assertEqual(config["vector_store"]["embedding_provider"], "${EMBEDDING_PROVIDER:-qwen3}")
+        self.assertEqual(config["vector_store"]["reranker_provider"], "${RERANKER_PROVIDER:-none}")
+
     def test_qwen_model_manifest_matches_provider_default(self):
         manifest_path = ROOT / "models" / "qwen3_5_9b_q4_k_m.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -633,6 +645,43 @@ class ModelProviderTests(unittest.TestCase):
         self.assertTrue(runtime_asset["ok"])
         self.assertIn(str(Path("runtime") / "llama-server.exe"), runtime_asset["path"])
         self.assertTrue(any(item["name"] == "local_qwen_runtime" for item in check["checks"]))
+
+    def test_maintenance_service_ignores_extra_model_directory_files(self):
+        import tempfile
+        from services.maintenance_service import MaintenanceService
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = root / "clawos"
+            models = base / "models"
+            models.mkdir(parents=True)
+            for name, local_path in (
+                ("qwen3_embedding_0_6b.json", "tools/models/embedding"),
+                ("qwen3_reranker_0_6b.json", "tools/models/reranker"),
+            ):
+                (models / name).write_text(json.dumps({
+                    "local_path": local_path,
+                    "total_local_size_bytes": 99,
+                    "model_safetensors_size_bytes": 4,
+                }), encoding="utf-8")
+                model_dir = root / local_path
+                model_dir.mkdir(parents=True)
+                (model_dir / "model.safetensors").write_bytes(b"1234")
+                (model_dir / "tokenizer.json").write_bytes(b"extra metadata")
+            (models / "qwen3_5_9b_q4_k_m.json").write_text(json.dumps({
+                "local_path": "tools/models/qwen.gguf",
+                "size_bytes": 4,
+            }), encoding="utf-8")
+            (root / "tools" / "models" / "qwen.gguf").write_bytes(b"1234")
+            runtime = root / "tools" / "llama.cpp" / "runtime"
+            runtime.mkdir(parents=True)
+            (runtime / "llama-server.exe").write_bytes(b"server")
+
+            status = MaintenanceService(
+                store=None, db_path=base / "memory.db", base_dir=base, config={}
+            ).local_model_assets()
+
+        self.assertTrue(status["ready"])
 
     def test_model_health_exposes_local_model_asset_status(self):
         import clawos_server as server

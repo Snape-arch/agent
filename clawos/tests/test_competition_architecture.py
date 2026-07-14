@@ -20,6 +20,19 @@ for path in (ROOT, ROOT / "scripts", MTCLAW_ROOT):
 
 
 class CompetitionArchitectureTests(unittest.TestCase):
+    def test_mtclaw_omits_empty_model_authorization_header(self):
+        server_path = next(REPO_ROOT.glob("MTClaw-*/function_router/server.py"))
+        source = server_path.read_text(encoding="utf-8")
+
+        self.assertIn('def model_headers(api_key: str = "", include_content_type: bool = False)', source)
+        self.assertIn('if str(api_key or "").strip():', source)
+        self.assertNotIn('"Authorization": f"Bearer {STATE.config.routing.api_key}"', source)
+        self.assertNotIn('"Authorization": f"Bearer {STATE.config.upstream.api_key}"', source)
+        self.assertIn('"chat_template_kwargs": {"enable_thinking": False}', source)
+        self.assertIn('proxied_request.setdefault(', source)
+        self.assertIn('STATE.config.upstream.base_url.rstrip("/")', source)
+        self.assertNotIn('"enable_thinking": False,', source)
+
     def test_vertical_acceptance_dataset_closes_seven_routes(self):
         from scripts.run_mtclaw_vertical_acceptance import run
 

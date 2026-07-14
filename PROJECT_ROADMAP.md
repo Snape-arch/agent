@@ -1,4 +1,4 @@
-﻿# ClawOS Project Roadmap
+# ClawOS Project Roadmap
 
 ## 2026-07-12 Handoff Plan
 
@@ -14,6 +14,15 @@ This decision was pressure-tested against four questions:
 4. **Should heavy semantic reranking become the default now?** No. Quality is excellent, but CPU query latency is about 20 seconds and the full Paper RAG stress gate takes about 22 minutes.
 
 ### P0 - Make the baseline operational
+
+Current implementation status (2026-07-12):
+
+- Explicit `--local` profile: implemented and covered by tests; Qwen, Chroma, and Qwen3-Embedding are selected, reranker remains opt-in, and `.env` is not modified.
+- Proxy/auth hardening: implemented; loopback bypasses environment proxies and MTClaw omits empty authorization headers.
+- Local model and ClawOS smoke: passed. MTClaw final visible-response regression is fixed in code but needs service restart and live revalidation.
+- Asset readiness false negative: fixed by validating core safetensors weight sizes; needs service restart for live verification.
+- Full suite: final run passed 261 tests with 1 skipped. One preceding run had a transient Windows Chroma file-lock cleanup error; the affected test then passed in isolation and in the final full run.
+- Remaining P0 work: restart/live revalidation, outbound-network-disabled startup, six workflow cases, and browser sign-off.
 
 Execute in this order:
 
