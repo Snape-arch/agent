@@ -26,10 +26,22 @@ class FakeFeishuClient:
         self._closed = False
 
     # ---- scripting helpers --------------------------------------------
-    def approve(self, instance_code: str) -> None:
+    def approve(self, instance_code: str, *, approver_open_ids=None) -> None:
+        """Approve an instance and record the ACTUAL approver open_ids.
+
+        v2 contract: the real approver(s) live on the instance timeline and are
+        read back via ``get_approval_instance``. When ``approver_open_ids`` is
+        omitted (v1-style call) the configured approver list is used so legacy
+        flows keep working; pass an explicit list (including ``[]``) to script a
+        specific / missing approver for the actual-approver gate tests.
+        """
         if instance_code in self.approval_states:
             self.approval_states[instance_code] = "APPROVED"
-            self.approval_meta.setdefault(instance_code, {})["decided"] = True
+            meta = self.approval_meta.setdefault(instance_code, {})
+            meta["decided"] = True
+            if approver_open_ids is None:
+                approver_open_ids = list(self.config.approver_open_ids or [])
+            meta["approver_open_ids"] = list(approver_open_ids)
 
     def reject(self, instance_code: str) -> None:
         if instance_code in self.approval_states:
@@ -66,7 +78,25 @@ class FakeFeishuClient:
         if instance_code not in self.approval_states:
             raise FeishuClientError(f"unknown instance {instance_code}", category=TERMINAL)
         status = self.approval_states[instance_code]
-        return {"instance_code": instance_code, "status": status, "code": 0, "msg": "success"}
+        approvers = list(self.approval_meta.get(instance_code, {}).get("approver_open_ids", []))
+        # Mirror the real Feishu payload shape: the authoritative approver
+        # identities appear in task_list / timeline, never in a client field.
+        task_list = [
+            {"open_id": oid, "user_id": "", "status": "APPROVED", "type": "APPROVE"}
+            for oid in approvers
+        ]
+        timeline = [
+            {"open_id": oid, "user_id": "", "type": "APPROVE"}
+            for oid in approvers
+        ]
+        return {
+            "instance_code": instance_code,
+            "status": status,
+            "task_list": task_list,
+            "timeline": timeline,
+            "code": 0,
+            "msg": "success",
+        }
 
     def send_message(self, *, receive_id_type, receive_id, msg_type, content, uuid):
         if self.fail_send_with:

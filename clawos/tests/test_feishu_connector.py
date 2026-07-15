@@ -270,5 +270,213 @@ class FeishuClientErrorClassificationTests(unittest.TestCase):
             self.assertEqual(ctx.exception.category, expected, resp)
 
 
+# ======================================================================
+# v2 RED-LIGHT SUITE (Phase 0)
+#
+# These tests encode the *target* behavior required by
+# WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md (v2). They are EXPECTED TO FAIL
+# against the current v1 draft — each one pins one of the 12 known blocking
+# defects (plan §3). Do NOT weaken or delete them to make the gate pass;
+# they turn green only after the corresponding fix lands in Phase 1–4.
+# ======================================================================
+import threading
+
+from services.feishu.feishu_client import TIMEOUT
+
+
+def _v2_config(td_db, **overrides):
+    """Build a FeishuConfig using the v2 contract field names.
+
+    Uses only kwargs the v2 config MUST expose. Until Phase 1 adds them this
+    raises TypeError, which correctly fails (red) the tests that need them.
+    """
+    base = dict(
+        app_id="cli_app",
+        app_secret="SUPER_SECRET_DO_NOT_LEAK",
+        tenant_id="tenant_1",
+        allowed_chat_ids=["oc_test"],
+        approval_definition_code="APP1",
+        approval_form_control_id="widget-body-1",
+        approval_initiator_open_id="ou_initiator",
+        approver_open_ids=["ou_approver"],
+        live=True,
+    )
+    base.update(overrides)
+    return FeishuConfig(**base)
+
+
+class FeishuV2ApprovalRequestContractTests(unittest.TestCase):
+    """Defects 1, 2, 8: approval instance request must carry initiator open_id,
+    the configured form control id, and a form body that exposes target /
+    content hash / source ids — and must NOT send an illegal plain-text title."""
+
+    def _make(self, td):
+        cfg = _v2_config(td + "/m.db")
+        store = MemoryStore(td + "/m.db")
+        fake = FakeFeishuClient(cfg)
+        svc = FeishuConnectorService(store, fake, cfg)
+        return svc, store, fake, cfg
+
+    def test_create_approval_passes_initiator_and_form_control(self):
+        with tempfile.TemporaryDirectory() as td:
+            svc, store, fake, cfg = self._make(td)
+            m1 = svc.receive_event(sample_event("om_1", text="行动项：发周报，负责人 Bob"))
+            summary = svc.generate_summary([m1["id"]])
+            ap = svc.create_approval(summary["id"], "chat", "oc_test", confirmed=True)
+            code = ap["feishu_instance_code"]
+            meta = fake.approval_meta[code]
+            # Defect 1: initiator open_id must be forwarded.
+            self.assertEqual(meta["open_id"], "ou_initiator")
+            # Defect 2: no illegal non-i18n title in v1 scope.
+            self.assertIsNone(meta["title"])
+            # Defect 8: form must use the configured control id and surface the
+            # send target, content hash, and source message ids.
+            form = meta["form"]
+            control_ids = {c.get("id") for c in form}
+            self.assertIn("widget-body-1", control_ids)
+            blob = json.dumps(form, ensure_ascii=False)
+            self.assertIn("oc_test", blob)
+            self.assertIn(ap["content_hash"], blob)
+
+
+class FeishuV2ActualApproverTests(unittest.TestCase):
+    """Defects 3, 4: the authorized approver must be read from the Feishu
+    instance task_list/timeline, never trusted from the client; and a missing /
+    empty verified approver must block the send."""
+
+    def _make(self, td, **cfg_over):
+        cfg = _v2_config(td + "/m.db", **cfg_over)
+        store = MemoryStore(td + "/m.db")
+        fake = FakeFeishuClient(cfg)
+        svc = FeishuConnectorService(store, fake, cfg)
+        return svc, store, fake, cfg
+
+    def _approved_flow(self, svc, fake, approver_open_ids):
+        m1 = svc.receive_event(sample_event("om_1", text="结论：上线"))
+        summary = svc.generate_summary([m1["id"]])
+        ap = svc.create_approval(summary["id"], "chat", "oc_test", confirmed=True)
+        # v2 fake API: the ACTUAL approver(s) come from the instance timeline.
+        fake.approve(ap["feishu_instance_code"], approver_open_ids=approver_open_ids)
+        svc.sync_approval(ap["id"])
+        return ap
+
+    def test_unauthorized_actual_approver_blocks_send(self):
+        with tempfile.TemporaryDirectory() as td:
+            svc, store, fake, cfg = self._make(td)
+            ap = self._approved_flow(svc, fake, ["ou_hacker"])
+            with self.assertRaises(PermissionError):
+                svc.send_after_approval(ap["id"], confirmed=True)
+            self.assertEqual(len(fake.send_calls), 0)
+
+    def test_missing_actual_approver_blocks_send(self):
+        with tempfile.TemporaryDirectory() as td:
+            svc, store, fake, cfg = self._make(td)
+            ap = self._approved_flow(svc, fake, [])
+            with self.assertRaises(PermissionError):
+                svc.send_after_approval(ap["id"], confirmed=True)
+            self.assertEqual(len(fake.send_calls), 0)
+
+    def test_authorized_actual_approver_persisted(self):
+        with tempfile.TemporaryDirectory() as td:
+            svc, store, fake, cfg = self._make(td)
+            ap = self._approved_flow(svc, fake, ["ou_approver"])
+            refreshed = svc.get_approval(ap["id"])
+            self.assertIn("ou_approver", refreshed.get("verified_approver_open_ids", []))
+
+
+class FeishuV2OutboundWhitelistTests(unittest.TestCase):
+    """Defect 7: outbound target must be enforced against the whitelist at
+    approval-create time (and again before send)."""
+
+    def test_non_whitelisted_chat_target_rejected_at_create(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg = _v2_config(td + "/m.db")
+            store = MemoryStore(td + "/m.db")
+            fake = FakeFeishuClient(cfg)
+            svc = FeishuConnectorService(store, fake, cfg)
+            m1 = svc.receive_event(sample_event("om_1", text="结论"))
+            summary = svc.generate_summary([m1["id"]])
+            with self.assertRaises((PermissionError, ValueError)):
+                svc.create_approval(summary["id"], "chat", "oc_not_whitelisted", confirmed=True)
+
+
+class FeishuV2DataMinimizationTests(unittest.TestCase):
+    """Defect 9: non-whitelisted inbound events must not persist body or sender."""
+
+    def test_rejected_event_stores_no_body_or_sender(self):
+        with tempfile.TemporaryDirectory() as td:
+            svc, store, fake, cfg = make_service(td + "/m.db")
+            svc.receive_event(sample_event("om_x", chat_id="oc_other", text="secret body", sender="ou_secret"))
+            with store._conn() as c:
+                row = c.execute(
+                    "SELECT text, sender_id, processed_status FROM feishu_messages WHERE message_id=?",
+                    ("om_x",),
+                ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertEqual(row["processed_status"], "rejected_whitelist")
+            self.assertEqual(row["text"], "")
+            self.assertEqual(row["sender_id"], "")
+
+
+class FeishuV2OutcomeUnknownTests(unittest.TestCase):
+    """Defect 11: a send timeout must land in outcome_unknown and must never be
+    auto-resent on a second call."""
+
+    def _approved(self, svc, fake):
+        m1 = svc.receive_event(sample_event("om_1", text="结论"))
+        summary = svc.generate_summary([m1["id"]])
+        ap = svc.create_approval(summary["id"], "chat", "oc_test", confirmed=True, approver_id="ou_approver")
+        fake.approve(ap["feishu_instance_code"])
+        svc.sync_approval(ap["id"])
+        return ap
+
+    def test_timeout_marks_outcome_unknown_no_auto_resend(self):
+        with tempfile.TemporaryDirectory() as td:
+            svc, store, fake, cfg = make_service(td + "/m.db")
+            ap = self._approved(svc, fake)
+            fake.fail_send_with = TIMEOUT
+            d = svc.send_after_approval(ap["id"], confirmed=True)
+            self.assertEqual(d["status"], "outcome_unknown")
+            calls_after_first = len(fake.send_calls)
+            # A retry must not silently re-send an outcome_unknown dispatch.
+            fake.fail_send_with = None
+            d2 = svc.send_after_approval(ap["id"], confirmed=True)
+            self.assertEqual(d2["status"], "outcome_unknown")
+            self.assertEqual(len(fake.send_calls), calls_after_first)
+
+
+class FeishuV2ConcurrencyTests(unittest.TestCase):
+    """Defect 11: two concurrent senders must produce exactly one client call."""
+
+    def test_concurrent_send_calls_client_once(self):
+        with tempfile.TemporaryDirectory() as td:
+            svc, store, fake, cfg = make_service(td + "/m.db")
+            m1 = svc.receive_event(sample_event("om_1", text="结论"))
+            summary = svc.generate_summary([m1["id"]])
+            ap = svc.create_approval(summary["id"], "chat", "oc_test", confirmed=True, approver_id="ou_approver")
+            fake.approve(ap["feishu_instance_code"])
+            svc.sync_approval(ap["id"])
+
+            barrier = threading.Barrier(2)
+            results = []
+
+            def worker():
+                barrier.wait()
+                try:
+                    results.append(svc.send_after_approval(ap["id"], confirmed=True))
+                except Exception as exc:  # noqa: BLE001 - record for assertion
+                    results.append(exc)
+
+            threads = [threading.Thread(target=worker) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            self.assertEqual(len(fake.send_calls), 1)
+            dispatch_ids = {r["id"] for r in results if isinstance(r, dict)}
+            self.assertEqual(len(dispatch_ids), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
