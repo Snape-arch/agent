@@ -1177,6 +1177,14 @@ class FrontendStaticTests(unittest.TestCase):
             "academySwitchReaderTab",
             "academyToggleResearchOps",
             "academyExportReaderNotes",
+            "academySetPdfSource",
+            "academyToggleReaderFullscreen",
+            "academyJumpPaperSection",
+            "academySetupReaderNoteDraft",
+            "academyDeleteReaderNote",
+            "academySetupReaderControls",
+            "frame.style.transform",
+            "requestFullscreen",
             "history:",
             "domain:",
             "era:",
@@ -1191,8 +1199,18 @@ class FrontendStaticTests(unittest.TestCase):
             ".ingest-studio",
             ".quiz-studio",
             ".fluent-icon",
+            ".paper-empty-state[hidden]",
+            ".reader-note-delete",
         ):
             self.assertIn(token, site_css)
+
+        empty_state = paper.split('id="academyReaderEmpty"', 1)[1].split('</div>', 1)[0]
+        self.assertNotIn("clawos-logo", empty_state)
+        self.assertIn('id="academyReaderFullscreen"', paper)
+        self.assertIn('id="academyZoomFit"', paper)
+        self.assertIn('id="academySaveReaderNote"', paper)
+        self.assertIn('id="academyReaderNoteStatus"', paper)
+        self.assertNotIn('id="academyZoomIn" type="button" onclick=', paper)
 
         combined = "\n".join(
             self.read_page(name)

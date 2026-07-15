@@ -31,13 +31,13 @@
 
     <section class="paper-reader-workspace">
       <aside class="reader-outline" aria-label="论文目录">
-        <div class="reader-pane-head"><div><span>Outline</span><b>论文目录</b></div><button class="icon-button" type="button" title="折叠目录"><span class="fluent-icon" aria-hidden="true">&#xE70D;</span></button></div>
+        <div class="reader-pane-head"><div><span>Outline</span><b>论文目录</b></div><button class="icon-button" id="academyOutlineToggle" type="button" title="折叠目录" aria-label="折叠论文目录" aria-expanded="true"><span class="fluent-icon" aria-hidden="true">&#xE70D;</span></button></div>
         <nav class="reader-outline-list">
-          <button class="active" type="button"><span>01</span><b>摘要与问题</b></button>
-          <button type="button"><span>02</span><b>相关工作</b></button>
-          <button type="button"><span>03</span><b>方法与机制</b></button>
-          <button type="button"><span>04</span><b>实验与证据</b></button>
-          <button type="button"><span>05</span><b>局限与启发</b></button>
+          <button class="active" type="button" data-paper-page="1"><span>01</span><b>摘要与问题</b></button>
+          <button type="button" data-paper-page="2"><span>02</span><b>相关工作</b></button>
+          <button type="button" data-paper-page="4"><span>03</span><b>方法与机制</b></button>
+          <button type="button" data-paper-page="7"><span>04</span><b>实验与证据</b></button>
+          <button type="button" data-paper-page="10"><span>05</span><b>局限与启发</b></button>
         </nav>
         <div class="reader-progress-card"><span>阅读进度</span><b id="academyReaderProgress">未开始</b><div><i></i></div><small>批注与笔记仅在你主动保存时写入知识库。</small></div>
       </aside>
@@ -45,10 +45,11 @@
       <section class="paper-reader-main reader-canvas-pane">
         <div class="paper-toolbar" aria-label="论文阅读和批注工具">
           <div class="toolbar-group">
-            <button class="tool-button" type="button" onclick="academyReaderZoom(-0.1)" title="缩小"><span class="fluent-icon" aria-hidden="true">&#xE71F;</span></button>
-            <span id="academyReaderZoom">100%</span>
-            <button class="tool-button" type="button" onclick="academyReaderZoom(0.1)" title="放大"><span class="fluent-icon" aria-hidden="true">&#xE8A3;</span></button>
-            <button class="tool-button text-tool" type="button" onclick="academyReaderFit()" title="适合宽度">适合宽度</button>
+            <button class="tool-button" id="academyZoomOut" type="button" title="缩小" aria-label="缩小论文"><span class="fluent-icon" aria-hidden="true">&#xE71F;</span></button>
+            <span id="academyReaderZoom" aria-live="polite">100%</span>
+            <button class="tool-button" id="academyZoomIn" type="button" title="放大" aria-label="放大论文"><span class="fluent-icon" aria-hidden="true">&#xE8A3;</span></button>
+            <button class="tool-button text-tool" id="academyZoomFit" type="button" title="适合宽度">适合宽度</button>
+            <button class="tool-button" id="academyReaderFullscreen" type="button" title="全屏阅读" aria-label="全屏阅读"><span class="fluent-icon" aria-hidden="true">&#xE740;</span></button>
           </div>
           <div class="toolbar-group annotation-tools">
             <button class="tool-button" id="academyPenToggle" type="button" title="画笔"><span class="fluent-icon" aria-hidden="true">&#xE76D;</span></button>
@@ -59,9 +60,8 @@
           </div>
           <button class="tool-button save-tool" id="academySaveAnnotation" type="button"><span class="fluent-icon" aria-hidden="true">&#xE74E;</span>保存批注</button>
         </div>
-        <div class="paper-viewer" id="academyPaperViewer">
+        <div class="paper-viewer" id="academyPaperViewer" tabindex="0" aria-label="PDF 论文阅读区；可使用 Ctrl 加号、减号和 0 调整缩放">
           <div class="paper-empty-state" id="academyReaderEmpty">
-            <img src="/assets/brand/clawos-logo-dark.png" alt="">
             <b>打开一篇 PDF 开始精读</b>
             <p>原文件会直接显示在阅读区；解析、报告与知识库写入均由你主动触发。</p>
             <label class="pill solid dark"><span class="fluent-icon" aria-hidden="true">&#xE8E5;</span>选择文件<input type="file" accept=".pdf" onchange="academyMirrorPaperFile(this)"></label>
@@ -93,7 +93,8 @@
         <div class="reader-tab-panel" data-reader-panel="notes">
           <label>阅读笔记<textarea id="academyReaderNote" placeholder="记录观点、疑问、反例或可复现实验。"></textarea></label>
           <label>标签<input id="academyReaderNoteTag" placeholder="例如：方法 / 实验 / 局限"></label>
-          <button class="pill solid dark" type="button" onclick="academyAddReaderNote()"><span class="fluent-icon" aria-hidden="true">&#xE710;</span>加入笔记</button>
+          <button class="pill solid dark" id="academySaveReaderNote" type="button"><span class="fluent-icon" aria-hidden="true">&#xE710;</span>加入笔记</button>
+          <p class="reader-note-status" id="academyReaderNoteStatus" role="status" aria-live="polite">笔记会自动保留草稿，点击“加入笔记”后写入本地阅读记录。</p>
           <div class="reader-note-list" id="academyReaderNotes"></div>
         </div>
       </aside>
