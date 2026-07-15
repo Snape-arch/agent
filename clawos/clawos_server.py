@@ -92,6 +92,7 @@ g_agent_orchestration_service: AgentOrchestrationService | None = None
 g_coding_workflow_service: CodingWorkflowService | None = None
 g_office_productivity_service: OfficeProductivityService | None = None
 g_feishu_connector_service: Any = None
+g_feishu_long_connect: Any = None  # FeishuLongConnectManager, started only when live
 g_background_worker_task: asyncio.Task | None = None
 g_background_worker_status: dict[str, Any] = {
     "running": False,
@@ -1291,6 +1292,16 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Reflection Engine init skipped: {e}")
         g_reflection_engine = None
 
+    try:
+        feishu_lc = start_feishu_long_connect()
+        logger.info(
+            "Feishu long-connect | started=%s reason=%s",
+            feishu_lc.get("started"),
+            feishu_lc.get("reason"),
+        )
+    except Exception as e:
+        logger.warning(f"Feishu long-connect start skipped: {e}")
+
     provider_state = model_provider_status(config)
     if not provider_state["configured"]:
         logger.warning(
@@ -1307,6 +1318,10 @@ async def lifespan(app: FastAPI):
         g_mtclaw_adapter.enabled,
     )
     yield
+    try:
+        stop_feishu_long_connect()
+    except Exception:
+        pass
     global g_background_worker_task
     if g_background_worker_task and not g_background_worker_task.done():
         g_background_worker_task.cancel()
@@ -2624,7 +2639,28 @@ async def api_feishu_event(request: Request):
         event = await request.json()
     except Exception:
         raise HTTPException(400, "invalid event payload")
+
+    # 1) URL verification handshake: echo the challenge, store nothing.
+    if isinstance(event, dict) and event.get("type") == "url_verification":
+        return JSONResponse({"challenge": event.get("challenge", "")})
+
     service = get_feishu_connector_service()
+    cfg = service.config
+
+    # 2) Webhook source verification (spec defect 5). In webhook mode with a
+    #    configured verification token, reject any event whose token does not
+    #    match BEFORE it can be parsed/stored. Long-connect events are already
+    #    authenticated by the SDK handshake, so this gate is webhook-only.
+    if getattr(cfg, "event_mode", "") == "webhook" and getattr(cfg, "verification_token", ""):
+        header = event.get("header") if isinstance(event, dict) else None
+        token = ""
+        if isinstance(header, dict):
+            token = str(header.get("token") or "")
+        if not token:
+            token = str(event.get("token") or "") if isinstance(event, dict) else ""
+        if token != cfg.verification_token:
+            raise HTTPException(403, "invalid verification token")
+
     try:
         record = service.receive_event(event, received_via="http")
     except (ValueError, PermissionError, RuntimeError) as exc:
@@ -3868,6 +3904,56 @@ def get_feishu_connector_service() -> Any:
         client = FeishuClient(cfg) if cfg.live else None
         g_feishu_connector_service = FeishuConnectorService(g_memory_store, client, cfg)
     return g_feishu_connector_service
+
+
+def start_feishu_long_connect() -> dict:
+    """Start the official long-connection only when the connector is live and
+    ready. With FEISHU_LIVE=false (default) this stays dormant and returns the
+    reason, so no real tenant connection is ever opened without authorization.
+
+    Returns a small status dict for logging / health.
+    """
+    global g_feishu_long_connect
+    from services.feishu.config import EVENT_MODE_LONG_CONNECTION
+    from services.feishu.long_connect import (
+        FeishuLongConnectError,
+        FeishuLongConnectManager,
+    )
+
+    service = get_feishu_connector_service()
+    cfg = service.config
+    if not cfg.live:
+        return {"started": False, "reason": "FEISHU_LIVE is false (dormant)"}
+    if cfg.event_mode != EVENT_MODE_LONG_CONNECTION:
+        return {"started": False, "reason": f"event_mode={cfg.event_mode}"}
+    ready, missing = cfg.live_readiness()
+    if not ready:
+        return {"started": False, "reason": f"missing config: {','.join(missing)}"}
+
+    def _on_message(event: dict) -> None:
+        try:
+            service.receive_event(event, received_via="long_connect")
+        except Exception:
+            # Non-whitelist / duplicate / validation errors must not drop the link.
+            pass
+
+    if g_feishu_long_connect is None:
+        g_feishu_long_connect = FeishuLongConnectManager(cfg, _on_message)
+    try:
+        g_feishu_long_connect.start()
+    except FeishuLongConnectError as exc:
+        return {"started": False, "reason": str(exc)}
+    return {"started": g_feishu_long_connect.running, "reason": "ok"}
+
+
+def stop_feishu_long_connect() -> None:
+    global g_feishu_long_connect
+    if g_feishu_long_connect is not None:
+        try:
+            g_feishu_long_connect.stop()
+        except Exception:
+            pass
+        g_feishu_long_connect = None
 
 
 def get_autonomous_subagent_service() -> AutonomousSubagentService:

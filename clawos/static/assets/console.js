@@ -2696,13 +2696,18 @@ async function loadFeishuCenter() {
     const cfg = (health && health.config) || {};
     const cli = (health && health.client) || {};
     if ($("feishuHealth")) $("feishuHealth").innerHTML = table(["项", "值"], [
-      ["实时发送(live)", { html: statusBadge(health && health.live ? "ok" : "pending") }],
+      ["事件模式(event_mode)", cfg.event_mode || "—"],
+      ["实时发送(live)", { html: statusBadge(cfg.live ? "ok" : "pending") }],
+      ["实时就绪(live_ready)", { html: statusBadge(cfg.live_ready ? "ok" : "pending") }],
       ["App 配置", cfg.configured ? "已配置" : "未配置(env)"],
       ["Client 连接", cli.connection || (health && health.has_client ? "已连接" : "无")],
-      ["审批定义码", cfg.approval_definition_code || "—"],
-      ["允许聊天数", (cfg.allowed_chat_ids || []).length],
-      ["授权审批人数", (cfg.allowed_user_ids || []).length],
-      ["审批超时(分)", cfg.approval_timeout_minutes],
+      ["审批定义码", cfg.approval_code_present ? "已配置" : "—"],
+      ["审批表单控件", cfg.approval_form_control_present ? "已配置" : "—"],
+      ["发起人 open_id", cfg.approval_initiator_present ? "已配置" : "—"],
+      ["允许聊天数", cfg.whitelist_chats ?? 0],
+      ["允许目标数", cfg.whitelist_target_open_ids ?? 0],
+      ["授权审批人数", cfg.approvers ?? 0],
+      ["消息留存(天)", cfg.message_retention_days ?? "—"],
     ]);
     if ($("feishuMessagesTable")) $("feishuMessagesTable").innerHTML = table(["聊天", "发送者", "类型", "内容", "接收时间", "状态"], (messages || []).map(m => [m.chat_id, m.sender_id, m.message_type, m.text, m.create_time, { html: statusBadge(m.processed_status) }]));
     if ($("feishuSummariesTable")) $("feishuSummariesTable").innerHTML = table(["ID", "主题", "结论数", "行动项数", "来源消息", "状态", "创建时间"], (summaries || []).map(s => [s.id, s.topic, (s.conclusions || []).length, (s.action_items || []).length, (s.source_message_ids || []).join(","), { html: statusBadge(s.status) }, s.created_at]));

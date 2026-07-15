@@ -14,3 +14,4 @@ openpyxl>=3.1.0
 python-pptx>=0.6.23
 paddleocr>=2.7.0
 faster-whisper>=1.2.0
+lark-oapi>=1.7.1

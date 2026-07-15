@@ -22,7 +22,7 @@ import uuid as _uuid
 from datetime import datetime, timedelta, timezone
 
 from .config import FeishuConfig
-from .feishu_client import FeishuClient, FeishuClientError
+from .feishu_client import FeishuClient, FeishuClientError, TIMEOUT
 
 # ---- approval statuses ----
 APPROVAL_PENDING = "pending"
@@ -37,6 +37,7 @@ DISP_SENDING = "sending"
 DISP_SENT = "sent"
 DISP_FAILED_RETRYABLE = "failed_retryable"
 DISP_FAILED_TERMINAL = "failed_terminal"
+DISP_OUTCOME_UNKNOWN = "outcome_unknown"
 DISP_DRY_RUN = "dry_run"
 
 
@@ -185,6 +186,45 @@ def _heuristic_summarize(messages: list[dict]) -> dict:
     }
 
 
+def _extract_actual_approvers(resp: dict) -> list:
+    """Collect the real approver open_ids from a Feishu approval instance.
+
+    The authoritative approver identities live on the instance ``task_list``
+    and ``timeline`` (approve actions), never in a client-supplied field. We
+    take open_ids from APPROVE tasks that are actually approved plus APPROVE
+    timeline entries, de-duplicated and order-preserving.
+    """
+    approvers: list = []
+    seen: set = set()
+
+    def _add(open_id):
+        oid = str(open_id or "").strip()
+        if oid and oid not in seen:
+            seen.add(oid)
+            approvers.append(oid)
+
+    if not isinstance(resp, dict):
+        return approvers
+    for task in resp.get("task_list") or []:
+        if not isinstance(task, dict):
+            continue
+        ttype = str(task.get("type") or "").upper()
+        status = str(task.get("status") or "").upper()
+        if ttype and ttype != "APPROVE":
+            continue
+        if status and status not in ("APPROVED", "DONE"):
+            continue
+        _add(task.get("open_id"))
+    for entry in resp.get("timeline") or []:
+        if not isinstance(entry, dict):
+            continue
+        etype = str(entry.get("type") or "").upper()
+        if etype and etype not in ("APPROVE", "PASS"):
+            continue
+        _add(entry.get("open_id"))
+    return approvers
+
+
 class FeishuConnectorService:
     def __init__(
         self,
@@ -206,83 +246,14 @@ class FeishuConnectorService:
 
     # ---- schema --------------------------------------------------------
     def _init_db(self):
+        # Table creation/upgrade is owned by the authoritative migration in
+        # MaintenanceService (2026_07_feishu_connector), not hidden here. We
+        # delegate to the same shared helper so direct construction (and tests)
+        # still guarantees the schema exists without re-implementing the DDL.
+        from .schema import create_feishu_tables
+
         with self.store._conn() as c:
-            c.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS feishu_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tenant_id TEXT NOT NULL DEFAULT '',
-                    event_id TEXT NOT NULL DEFAULT '',
-                    message_id TEXT NOT NULL DEFAULT '',
-                    chat_id TEXT NOT NULL DEFAULT '',
-                    sender_id TEXT NOT NULL DEFAULT '',
-                    message_type TEXT NOT NULL DEFAULT 'text',
-                    text TEXT NOT NULL DEFAULT '',
-                    create_time TEXT NOT NULL DEFAULT '',
-                    processed_status TEXT NOT NULL DEFAULT 'received',
-                    summary_json TEXT NOT NULL DEFAULT '{}',
-                    received_at TEXT DEFAULT (datetime('now')),
-                    UNIQUE(tenant_id, event_id),
-                    UNIQUE(tenant_id, message_id)
-                );
-                CREATE TABLE IF NOT EXISTS feishu_summaries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tenant_id TEXT NOT NULL DEFAULT '',
-                    title TEXT NOT NULL DEFAULT '',
-                    topic TEXT NOT NULL DEFAULT '',
-                    conclusions TEXT NOT NULL DEFAULT '[]',
-                    action_items TEXT NOT NULL DEFAULT '[]',
-                    owner_candidates TEXT NOT NULL DEFAULT '[]',
-                    deadline_candidates TEXT NOT NULL DEFAULT '[]',
-                    open_questions TEXT NOT NULL DEFAULT '[]',
-                    source_message_ids TEXT NOT NULL DEFAULT '[]',
-                    status TEXT NOT NULL DEFAULT 'draft',
-                    created_at TEXT DEFAULT (datetime('now'))
-                );
-                CREATE TABLE IF NOT EXISTS feishu_approvals (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tenant_id TEXT NOT NULL DEFAULT '',
-                    summary_id INTEGER NOT NULL DEFAULT 0,
-                    feishu_instance_code TEXT NOT NULL DEFAULT '',
-                    target_type TEXT NOT NULL DEFAULT 'chat',
-                    target_id TEXT NOT NULL DEFAULT '',
-                    inbound_msg_type TEXT NOT NULL DEFAULT 'text',
-                    outbound_msg_type TEXT NOT NULL DEFAULT 'text',
-                    body_text TEXT NOT NULL DEFAULT '',
-                    source_message_ids TEXT NOT NULL DEFAULT '[]',
-                    content_hash TEXT NOT NULL DEFAULT '',
-                    idempotency_key TEXT NOT NULL DEFAULT '',
-                    approver_id TEXT NOT NULL DEFAULT '',
-                    status TEXT NOT NULL DEFAULT 'pending',
-                    reason TEXT NOT NULL DEFAULT '',
-                    used INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT DEFAULT (datetime('now')),
-                    created_at_epoch INTEGER NOT NULL DEFAULT 0,
-                    decided_at TEXT DEFAULT '',
-                    expires_at_epoch INTEGER NOT NULL DEFAULT 0,
-                    UNIQUE(idempotency_key)
-                );
-                CREATE TABLE IF NOT EXISTS feishu_dispatches (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    approval_id INTEGER NOT NULL DEFAULT 0,
-                    idempotency_key TEXT NOT NULL DEFAULT '',
-                    target_type TEXT NOT NULL DEFAULT 'chat',
-                    target_id TEXT NOT NULL DEFAULT '',
-                    msg_type TEXT NOT NULL DEFAULT 'text',
-                    status TEXT NOT NULL DEFAULT 'pending_approval',
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    feishu_message_id TEXT NOT NULL DEFAULT '',
-                    api_code INTEGER NOT NULL DEFAULT 0,
-                    api_msg TEXT NOT NULL DEFAULT '',
-                    trace_id TEXT NOT NULL DEFAULT '',
-                    error_category TEXT NOT NULL DEFAULT '',
-                    created_at TEXT DEFAULT (datetime('now')),
-                    updated_at TEXT DEFAULT (datetime('now')),
-                    UNIQUE(idempotency_key),
-                    FOREIGN KEY(approval_id) REFERENCES feishu_approvals(id)
-                );
-                """
-            )
+            create_feishu_tables(c)
 
     # ---- receive -------------------------------------------------------
     def receive_event(self, event: dict, *, received_via: str = "http") -> dict:
@@ -291,6 +262,12 @@ class FeishuConnectorService:
         tenant_id = self.config.tenant_id
         whitelisted = self.config.is_whitelisted_chat(chat_id)
         processed_status = "received" if whitelisted else "rejected_whitelist"
+
+        if not whitelisted:
+            # Data minimization (spec defect 9): events from non-whitelisted
+            # chats must not persist message body or sender identity. Retain
+            # only the routing/dedup identifiers needed to reject idempotently.
+            parsed = {**parsed, "text": "", "sender_id": ""}
 
         try:
             row = self._insert_message(tenant_id, parsed, processed_status=processed_status, received_via=received_via)
@@ -450,9 +427,17 @@ class FeishuConnectorService:
     ) -> dict:
         if confirmed is not True:
             raise PermissionError("confirmed=true is required to create a Feishu approval")
-        summary = self.get_summary(summary_id)
         if not target_id:
             raise ValueError("target_id is required")
+        # Defect 7: enforce the outbound whitelist at approval-create time, BEFORE
+        # any summary lookup, so a non-whitelisted target can never enter the
+        # approval pipeline (and the API surfaces it as a 409, not a 400 from a
+        # missing summary). It is re-checked again immediately before send.
+        if not self.config.is_whitelisted_target(target_type, target_id):
+            raise PermissionError(
+                f"outbound target not whitelisted: {target_type}:{target_id}"
+            )
+        summary = self.get_summary(summary_id)
         body_text = self._build_body(summary)
         content_hash = _sha256(body_text + "|" + json.dumps(summary["source_message_ids"]))
         idempotency_key = f"feishu-send-{summary_id}-{target_type}-{target_id}"
@@ -485,11 +470,38 @@ class FeishuConnectorService:
 
         if self.config.live and self.client:
             try:
-                form = [{"id": "summary", "type": "textarea", "value": body_text}]
+                # Defect 8: the form must use the configured control id and
+                # surface the send target, the frozen content hash, and the
+                # source message ids so the approver sees exactly what will be
+                # sent. Defect 2: do NOT pass an illegal plain-text title.
+                control_id = self.config.approval_form_control_id or "widget-body-1"
+                form = [
+                    {
+                        "id": control_id,
+                        "type": "textarea",
+                        "value": body_text,
+                    },
+                    {
+                        "id": "widget-target",
+                        "type": "input",
+                        "value": f"{target_type}:{target_id}",
+                    },
+                    {
+                        "id": "widget-content-hash",
+                        "type": "input",
+                        "value": content_hash,
+                    },
+                    {
+                        "id": "widget-source-ids",
+                        "type": "input",
+                        "value": json.dumps(summary["source_message_ids"], ensure_ascii=False),
+                    },
+                ]
                 resp = self.client.create_approval_instance(
                     approval_code=self.config.approval_definition_code,
                     form=form,
-                    title=f"ClawOS outbound: {summary.get('topic', '')[:40]}",
+                    title=None,
+                    open_id=self.config.approval_initiator_open_id or None,
                     uuid=idempotency_key,
                 )
                 code = resp.get("instance_code") or ""
@@ -547,21 +559,28 @@ class FeishuConnectorService:
             "REJECTED": APPROVAL_REJECTED,
         }.get(status, APPROVAL_PENDING)
 
-        # Enforce approver allowlist at the moment approval is granted.
-        if new_status == APPROVAL_APPROVED and self.config.allowed_user_ids:
-            if approval["approver_id"] and approval["approver_id"] not in self.config.allowed_user_ids:
+        # Defects 3/4: the authoritative approver identities come ONLY from the
+        # instance task_list/timeline, never from a client-supplied field. Read
+        # and persist them, then gate approval on the authorized approver set.
+        actual_approvers = _extract_actual_approvers(resp)
+        reason = f"feishu status {status} -> {new_status}"
+        if new_status == APPROVAL_APPROVED:
+            authorized = [a for a in actual_approvers if self.config.is_authorized_approver(a)]
+            if self.config.approver_open_ids and not authorized:
                 new_status = APPROVAL_REJECTED
+                reason = "no authorized approver found on instance timeline"
 
         with self.store._conn() as c:
             c.execute(
-                "UPDATE feishu_approvals SET status=?, decided_at=? WHERE id=?",
-                (new_status, _iso_now(), approval_id),
+                "UPDATE feishu_approvals SET status=?, decided_at=?, verified_approver_open_ids=? WHERE id=?",
+                (new_status, _iso_now(), json.dumps(actual_approvers, ensure_ascii=False), approval_id),
             )
         self._audit(
             action="feishu.approval.decision",
             decision="allow" if new_status == APPROVAL_APPROVED else "deny",
             resource_type="feishu_approval", resource_id=str(approval_id),
-            reason=f"feishu status {status} -> {new_status}",
+            reason=reason,
+            details={"verified_approver_open_ids": actual_approvers},
         )
         return self.get_approval(approval_id)
 
@@ -579,8 +598,17 @@ class FeishuConnectorService:
             raise PermissionError("approval already used; re-approval required to send again")
         if _now_epoch() > int(approval["expires_at_epoch"] or 0):
             raise PermissionError("approval expired; re-approval required")
-        if self.config.allowed_user_ids and approval["approver_id"] and approval["approver_id"] not in self.config.allowed_user_ids:
-            raise PermissionError("approver is not in the authorized allowlist")
+        # Defects 3/4: the send gate trusts ONLY the approver identities verified
+        # from the Feishu instance timeline (persisted at sync time), intersected
+        # with the configured authorized approver set. A missing / unauthorized
+        # actual approver blocks the send even if the row is marked approved.
+        verified = approval.get("verified_approver_open_ids") or []
+        authorized = [a for a in verified if self.config.is_authorized_approver(a)]
+        if self.config.approver_open_ids and not authorized:
+            raise PermissionError("no verified authorized approver; send blocked")
+        # Re-check the outbound whitelist immediately before sending (defect 7).
+        if not self.config.is_whitelisted_target(approval["target_type"], approval["target_id"]):
+            raise PermissionError("outbound target not whitelisted; send blocked")
 
         frozen_body = approval["body_text"]
         if new_body is not None and new_body != frozen_body:
@@ -627,8 +655,17 @@ class FeishuConnectorService:
                 )
             return self.get_dispatch(dispatch_id)
         except FeishuClientError as exc:
-            retryable = exc.category in ("rate_limit", "timeout", "network")
-            status = DISP_FAILED_RETRYABLE if retryable else DISP_FAILED_TERMINAL
+            if exc.category == TIMEOUT:
+                # Defect 11: a timeout means the outcome is genuinely unknown —
+                # the call may or may not have delivered. Park it as
+                # outcome_unknown, do NOT mark the approval used (so a human can
+                # reconcile), and NEVER auto-resend on a replay/retry. A second
+                # send_after_approval call hits the existing-dispatch guard and
+                # returns the same outcome_unknown status with zero new calls.
+                status = DISP_OUTCOME_UNKNOWN
+            else:
+                retryable = exc.category in ("rate_limit", "network")
+                status = DISP_FAILED_RETRYABLE if retryable else DISP_FAILED_TERMINAL
             self._update_dispatch(dispatch_id, status=status, error_category=exc.category, api_msg=str(exc))
             self._audit(
                 action="feishu.dispatch.fail", decision="deny",
@@ -750,6 +787,7 @@ class FeishuConnectorService:
     def _approval_to_dict(self, row) -> dict:
         d = dict(row)
         d["source_message_ids"] = _json_loads(d.get("source_message_ids"), [])
+        d["verified_approver_open_ids"] = _json_loads(d.get("verified_approver_open_ids"), [])
         d["used"] = int(d.get("used") or 0)
         return d
 

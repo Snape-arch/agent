@@ -1,111 +1,43 @@
 # Project Context
 
-This is the concise handoff source of truth for ClawOS. The complete historical
-handoff log through 2026-07-14 is archived in
-`clawos/docs/PROJECT_HISTORY_2026-07-14.md`.
+这是 ClawOS 当前状态的简洁交接入口。2026-07-14 以前的详细记录已归档到 `clawos/docs/PROJECT_HISTORY_2026-07-14.md`。
 
-## Current state — 2026-07-15
+## 当前状态（2026-07-15）
 
-- Active branch: `codex/p0-demo-polish`.
-- Current local commit: `68c1a30`; the locally known
-  `origin/codex/p0-demo-polish` points to the same commit.
-- Latest full regression after the merge: `280 tests OK`, `1 skipped`.
-- The working local Qwen profile, Chroma/Qwen3 embedding assets, MTClaw route,
-  office workflows, Academy surfaces, and five real-evidence chains remain the
-  current verified product baseline.
-- Competition evidence is `5 / 5` for the repository/public-input campaign.
-  Physical target-device acceptance and a consented live enterprise connector
-  tenant remain unverified.
+- 当前分支：`codex/p0-demo-polish`。
+- 当前提交：`add8084`；相对 `origin/codex/p0-demo-polish` 超前 4 个提交。
+- 工作区有 WorkBuddy 未提交的飞书连接器 v2 改动，必须保护现场，禁止 reset、覆盖或批量暂存。
+- 独立聚焦验证：82 个测试通过；前端 JavaScript 语法检查和 `git diff --check` 通过。WorkBuddy 曾记录全量回归 316 个通过、1 个跳过；该全量结果尚未在当前现场独立复跑。
+- 已验证的产品基线仍包括本地 Qwen、Chroma/Qwen3 向量能力、MTClaw 路由、办公工作流、Academy 页面和五条真实证据链。物理目标设备验收及企业连接器真实租户验收尚未完成。
 
-## Feishu connector draft review — 2026-07-15
+## 飞书连接器 v2
 
-- WorkBuddy has produced an uncommitted Feishu connector draft covering the
-  service, client, fake client, server routes, console surface, migration entry,
-  and 15 focused tests.
-- Focused verification passed: `15` Feishu tests, `42` frontend static tests,
-  Python AST parsing, Node syntax, and `git diff --check` before the plan update.
-- Review found blocking gaps in the draft: invalid real approval-instance
-  parameters, no verification of the actual approver, unauthenticated HTTP
-  event ingestion, a non-official and unstarted long-connection transport,
-  missing outbound-target enforcement, and incomplete concurrent-send recovery.
-- `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md` is now the v2 remediation and live
-  acceptance specification. `FEISHU_LIVE` must remain disabled until its
-  automated gates pass and the user explicitly authorizes test-tenant access.
-- No real Feishu tenant, approval instance, message receipt, or outbound send
-  has been verified yet.
+- 已有：官方 SDK 长连接骨架、扩展配置、白名单、真实审批人提取、迁移、API 测试和控制台雏形。
+- 当前 P0 阻断：可信事件接收、所有真实写操作 fail closed、完整冻结快照及远端审批绑定、审批表单控件配置化、事务级并发幂等、服务端强制审批人和目标白名单。
+- 当前 P1：严格 API 模型、未配置时禁用控制台写操作、空状态/移动端状态表优化，以及 skills/tools/reflection cards 的可见 404 修复。
+- 立即执行顺序见 `WORKBUDDY_FEISHU_HANDOFF_2026-07-15.md`；完整契约和真实租户验收见 `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md`。
+- 必须保持 `FEISHU_LIVE=false`，直到自动门禁通过且用户明确授权测试租户操作。不得把 mock 结果称为真实飞书闭环。
+- 审查时本地 ClawOS 服务健康、飞书 live mode 关闭；MTClaw 不可达是系统告警，不是飞书连接器阻断项。
 
-## Repository hygiene block — 2026-07-14
+## 仓库卫生
 
-Completed:
+- `clawos/skills/skill_registry.jsonl` 会被全量测试修改使用计数；恢复该副作用后再审查 staged 文件，不能提交它。
+- `.playwright-cli/` 是本地界面审查产物，不提交；未经用户许可不得删除。
+- 永远不要提交 `.env`、凭据、数据库、日志、缓存、上传、模型、生成报告和浏览器证据。
+- 2026-07-14 已完成：清理历史生成物和输入法缓存路径的版本控制、整合忽略规则、归档过长交接记录、审计并回收历史 1.32 GiB Git 模型 blob；本地模型资产保留供复现。
 
-- Archived the oversized 2,988-line handoff history and replaced this file with
-  a concise current-state entry point.
-- Removed accidental Sogou Input cache files under the literal repository path
-  `%SystemDrive%/` from version control.
-- Removed generated `output/` and `tmp/` artifacts from version control while
-  retaining the local files for reproducibility and inspection.
-- Consolidated ignore rules so all `output/`, `tmp/`, and literal
-  `%SystemDrive%/` paths stay local.
-- Added `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md` as the implementation plan for
-  the single real Feishu message-and-approval connector closure.
-- Reverified the complete Qwen3.5 GGUF, Qwen3 embedding, and Qwen3 reranker
-  files against their expected SHA256 values, then removed four independent
-  Hugging Face `.incomplete` files totaling 8.117 GiB.
-- Audited the 1.32 GiB Git blob to local backup commit `c663560`, which contained
-  only generated MTClaw runtime files, logs, temporary files, and the model.
-  Removed its local-only backup branch and two exact legacy reflog entries,
-  then repacked the repository.
+## 交接顺序
 
-Verification:
+1. 先读本文件、`README.md`、`WORKBUDDY_FEISHU_HANDOFF_2026-07-15.md` 和完整飞书规格。
+2. 保护未提交改动；以失败测试驱动关闭接手单 P0-1 到 P0-6。
+3. 完成 API 和控制台 P1，运行聚焦与全量回归，恢复技能注册表副作用，审查 diff。
+4. 用户明确授权后，才在独立飞书测试租户执行：拒绝、越权审批、授权审批、单次发送、事件重放和重启恢复验收。
+5. 任何外部发送、日历发布、Git push、PR 或共享状态变更均需用户明确授权。
 
-- `git diff --cached --check`: passed.
-- Tracked artifacts under `output/`, `tmp/`, and `%SystemDrive%`: `0`.
-- Representative `output/` and `tmp/` files remain present locally and match
-  the consolidated ignore rules.
-- High-confidence secret scan of staged text: no matches; tracked `.env`,
-  database, log, and cache files: `0`.
-- Complete model hashes after cleanup match the recorded manifests; remaining
-  `.incomplete` files: `0`.
-- Git object storage after repack: about 115 MiB; the audited 1.32 GiB model
-  blob is no longer present. HEAD and the staged index tree were unchanged by
-  object cleanup.
-- No product code changed, so the full suite was not rerun for this hygiene-only
-  block. The latest code regression remains `280 tests OK`, `1 skipped`.
+## 常用验证
 
-Known local-only assets:
-
-- `tools/` is about 9.27 GiB and contains the verified local Qwen/embedding/
-  reranker assets plus llama.cpp runtime files.
-- `clawos/.venv/` is about 1.1 GiB.
-- No Hugging Face `.incomplete` files remain under `tools/models`.
-- `.git/` is about 115 MiB after the audited repack.
-
-## Immediate handoff order
-
-1. Preserve the current uncommitted WorkBuddy draft and unrelated local changes;
-   do not reset, overwrite, or stage the skill-registry usage-count side effect.
-2. Give `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md` to WorkBuddy and execute its
-   Phase 0 through Phase 6 in order, starting with failing regression tests for
-   every identified blocker.
-3. Keep `FEISHU_LIVE=false` while fixing event trust, approval identity, target
-   whitelist, full snapshot hashing, transaction-level idempotency, and recovery.
-4. Run focused tests and the full regression, then review the resulting diff
-   before any commit or push.
-5. Only after explicit user approval, validate in a dedicated Feishu test tenant:
-   reject once, attempt an unauthorized approval once, approve once with an
-   authorized user, send once, and prove replay/restart does not duplicate it.
-6. Rehearse the five real-evidence chains on the competition device.
-
-## Persistent operating rules
-
-- Read this file and `README.md` before broad analysis or code changes.
-- Treat `PROJECT_CONTEXT.md` as current state; use the archived history only
-  when investigating an older decision.
-- Never commit `.env`, credentials, databases, logs, caches, uploads, model
-  weights, generated reports, or temporary browser evidence.
-- Full tests can mutate `clawos/skills/skill_registry.jsonl`; restore that known
-  usage-count side effect before staging.
-- External sending, calendar publishing, Git push, PR changes, and other shared
-  side effects require explicit user approval and auditable confirmation.
-- Do not claim production, enterprise, target-device, or live-tenant readiness
-  without matching real evidence.
+```powershell
+git status --short --branch
+.\clawos\.venv\Scripts\python.exe -B -m unittest discover -s clawos\tests
+git diff --check
+```

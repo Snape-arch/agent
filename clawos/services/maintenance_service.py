@@ -19,8 +19,20 @@ class MaintenanceService:
         {
             "id": "2026_07_feishu_connector",
             "description": "Feishu connector: feishu_messages, feishu_summaries, feishu_approvals, feishu_dispatches for an audited, approval-gated outbound loop.",
+            "apply": "feishu_connector_schema",
         },
     ]
+
+    # Migration apply handlers keyed by the migration "apply" tag. Each receives
+    # the open migration transaction connection and must be idempotent.
+    _APPLY_HANDLERS = {
+        "feishu_connector_schema": "_apply_feishu_connector_schema",
+    }
+
+    def _apply_feishu_connector_schema(self, conn: sqlite3.Connection) -> None:
+        from services.feishu.schema import create_feishu_tables
+
+        create_feishu_tables(conn)
 
     def __init__(self, *, store: Any, db_path: Path, base_dir: Path, config: dict[str, Any]):
         self.store = store
@@ -53,6 +65,9 @@ class MaintenanceService:
                     "INSERT INTO schema_migrations (id, description, applied_at) VALUES (?, ?, ?)",
                     (migration["id"], migration["description"], self._now()),
                 )
+                handler_name = self._APPLY_HANDLERS.get(migration.get("apply", ""))
+                if handler_name:
+                    getattr(self, handler_name)(conn)
                 applied.append(migration)
             rows = conn.execute("SELECT * FROM schema_migrations ORDER BY applied_at, id").fetchall()
         return {

@@ -20,6 +20,7 @@ from .connector_service import (
     DISP_FAILED_RETRYABLE,
     DISP_FAILED_TERMINAL,
 )
+from .schema import create_feishu_tables, FEISHU_TABLES
 
 __all__ = [
     "FeishuConfig",
@@ -29,6 +30,8 @@ __all__ = [
     "FakeFeishuClient",
     "FeishuConnectorService",
     "parse_message_event",
+    "create_feishu_tables",
+    "FEISHU_TABLES",
     "APPROVAL_APPROVED",
     "APPROVAL_REJECTED",
     "APPROVAL_PENDING",

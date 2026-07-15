@@ -234,33 +234,17 @@ class FeishuClient:
             out["error"] = str(exc)
         return out
 
-    # ---- long connect (websocket) --------------------------------------
+    # ---- long connect (official lark-oapi SDK) -------------------------
     def start_long_connect(self, handler) -> None:
-        """Connect to the Feishu long-connection and dispatch events.
+        """Connect to the Feishu long-connection via the official SDK (blocking).
 
-        The websocket URL/token are supplied per tenant via config
-        (FEISHU_LONG_CONNECT_URL / FEISHU_LONG_CONNECT_TOKEN). This keeps the
-        transport honest: the connector does not guess the tenant handshake.
-        `handler` is a callable receiving a parsed event dict.
+        The connection is established from APP_ID / APP_SECRET only -- there is
+        no tenant-supplied websocket URL or token (spec §18 Phase 1). This call
+        blocks on the SDK event loop; use ``FeishuLongConnectManager`` for a
+        start/stop lifecycle in the server. ``handler`` is a callable receiving
+        the raw event dict (``header`` + ``event``).
         """
-        if not self.config.long_connect_url:
-            raise FeishuClientError(
-                "long_connect_url not configured; set FEISHU_LONG_CONNECT_URL for your tenant",
-                category=CONFIG_ERR,
-            )
-        try:
-            from websockets.sync.client import connect as ws_connect
-        except ImportError:
-            raise FeishuClientError("websockets package is required for long-connect", category=TERMINAL)
-        with ws_connect(self.config.long_connect_url) as ws:
-            ws.send(json.dumps({"type": "challenge", "token": self.config.long_connect_token}))
-            for raw in ws:
-                try:
-                    event = json.loads(raw)
-                except Exception:
-                    continue
-                if event.get("type") == "url_verification":
-                    ws.send(json.dumps({"challenge": event.get("challenge")}))
-                    continue
-                if event.get("header", {}).get("event_type") == "im.message.receive_v1":
-                    handler(event)
+        from .long_connect import build_ws_client
+
+        client = build_ws_client(self.config, handler)
+        client.start()
