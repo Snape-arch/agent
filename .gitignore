@@ -1,5 +1,6 @@
 # Local CLI/tooling artifacts
 tools/
+.workbuddy/
 gh-install.log
 gh_*.msi
 gh_*.zip
