@@ -137,7 +137,8 @@ class FeishuClient:
             data = resp.json()
         except Exception:
             raise FeishuClientError(f"invalid token response: {resp.text[:200]}", category=TERMINAL)
-        if int(data.get("code", -1) or -1) != 0:
+        code = data.get("code")
+        if code is None or int(code) != 0:
             raise FeishuClientError(data.get("msg") or "token error", category=AUTH)
         self._token = data.get("tenant_access_token")
         self._token_expire_at = now + int(data.get("expire", 7200))
