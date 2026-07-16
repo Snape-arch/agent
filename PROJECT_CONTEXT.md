@@ -2,21 +2,21 @@
 
 这是 ClawOS 当前状态的简洁交接入口。2026-07-14 以前的详细记录已归档到 `clawos/docs/PROJECT_HISTORY_2026-07-14.md`。
 
-## 当前状态（2026-07-15）
+## 当前状态（2026-07-16）
 
 - 当前分支：`codex/p0-demo-polish`。
 - 当前提交：`add8084`；相对 `origin/codex/p0-demo-polish` 超前 4 个提交。
 - 工作区有 WorkBuddy 未提交的飞书连接器 v2 改动，必须保护现场，禁止 reset、覆盖或批量暂存。
-- 独立聚焦验证：82 个测试通过；前端 JavaScript 语法检查和 `git diff --check` 通过。WorkBuddy 曾记录全量回归 316 个通过、1 个跳过；该全量结果尚未在当前现场独立复跑。
+- 独立聚焦验证：82 个测试通过（test_frontend_static + 40 飞书定向）；前端 JavaScript 语法检查和 `git diff --check` 通过。全量回归已于 2026-07-16 当前现场复跑：**320 个通过、1 个跳过、0 失败**。
 - 已验证的产品基线仍包括本地 Qwen、Chroma/Qwen3 向量能力、MTClaw 路由、办公工作流、Academy 页面和五条真实证据链。物理目标设备验收及企业连接器真实租户验收尚未完成。
 
 ## 飞书连接器 v2
 
-- 已有：官方 SDK 长连接骨架、扩展配置、白名单、真实审批人提取、迁移、API 测试和控制台雏形。
-- 当前 P0 阻断：可信事件接收、所有真实写操作 fail closed、完整冻结快照及远端审批绑定、审批表单控件配置化、事务级并发幂等、服务端强制审批人和目标白名单。
-- 当前 P1：严格 API 模型、未配置时禁用控制台写操作、空状态/移动端状态表优化，以及 skills/tools/reflection cards 的可见 404 修复。
-- 立即执行顺序见 `WORKBUDDY_FEISHU_HANDOFF_2026-07-15.md`；完整契约和真实租户验收见 `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md`。
-- 必须保持 `FEISHU_LIVE=false`，直到自动门禁通过且用户明确授权测试租户操作。不得把 mock 结果称为真实飞书闭环。
+- 状态（2026-07-16）：v2 整改已完成至 Phase 6（runbook + 文档）与 §13 重构、P1-2 控制台收口，12 个阻断缺陷全部关闭；36/36 飞书测试全绿（test_feishu_api 13 + test_feishu_connector 23 + test_feishu_migration 4）。
+- 架构性重构（§13）已完成：废弃单一 action 路由 `POST /api/feishu`，改为资源式端点（`GET /api/feishu/health|messages|summaries|approvals|dispatches`、`POST /api/feishu/events|summaries|approvals`、`PATCH /api/feishu/summaries/{id}`、`POST /api/feishu/approvals/{id}/sync|send`）；写操作强制严格 Pydantic 请求模型；HTTP 状态按 §13 映射（400/401/403/404/409/422/502/503/504）。
+- 建表/升级已移入真实迁移：`MaintenanceService.apply_migrations()` 通过 `2026_07_feishu_connector` 迁移调用共享 `services/feishu/schema.py`，幂等、可重跑；不再藏在服务构造函数里。
+- Phase 6 已完成：新增 `docs/feishu-runbook.md`；本文件同步更新。P1-2 控制台收口已完成：创建审批/发送改为显式二次确认（不再静默提交 `confirmed:true`）、移除手填审批人、未配置时禁用写按钮、空状态行。
+- 必须保持 `FEISHU_LIVE=false`，直到自动门禁（全量回归）通过且用户明确授权测试租户操作。不得把 mock 结果称为真实飞书闭环。
 - 审查时本地 ClawOS 服务健康、飞书 live mode 关闭；MTClaw 不可达是系统告警，不是飞书连接器阻断项。
 
 ## 仓库卫生

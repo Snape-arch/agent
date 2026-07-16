@@ -2632,9 +2632,90 @@ async def api_office_productivity(request: Request):
     return JSONResponse(result)
 
 
-@app.post("/api/feishu/event")
-async def api_feishu_event(request: Request):
-    # Event ingestion for webhook / long-connect bridge. Quick-ack then process.
+# ==========================================================================
+# §13 Feishu connector API — resource-style endpoints with strict Pydantic
+# request models. Handlers keep the (request: Request) signature and validate
+# the JSON body through the models internally, so the legacy direct-call test
+# harness still works while the contract is strict (no loose dict.get on writes).
+# ==========================================================================
+from pydantic import BaseModel, Field, ValidationError  # noqa: E402
+
+
+class FeishuSummaryCreate(BaseModel):
+    message_ids: list[int]
+
+
+class FeishuSummaryUpdate(BaseModel):
+    topic: str | None = None
+    conclusions: Any | None = None
+    action_items: Any | None = None
+    owner_candidates: Any | None = None
+    deadline_candidates: Any | None = None
+    open_questions: Any | None = None
+
+
+class FeishuApprovalCreate(BaseModel):
+    summary_id: int
+    target_type: str = "chat"
+    target_id: str = Field(min_length=1)
+    approver_id: str = ""
+    outbound_msg_type: str = "text"
+    confirmed: bool = False
+
+
+class FeishuApprovalSend(BaseModel):
+    confirmed: bool = False
+    body: str | None = None
+
+
+def _feishu_service():
+    """Resolve the connector service; 503 only if it is genuinely absent.
+
+    We deliberately do NOT 503 on a merely-unconfigured connector: the
+    whitelist / approval gates own their own 409 decisions, and the v2 red-light
+    tests exercise those gates from an unconfigured-but-operational service.
+    """
+    svc = get_feishu_connector_service()
+    if svc is None:
+        raise HTTPException(503, "feishu connector not available")
+    return svc
+
+
+def _feishu_status_for(exc: Exception) -> int:
+    """Map a service-level exception to a §13 HTTP status code."""
+    if isinstance(exc, PermissionError):
+        return 409  # approval status / hash / target / idempotency conflict
+    if isinstance(exc, ValueError):
+        msg = str(exc)
+        if "not found" in msg or "no received messages" in msg:
+            return 404  # resource does not exist
+        return 400  # format or config error
+    if isinstance(exc, RuntimeError):
+        return 503  # connector unavailable
+    return 400
+
+
+async def _feishu_validate(model, request):
+    try:
+        return model.model_validate(await request.json())
+    except ValidationError as exc:
+        raise HTTPException(422, f"invalid request: {exc}")
+
+
+@app.get("/api/feishu/health")
+async def api_feishu_health():
+    service = _feishu_service()
+    if service.client is not None:
+        client_health = service.client.health_check()
+    else:
+        client_health = {"connection": "no_client", "configured": service.config.is_configured()}
+    return {"config": service.config.redacted(), "client": client_health}
+
+
+@app.post("/api/feishu/events")
+async def api_feishu_events(request: Request):
+    # Webhook event ingestion (§8.2). Long-connection events arrive via the SDK
+    # and are not posted here. Quick-ack then process.
     try:
         event = await request.json()
     except Exception:
@@ -2644,7 +2725,7 @@ async def api_feishu_event(request: Request):
     if isinstance(event, dict) and event.get("type") == "url_verification":
         return JSONResponse({"challenge": event.get("challenge", "")})
 
-    service = get_feishu_connector_service()
+    service = _feishu_service()
     cfg = service.config
 
     # 2) Webhook source verification (spec defect 5). In webhook mode with a
@@ -2664,55 +2745,92 @@ async def api_feishu_event(request: Request):
     try:
         record = service.receive_event(event, received_via="http")
     except (ValueError, PermissionError, RuntimeError) as exc:
-        raise HTTPException(400 if isinstance(exc, ValueError) else 409, str(exc))
+        raise HTTPException(_feishu_status_for(exc), str(exc))
     return JSONResponse({
         "code": 0, "msg": "success",
         "data": {"message_id": record.get("message_id"), "status": record.get("processed_status")},
     })
 
 
-@app.post("/api/feishu")
-async def api_feishu(request: Request):
-    data = await request.json()
-    action = str(data.get("action") or "health")
-    service = get_feishu_connector_service()
+@app.get("/api/feishu/messages")
+async def api_feishu_messages(chat_id: str = "", limit: int = 50):
+    return _feishu_service().list_messages(chat_id=chat_id, limit=limit)
+
+
+@app.post("/api/feishu/summaries")
+async def api_feishu_summaries_create(request: Request):
+    service = _feishu_service()
+    body = await _feishu_validate(FeishuSummaryCreate, request)
     try:
-        if action == "health":
-            if service.client is not None:
-                client_health = service.client.health_check()
-            else:
-                client_health = {"connection": "no_client", "configured": service.config.is_configured()}
-            result = {"config": service.config.redacted(), "client": client_health}
-        elif action == "messages":
-            result = service.list_messages(chat_id=str(data.get("chat_id") or ""), limit=int(data.get("limit") or 50))
-        elif action == "summary_create":
-            result = service.generate_summary(data.get("message_ids") or [], summarizer=None)
-        elif action == "summary_update":
-            result = service.update_summary(int(data.get("summary_id") or 0), data.get("fields") or {})
-        elif action == "approval_create":
-            result = service.create_approval(
-                int(data.get("summary_id") or 0), str(data.get("target_type") or "chat"),
-                str(data.get("target_id") or ""), confirmed=bool(data.get("confirmed")),
-                approver_id=str(data.get("approver_id") or ""),
-            )
-        elif action == "approval_sync":
-            result = service.sync_approval(int(data.get("approval_id") or 0))
-        elif action == "send":
-            result = service.send_after_approval(
-                int(data.get("approval_id") or 0), confirmed=bool(data.get("confirmed")),
-                new_body=data.get("body"),
-            )
-        elif action == "dispatches":
-            result = service.list_dispatches(limit=int(data.get("limit") or 50))
-        elif action == "summaries":
-            result = service.list_summaries(limit=int(data.get("limit") or 50))
-        elif action == "approvals":
-            result = service.list_approvals(limit=int(data.get("limit") or 50))
-        else:
-            raise ValueError(f"unknown feishu action: {action}")
+        return service.generate_summary(body.message_ids, summarizer=None)
     except (ValueError, PermissionError, RuntimeError) as exc:
-        raise HTTPException(409 if isinstance(exc, PermissionError) else 400, str(exc))
-    return JSONResponse(result)
+        raise HTTPException(_feishu_status_for(exc), str(exc))
+
+
+@app.patch("/api/feishu/summaries/{summary_id}")
+async def api_feishu_summaries_update(summary_id: int, request: Request):
+    service = _feishu_service()
+    body = await _feishu_validate(FeishuSummaryUpdate, request)
+    fields = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    try:
+        return service.update_summary(summary_id, fields)
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(_feishu_status_for(exc), str(exc))
+
+
+@app.get("/api/feishu/summaries")
+async def api_feishu_summaries_list(limit: int = 50):
+    return _feishu_service().list_summaries(limit=limit)
+
+
+@app.post("/api/feishu/approvals")
+async def api_feishu_approvals_create(request: Request):
+    service = _feishu_service()
+    body = await _feishu_validate(FeishuApprovalCreate, request)
+    try:
+        return service.create_approval(
+            body.summary_id, body.target_type, body.target_id,
+            confirmed=body.confirmed, approver_id=body.approver_id,
+            outbound_msg_type=body.outbound_msg_type,
+        )
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(_feishu_status_for(exc), str(exc))
+
+
+@app.post("/api/feishu/approvals/{approval_id}/sync")
+async def api_feishu_approvals_sync(approval_id: int):
+    service = _feishu_service()
+    try:
+        return service.sync_approval(approval_id)
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(_feishu_status_for(exc), str(exc))
+
+
+@app.post("/api/feishu/approvals/{approval_id}/send")
+async def api_feishu_approvals_send(approval_id: int, request: Request):
+    service = _feishu_service()
+    body = await _feishu_validate(FeishuApprovalSend, request)
+    try:
+        dispatch = service.send_after_approval(
+            approval_id, confirmed=body.confirmed, new_body=body.body,
+        )
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(_feishu_status_for(exc), str(exc))
+    # §13: a send timeout leaves the outcome unknown; surface 504 while still
+    # recording the dispatch locally for manual reconciliation. Never auto-resend.
+    if dispatch.get("status") == "outcome_unknown":
+        return JSONResponse(dispatch, status_code=504)
+    return dispatch
+
+
+@app.get("/api/feishu/dispatches")
+async def api_feishu_dispatches(limit: int = 50):
+    return _feishu_service().list_dispatches(limit=limit)
+
+
+@app.get("/api/feishu/approvals")
+async def api_feishu_approvals_list(limit: int = 50):
+    return _feishu_service().list_approvals(limit=limit)
 
 
 @app.post("/api/workspace/meetings")
