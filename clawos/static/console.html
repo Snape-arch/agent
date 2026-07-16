@@ -386,12 +386,12 @@
 <button class="primary" onclick="feishuCreateSummary()">生成纪要</button>
 <input id="feishuSummaryId" placeholder="审批：summary_id">
 <input id="feishuTargetType" placeholder="target_type: chat/user">
-<input id="feishuTargetId" placeholder="target_id（聊天/用户ID）">
-<input id="feishuApprover" placeholder="approver_id">
-<button class="primary" onclick="feishuCreateApproval()">创建审批</button>
+<input id="feishuTargetId" placeholder="target_id（须为白名单内 chat_id 或 open_id）">
+<button class="primary" id="feishuCreateApprovalBtn" onclick="feishuCreateApproval()">创建审批</button>
 <input id="feishuApprovalId" placeholder="approval_id">
 <button class="secondary" onclick="feishuSyncApproval()">同步审批</button>
-<button class="primary" onclick="feishuSendApproved()">发送（已批准）</button>
+<button class="primary" id="feishuSendBtn" onclick="feishuSendApproved()">发送（已批准）</button>
+<p class="hint">审批人由飞书审批实例决定，前端不可手填；创建审批与发送均需二次确认。未配置应用时按钮禁用。</p>
 <span class="hint" id="feishuActionStatus"></span>
 </div></div>
 </div></section>

@@ -131,7 +131,7 @@ class FeishuEventSecurityTests(unittest.TestCase):
     def test_url_verification_challenge_is_echoed(self):
         with tempfile.TemporaryDirectory() as td:
             with _ServerFixture(td) as server:
-                resp = asyncio.run(server.api_feishu_event(
+                resp = asyncio.run(server.api_feishu_events(
                     JsonRequest({"type": "url_verification", "challenge": "chg-123"})
                 ))
                 payload = json.loads(resp.body)
@@ -162,7 +162,7 @@ class FeishuEventSecurityTests(unittest.TestCase):
                 }
                 from fastapi import HTTPException
                 with self.assertRaises(HTTPException) as ctx:
-                    asyncio.run(server.api_feishu_event(JsonRequest(forged, headers={})))
+                    asyncio.run(server.api_feishu_events(JsonRequest(forged, headers={})))
                 self.assertIn(ctx.exception.status_code, (401, 403))
                 msgs = server.g_feishu_connector_service.list_messages(only_received=False)
                 self.assertEqual([m for m in msgs if m["message_id"] == "om_forged"], [])
@@ -194,8 +194,7 @@ class FeishuSendGateApiTests(unittest.TestCase):
                 svc, fake = self._svc(server)
                 from fastapi import HTTPException
                 with self.assertRaises(HTTPException) as ctx:
-                    asyncio.run(server.api_feishu(JsonRequest({
-                        "action": "approval_create",
+                    asyncio.run(server.api_feishu_approvals_create(JsonRequest({
                         "summary_id": 0,
                         "target_type": "chat",
                         "target_id": "oc_not_whitelisted",
