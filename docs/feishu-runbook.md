@@ -1,7 +1,7 @@
 # 飞书连接器 v2 运维手册（Runbook）
 
 > 适用范围：ClawOS 飞书连接器 v2（含 §13 资源式 API 与真实迁移）。
-> 当前状态：**自动化门禁全绿，真实租户验收待用户授权**。`FEISHU_LIVE=false`，未连接真实租户，未做任何对外发送。
+> 当前状态：**自动化门禁全绿，真实租户只读入站已通过，审批与外发待用户授权**。`FEISHU_LIVE=false`，未创建审批，未做任何对外发送。
 
 ---
 
@@ -15,7 +15,8 @@
 - **36/36** 飞书测试全绿：`test_feishu_api`(13) + `test_feishu_connector`(23) + `test_feishu_migration`(4)。
 - **§13 架构性重构已完成**：废弃单一 `POST /api/feishu` action 路由，改为资源式端点；写操作强制严格 Pydantic 请求模型。
 - 建表与升级已移入真实迁移（`MaintenanceService.apply_migrations()` → `2026_07_feishu_connector` → `services/feishu/schema.py`），幂等、可重跑。
-- **真实租户验收尚未开始**：`FEISHU_LIVE` 必须为 `false`，直到全量回归通过且用户明确授权。
+- **真实租户只读入站已通过**：token 鉴权、官方 SDK WebSocket 真握手和 `im.message.receive_v1` 实时接收已有脱敏证据；审批创建、审批身份核验和外发仍未开始。
+- `FEISHU_LIVE` 必须保持 `false`，直到审批配置齐全、自动化回归通过且用户明确授权具体写操作。
 
 ---
 
@@ -114,6 +115,8 @@ cd clawos
 | 发送 504「outcome_unknown」 | 飞书 API 超时，结果未知 | **不自动重发**。本地已记录 dispatch 供人工对账；按 `trace_id` 查 `feishu_dispatches` 确认远端是否实际送达 |
 | 摘要/审批「not found」404 | id 不存在或已清理 | 核对该资源确已创建；检查留存天数是否过期 |
 | 表缺失/列缺失 | 迁移未跑或被绕过 | 重跑 `MaintenanceService.apply_migrations()`（幂等，安全）；不要在服务构造函数里手写建表 |
+| token 返回 `code:0,msg:ok` 却显示鉴权失败 | 成功码被 falsy 逻辑误判 | 确认包含提交 `2a660f4`；补并运行 token 成功响应回归测试，不要轮换已验证有效的 Secret |
+| 长连接 `running=true` 但收不到事件 | SDK 线程可能处于自动重连，线程存活不等于握手成功 | 以 SDK `on_reconnected` 或等价真实握手信号判断 connected；核对应用发布、事件订阅和机器人所在群 |
 
 所有事件接收与发送均在 `feishu_audit` 留痕，**不含任何密钥/正文原始凭据**，可用于事后对账与取证。
 
@@ -138,7 +141,9 @@ cd clawos
 
 - ✅ 自动化门禁全绿（36 飞书测试 + 聚焦验证）。
 - ✅ §13 资源式 API 与严格模型已落地；迁移已归入真实 `MaintenanceService`。
-- ⏳ 全量回归（~316）计划在本会话 Task 29 于当前现场复跑。
-- ⛔ `FEISHU_LIVE=false`，未连接真实租户，未做对外发送。
+- ✅ 真实租户只读入站已通过：`auth_ok=true`、官方 SDK 真握手成功、实时收到 3 条消息事件；监听任务已停止。
+- ✅ 2026-07-16 全量回归基线：320 个通过、1 个跳过、0 失败；token 成功码修复后仍需再跑针对性和全量回归。
+- ⏳ 审批定义 code、正文控件 ID 和独立授权审批人需完成配置与只读检查。
+- ⛔ `FEISHU_LIVE=false`，未创建审批，未做对外发送。
 - ⛔ 未提交 `.env`、凭据、数据库、日志、缓存、上传、模型、生成报告、浏览器证据。
 - ⛔ 任何 `git push` / PR / 对外发送 / 共享状态变更，均需用户明确授权。

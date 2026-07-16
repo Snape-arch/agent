@@ -270,6 +270,167 @@ class FeishuClientErrorClassificationTests(unittest.TestCase):
             self.assertEqual(ctx.exception.category, expected, resp)
 
 
+class FeishuTokenSuccessResponseTests(unittest.TestCase):
+    """Regression for the tenant_access_token success-code handling (W1).
+
+    Guards the `2a660f4` fix: `_ensure_token` previously used
+    `int(data.get("code", -1) or -1)`, which coerced a genuine ``code: 0``
+    success to ``-1`` (0 is falsy) and mis-raised an AUTH error whose message
+    was literally ``"ok"``. These tests pin the correct contract:
+      * HTTP 200 + code 0 + token  -> auth_ok True, token cached.
+      * response missing ``code``  -> fail closed (AUTH), no token cached.
+      * non-zero auth error code   -> AUTH classification, no token cached.
+
+    No real App ID / Secret / token / chat_id / open_id appears here — all
+    values are obvious fakes so nothing sensitive can leak into the suite.
+    """
+
+    TOKEN_URL_SUFFIX = "/open-apis/auth/v3/tenant_access_token/internal"
+
+    def _client_with_token_response(self, response: httpx.Response) -> FeishuClient:
+        """Build a FeishuClient whose token endpoint returns ``response``.
+
+        Any non-token URL fails loudly so a test can never accidentally hit a
+        different endpoint and pass for the wrong reason.
+        """
+        cfg = FeishuConfig(app_id="cli_fake", app_secret="FAKE_SECRET_NOT_REAL", tenant_id="t_fake")
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith(self.TOKEN_URL_SUFFIX):
+                return response
+            return httpx.Response(500, json={"code": 1, "msg": "unexpected url"})
+
+        http = httpx.Client(transport=httpx.MockTransport(_handler))
+        return FeishuClient(cfg, http_client=http)
+
+    def test_code_zero_success_is_authenticated_and_cached(self):
+        client = self._client_with_token_response(
+            httpx.Response(200, json={"code": 0, "expire": 7200, "tenant_access_token": "t-FAKE-TOKEN"})
+        )
+        # direct: _ensure_token returns the token and caches it (code 0 == success)
+        self.assertEqual(client._ensure_token(), "t-FAKE-TOKEN")
+        self.assertEqual(client._token, "t-FAKE-TOKEN")
+        # end-to-end: health_check reports auth_ok True and a clean connection
+        health = client.health_check()
+        self.assertIs(health["auth_ok"], True)
+        self.assertEqual(health["connection"], "ok")
+        self.assertNotIn("error", health)
+
+    def test_missing_code_fails_closed_without_caching_token(self):
+        # A response with a token but NO ``code`` field must not be trusted.
+        client = self._client_with_token_response(
+            httpx.Response(200, json={"tenant_access_token": "t-SHOULD-NOT-CACHE"})
+        )
+        with self.assertRaises(FeishuClientError) as ctx:
+            client._ensure_token()
+        self.assertEqual(ctx.exception.category, AUTH)
+        self.assertIsNone(client._token)
+        # health_check surfaces the failure rather than a false positive
+        health = client.health_check()
+        self.assertIs(health["auth_ok"], False)
+        self.assertEqual(health["connection"], "error")
+        self.assertEqual(health["error_category"], AUTH)
+
+    def test_nonzero_auth_error_code_stays_auth_and_uncached(self):
+        client = self._client_with_token_response(
+            httpx.Response(200, json={"code": 99991663, "msg": "app ticket invalid"})
+        )
+        with self.assertRaises(FeishuClientError) as ctx:
+            client._ensure_token()
+        self.assertEqual(ctx.exception.category, AUTH)
+        self.assertIsNone(client._token)
+
+    def test_no_real_identifiers_in_this_test_module(self):
+        # Belt-and-suspenders: assert this suite never embeds real-looking creds.
+        cfg = FeishuConfig(app_id="cli_fake", app_secret="FAKE_SECRET_NOT_REAL", tenant_id="t_fake")
+        self.assertFalse(cfg.app_secret.startswith("REPLACE_"))
+        self.assertTrue(cfg.app_id.endswith("_fake"))
+
+
+class FeishuLongConnectHandshakeTests(unittest.TestCase):
+    """W2: the manager must distinguish a live SDK thread from a real WS
+    handshake. ``running`` (thread alive) must NOT imply ``connected``; only a
+    genuine handshake (SDK ``_conn`` established or ``on_reconnected`` fired)
+    may report connected, and a drop/infinite-reconnect must revert it.
+
+    Uses a fake SDK client (no real network / credentials) injected via
+    ``client_factory`` so the handshake lifecycle is driven deterministically.
+    """
+
+    def _fake_client(self):
+        import threading as _t
+
+        class _FakeWsClient:
+            def __init__(self):
+                self.on_reconnecting = lambda: None
+                self.on_reconnected = lambda: None
+                self._conn = None          # None until a real handshake completes
+                self._auto_reconnect = True
+                self._stop = _t.Event()
+
+            def start(self):
+                # Mimic the SDK: start() blocks on its loop until disconnected,
+                # so the manager thread stays alive even before/without a
+                # successful handshake (the exact trap W2 guards against).
+                self._stop.wait()
+
+        return _FakeWsClient()
+
+    @staticmethod
+    def _wait(pred, timeout=1.0):
+        import time as _time
+
+        deadline = _time.time() + timeout
+        while _time.time() < deadline:
+            if pred():
+                return True
+            _time.sleep(0.01)
+        return pred()
+
+    def test_running_thread_alone_is_not_connected(self):
+        from services.feishu.long_connect import FeishuLongConnectManager
+
+        fake = self._fake_client()
+        cfg = FeishuConfig(app_id="cli_fake", app_secret="FAKE", tenant_id="t_fake",
+                           event_mode="long_connection")
+        mgr = FeishuLongConnectManager(cfg, lambda e: None, client_factory=lambda c, h: fake)
+        mgr.start()
+        try:
+            # Thread is alive but the WS handshake has NOT happened yet.
+            self.assertTrue(self._wait(lambda: mgr.running, 1.0))
+            self.assertFalse(mgr.connected, "running thread must not imply connected")
+
+            # A genuine handshake (SDK sets _conn) -> connected becomes True.
+            fake._conn = object()
+            self.assertTrue(self._wait(lambda: mgr.connected, 1.0))
+
+            # Connection dropped / infinite reconnect -> connected reverts.
+            fake._conn = None
+            self.assertTrue(self._wait(lambda: not mgr.connected, 1.0))
+        finally:
+            fake._stop.set()
+            mgr.stop(timeout=1.0)
+
+    def test_on_reconnected_hook_marks_connected(self):
+        from services.feishu.long_connect import FeishuLongConnectManager
+
+        fake = self._fake_client()
+        cfg = FeishuConfig(app_id="cli_fake", app_secret="FAKE", tenant_id="t_fake",
+                           event_mode="long_connection")
+        mgr = FeishuLongConnectManager(cfg, lambda e: None, client_factory=lambda c, h: fake)
+        mgr.start()
+        try:
+            self.assertTrue(self._wait(lambda: mgr.running, 1.0))
+            self.assertFalse(mgr.connected)
+            # Reconnect path: SDK fires on_reconnected and (re)establishes _conn.
+            fake._conn = object()
+            fake.on_reconnected()
+            self.assertTrue(self._wait(lambda: mgr.connected, 1.0))
+        finally:
+            fake._stop.set()
+            mgr.stop(timeout=1.0)
+
+
 # ======================================================================
 # v2 RED-LIGHT SUITE (Phase 0)
 #

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from typing import Callable, Optional
 
 from .config import EVENT_MODE_LONG_CONNECTION, FeishuConfig
@@ -79,15 +80,37 @@ def build_ws_client(config: FeishuConfig, on_message: Callable[[dict], None]):
 
 
 class FeishuLongConnectManager:
-    """Start/stop lifecycle wrapper around the official SDK long-connection."""
+    """Start/stop lifecycle wrapper around the official SDK long-connection.
 
-    def __init__(self, config: FeishuConfig, on_message: Callable[[dict], None]):
+    ``running`` only reports that the SDK thread is alive. Because the SDK's
+    ``start()`` blocks on an *infinite* auto-reconnect loop, a live thread does
+    NOT mean a real WebSocket handshake occurred (e.g. bad credentials leave the
+    thread alive forever while it retries). ``connected`` is the authoritative
+    "handshake actually happened" signal: it is True only while the SDK client
+    has a live connection object (``_conn``) established, and it reverts to
+    False the moment the link drops. Never use ``running`` alone as proof of a
+    connection (see runbook §5 and the handoff W2).
+
+    ``client_factory`` is injectable so the handshake lifecycle can be driven
+    deterministically in tests without a real network or credentials; it
+    defaults to :func:`build_ws_client`.
+    """
+
+    def __init__(
+        self,
+        config: FeishuConfig,
+        on_message: Callable[[dict], None],
+        client_factory: Optional[Callable[[FeishuConfig, Callable[[dict], None]], object]] = None,
+    ):
         self.config = config
         self._on_message = on_message
+        self._client_factory = client_factory or build_ws_client
         self._client = None
         self._thread: Optional[threading.Thread] = None
+        self._watch_thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self._running = False
+        self._connected = threading.Event()
         self._last_error: Optional[str] = None
 
     @property
@@ -97,6 +120,16 @@ class FeishuLongConnectManager:
             and self._thread is not None
             and self._thread.is_alive()
         )
+
+    @property
+    def connected(self) -> bool:
+        """True only when the SDK has a real, live WS handshake right now.
+
+        Requires the thread to be running AND the SDK connection object to be
+        established. This is the signal callers must use for health/connected
+        status — not ``running``.
+        """
+        return bool(self.running and self._connected.is_set())
 
     @property
     def last_error(self) -> Optional[str]:
@@ -110,9 +143,28 @@ class FeishuLongConnectManager:
                 raise FeishuLongConnectError(
                     f"event_mode is {self.config.event_mode!r}; long-connect not enabled"
                 )
-            client = build_ws_client(self.config, self._on_message)
+            client = self._client_factory(self.config, self._on_message)
             self._client = client
             self._last_error = None
+            self._connected.clear()
+
+            # Wire the SDK reconnect observer so a re-established link is
+            # reflected immediately; the watcher below also covers the first
+            # connect (on_reconnected does NOT fire on the initial handshake).
+            try:
+                prev_reconnected = getattr(client, "on_reconnected", None)
+
+                def _on_reconnected() -> None:
+                    self._connected.set()
+                    if callable(prev_reconnected):
+                        try:
+                            prev_reconnected()
+                        except Exception:
+                            pass
+
+                client.on_reconnected = _on_reconnected
+            except Exception:  # pragma: no cover - client without the hook
+                pass
 
             def _run() -> None:
                 try:
@@ -121,6 +173,7 @@ class FeishuLongConnectManager:
                     self._last_error = str(exc)[:200]
                 finally:
                     self._running = False
+                    self._connected.clear()
 
             thread = threading.Thread(
                 target=_run, name="feishu-long-connect", daemon=True
@@ -129,9 +182,35 @@ class FeishuLongConnectManager:
             self._running = True
             thread.start()
 
+            # Handshake watcher: track the SDK's live connection object so
+            # ``connected`` reflects the *actual* WS state (established on first
+            # connect, cleared on drop/infinite-reconnect).
+            watch = threading.Thread(
+                target=self._watch_connection,
+                args=(client,),
+                name="feishu-long-connect-watch",
+                daemon=True,
+            )
+            self._watch_thread = watch
+            watch.start()
+
+    def _watch_connection(self, client, interval: float = 0.05) -> None:
+        while self._running:
+            try:
+                conn_live = getattr(client, "_conn", None) is not None
+            except Exception:  # pragma: no cover - defensive
+                conn_live = False
+            if conn_live:
+                self._connected.set()
+            else:
+                self._connected.clear()
+            time.sleep(interval)
+        self._connected.clear()
+
     def stop(self, timeout: float = 5.0) -> None:
         with self._lock:
             self._running = False
+            self._connected.clear()
             client = self._client
             self._client = None
         if client is not None:
@@ -140,6 +219,10 @@ class FeishuLongConnectManager:
         if thread is not None and thread.is_alive():
             thread.join(timeout=timeout)
         self._thread = None
+        watch = self._watch_thread
+        if watch is not None and watch.is_alive():
+            watch.join(timeout=timeout)
+        self._watch_thread = None
 
     @staticmethod
     def _best_effort_disconnect(client, timeout: float) -> None:

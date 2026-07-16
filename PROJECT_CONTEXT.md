@@ -5,8 +5,8 @@
 ## 当前状态（2026-07-16）
 
 - 当前分支：`codex/p0-demo-polish`。
-- 当前提交：`add8084`；相对 `origin/codex/p0-demo-polish` 超前 4 个提交。
-- 工作区有 WorkBuddy 未提交的飞书连接器 v2 改动，必须保护现场，禁止 reset、覆盖或批量暂存。
+- 当前提交：`2a660f4`；本地分支与 `origin/codex/p0-demo-polish` 一致。
+- tracked 工作区干净；`.env`、`.workbuddy/`、`clawos/tmp/` 为本地忽略项，不得提交或擅自清理。
 - 独立聚焦验证：82 个测试通过（test_frontend_static + 40 飞书定向）；前端 JavaScript 语法检查和 `git diff --check` 通过。全量回归已于 2026-07-16 当前现场复跑：**320 个通过、1 个跳过、0 失败**。
 - 已验证的产品基线仍包括本地 Qwen、Chroma/Qwen3 向量能力、MTClaw 路由、办公工作流、Academy 页面和五条真实证据链。物理目标设备验收及企业连接器真实租户验收尚未完成。
 
@@ -16,6 +16,8 @@
 - 架构性重构（§13）已完成：废弃单一 action 路由 `POST /api/feishu`，改为资源式端点（`GET /api/feishu/health|messages|summaries|approvals|dispatches`、`POST /api/feishu/events|summaries|approvals`、`PATCH /api/feishu/summaries/{id}`、`POST /api/feishu/approvals/{id}/sync|send`）；写操作强制严格 Pydantic 请求模型；HTTP 状态按 §13 映射（400/401/403/404/409/422/502/503/504）。
 - 建表/升级已移入真实迁移：`MaintenanceService.apply_migrations()` 通过 `2026_07_feishu_connector` 迁移调用共享 `services/feishu/schema.py`，幂等、可重跑；不再藏在服务构造函数里。
 - Phase 6 已完成：新增 `docs/feishu-runbook.md`；本文件同步更新。P1-2 控制台收口已完成：创建审批/发送改为显式二次确认（不再静默提交 `confirmed:true`）、移除手填审批人、未配置时禁用写按钮、空状态行。
+- 真实租户只读入站已于 2026-07-16 通过：token 鉴权成功、官方 SDK WebSocket 真握手成功，并实时收到 3 条 `im.message.receive_v1`；关键事件标识均非空。全程 `FEISHU_LIVE=false`，未创建审批、未发送消息。
+- 真实预检发现 token 成功码误判：`code:0` 被 `or -1` 转成失败。提交 `2a660f4` 已修复；仍需补专门回归测试，并复核正式健康状态不能只以长连接线程存活作为握手成功。
 - 必须保持 `FEISHU_LIVE=false`，直到自动门禁（全量回归）通过且用户明确授权测试租户操作。不得把 mock 结果称为真实飞书闭环。
 - 审查时本地 ClawOS 服务健康、飞书 live mode 关闭；MTClaw 不可达是系统告警，不是飞书连接器阻断项。
 
@@ -29,9 +31,9 @@
 ## 交接顺序
 
 1. 先读本文件、`README.md`、`WORKBUDDY_FEISHU_HANDOFF_2026-07-15.md` 和完整飞书规格。
-2. 保护未提交改动；以失败测试驱动关闭接手单 P0-1 到 P0-6。
-3. 完成 API 和控制台 P1，运行聚焦与全量回归，恢复技能注册表副作用，审查 diff。
-4. 用户明确授权后，才在独立飞书测试租户执行：拒绝、越权审批、授权审批、单次发送、事件重放和重启恢复验收。
+2. 按接手单 W1-W4：补 token 成功响应回归测试、复核正式 WS 握手健康状态、只读清点审批配置、运行聚焦和全量回归并审查仓库卫生。
+3. 审批定义、正文控件 ID 和独立授权审批人配置齐全后，停在真实写授权门前。
+4. 用户分阶段明确授权后，才在专用飞书测试租户执行：创建审批、拒绝/越权/授权审批、单次发送、事件重放和重启恢复验收。
 5. 任何外部发送、日历发布、Git push、PR 或共享状态变更均需用户明确授权。
 
 ## 常用验证

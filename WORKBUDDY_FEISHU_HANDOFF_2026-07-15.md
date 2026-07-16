@@ -1,107 +1,150 @@
-# WorkBuddy 飞书连接器接手单（2026-07-15）
+# WorkBuddy 飞书连接器接手单（更新于 2026-07-16）
 
 ## 一眼结论
 
-当前代码已有飞书连接器 v2 的主要骨架和模拟闭环，但尚未达到真实租户可启用标准。WorkBuddy 下一步先关闭 P0 安全与一致性阻断，再完成 API 和控制台收口，最后跑完整回归。未经用户明确授权，保持 `FEISHU_LIVE=false`，不得连接真实租户、创建真实审批或发送真实消息。
+飞书连接器 v2 的自动化门禁、资源式 API、控制台收口和真实租户只读入站已经完成。官方 SDK 长连接已真实握手，并实时收到测试群的 `im.message.receive_v1` 事件。尚未完成的是飞书原生审批配置、审批身份验证和经用户批准后的单次外发闭环。
 
-完整设计见 `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md`；本文件只定义执行顺序、验收和交付格式。
+当前必须保持 `FEISHU_LIVE=false`。未经用户对每个真实写阶段单独授权，不得创建审批、改变飞书共享状态或发送消息。
+
+完整设计见 `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md`，运维与故障处理见 `docs/feishu-runbook.md`。本文件是 WorkBuddy 的当前执行入口。
 
 ## 当前现场
 
-- 仓库：`D:\Projects\clawos`；分支：`codex/p0-demo-polish`；提交：`add8084`，超前远端分支 4 个提交。
-- 工作区已有 WorkBuddy 未提交改动。不得 reset、覆盖或整批暂存。
-- `clawos/skills/skill_registry.jsonl` 是测试的计数副作用，不提交。
-- `.playwright-cli/` 是本地界面审查产物，不提交，也不要擅自删除。
-- 审查时本地服务可用，`FEISHU_LIVE=false`，没有完整真实飞书租户配置。
-- MTClaw 不可达是现有系统告警，不是飞书闭环阻断项。
+- 仓库：`D:\Projects\clawos`；分支：`codex/p0-demo-polish`。
+- 当前提交：`2a660f4`（`Handle missing Feishu token response code`）；本地分支与跟踪远端一致。
+- tracked 工作区干净；`.env`、`.workbuddy/`、`clawos/tmp/` 均被忽略，不得提交或清理。
+- `FEISHU_EVENT_MODE=long_connection`，`FEISHU_LIVE=false`。
+- App ID、App Secret 已通过只读 token 请求验证；Secret 不得输出、记录或提交。
+- `.env` 已配置真实 `tenant_key`、测试群 `chat_id` 和当前测试用户 `open_id`。文档中不得记录这些标识真值。
+- 当前测试群被飞书标记为外部群。正式外发验收前优先改用内部专用测试群；若继续使用外部群，必须由用户明确确认范围和风险。
 
-## 已完成
+## 已完成并有真实证据
 
-- 官方 `lark-oapi` SDK、长连接生命周期骨架、扩展配置、迁移和 API/控制台雏形。
-- 目标白名单、真实审批人提取、超时结果未知和禁止自动重发的初步保护。
-- 独立聚焦验证：82 个测试通过；`node --check`、`git diff --check` 通过。
-- WorkBuddy 曾记录全量回归 316 个通过、1 个跳过；当前现场未独立复跑。
+### 自动化与代码基线
 
-## P0：必须按顺序完成
+- 飞书连接器 v2 的 12 个 P0 阻断项已关闭。
+- 资源式 API、严格请求模型、真实迁移、审批快照、白名单、实际审批人校验、并发幂等和 `outcome_unknown` 保护已落地。
+- 已有基线：36 个飞书测试通过；此前全量回归为 320 个通过、1 个跳过、0 失败。
 
-### P0-1 可信事件接收
+### 真实租户只读入站
 
-HTTP 回调只处理 challenge 和 Verification Token，未完整实现 Encrypt Key 验签/解密。v1 优先只允许官方长连接；若保留 webhook，必须补齐官方验签、解密、重放保护及失败测试。
+- 自建应用和机器人已发布并安装，机器人已加入测试群。
+- `tenant_access_token` 只读鉴权成功，`auth_ok=true`。
+- 官方 SDK 已完成到飞书消息服务的真实 WebSocket 握手。
+- 实时捕获 3 条 `im.message.receive_v1`，`tenant_key`、`chat_id`、`sender.open_id`、`message_id` 均非空；同一租户标识一致。
+- 全程未输出 Secret、未保存消息正文到预检输出、未发送消息、未创建审批。
+- 监听任务已停止。
 
-验收：错误 token、签名、密文和重复事件全部被拒绝或幂等处理；只有完整配置的事件模式显示 ready。
+### 本轮发现的缺陷
 
-### P0-2 所有真实写操作 fail closed
+`FeishuClient._ensure_token()` 原先使用 `int(data.get("code", -1) or -1)`，会把飞书成功响应的 `code: 0` 误判为失败。提交 `2a660f4` 已改为显式区分缺失 code 与 `code == 0`。
 
-在服务构造、创建审批、同步审批和发送消息四层统一检查 `live_readiness()`；缺任意配置时不得创建真实客户端或发起外部请求。
+该修复目前缺少针对 token 成功响应的专门回归测试，是 WorkBuddy 的第一个任务。
 
-验收：缺配置的每个入口均返回明确缺失项，fake client 外部调用数为 0。
+## WorkBuddy 接下来按顺序执行
 
-### P0-3 冻结完整审批快照并绑定远端实例
+### W1：补齐鉴权修复的回归测试
 
-对规范化快照计算 hash，至少包含 tenant、target type/id、消息类型、正文、来源 ID、审批定义/控件 ID 和过期时间。同步审批时校验 approval code、uuid、表单、状态和真实审批人。
+只改测试，除非测试揭示修复仍不完整。
 
-验收：审批后改正文、目标、来源、消息类型、配置或过期时间均拒绝发送；错绑审批实例不能放行。
+至少覆盖：
 
-### P0-4 审批表单配置化
+1. HTTP 200、`code: 0`、存在 token：`health_check().auth_ok == true`。
+2. 响应缺少 `code`：fail closed，分类为鉴权或终止错误，不缓存 token。
+3. 非零鉴权错误码：保持 `AUTH` 分类。
+4. 测试和日志均不得出现真实 App ID、Secret、token、chat_id 或 open_id。
 
-删除未配置的硬编码控件 ID。优先把完整预览和快照 hash 放入一个可配置 textarea；若多控件，所有 ID 均显式配置并在启动时校验。
+验收：飞书定向测试全绿，`git diff --check` 通过。
 
-验收：表单序列化有测试覆盖，不存在隐式控件 ID。
+### W2：复核并固化真实入站预检
 
-### P0-5 数据库级并发幂等
+审查 `clawos/tmp/feishu_lc_receive_preflight.py`，但不要提交临时脚本。把可复用的“真实握手状态”能力落到正式 `long_connect.py` 或正式测试中时，必须先用失败测试证明需求；不要依赖 `manager.running` 判断连接成功。
 
-以事务原子预占 dispatch；冲突调用读取并返回既有 dispatch。超时记 `outcome_unknown`，禁止自动重试。
+验收条件：
 
-验收：两个并发调用都成功返回同一 dispatch ID，外部发送严格一次；重启和重放后不重复发送。
+- 只有 token 鉴权成功且 SDK `on_reconnected`/等价真实握手信号发生后，健康状态才显示 connected。
+- 握手失败或 SDK 无限重连时不能显示成功。
+- `FEISHU_LIVE=false` 仍允许只读入站，但所有外部写操作继续 fail closed。
 
-### P0-6 审批人和目标只由服务端决定
+如果现有正式实现已经满足，不做代码改动，只报告证据。
 
-删除/忽略前端手填 `approver_id`；审批人仅取飞书任务/时间线。目标仅接受配置白名单中的 `chat_id` 或 `open_id`。
+### W3：清点审批前置配置，不做真实写操作
 
-验收：客户端伪造审批人、目标类型或目标 ID 均不能绕过门禁。
+只读检查 `.env` 的“是否填写”，不得输出真值。列出仍缺失或仍为占位符的：
 
-## P1：P0 完成后收口
+- `FEISHU_APPROVAL_CODE`
+- `FEISHU_APPROVAL_FORM_CONTROL_ID`
+- `FEISHU_APPROVER_OPEN_IDS`
 
-1. 用严格请求/响应模型和统一错误结构收紧 API；兼容入口不得绕过服务层。
-2. 控制台未配置时禁用创建审批/发送，不自动提交 `confirmed:true`；统一 `chat_id/open_id`，移除手填审批人，补空状态并修移动端表格。
-3. 修复当前 `/api/skills`、`/api/tools`、reflection cards 的 404；若与飞书无关，拆为独立提交。
-4. 跑聚焦、全量、语法和 diff 检查；全量测试后恢复 `skill_registry.jsonl` 的计数副作用。
-5. 更新 `.env.example`、`PROJECT_CONTEXT.md` 和完整规格中的完成状态。
+规则：
 
-## 验证命令
+- 审批定义必须由用户/租户管理员在飞书审批后台创建并发布，WorkBuddy 不得猜 code 或控件 ID。
+- 正文使用单个多行文本控件，表单需展示目标、正文、快照 hash、来源消息和过期时间。
+- 审批人应与发起人不同；不要把当前测试用户同时当作发起人和唯一审批人。
+- 取得另一位测试审批人的 `open_id` 时，优先通过同一只读事件链捕获，不读取无关通讯录。
+
+验收：输出缺失项清单和用户需要在飞书完成的最小操作，不改 `FEISHU_LIVE`。
+
+### W4：自动化回归与仓库卫生
+
+依次运行：
 
 ```powershell
 git status --short --branch
-.\clawos\.venv\Scripts\python.exe -B -m unittest clawos.tests.test_feishu_connector clawos.tests.test_feishu_api clawos.tests.test_feishu_migration clawos.tests.test_frontend_static
+.\clawos\.venv\Scripts\python.exe -B -m unittest clawos.tests.test_feishu_connector clawos.tests.test_feishu_api clawos.tests.test_feishu_migration
 node --check clawos\static\assets\console.js
 .\clawos\.venv\Scripts\python.exe -B -m unittest discover -s clawos\tests
 git diff --check
 git status --short
 ```
 
-若项目要求在 `clawos` 目录运行，则使用 `tests.*` 模块名；不要为了测试改导入结构。
+全量测试若修改 `clawos/skills/skill_registry.jsonl`，只恢复该测试计数副作用，不覆盖其他改动。不得提交 `.env`、临时预检脚本、日志、数据库、缓存或浏览器产物。
 
-## 真实租户验收：仅用户授权后
+### W5：停在真实写操作授权门前
 
-用户需提供或确认测试租户中的 App ID/Secret、tenant、审批定义 code、发起人和授权审批人的 open_id、表单控件 ID、允许的 chat_id/open_id，并明确允许创建审批和发送测试消息。
+完成 W1-W4 后停止，并向用户报告。不得自行设置 `FEISHU_LIVE=true`。
 
-验收顺序：拒绝一次、未授权审批一次、授权审批一次、只发送一次、事件重放一次、服务重启后重试一次。证据不得包含 Secret、token 或原始敏感消息。
+用户后续授权必须分阶段：
+
+1. 授权创建一个测试审批实例，但不发送消息。
+2. 用户在飞书中完成拒绝/越权/授权审批测试，WorkBuddy 只同步并验证状态。
+3. 用户再次明确授权后，才向白名单测试目标发送一次。
+4. 最后验证事件重放、并发和重启恢复均不会重复发送。
+
+每一阶段都要给出即将影响的飞书对象、预期副作用和停止条件，获得明确授权后再执行。
+
+## 剩余完成定义
+
+- [ ] token `code: 0` 回归测试已补齐。
+- [ ] 正式健康状态能区分线程存活与真实 WS 握手成功。
+- [ ] 审批定义已发布，approval code 和正文控件 ID 已配置。
+- [ ] 独立授权审批人的 open_id 已配置。
+- [ ] 创建审批前的自动化与配置门禁全绿。
+- [ ] 用户授权后完成拒绝路径与越权审批阻断。
+- [ ] 用户授权后完成授权审批和单次白名单发送。
+- [ ] 重放、并发、超时和重启均无重复发送。
+- [ ] 真实租户证据脱敏，最终由用户复核。
+
+在以上全部完成前，项目状态只能写“真实只读入站已通过，审批与外发待验收”，不能写“真实飞书闭环完成”。
 
 ## 禁止事项
 
-- 不得设置 `FEISHU_LIVE=true`，不得真实发消息、创建审批、提交、推送或创建 PR，除非用户明确分别授权。
-- 不得用 `git reset --hard`、`git checkout --` 或覆盖方式清理现场。
-- 不得提交 `.env`、凭据、数据库、日志、浏览器产物或 `skill_registry.jsonl` 计数变化。
-- 不得把 mock 结果说成真实飞书闭环完成。
+- 不得输出或提交 App Secret、token、真实 `.env` 或完整敏感标识。
+- 不得默认设置 `FEISHU_LIVE=true`。
+- 不得创建审批、发送消息、修改飞书权限、提交代码或推送远端，除非用户明确授权相应动作。
+- 不得用 `manager.running` 作为 WS 已连接的唯一证据。
+- 不得把 mock、token 成功或只读入站称为审批外发闭环完成。
+- 不得 reset、覆盖、批量暂存或擅自删除被忽略的本地产物。
 
 ## 每轮交付格式
 
 1. 已完成：任务编号和改动文件。
-2. 验证：精确命令、通过/跳过/失败数。
-3. 当前状态：`git status --short --branch`，区分原有与本轮改动。
-4. 剩余风险：未关闭的 P0/P1。
-5. 下一步：一个最小可执行任务；涉及真实租户或外部发送时停下请求授权。
+2. 验证：精确命令及通过/跳过/失败数。
+3. 当前状态：分支、提交、tracked/untracked/ignored 状态。
+4. 真实飞书动作：明确列出是否连接、创建审批、发送消息。
+5. 剩余风险：尚未关闭的完成定义。
+6. 下一步：一个最小任务；触及真实写操作时停下请求授权。
 
 ## 可直接发给 WorkBuddy 的指令
 
-> 先完整阅读 `PROJECT_CONTEXT.md`、`WORKBUDDY_FEISHU_HANDOFF_2026-07-15.md` 和 `WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md`。保护当前未提交现场，保持 `FEISHU_LIVE=false`。按 P0-1 到 P0-6 以失败测试驱动修复，再完成 P1、跑聚焦和全量回归，并恢复技能注册表测试副作用。不要连接真实租户、发送消息、提交或推送，直到我明确授权。最终按“已完成、验证、当前状态、剩余风险、下一步”汇报。
+> 先完整阅读 `PROJECT_CONTEXT.md`、`WORKBUDDY_FEISHU_HANDOFF_2026-07-15.md`、`WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md` 和 `docs/feishu-runbook.md`。当前真实只读入站已经通过，但审批和外发尚未验收。严格按接手单 W1→W5 执行：先补 token `code:0` 回归测试，再核对正式长连接握手状态、只读清点审批配置、跑定向和全量回归并检查仓库卫生。保持 `FEISHU_LIVE=false`；不得输出凭证、创建审批、发送消息、提交或推送。完成 W1-W4 后停在真实写授权门前，按规定格式汇报。
