@@ -1,5 +1,40 @@
 # ClawOS Console Design QA
 
+## Current desktop/mobile audit — 2026-07-17
+
+- implementation: `http://127.0.0.1:18790/console`
+- current-run states: desktop workbench, desktop knowledge, 390 × 844 mobile knowledge, mobile workbench, mobile model settings
+- evidence method: Chrome accessibility snapshots plus current-run inline screenshots; Chrome DevTools MCP refused all requested workspace save paths, so this run does not claim durable local screenshot files
+- automated snapshot after the approved P1 repairs: Lighthouse mobile accessibility 100, best practices 100; screenshot evidence alone does not establish full WCAG compliance
+
+### Step health
+
+1. Desktop workbench — healthy. Task entry, attachment, network toggle, approval mode, active tasks and truthful empty delivery/agent states are visible.
+2. Desktop knowledge — healthy with minor polish risk. Upload, search, graph and recent sources are easy to find; the sidebar brand is visibly truncated.
+3. Mobile knowledge — healthy after repair. The fixed header has a reliable content offset and category labels remain single-line in a horizontal scroller at 390 × 844.
+4. Mobile workbench — healthy with minor density risk. Primary task flow remains usable; the textarea, attachment, network and send controls are compressed into a narrow row.
+5. Mobile model settings — healthy. API/local/offline choices, local Qwen model and loopback Base URL are explicit; the modal fits the viewport and keeps save/cancel visible.
+
+### Current findings
+
+| Severity | Surface | Evidence | Recommendation | Code change |
+| --- | --- | --- | --- | --- |
+| Resolved P1 | Mobile knowledge header | 390 × 844 repair screenshot starts below the fixed header with normal spacing | Mobile main offset increased to 92 px | Done |
+| Resolved P1 | Mobile knowledge filters | All five category labels remain horizontal; overflow scrolls instead of wrapping characters | No-wrap, fixed-width pills in horizontal scroller | Done |
+| Resolved P1 | Accessibility contrast | Lighthouse accessibility increased from 96 to 100; contrast audit now passes | Darkened affected secondary text and table-header colors | Done |
+| Resolved P1 | Mobile menu accessible name | Accessibility snapshot exposes the visible and accessible name as `菜单` | Aligned `aria-label` with visible text | Done |
+| P2 | Mobile task composer | Textarea, attachment, network and send controls are tightly packed | Stack secondary controls below the textarea below 420 px | Optional CSS |
+| P2 | Desktop sidebar brand | `ClawOS 工作台` is truncated to `ClawOS 工…` | Allow the title one more line or adjust brand block width | Optional CSS |
+
+### Confirmed strengths and limits
+
+- No P0 overlap, horizontal overflow, blocked primary action or misleading generated-delivery state was seen in the accepted screenshots.
+- Model mode clearly distinguishes API, local and offline; current local Qwen configuration is visible without exposing a secret.
+- Approval mode is visible on the workbench, and the tested settings modal did not silently perform a write.
+- Accessibility score is a useful signal, not a compliance claim. Keyboard order, screen-reader announcements, zoom above 200% and error recovery still require direct interaction tests.
+
+current result: the 4 user-approved P1 findings are repaired and re-verified; 2 optional P2 findings remain intentionally unchanged
+
 - visual references: `codex-clipboard-adff59f0-83d7-43bd-ae63-f8b310c5dd82.png`, `codex-clipboard-1f98c037-a223-4e37-8c02-f23beb23ca27.png`
 - implementation: `http://127.0.0.1:18790/console`
 - viewport: 1440 x 1024

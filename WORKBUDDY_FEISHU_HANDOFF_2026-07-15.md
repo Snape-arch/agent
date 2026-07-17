@@ -84,6 +84,21 @@ git branch -vv
 
 交付：一张启动能力清单，分为“通过、阻断、未验证”，附精确命令和脱敏证据。
 
+验收结果（2026-07-17）：
+
+| 项目 | 状态 | 脱敏证据 |
+| --- | --- | --- |
+| 启动前资产与端口 | 通过 | Python venv、本地 GGUF、Qwen3 Embedding、llama-server 和本地配置均存在；初始 8000/18791/18790 空闲 |
+| Qwen | 通过 | `http://127.0.0.1:8000/health` 返回 `status=ok`；routing/upstream 真实探针均 `reachable=true` |
+| MTClaw | 通过 | 本地 Qwen 热身成功，`/health` 返回 `status=ok`、`tools_loaded=30` |
+| ClawOS | 通过 | `/health` 返回 `status=ok`、数据库 `ok`、63 个工具、MTClaw 可达 |
+| 停止与重启 | 通过 | 三个服务端口释放后按全本地配置重新启动并再次通过健康检查 |
+| 端口冲突 | 通过，有非阻断限制 | 已有服务时启动器退出码为 1；脚本使用交互式 `pause`，不适合作为无人值守检测命令 |
+| 飞书门禁 | 通过 | `.env` 仍为 `FEISHU_LIVE=false`；未发送消息、未创建审批 |
+| 云调用与下载 | 通过 | 正式验收配置仅指向 `127.0.0.1`，未下载模型、未完成任何收费 API 调用 |
+
+运行产物仅保存在忽略目录 `tmp/n1*`，不得提交。当前后台三服务保持在线，供 N2 使用。
+
 ### N2：六条核心功能闭环
 
 目标：使用现有功能各跑一个最小、可复现案例，不新增顶层模块。
@@ -106,6 +121,21 @@ git branch -vv
 - 不调用真实外部发送。
 - 失败时先定位根因，不以假数据或 mock 截图冒充真实闭环。
 - 只修阻断闭环的缺陷；不要顺手重构周边模块。
+
+执行结果（2026-07-17）：
+
+| 闭环 | 状态 | ID / 轨迹 | 引用与持久化 | 重新打开 |
+| --- | --- | --- | --- | --- |
+| 知识捕获 | 通过 | document `3`，knowledge `10` | `clawos/uploads/`，唯一标识 `N2-EVIDENCE-LOCAL-20260717` | 文档搜索返回 1 条 |
+| 文档分析 | 通过 | document `3`，chunk `3` | `doc:3#chunk=1`，结构化 Markdown 分块 | `/api/documents/3/chunks` 返回 1 个 ready chunk |
+| 引用问答 | 通过 | run `academy-citation-answer-3-1784273073644` | `doc:3#chunk=1` | 来源接口返回 HTTP 200 |
+| 报告生成 | 通过 | task `21`，started/claimed/finished | ignored 的 `tmp/n2/reports/`；Markdown 7573 bytes，PDF 132223 bytes | 两个产物均可重新读取 |
+| 项目管理 | 通过 | task `24`，step `tools_list` succeeded | 事件含 task/step started/finished，response payload 已保存 | `/api/tasks/24` 可恢复完整轨迹 |
+| 学习/研究 | 通过 | citation run `academy-citation-answer-4-1784273650298`；project run `academy-research-project-item-4-1784273650383`；checkpoint run `academy-paper-checkpoint-4-20260717-153410` | `doc:4#chunk=1`；检查点 JSON 位于 `output/academy/checkpoints/` | 项目状态从 open 更新为 done，项目与检查点均可重新查询 |
+
+失败路径也已保留：task `20` 因 Markdown 不是可读 PDF 而失败，错误为 `a readable PDF file is required`；随后使用安全测试 PDF 完成 task `21`。直接资源 API（上传、分块）返回 document/knowledge/chunk ID，不单独生成 runtime task ID，这是当前证据模型的非阻断限制。
+
+本轮发现并修复 MTClaw 成功路由未把工具轨迹写入 Task Steps 的阻断问题；真实复测 task `24` 现在包含 1 个 succeeded step 和 `step_started` / `step_finished` 事件。
 
 ### N3：功能与界面验收
 
@@ -163,10 +193,10 @@ git ls-files clawos/.env clawos/*.db clawos/*.log clawos/__pycache__
 
 ## 完成定义
 
-- [ ] 本地启动、停止、重启和健康状态有当前证据。
-- [ ] 六条核心功能闭环均有可复现证据。
-- [ ] 桌面和移动端界面审查完成，P0 阻断项已列清。
-- [ ] 用户确认后修复的界面问题均有复测截图。
+- [x] 本地启动、停止、重启和健康状态有当前证据。
+- [x] 六条核心功能闭环均有可复现证据。
+- [x] 桌面和移动端界面审查完成，P0 阻断项已列清。
+- [x] 用户确认的 4 个 P1 界面问题均已修复并有当前运行复测截图；Lighthouse accessibility 100、best practices 100。
 - [ ] 安全测试数据的备份/恢复演练完成。
 - [ ] 全量测试从文档规定目录运行通过。
 - [ ] 仓库未跟踪密钥、个人数据或运行产物。

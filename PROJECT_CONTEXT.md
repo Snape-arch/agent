@@ -5,10 +5,16 @@
 ## 当前状态（2026-07-17）
 
 - 当前分支：`codex/p0-demo-polish`。
-- 当前提交：`90a493f`；当前工作分支已快进到 `origin/master`，相对 `origin/codex/p0-demo-polish` 超前 4 个合并提交。
+- 当前提交：`4784d94`；与 `origin/codex/p0-demo-polish` 一致，相对 `origin/master` 超前 1 个文档提交。
 - 本轮只有活跃工作文档更新；`.env`、`.workbuddy/`、`clawos/tmp/` 为本地忽略项，不得提交或擅自清理。
 - 2026-07-17 沙箱外全量回归：**326 个通过、1 个跳过、0 失败**。沙箱内出现的 4 个失败均由既有输出/备份文件覆盖权限导致，4 项在沙箱外单独重跑通过；不是代码回归。
 - 已验证的产品基线仍包括本地 Qwen、Chroma/Qwen3 向量能力、MTClaw 路由、办公工作流、Academy 页面和五条真实证据链。物理目标设备验收及企业连接器真实租户验收尚未完成。
+- 2026-07-17 N1 本地启动基线完成：本地 Qwen、MTClaw 与 ClawOS 冷启动、停止、重启和健康检查通过；模型 routing/upstream 真实探针可达，MTClaw 本地热身成功并加载 30 个工具；`FEISHU_LIVE=false` 保持不变。下一步从 N2 六条核心功能闭环开始。
+- 本轮只更新 `PROJECT_CONTEXT.md`、`WORK_STATUS.md` 和 `WORKBUDDY_FEISHU_HANDOFF_2026-07-15.md`；未修改代码，未重跑全量单元测试。N1 运行日志位于 ignored 的 `tmp/n1*`，不得提交。
+- 2026-07-17 N2 六条核心闭环已用安全测试资料完成：文档 `3/4`、报告任务 `21`、项目任务 `24`、引用/项目/检查点 run 均可重新查询，报告 Markdown/PDF 可重新读取。测试输入和报告位于 ignored 的 `tmp/n2/`。
+- N2 修复了 MTClaw 成功路由不持久化 Task Steps 的缺陷：`clawos_server.py` 现在把 MTClaw trace 写为 tool step，`test_mtclaw_adapter.py` 增加回归断言；真实 task `24` 包含 succeeded `tools_list` step 及 step started/finished 事件。
+- N2 相关回归共 48 项：沙箱内 46 通过、2 个既有权限/worker 假失败；2 项在沙箱外单独重跑均通过。下一步进入 N3 当前界面桌面/移动端验收。
+- 2026-07-17 N3 当前界面审查已覆盖桌面工作台/知识库与 390 × 844 移动工作台/知识库/模型设置；无 P0。用户确认的 4 个 P1（移动知识页头部、分类标签换行、低对比文字、移动菜单名称）已修复并复测，Lighthouse 移动 accessibility 由 96 提升至 100、best practices 保持 100；2 个 P2 按约束未改。
 
 ## 飞书连接器 v2
 
@@ -33,7 +39,7 @@
 
 1. 先读 `WORK_STATUS.md`、本文件、`README.md`、`PROJECT_ROADMAP.md` 和 `WORKBUDDY_FEISHU_HANDOFF_2026-07-15.md`。
 2. 飞书阶段冻结；不继续审批、外发或连接器功能扩展。
-3. 按接手单 N0-N4：只读盘点、本地启动基线、六条核心功能闭环、桌面/移动端界面验收、备份恢复和仓库卫生。
+3. N0 与 N1 已完成；按接手单继续 N2 六条核心功能闭环、N3 桌面/移动端界面验收、N4 备份恢复和仓库卫生。
 4. 先审查后修改；只修阻断闭环的问题，不新增顶层模块或大规模视觉重构。
 5. 任何外部发送、真实 API、模型下载、Git push、PR 或共享状态变更均需用户明确授权。
 

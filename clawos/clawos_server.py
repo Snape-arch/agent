@@ -383,6 +383,33 @@ def _task_step_status(tool_status: str) -> str:
     return ToolService.task_step_status(tool_status)
 
 
+def _record_mtclaw_task_steps(task_id: int | None, trace: list[dict[str, Any]]) -> None:
+    if not task_id or not g_memory_store:
+        return
+    for item in trace:
+        name = str(item.get("function_name") or "mtclaw_tool")
+        arguments = item.get("tool_input") if isinstance(item.get("tool_input"), dict) else {}
+        result = item.get("tool_result")
+        error = str(result.get("error") or "") if isinstance(result, dict) else ""
+        status = "failed" if error else "succeeded"
+        try:
+            step = g_memory_store.add_task_step(
+                task_id,
+                "tool",
+                name,
+                status="running",
+                input_data=arguments,
+            )
+            g_memory_store.finish_task_step(
+                step["id"],
+                status=status,
+                output_data={"source": "mtclaw", "result": result},
+                error=error,
+            )
+        except Exception as exc:
+            logger.warning(f"MTClaw task step persistence failed: {exc}")
+
+
 def _tool_service() -> ToolService:
     return ToolService(
         python_executor=execute_python_tool,
@@ -1683,6 +1710,7 @@ async def chat_completions(request: Request):
             )
         if mtclaw_result["ok"]:
             trace = mtclaw_result.get("trace", [])
+            _record_mtclaw_task_steps(task_id, trace)
             text = mtclaw_result.get("content", "")
             if g_memory_store and text:
                 g_memory_store.add_message(session_id, "assistant", text[:4000])

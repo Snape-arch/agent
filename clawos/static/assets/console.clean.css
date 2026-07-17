@@ -11,7 +11,7 @@
   --c-line-strong:#cfd4dc;
   --c-text:#14171d;
   --c-muted:#667085;
-  --c-faint:#9299a5;
+  --c-faint:#697386;
   --c-blue:#315cf5;
   --c-blue-soft:#edf1ff;
   --c-green:#13845b;
@@ -47,7 +47,7 @@ body.aether-console{overflow-x:hidden}
 .aether-console .aether-logo{flex:0 0 38px;width:38px;height:38px;display:grid;place-items:center;color:#fff;background:#14171d!important;border-radius:10px;box-shadow:none!important}
 .aether-console .side-brand>div:not(.aether-logo){min-width:0}
 .aether-console .side-brand b{display:block;overflow:hidden;color:var(--c-text)!important;font-size:15px;font-weight:720;white-space:nowrap;text-overflow:ellipsis}
-.aether-console .side-brand small{display:block;color:#8c939e!important;font-size:10px;letter-spacing:.14em}
+.aether-console .side-brand small{display:block;color:#626b78!important;font-size:10px;letter-spacing:.14em}
 .aether-console .side-collapse{margin-left:auto;width:28px;height:28px;padding:0;color:#69717e;background:#fff!important;border:1px solid var(--c-line)!important;border-radius:8px!important;box-shadow:none!important}
 .aether-console .side-site-links{display:none}
 .aether-console .side-search{margin:16px 4px 6px;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important}
@@ -116,7 +116,7 @@ body.aether-console{overflow-x:hidden}
 
 /* Tables and data views */
 .aether-console .table,.aether-console table{width:100%;min-width:760px;border-collapse:separate;border-spacing:0;color:#3f4753!important;background:#fff!important;background-image:none!important;border:1px solid var(--c-line)!important;border-radius:10px;box-shadow:none!important;overflow:hidden;table-layout:auto;writing-mode:horizontal-tb;text-orientation:mixed}
-.aether-console .table th,.aether-console table th{padding:10px 12px;color:#747c88!important;background:#f5f6f4!important;border:0;border-bottom:1px solid var(--c-line);font-size:10px;font-weight:750;text-align:left;white-space:nowrap}
+.aether-console .table th,.aether-console table th{padding:10px 12px;color:#5f6875!important;background:#f5f6f4!important;border:0;border-bottom:1px solid var(--c-line);font-size:10px;font-weight:750;text-align:left;white-space:nowrap}
 .aether-console .table td,.aether-console table td{padding:11px 12px;color:#4e5662!important;background:#fff!important;border:0;border-bottom:1px solid #eceeea;font-size:11px;line-height:1.45;word-break:normal;white-space:normal}
 .aether-console .table tr:last-child td,.aether-console table tr:last-child td{border-bottom:0}
 .aether-console .state,.aether-console .status{display:inline-flex;padding:4px 8px;color:#4c5561!important;background:#eef0f2!important;border:0!important;border-radius:999px;font-size:10px}.aether-console .state.ok{color:var(--c-green)!important;background:#e9f7f1!important}.aether-console .state.err{color:var(--c-red)!important;background:#fbecef!important}
@@ -137,7 +137,7 @@ body.aether-console{overflow-x:hidden}
 .aether-console .intent-panel .compose-inner{max-width:none;display:grid;grid-template-columns:42px minmax(220px,1fr) auto 76px auto;gap:8px;padding:0;background:transparent!important;border:0!important;box-shadow:none!important;backdrop-filter:none!important}
 .aether-console .intent-panel .compose-inner textarea{width:100%;min-height:44px}.aether-console .intent-panel .attach-button{width:42px;height:44px;color:var(--c-text)!important;background:#fff!important;border:1px solid var(--c-line-strong)!important;border-radius:9px!important}
 .aether-console .web-search-toggle{min-height:44px;display:flex;align-items:center;gap:6px;padding:0 10px;color:#555d69!important;background:#fff!important;border:1px solid var(--c-line)!important;border-radius:9px!important;box-shadow:none!important}.aether-console .web-search-toggle input{width:14px;min-height:14px;padding:0}
-.aether-console .composer-help{display:block;margin:7px 2px 0;color:var(--c-faint)!important;font-size:10px}
+.aether-console .composer-help{display:block;margin:7px 2px 0;color:#5f6876!important;font-size:10px}
 .aether-console .workbench-quick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.aether-console .workbench-quick button{min-height:78px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:5px;padding:15px 17px;color:var(--c-text)!important;background:#fff!important;border:1px solid var(--c-line)!important;border-radius:11px!important;text-align:left}.aether-console .workbench-quick span{color:var(--c-muted)!important;font-size:11px}
 .aether-console .workbench-columns{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(280px,.72fr);gap:18px}.aether-console .workbench-section{min-width:0;padding:19px;background:#fff;border:1px solid var(--c-line);border-radius:var(--c-radius)}
 .aether-console .section-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:13px}.aether-console .section-heading h3{margin:0;font-size:17px}.aether-console .text-action{padding:4px 0;color:#3156d8!important;background:transparent!important;border:0!important;font-size:11px;font-weight:680}
@@ -163,12 +163,12 @@ body.aether-console{overflow-x:hidden}
   .aether-console .knowledge-front-stage{grid-template-columns:1fr 1fr}.aether-console .workbench-columns{grid-template-columns:1fr}.aether-console .workbench-quick{grid-template-columns:1fr 1fr}.aether-console .agent-roster{grid-template-columns:1fr}.aether-console .agent-roster .section-heading{grid-column:auto}.aether-console .metric-grid,.aether-console .runtime-record-grid{grid-template-columns:1fr}
 }
 @media(max-width:900px){
-  .aether-console .console-head{grid-template-columns:1fr auto}.aether-console .console-site-links{display:none}.aether-console .side-site-links{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:9px 4px 0}.aether-console .side-site-links a{padding:7px 3px;color:#68717e;background:#f0f1ee;border-radius:7px;text-align:center;text-decoration:none;font-size:9px;font-weight:650}
+  .aether-console .console-head{grid-template-columns:1fr auto}.aether-console .console-site-links{display:none}.aether-console .side-site-links{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:9px 4px 0}.aether-console .side-site-links a{padding:7px 3px;color:#4f5968;background:#f0f1ee;border-radius:7px;text-align:center;text-decoration:none;font-size:9px;font-weight:650}
   .aether-console .knowledge-toolbar,.aether-console .project-intake,.aether-console .knowledge-layout,.aether-console .ops-grid,.aether-console .security-grid,.aether-console .skill-grid{grid-template-columns:1fr}
 }
 @media(max-width:760px){
   .aether-console .side{transform:translateX(-100%);width:min(84vw,300px);transition:transform .2s ease}.aether-console.sidebar-open .side{transform:translateX(0)}
-  .aether-console .console-head{left:0;height:68px;padding:0 15px}.aether-console .console-head p,.aether-console .head-actions .badge{display:none}.aether-console .console-main{margin-left:0!important;padding:84px 13px 24px!important}
+  .aether-console .console-head{left:0;height:68px;padding:0 15px}.aether-console .console-head p,.aether-console .head-actions .badge{display:none}.aether-console .console-main{margin-left:0!important;padding:92px 13px 24px!important}
   .aether-console .panel-view{padding:15px!important}.aether-console .workbench-intro h2{font-size:30px}.aether-console .workbench-new{display:none}.aether-console .knowledge-front-stage,.aether-console .knowledge-frontstage-metrics,.aether-console .offline-readiness-grid,.aether-console .offline-readiness-summary,.aether-console .local-acceptance-trend-grid,.aether-console .professional-board-grid,.aether-console .job-grid,.aether-console .app-grid{grid-template-columns:1fr}
   .aether-console .intent-panel .compose-inner{grid-template-columns:42px minmax(0,1fr) 68px}.aether-console .web-search-toggle{grid-column:2;justify-self:start}.aether-console .intent-panel #stop{grid-column:3}.aether-console .active-task-row{grid-template-columns:34px minmax(0,1fr) auto}.aether-console .task-progress{grid-column:2/4}
 }
@@ -438,7 +438,7 @@ body.aether-console{font-size:14px;line-height:1.55}
 }
 @media(max-width:480px){
   .aether-console .workbench-quick{grid-template-columns:1fr!important}.aether-console .workbench-intro h2{font-size:27px}.aether-console .compose-inner{grid-template-columns:auto minmax(0,1fr) auto!important}.aether-console .web-search-toggle{grid-column:2}.aether-console #stop{display:none}
-  .aether-console #view-knowledge .library-head{align-items:stretch!important;flex-direction:column}.aether-console #view-knowledge .library-tabs{overflow-x:auto;flex-wrap:nowrap!important}.aether-console #view-knowledge .knowledge-primary-search{grid-template-columns:1fr!important}.aether-console #view-knowledge .knowledge-primary-search>*{grid-column:1!important}
+  .aether-console #view-knowledge .library-head{align-items:stretch!important;flex-direction:column}.aether-console #view-knowledge .library-tabs{justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap!important;padding-bottom:4px}.aether-console #view-knowledge .library-tabs button{flex:0 0 auto;min-width:max-content;white-space:nowrap;word-break:keep-all}.aether-console #view-knowledge .knowledge-primary-search{grid-template-columns:1fr!important}.aether-console #view-knowledge .knowledge-primary-search>*{grid-column:1!important}
 }
 
 /* Brand system, professional scenario cards and unified runtime evidence. */

@@ -235,6 +235,7 @@ class MTClawAdapterTests(unittest.IsolatedAsyncioTestCase):
                     "messages": [{"role": "user", "content": "现在几点"}],
                 })
                 traces = store.list_mtclaw_traces("competition-session")
+                task_detail = store.get_task(response.json()["clawos"]["task_id"])
 
         claw_server.g_memory_store = old_store
         claw_server.g_context_builder = old_builder
@@ -245,6 +246,9 @@ class MTClawAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(payload["clawos"]["mtclaw"]["used"])
         self.assertEqual(payload["clawos"]["tool_calls"][0]["name"], "time_now")
         self.assertEqual(traces[0]["route_status"], "success")
+        self.assertEqual(task_detail["steps"][0]["name"], "time_now")
+        self.assertEqual(task_detail["steps"][0]["status"], "succeeded")
+        self.assertEqual(task_detail["steps"][0]["output"]["source"], "mtclaw")
 
 
 if __name__ == "__main__":
