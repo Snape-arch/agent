@@ -512,6 +512,16 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertIn(token, css)
 
+    def test_console_mobile_knowledge_and_accessibility_contract(self):
+        html = self.read_page("console.html")
+        css = self.read_page("assets/console.clean.css")
+
+        self.assertIn('aria-label="菜单"', html)
+        self.assertIn("padding:92px 13px 24px!important", css)
+        self.assertIn("min-width:max-content;white-space:nowrap;word-break:keep-all", css)
+        for color in ("#626b78", "#4f5968", "#5f6876", "#5f6875"):
+            self.assertIn(color, css)
+
     def test_console_codex_reduction_contract(self):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
