@@ -6,10 +6,12 @@ ClawOS 是一个 Windows 本地个人 Agent OS 原型，围绕 observe-plan-exec
 
 新协作者优先阅读：
 
-1. `PROJECT_CONTEXT.md`：当前分支、提交、进度、风险和下一步。
-2. `clawos/README.md`：ClawOS 子项目说明。
-3. `clawos/MTCLAW_INTEGRATION.md`：MTClaw 接入说明。
-4. `.agents/skills/`：仓库内协作技能。
+1. `WORK_STATUS.md`：当前全局状态、功能全景、风险和活跃任务。
+2. `PROJECT_CONTEXT.md`：当前分支、提交、验证基线和协作护栏。
+3. `PROJECT_ROADMAP.md`：本地工作台的阶段目标与完成门槛。
+4. `clawos/README.md`：ClawOS 子项目说明。
+5. `clawos/MTCLAW_INTEGRATION.md`：MTClaw 接入说明。
+6. `.agents/skills/`：仓库内协作技能。
 
 ## Windows 本地启动
 
