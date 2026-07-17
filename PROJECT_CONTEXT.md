@@ -2,12 +2,12 @@
 
 这是 ClawOS 当前状态的简洁交接入口。2026-07-14 以前的详细记录已归档到 `clawos/docs/PROJECT_HISTORY_2026-07-14.md`。
 
-## 当前状态（2026-07-16）
+## 当前状态（2026-07-17）
 
 - 当前分支：`codex/p0-demo-polish`。
-- 当前提交：`df1791e`；本地分支与 `origin/codex/p0-demo-polish` 一致。
-- tracked 工作区干净；`.env`、`.workbuddy/`、`clawos/tmp/` 为本地忽略项，不得提交或擅自清理。
-- 飞书定向测试在 `df1791e` 为 **46 个通过**；全量回归为 **326 个通过、1 个跳过、0 失败**。前端 JavaScript 语法检查和 `git diff --check` 通过。
+- 当前提交：`90a493f`；当前工作分支已快进到 `origin/master`，相对 `origin/codex/p0-demo-polish` 超前 4 个合并提交。
+- 本轮只有活跃工作文档更新；`.env`、`.workbuddy/`、`clawos/tmp/` 为本地忽略项，不得提交或擅自清理。
+- 2026-07-17 沙箱外全量回归：**326 个通过、1 个跳过、0 失败**。沙箱内出现的 4 个失败均由既有输出/备份文件覆盖权限导致，4 项在沙箱外单独重跑通过；不是代码回归。
 - 已验证的产品基线仍包括本地 Qwen、Chroma/Qwen3 向量能力、MTClaw 路由、办公工作流、Academy 页面和五条真实证据链。物理目标设备验收及企业连接器真实租户验收尚未完成。
 
 ## 飞书连接器 v2
@@ -26,11 +26,12 @@
 - `clawos/skills/skill_registry.jsonl` 会被全量测试修改使用计数；恢复该副作用后再审查 staged 文件，不能提交它。
 - `.playwright-cli/` 是本地界面审查产物，不提交；未经用户许可不得删除。
 - 永远不要提交 `.env`、凭据、数据库、日志、缓存、上传、模型、生成报告和浏览器证据。
+- 本地损坏引用 `refs/heads/codex/backup-master-c663560` 会让部分 `git --all` 命令报 `bad object`；未获用户授权前不要删除或改写。
 - 2026-07-14 已完成：清理历史生成物和输入法缓存路径的版本控制、整合忽略规则、归档过长交接记录、审计并回收历史 1.32 GiB Git 模型 blob；本地模型资产保留供复现。
 
 ## 交接顺序
 
-1. 先读本文件、`README.md`、`PROJECT_ROADMAP.md` 和 `WORKBUDDY_FEISHU_HANDOFF_2026-07-15.md`。
+1. 先读 `WORK_STATUS.md`、本文件、`README.md`、`PROJECT_ROADMAP.md` 和 `WORKBUDDY_FEISHU_HANDOFF_2026-07-15.md`。
 2. 飞书阶段冻结；不继续审批、外发或连接器功能扩展。
 3. 按接手单 N0-N4：只读盘点、本地启动基线、六条核心功能闭环、桌面/移动端界面验收、备份恢复和仓库卫生。
 4. 先审查后修改；只修阻断闭环的问题，不新增顶层模块或大规模视觉重构。

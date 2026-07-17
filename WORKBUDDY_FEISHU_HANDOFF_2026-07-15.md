@@ -1,4 +1,4 @@
-# WorkBuddy 下一阶段接手单（2026-07-16）
+# WorkBuddy 下一阶段接手单（2026-07-17）
 
 ## 一眼结论
 
@@ -12,7 +12,7 @@
 
 - 仓库：`D:\Projects\clawos`。
 - 分支：`codex/p0-demo-polish`。
-- 当前提交：`df1791e`，与 `origin/codex/p0-demo-polish` 一致。
+- 当前提交：`90a493f`，与 `origin/master` 一致；相对 `origin/codex/p0-demo-polish` 超前 4 个合并提交。
 - `df1791e` 已包含 token `code:0` 回归测试和正式长连接 `running/connected` 状态区分。
 - WorkBuddy 曾生成的控制台直发、`POST /api/feishu/send` 和数据库重建改动已全部撤销，未进入提交。
 - `.env`、`.workbuddy/`、`clawos/tmp/` 是本地忽略项；不得提交、输出或擅自清理。
@@ -41,7 +41,7 @@
 
 ## WorkBuddy 接下来按顺序执行
 
-### N0：只读基线盘点
+### N0：只读基线盘点（已于 2026-07-17 完成）
 
 先读取：
 
@@ -60,7 +60,7 @@ git branch -vv
 
 输出当前分支、提交、dirty 文件、ignored 敏感产物和现有服务状态。未经用户确认，不修改代码、不启动真实外部连接、不提交、不推送。
 
-验收：事实与 `PROJECT_CONTEXT.md` 一致；若不一致，先报告，不静默修文档或代码。
+验收结果：仓库已快进到 `90a493f`；沙箱外全量回归 326 个通过、1 个跳过；全局状态已写入 `WORK_STATUS.md`。下一任务从 N1 开始。
 
 ### N1：本地启动基线
 
