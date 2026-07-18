@@ -5,11 +5,11 @@
 - 新增 `desktop/` 桌面交付层：PyInstaller 无控制台 `ClawOS.exe`、WebView2 原生窗口、单实例、ClawOS/MTClaw 隐藏启动与随窗口退出回收。
 - 新增 Inno Setup 用户级安装器：安装到 `%LOCALAPPDATA%\Programs\ClawOS`，任务、配置、日志和产物独立保存到 `%LOCALAPPDATA%\ClawOS`；卸载应用时保留用户数据。
 - `clawos_server.py` 新增 `CLAWOS_DATA_DIR`、`CLAWOS_OUTPUT_DIR`、`CLAWOS_ENV_PATH` 等桌面运行路径，密钥、数据库、上传和生成产物不再要求写入安装目录。
-- 构建只复制 Git 跟踪的运行文件，明确排除 `.env`、数据库、日志、`tmp`、`tools`、测试、文档、上传、备份和生成产物；`dist/`、`desktop/build/`、`desktop/stage/` 均被忽略，不进入提交。
+- 构建只复制 Git 跟踪的运行文件，明确排除 `.env`、数据库、日志、`tmp`、`tools`、测试、文档、上传、备份和生成产物；`desktop/build/`、`desktop/stage/` 与本地验收 JSON 不进入提交。最终安装包按用户要求通过 Git LFS 跟踪，避免触发 GitHub 100 MB 普通对象限制。
 - 本机真实安装验收 14/14 通过：静默安装、便携 Python、无终端启动、ClawOS/MTClaw 健康、控制台 200、真实 `ClawOS` 顶层窗口、关窗回收服务、静默卸载全部通过。最终安装包位于 ignored 的 `dist/ClawOS-Setup-0.1.0.exe`，SHA-256 为 `FBF783FFAABECA0B969F51CA17F7467913D74CB0E1CF2F7355C96B7FFFB9B8D2`。
 - Windows UI 自动化已确认软件合成模式下工作台真实渲染，不是仅有后台健康状态；全量回归 **331/331 通过**。
 - 证据边界：当前机器为 Windows 家庭中文版且无 Windows Sandbox，故本轮只能声称“本机全新安装级验收通过”。`desktop/ClawOS-Clean-Machine.wsb` 与 `clean_machine_acceptance.ps1` 已提供给 Windows Sandbox/干净 VM；获得另一台环境的报告前，不得声称干净机器实机已经通过。
-- 当前安装包未代码签名；比赛发布前应使用正式证书签名并在干净 Windows VM/目标设备上复跑验收。
+- 当前安装包未代码签名；比赛发布前应使用正式证书签名并在干净 Windows VM/目标设备上复跑验收。协作者 clone/push 前须启用 Git LFS。
 
 这是 ClawOS 当前状态的简洁交接入口。2026-07-14 以前的详细记录已归档到 `clawos/docs/PROJECT_HISTORY_2026-07-14.md`。
 

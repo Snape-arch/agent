@@ -11,11 +11,15 @@ standard uninstaller.
 .\desktop\build_desktop.ps1
 ```
 
-Generated outputs are ignored by Git:
+Generated build intermediates are ignored by Git:
 
-- `dist\ClawOS-Setup-0.1.0.exe`
 - `desktop\stage\` portable payload
 - `desktop\build\` intermediates
+- `dist\clawos-install-acceptance.json` local acceptance evidence
+
+The release installer `dist\ClawOS-Setup-0.1.0.exe` is tracked through Git LFS
+for competition handoff. Contributors must run `git lfs install` before clone,
+checkout or push. `dist\SHA256SUMS.txt` records its release checksum.
 
 The installer excludes `.env`, databases, logs, uploads, `tmp`, `tools`, model
 weights and generated output. Mutable state is stored in
