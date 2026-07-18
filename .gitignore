@@ -33,3 +33,8 @@ Desktop.ini
 clawos/uploads/
 clawos/data/chroma/
 clawos/backups/
+desktop/build/
+desktop/stage/
+dist/
+__pycache__/
+*.py[cod]

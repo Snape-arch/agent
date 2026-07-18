@@ -41,9 +41,12 @@ BASE_DIR = Path(__file__).parent.resolve()
 STATIC_DIR = BASE_DIR / "static"
 CONFIG_PATH = BASE_DIR / "config.json"
 SCRIPTS_DIR = BASE_DIR / "scripts"
-NOTES_DIR = BASE_DIR / "notes"
-TODO_FILE = BASE_DIR / "clawos_todo.json"
-UPLOAD_DIR = BASE_DIR / "uploads"
+DATA_DIR = Path(os.environ.get("CLAWOS_DATA_DIR", str(BASE_DIR))).expanduser().resolve()
+OUTPUT_ROOT = Path(os.environ.get("CLAWOS_OUTPUT_DIR", str(BASE_DIR.parent / "output"))).expanduser().resolve()
+ENV_PATH = Path(os.environ.get("CLAWOS_ENV_PATH", str(BASE_DIR / ".env"))).expanduser().resolve()
+NOTES_DIR = DATA_DIR / "notes"
+TODO_FILE = DATA_DIR / "clawos_todo.json"
+UPLOAD_DIR = DATA_DIR / "uploads"
 
 
 def load_local_env(env_path: Path) -> None:
@@ -64,10 +67,10 @@ def load_local_env(env_path: Path) -> None:
             os.environ[key] = value
 
 
-load_local_env(BASE_DIR / ".env")
+load_local_env(ENV_PATH)
 
 CONFIG_PATH = Path(os.environ.get("CLAWOS_CONFIG_PATH", str(CONFIG_PATH))).expanduser().resolve()
-MEMORY_DB = Path(os.environ.get("CLAWOS_MEMORY_DB", str(BASE_DIR / "memoryos.db"))).expanduser().resolve()
+MEMORY_DB = Path(os.environ.get("CLAWOS_MEMORY_DB", str(DATA_DIR / "memoryos.db"))).expanduser().resolve()
 
 g_memory_store: Any = None
 g_reflection_engine: Any = None
@@ -269,7 +272,7 @@ def apply_model_config_updates(payload: dict[str, Any]) -> dict[str, Any]:
     if "api_key" in payload:
         updates["MODEL_API_KEY"] = str(payload.get("api_key") or "").strip()
 
-    write_model_env(BASE_DIR / ".env", updates)
+    write_model_env(ENV_PATH, updates)
     for key, value in updates.items():
         os.environ[key] = value
 
@@ -882,7 +885,7 @@ def get_workflow_engine() -> WorkflowEngine:
 
 def get_evaluation_service() -> EvaluationService:
     global g_evaluation_service
-    output_root = (BASE_DIR.parent / "output").resolve()
+    output_root = OUTPUT_ROOT
     if (
         not g_evaluation_service
         or getattr(g_evaluation_service, "output_root", None) != output_root
@@ -1254,7 +1257,7 @@ async def lifespan(app: FastAPI):
     vector_cfg = dict(config.get("vector_store") or {})
     chroma_dir = str(vector_cfg.get("chroma_dir") or "")
     if chroma_dir and not Path(chroma_dir).expanduser().is_absolute():
-        chroma_dir = str((BASE_DIR / chroma_dir).resolve())
+        chroma_dir = str((DATA_DIR / chroma_dir).resolve())
     embedding_model_path = str(vector_cfg.get("embedding_model_path") or "")
     if embedding_model_path and not Path(embedding_model_path).expanduser().is_absolute():
         embedding_model_path = str((BASE_DIR / embedding_model_path).resolve())
@@ -1282,7 +1285,10 @@ async def lifespan(app: FastAPI):
     from policy_optimizer import PolicyOptimizer
     g_policy_optimizer = PolicyOptimizer(g_memory_store)
     from security import SecretManager, SecurityGrantStore, ToolSecurityPolicy
-    g_security_policy = ToolSecurityPolicy(grant_store=SecurityGrantStore(BASE_DIR / "security_policy.json"))
+    g_security_policy = ToolSecurityPolicy(
+        allowed_roots=[BASE_DIR.parent, DATA_DIR, OUTPUT_ROOT],
+        grant_store=SecurityGrantStore(DATA_DIR / "security_policy.json"),
+    )
     g_secret_manager = SecretManager(g_memory_store)
     g_security_service = SecurityService(g_security_policy, g_secret_manager, g_memory_store)
     g_task_service = TaskService(g_memory_store, action_handlers=worker_action_handlers())
@@ -1290,7 +1296,7 @@ async def lifespan(app: FastAPI):
     g_maintenance_service.apply_migrations()
     g_knowledge_service = KnowledgeService(g_memory_store, UPLOAD_DIR, lambda: g_vector_store.refresh() if g_vector_store else None)
     g_paper_intelligence_service = PaperIntelligenceService(g_memory_store)
-    g_scholarly_search_service = ScholarlySearchService(BASE_DIR / "data" / "scholarly")
+    g_scholarly_search_service = ScholarlySearchService(DATA_DIR / "data" / "scholarly")
     from workspace_services import WorkspaceServices
     g_workspace_services = WorkspaceServices(g_memory_store, g_security_policy)
     from skills.skill_evolution import SkillEvolutionManager
@@ -3603,7 +3609,7 @@ async def api_latest_deepseek_qwen_acceptance():
 @app.get("/api/search/live/latest")
 async def api_latest_search_live_acceptance():
     try:
-        report_dir = (BASE_DIR.parent / "output" / "search_evidence").resolve()
+        report_dir = (OUTPUT_ROOT / "search_evidence").resolve()
         preferred = report_dir / "live_search_report.json"
         candidates = [preferred]
         if report_dir.exists():
@@ -3769,7 +3775,7 @@ async def api_academy_paper_annotation_save(request: Request):
     title = str(data.get("title") or document.get("title") or document.get("filename") or f"document-{document_id}")[:160]
     stamp = int(time.time() * 1000)
     filename = safe_filename(f"{stamp}_{title}_annotation.png")
-    storage = ArtifactStorage(BASE_DIR.parent / "output" / "academy" / "annotations")
+    storage = ArtifactStorage(OUTPUT_ROOT / "academy" / "annotations")
     artifact = storage.write_bytes(filename, raw, kind="png")
 
     run = RunRecord(
@@ -3900,7 +3906,7 @@ async def api_academy_paper_checkpoint_save(request: Request):
             for chunk in chunks
         ],
     }
-    storage = ArtifactStorage(BASE_DIR.parent / "output" / "academy" / "checkpoints")
+    storage = ArtifactStorage(OUTPUT_ROOT / "academy" / "checkpoints")
     artifact = storage.write_json(f"{stamp}_{safe_artifact_slug(title)}_checkpoint.json", checkpoint)
     report = status.get("report") or {}
     knowledge = status.get("knowledge") or {}
@@ -3992,7 +3998,7 @@ async def api_academy_paper_checkpoint_detail(run_id: str):
     path = _academy_checkpoint_artifact_path(run)
     if not path:
         raise HTTPException(404, "Checkpoint artifact not found")
-    root = (BASE_DIR.parent / "output" / "academy" / "checkpoints").resolve()
+    root = (OUTPUT_ROOT / "academy" / "checkpoints").resolve()
     try:
         path.relative_to(root)
     except ValueError:
@@ -4024,14 +4030,14 @@ def get_paper_intelligence_service() -> PaperIntelligenceService:
 def get_scholarly_search_service() -> ScholarlySearchService:
     global g_scholarly_search_service
     if not g_scholarly_search_service:
-        g_scholarly_search_service = ScholarlySearchService(BASE_DIR / "data" / "scholarly")
+        g_scholarly_search_service = ScholarlySearchService(DATA_DIR / "data" / "scholarly")
     return g_scholarly_search_service
 
 
 def get_coding_workflow_service() -> CodingWorkflowService:
     global g_coding_workflow_service
     if not g_coding_workflow_service or getattr(g_coding_workflow_service, "store", None) is not g_memory_store:
-        g_coding_workflow_service = CodingWorkflowService(g_memory_store, BASE_DIR.parent / "output" / "coding")
+        g_coding_workflow_service = CodingWorkflowService(g_memory_store, OUTPUT_ROOT / "coding")
     return g_coding_workflow_service
 
 
@@ -4121,7 +4127,7 @@ def get_autonomous_subagent_service() -> AutonomousSubagentService:
         tool_executor=execute,
         tool_definitions=tools_def,
         store=g_memory_store,
-        checkpoint_root=BASE_DIR.parent / "output" / "subagents",
+        checkpoint_root=OUTPUT_ROOT / "subagents",
         max_concurrency=3,
     )
 
@@ -4275,7 +4281,7 @@ async def api_academy_paper_project_board_export(request: Request):
             for chunk in chunks
         ],
     }
-    storage = ArtifactStorage(BASE_DIR.parent / "output" / "academy" / "projects")
+    storage = ArtifactStorage(OUTPUT_ROOT / "academy" / "projects")
     artifact = storage.write_json(f"{stamp}_{safe_artifact_slug(title)}_project.json", package)
     run = RunRecord(
         run_id=f"academy-research-project-export-{document_id}-{stamp}",
@@ -4384,7 +4390,7 @@ def _academy_checkpoint_citation_payload(run: dict[str, Any]) -> dict[str, Any]:
     path = _academy_checkpoint_artifact_path(run)
     if not path:
         return {}
-    root = (BASE_DIR.parent / "output" / "academy" / "checkpoints").resolve()
+    root = (OUTPUT_ROOT / "academy" / "checkpoints").resolve()
     try:
         path.relative_to(root)
     except ValueError:
@@ -5288,7 +5294,7 @@ def _export_local_maintenance_report(limit: int = 30) -> dict[str, Any]:
         "remediation": remediation,
         "latest_acceptance": latest,
     }
-    storage = ArtifactStorage(BASE_DIR.parent / "output" / "maintenance")
+    storage = ArtifactStorage(OUTPUT_ROOT / "maintenance")
     json_artifact = storage.write_json(f"{stamp}_clawos_maintenance_report.json", report)
     markdown = _maintenance_report_markdown(report)
     markdown_artifact = storage.write_bytes(f"{stamp}_clawos_maintenance_report.md", markdown.encode("utf-8"), kind="markdown")
@@ -5319,7 +5325,7 @@ async def api_workbench_local_maintenance_report(request: Request):
     return JSONResponse(_export_local_maintenance_report(limit=int(data.get("limit") or 30)))
 
 def _maintenance_artifact_root() -> Path:
-    return (BASE_DIR.parent / "output" / "maintenance").resolve()
+    return (OUTPUT_ROOT / "maintenance").resolve()
 
 
 def _maintenance_report_artifact_path(run: dict[str, Any], kind: str) -> Path | None:
@@ -5417,7 +5423,7 @@ async def api_academy_paper_project_export_detail(run_id: str):
     path = _academy_project_export_artifact_path(run)
     if not path:
         raise HTTPException(404, "Project export artifact not found")
-    root = (BASE_DIR.parent / "output" / "academy" / "projects").resolve()
+    root = (OUTPUT_ROOT / "academy" / "projects").resolve()
     try:
         path.relative_to(root)
     except ValueError:
@@ -5564,7 +5570,7 @@ async def api_knowledge_obsidian_check(category: str = "", limit: int = 120):
 
 
 def resolve_obsidian_output_dir(requested: str = "", category: str = "") -> Path:
-    output_root = (BASE_DIR.parent / "output" / "obsidian").resolve()
+    output_root = (OUTPUT_ROOT / "obsidian").resolve()
     requested = str(requested or "").strip()
     if requested:
         raw = Path(requested).expanduser()

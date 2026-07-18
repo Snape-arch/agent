@@ -1,0 +1,13 @@
+<Configuration>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>REPLACE_WITH_ABSOLUTE_PACKAGE_PATH</HostFolder>
+      <SandboxFolder>C:\ClawOS-Package</SandboxFolder>
+      <ReadOnly>false</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>powershell.exe -ExecutionPolicy Bypass -File C:\ClawOS-Package\clean_machine_acceptance.ps1 -Installer C:\ClawOS-Package\ClawOS-Setup-0.1.0.exe -Report C:\ClawOS-Package\clawos-clean-machine-acceptance.json -KeepInstalled</Command>
+  </LogonCommand>
+  <MemoryInMB>8192</MemoryInMB>
+</Configuration>
