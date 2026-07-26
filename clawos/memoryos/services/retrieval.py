@@ -211,12 +211,26 @@ class RetrievalService:
             return candidates[:top_k]
         return self._reranker.rerank(query, candidates, top_k=top_k)
 
-    def retrieve_for_context(self, query, max_tokens=1500):
+    def retrieve_for_context(self, query, max_tokens=1500, policy=None):
         """Retrieve and format results as context string for LLM."""
-        results = self.semantic_rerank(query, recall_k=30, top_k=5) if self._reranker else self.retrieve(query, top_k=5)
+        policy = dict(policy or {})
+        top_k = max(1, min(int(policy.get("top_k") or 5), 50))
+        recall_k = max(top_k, min(int(
+            policy.get("recall_top_k") or policy.get("top_k") or 30
+        ), 200))
+        rerank_top_k = max(1, min(int(policy.get("rerank_top_k") or top_k), 50))
+        results = (
+            self.semantic_rerank(query, recall_k=recall_k, top_k=rerank_top_k)
+            if self._reranker
+            else self.retrieve(query, top_k=top_k)
+        )
         if not results:
             return ""
         parts = ["Relevant knowledge from memory:"]
-        for r in results[:3]:
-            parts.append(f"  [{r['source']}] {r.get('title','')} {r.get('content','')[:200]}")
+        for r in results[:top_k]:
+            citation = r.get("citation") or (r.get("metadata") or {}).get("source", "")
+            prefix = f"[{citation}] " if policy.get("citation_aware") and citation else ""
+            parts.append(
+                f"  [{r['source']}] {prefix}{r.get('title','')} {r.get('content','')[:200]}"
+            )
         return "\n".join(parts)

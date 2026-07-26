@@ -92,11 +92,15 @@ class PolicyOptimizerTests(unittest.TestCase):
                 ],
                 exploration_rate=0,
             )
-            for success in (0.2, 1.0):
+            for _ in range(50):
                 selected = optimizer.select("research")
+                success = 1.0 if selected["arm_name"] == "deep" else 0.2
                 optimizer.reward(selected["id"], success=success, satisfaction=success)
+                stats = optimizer.stats("research")
+                if min(int(arm["pull_count"]) for arm in stats["arms"]) >= 5:
+                    break
             promotion = optimizer.promote(
-                "research", "agent_policy", "research", min_pulls=1
+                "research", "agent_policy", "research", min_pulls=5
             )
             active = store.get_runtime_policy("agent_policy", "research")
             rolled_back = optimizer.rollback(promotion["id"])

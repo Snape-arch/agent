@@ -285,6 +285,65 @@ function addAssistantStream() {
   };
 }
 
+function attachFeedbackControls(taskId) {
+  if (!taskId) return;
+  const messages = document.querySelectorAll("#chatInner .msg.agent");
+  const message = messages[messages.length - 1];
+  if (!message || message.querySelector(".message-feedback")) return;
+  const toolbar = document.createElement("div");
+  toolbar.className = "message-feedback";
+  toolbar.dataset.taskId = String(taskId);
+  toolbar.innerHTML = `
+    <span>这次结果符合预期吗？</span>
+    <button type="button" data-feedback-binary="true" aria-label="满意">&#128077;</button>
+    <button type="button" data-feedback-binary="false" aria-label="不满意">&#128078;</button>
+    <select aria-label="满意度评分">
+      <option value="">评分</option>
+      <option value="5">5 · 很满意</option>
+      <option value="4">4 · 满意</option>
+      <option value="3">3 · 一般</option>
+      <option value="2">2 · 不满意</option>
+      <option value="1">1 · 很不满意</option>
+    </select>
+    <span class="feedback-status" role="status"></span>`;
+  message.querySelector(".message-body")?.appendChild(toolbar);
+  toolbar.querySelectorAll("[data-feedback-binary]").forEach(button => {
+    button.addEventListener("click", () => submitTaskFeedback(taskId, {
+      signal_type: "binary",
+      value: button.dataset.feedbackBinary === "true"
+    }, toolbar));
+  });
+  toolbar.querySelector("select")?.addEventListener("change", event => {
+    if (!event.target.value) return;
+    submitTaskFeedback(taskId, {
+      signal_type: "rating",
+      value: Number(event.target.value)
+    }, toolbar);
+  });
+}
+
+async function submitTaskFeedback(taskId, feedback, toolbar) {
+  const status = toolbar.querySelector(".feedback-status");
+  const controls = toolbar.querySelectorAll("button, select");
+  controls.forEach(control => { control.disabled = true; });
+  if (status) status.textContent = "正在记录…";
+  try {
+    await api("/api/agent-learning/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task_id: Number(taskId),
+        ...feedback,
+        idempotency_key: `console:${taskId}:${feedback.signal_type}:${String(feedback.value)}`
+      })
+    });
+    if (status) status.textContent = "已记录";
+  } catch (err) {
+    controls.forEach(control => { control.disabled = false; });
+    if (status) status.textContent = "记录失败：" + err.message;
+  }
+}
+
 function sendMessage() {
   const prompt = $("prompt");
   let text = prompt.value.trim();
@@ -380,6 +439,7 @@ async function submitMessage(text, confirmedTools, attachments) {
     lastToolCalls = tools;
     lastRoutingStrategy = data.clawos?.routing_strategy || null;
     lastTaskId = data.clawos?.task_id || lastTaskId;
+    if (lastTaskId) attachFeedbackControls(lastTaskId);
     if (data.clawos?.needs_confirmation) {
       const toolNames = tools.map(t => t.name).filter(Boolean);
       const risks = [...new Set(tools.map(t => t.result?.risk_level).filter(Boolean))];
@@ -2104,7 +2164,7 @@ function evolutionActions(run) {
   const status = String(run.status || "");
   const canShadow = status === "validated";
   const canCanary = status === "shadow" || status === "canary";
-  const canActivate = status === "shadow" || status === "canary" || status === "validated";
+  const canActivate = status === "canary";
   return [
     canShadow ? `<button class="secondary" onclick="shadowEvolutionRun(${id})">Shadow</button>` : "",
     canCanary ? `<button class="secondary" onclick="canaryEvolutionRun(${id})">Canary</button>` : "",
@@ -2142,6 +2202,60 @@ async function loadEvolution() {
       ["Run", "Benchmark", "Metric", "Baseline", "Candidate", "Result"],
       checks.map(check => [selected.id || "", check.benchmark, check.metric, check.baseline, check.candidate, { html: statusBadge(check.passed ? "passed" : "failed") }])
     );
+  }
+}
+
+async function loadCompetitionReadiness() {
+  if (!$("competitionPhaseGrid")) return;
+  const status = $("competitionReadinessStatus");
+  if (status) status.textContent = "正在核对软件、数据、硬件和发布证据…";
+  try {
+    const data = await api("/api/competition/readiness");
+    const claims = data.claims || {};
+    if ($("competitionReadinessSummary")) {
+      $("competitionReadinessSummary").innerHTML = table(["结论", "状态", "证据边界"], [
+        ["软件 P0-P2", { html: statusBadge(data.software_p0_p2_closed ? "passed" : "failed") }, "版本化合同、真实本地数据和状态机"],
+        ["比赛发布", { html: statusBadge(data.competition_release_ready ? "ready" : "blocked") }, data.hardware?.ready ? "目标硬件证据完整" : "仍缺目标硬件真实报告"],
+        ["真实用户学习", { html: statusBadge(claims.real_user_learning_validated ? "ready" : "collecting") }, claims.real_user_learning_validated ? "Reward 与偏好门槛已达标" : "继续积累真实显式反馈"],
+        ["在线 RL", { html: statusBadge(claims.online_rl ? "claimed" : "not claimed") }, "当前实现保持离线、门控和人工确认"]
+      ]);
+    }
+    const phases = ["p0", "p1", "p2"].map(name => ({ name: name.toUpperCase(), ...(data[name] || {}) }));
+    $("competitionPhaseGrid").innerHTML = phases.map(phase => {
+      const checks = Object.entries(phase.checks || {});
+      const passed = checks.filter(([, value]) => value).length;
+      return `<article class="competition-phase-card"><div><span>${esc(phase.name)}</span>${statusBadge(phase.software_closed ? "software closed" : "blocked")}</div><b>${passed}/${checks.length} 门禁通过</b><ul>${checks.map(([name, value]) => `<li>${statusBadge(value ? "passed" : "failed")} ${esc(name)}</li>`).join("")}</ul></article>`;
+    }).join("");
+    const flows = data.p0?.demo_contracts?.flows || [];
+    if ($("competitionDemoTable")) {
+      $("competitionDemoTable").innerHTML = table(["场景", "演示链", "冻结用例", "合同"], flows.map(flow => [
+        flow.scenario || "",
+        flow.title || flow.id || "",
+        (flow.benchmark_cases || []).length,
+        { html: statusBadge(flow.backed_by_frozen_cases ? "backed" : "missing") }
+      ]));
+    }
+    if ($("competitionNextActions")) {
+      $("competitionNextActions").innerHTML = (data.next_actions || []).map(item => `<li>${esc(item)}</li>`).join("") || "<li>全部发布门禁已满足。</li>";
+    }
+    if (status) status.textContent = `证据摘要 ${String(data.evidence_digest || "").slice(0, 12)} · ${data.competition_release_ready ? "可进入比赛发布" : "保持门控"}`;
+  } catch (err) {
+    if (status) status.textContent = "Readiness 加载失败：" + err.message;
+  }
+}
+
+async function exportCompetitionReadiness() {
+  const status = $("competitionReadinessStatus");
+  try {
+    const data = await api("/api/competition/readiness/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmed: true })
+    });
+    if (status) status.textContent = `验收包已导出 · ${data.markdown_path || ""}`;
+    await loadCompetitionReadiness();
+  } catch (err) {
+    if (status) status.textContent = "导出失败：" + err.message;
   }
 }
 
@@ -2184,7 +2298,7 @@ async function canaryEvolutionRun(id) {
 }
 
 async function activateEvolutionRun(id) {
-  const data = await api(`/api/self-evolution/runs/${id}/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor_id: "console", reason: "console activation after shadow/canary review" }) });
+  const data = await api(`/api/self-evolution/runs/${id}/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor_id: "console", reason: "console activation after shadow/canary review", confirmed: true }) });
   if ($("evolutionResult")) $("evolutionResult").textContent = JSON.stringify(data, null, 2);
   await loadEvolution();
 }
@@ -2345,7 +2459,7 @@ async function loadCapabilities() {
       ["论文学习解析文件", { html: statusBadge(caps.document_understanding?.paper_learning_analysis?.length ? "success" : "failed") }, `可生成 ${(caps.document_understanding?.paper_learning_analysis || []).join(" / ")} 自我提问式报告`],
       ["音频会议", { html: statusBadge(caps.meeting_audio?.audio_file_registration ? "success" : "failed") }, `Whisper ${caps.meeting_audio?.local_whisper_available ? "可用" : "未检测到"}`],
       ["Git 审批写操作", { html: statusBadge(caps.git?.approval_commit ? "success" : "failed") }, "审批后 commit，回滚使用 git revert"],
-      ["Skill 治理", { html: statusBadge("success") }, "签名、依赖清单、fresh audit、canary 元数据"]
+      ["Skill 治理", { html: statusBadge("success") }, "Keyring/环境签名、依赖清单、独立进程 fresh audit、稳定分桶 canary"]
     ]);
     $("sceneBoundaryTable").innerHTML = table(["场景", "已交付", "仍需外部条件"], [
       ["会议", "音频登记、转写导入、说话人标签、会议纪要、ICS/EML 草稿", "真实 Whisper/说话人模型和自动发送连接器"],
@@ -2353,7 +2467,7 @@ async function loadCapabilities() {
       ["办公", "XLSX 生成/单元格编辑、PPTX 生成/文本替换、产物记录", "复杂图表、母版设计和高级动画后续增强"],
       ["学习", "知识图谱、错题证据、长期掌握度", "更长周期学习样本"],
       ["Git", "补丁预览、审批提交、checkpoint、revert 回滚", "远程 PR/CI 连接器"],
-      ["Skill", "签名、依赖、fresh-agent audit、canary", "真实流量灰度路由"]
+      ["Skill", "签名、依赖、独立 fresh-agent audit、真实稳定分桶 canary", "高风险 Skill 仍禁止自动灰度"]
     ]);
   } catch (err) {}
 }
@@ -2832,10 +2946,13 @@ async function renderSkillVersionTables() {
   skillReviews = reviews.items || reviews.reviews || [];
   if ($("skillVersionTable")) $("skillVersionTable").innerHTML = table(["技能", "版本", "状态"], skillVersions.map(item => [item.skill_name || item.name || "", item.version || "", item.status || ""]));
   if ($("skillRunTable")) $("skillRunTable").innerHTML = table(["技能", "结果", "时间"], skillRuns.map(item => [item.skill_name || item.name || "", item.passed ?? item.status ?? "", item.created_at || ""]));
-  if ($("skillReviewTable")) $("skillReviewTable").innerHTML = table(["技能", "状态", "操作"], skillReviews.map(item => [item.skill_name || item.name || "", item.status || "", { html: `<button class="secondary" onclick="promoteSkill('${esc(item.skill_name || item.name || "")}')">发布</button> <button class="secondary" onclick="reviewSkill('${esc(item.id || item.skill_name || "")}','needs_changes')">需修改</button>` }]));
+  if ($("skillReviewTable")) $("skillReviewTable").innerHTML = table(["技能", "状态", "操作"], skillReviews.map(item => [item.skill_name || item.name || "", item.status || "", { html: `<button class="secondary" onclick="signSkill(${Number(item.id)})">签名</button> <button class="secondary" onclick="auditSkill(${Number(item.id)})">独立审计</button> <button class="secondary" onclick="canarySkill(${Number(item.id)})">Canary</button> <button class="primary" onclick="promoteSkill(${Number(item.id)})">发布</button> <button class="secondary" onclick="reviewSkill('${esc(item.id || item.skill_name || "")}','needs_changes')">需修改</button>` }]));
 }
 
-async function promoteSkill(name) { await api("/api/skills/evolution/promote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).catch(() => ({})); await renderSkillVersionTables(); }
+async function signSkill(id) { await api(`/api/skills/evolution/versions/${id}/sign`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ signer: "console" }) }).catch(() => ({})); await renderSkillVersionTables(); }
+async function auditSkill(id) { await api(`/api/skills/evolution/versions/${id}/fresh-audit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }).catch(() => ({})); await renderSkillVersionTables(); }
+async function canarySkill(id) { await api(`/api/skills/evolution/versions/${id}/canary`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ percent: 10, actor: "console" }) }).catch(() => ({})); await renderSkillVersionTables(); }
+async function promoteSkill(id) { await api(`/api/skills/evolution/versions/${id}/promote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor: "console", confirmed: true }) }).catch(() => ({})); await renderSkillVersionTables(); }
 async function reviewSkill(id, status) { await api("/api/skills/evolution/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) }).catch(() => ({})); await renderSkillVersionTables(); }
 
 function toggleCommandDrawer() {
@@ -2924,7 +3041,7 @@ function chooseFirstRunModel(provider) {
 async function refreshAll() {
   ensureProfessionalBoard();
   renderKnowledgeWorkspaceShell();
-  await Promise.allSettled([loadHealth(), loadDash(), loadRoutingStrategy(), loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue(), loadMemory(), loadReflection(), loadEvolution(), loadSkills(), loadTools(), loadToolExecutions(), loadTasks(), loadBenchmarks(), loadCapabilities(), loadSecurityCenter(), loadOps(), refreshOfflineReadiness(), loadLocalAcceptanceHistory()]);
+  await Promise.allSettled([loadHealth(), loadDash(), loadRoutingStrategy(), loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue(), loadMemory(), loadReflection(), loadEvolution(), loadCompetitionReadiness(), loadSkills(), loadTools(), loadToolExecutions(), loadTasks(), loadBenchmarks(), loadCapabilities(), loadSecurityCenter(), loadOps(), refreshOfflineReadiness(), loadLocalAcceptanceHistory()]);
   if (window.loadRuntimeRecords) window.loadRuntimeRecords();
 }
 
@@ -2938,7 +3055,7 @@ async function refreshView(viewName) {
     dash: [loadDash(), refreshOfflineReadiness(), loadLocalAcceptanceHistory()],
     memory: [loadMemory()],
     reflection: [loadReflection()],
-    evolution: [loadEvolution()],
+    evolution: [loadEvolution(), loadCompetitionReadiness()],
     skills: [loadSkills()],
     tools: [loadTools(), loadToolExecutions()],
     tasks: [loadTasks()],

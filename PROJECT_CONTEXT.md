@@ -1,5 +1,103 @@
 # Project Context
 
+## Competition Readiness P0-P2 闭环（2026-07-26）
+
+- 开发分支：`codex/competition-readiness-p0-p2`；基于反馈学习提交 `44c0283`。
+- P0：新增科研、学习、办公、项目四条黄金演示合同，每条均绑定版本化冻结基准；
+  聚合比赛架构、显式反馈数据面与 Task-bound Reward 修订证据。
+- P1：新增统一学习运营视图，展示真实轨迹、反馈覆盖、偏好场景覆盖、Reward
+  Calibration 与 Preference Ranker 的数据门槛和 Active / Shadow 状态。
+- P2：统一展示深度 Router、Trajectory RL 和行为 LoRA readiness，固定保持
+  `online_rl_claimed=false`，不自动训练或上线。
+- 新增目标硬件证据模板与严格校验：离线模式、MTClaw 必经、fallback 关闭、
+  首 Token P95、吞吐、峰值内存及不少于 30 条任务、90% 通过率必须全部有值。
+- 新增 `/api/competition/readiness`、硬件证据校验和显式确认导出 API；
+  CLI 可导出 JSON/Markdown，并在 `--strict` 下对未就绪状态返回非零。
+- 控制台 Self-Evolution 页面新增 Competition P0-P2 面板、四条黄金演示链和
+  下一步硬门槛。
+- 当前可验证结论：`software_p0_p2_closed=true`，
+  `competition_release_ready=false`；没有目标硬件和真实样本时不会误报 Ready。
+- 专项测试 **5/5 通过**；架构、Agent Learning、反馈学习、日常验收和前端
+  受影响回归 **75/75 通过**；Python、JavaScript 和补丁格式检查通过。
+- 根目录全量 **359 项 OK**（1 项按预期跳过）；非阻断警告仍是 MTClaw
+  FastAPI `on_event` 与 Chroma/OpenTelemetry asyncio 弃用警告。
+- 详细使用与边界见 `clawos/COMPETITION_READINESS_P0_P2.md`。
+
+## 反馈学习与 Preference Ranker P0-P2 闭环（2026-07-26）
+
+- 开发分支：`codex/feedback-preference-p0-p2`；基于 Agent Learning 提交 `4ddff4c`。
+- P0：新增绑定终态 Task 的显式反馈记录、幂等写入和聊天赞/踩/1-5 分入口；
+  缺失反馈保持 missing，不再伪装成 0.5 中性分。真实反馈会修订对应 Policy Reward
+  与 Trajectory Reward。
+- Reward Calibration 使用任务隔离的训练/留出集、符号约束线性权重、candidate /
+  shadow / active 状态机和人工确认激活。硬门槛为 50 条完成轨迹、20 条显式反馈，
+  存在 Arm 时每个 Arm 至少暴露 10 次。
+- P1：新增用户条件化 Preference Ranker；训练硬门槛为 100 个有效偏好对，
+  learning/research/project/office 每类至少 20，矛盾率低于 15%。留出准确率必须
+  至少 55%，且高于长度 baseline 2 个百分点，才可进入 Shadow。
+- P2：新增深度 Router、Trajectory RL 和行为 LoRA 的证据型 readiness 报告；
+  只读取已观测本地数据，固定返回 `online_rl_claimed: false`，不自动启动训练或上线。
+- 新增反馈、数据质量、Reward 校准、Preference Ranker 和高级 readiness API；
+  激活操作均要求 `confirmed=true`。
+- 专项验证：新增闭环测试 **8/8 通过**；Agent Learning、UCB、Task Runtime 与
+  Self-Evolution 受影响回归 **30/30 通过**；根目录全量 **354 项 OK**
+  （1 项按预期跳过）。Python 编译、JavaScript 语法和补丁格式检查均通过。
+- 全量首轮发现 Windows GBK 无法输出前端字面量赞/踩 emoji；已改为等价 HTML
+  数字实体，界面显示不变，隔离基准与失败的 2 项测试复跑通过。
+- 无硬件支持的阶段只声明软件闭环和离线门禁成立，不声明真实设备吞吐、延迟、
+  功耗、多日稳定性或在线 RL。
+- 详细门槛、API 和边界见 `clawos/FEEDBACK_PREFERENCE_P0_P2.md`。
+
+## Agent Learning P0-P2 闭环（2026-07-26）
+
+- 开发分支：`codex/agent-learning-p0-p2`；基于自进化闭环提交 `1a6f12a`。
+- P0：新增版本化 Task Trajectory、逐决策 Step、行为概率、多目标 Reward、
+  折扣回报、chosen/rejected 偏好对和脱敏数据集 manifest。Task 创建、终态、
+  重试和中断恢复均已接入轨迹生命周期。
+- P1：新增无重型训练依赖的 Agent Skill Policy Network v0，使用确定性哈希特征
+  和分 Arm Contextual-Q Head，输入任务、用户、历史统计和环境状态，输出预注册的
+  Agent/Skill/Tool/Workflow/Prompt/检索组合。运行时使用
+  `empirical + UCB bonus + 0.35 * learned Q`，保留冷启动探索与安全边界。
+- P2：新增离线 Doubly-Robust Trajectory Critic，报告候选收益、lift、标准误、
+  95% 下界、effective sample size 和安全违规；通过后进入 Shadow，激活与回滚
+  均要求显式确认。Active 模型已进入真实聊天策略选择并继续回流 Task Outcome。
+- 新增 `/api/agent-learning/*` 轨迹、数据集、偏好、训练、评估、激活和回滚接口。
+- 验证：Agent Learning 专项 **6/6 通过**；Task/Policy/Self-Evolution 受影响测试
+  **37/37 通过**；根目录全量 **346 项 OK**（1 项按预期跳过）；Python 编译检查通过。
+- 非阻断警告保持不变：MTClaw FastAPI `on_event` 与 Chroma/OpenTelemetry
+  asyncio 弃用警告。
+- 详细结构、门禁和证据边界见 `clawos/AGENT_LEARNING_P0_P2.md`。
+- 下一步：先积累真实、明确反馈的轨迹并校准奖励；达到样本门槛后再做
+  Preference Ranker、深度 Router 或 LoRA，不把当前线性 Router 表述为在线 RL。
+
+## 自进化 P0-P2 闭环（2026-07-26）
+
+- 开发分支：`codex/self-evolution-p0-p2`；基线为本地 `master` 的 `ae200cf`。
+  开工前 `git fetch origin` 因网络连接重置失败；本地基线当时显示与已知
+  `origin/master` 对齐。
+- 自动自进化基准已从“根据候选字段合成分数”改为隔离子进程实际执行
+  frozen/core E2E 套件和确定性检索 case；证据包含 runner、报告摘要、配置摘要
+  和 case count，缺执行证据不能进入 Shadow。
+- `prompt_policy`、`retrieval_params`、`tool_routing_policy` 已接入聊天运行时。
+  Task 保存策略目标、版本、run、候选暴露、稳定分桶和 Shadow 物化结果。
+- Shadow 不影响用户响应；Canary 按 session/task 稳定哈希分桶并真实使用候选。
+  至少 3 个 Shadow 样本才可进入 Canary，至少 5 个 Canary 样本才可激活；
+  失败/取消/重试信号越线会自动停流。
+- Contextual UCB 已能接入 `routing:{scenario}`；选择绑定 Task，reward 从终态
+  Task 派生，策略晋升至少需要 5 个样本并按 95% 置信区间下界排序。
+- Reflection 可聚类近期重复失败并生成低风险候选；Fresh-agent audit 改为
+  `python -I` 独立进程并检测 silent bypass。
+- Skill Canary 使用真实稳定分桶，高风险工具不得自动灰度；Canary/晋升必须签名。
+  签名密钥来自 OS Keyring `ClawOS/skill-signing` 或本地
+  `CLAWOS_SKILL_SIGNING_KEY`，API 不接收 Secret。
+- 新增 Skill 库重复/零使用/复杂度审计和保留证据的归档式压缩。
+- 验证：受影响测试 **128/128 通过**；根目录标准发现命令全量
+  **340/340 通过**（1 项按预期跳过）。首次根目录运行暴露的两个既有测试导入路径问题已补最小修复。
+- 非阻断警告：MTClaw FastAPI `on_event` 弃用警告、PyMuPDF SWIG 类型警告。
+- 详细边界与验收见 `clawos/SELF_EVOLUTION_ACCEPTANCE_2026-07-26.md`。
+- 下一步：在 MTT AIBOOK/真实本地模型上补 A/B、首 token、吞吐、资源峰值和
+  多日 burn-in；本轮不把确定性软件基准表述为真实模型质量。
+
 ## Windows 桌面安装交付（2026-07-18）
 
 - 新增 `desktop/` 桌面交付层：PyInstaller 无控制台 `ClawOS.exe`、WebView2 原生窗口、单实例、ClawOS/MTClaw 隐藏启动与随窗口退出回收。
@@ -13,7 +111,7 @@
 
 这是 ClawOS 当前状态的简洁交接入口。2026-07-14 以前的详细记录已归档到 `clawos/docs/PROJECT_HISTORY_2026-07-14.md`。
 
-## 当前状态（2026-07-17）
+## 历史状态（2026-07-17）
 
 - 当前分支：`codex/p0-demo-polish`。
 - 当前提交：`4784d94`；与 `origin/codex/p0-demo-polish` 一致，相对 `origin/master` 超前 1 个文档提交。

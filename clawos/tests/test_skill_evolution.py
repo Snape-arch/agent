@@ -65,7 +65,10 @@ class SkillEvolutionTests(unittest.TestCase):
         from memoryos.memory_store import MemoryStore
         from skills.skill_evolution import SkillEvolutionManager
 
-        self.manager = SkillEvolutionManager(MemoryStore(str(root / "memory.db")))
+        self.manager = SkillEvolutionManager(
+            MemoryStore(str(root / "memory.db")),
+            signing_key_provider=lambda: "test-signing-key",
+        )
 
     def tearDown(self):
         self.registry.SKILLS_DIR = self.old_skills_dir
@@ -101,6 +104,7 @@ class SkillEvolutionTests(unittest.TestCase):
             self.manager.promote(candidate["id"])
 
         run = self.manager.evaluate(candidate["id"], suite["id"])
+        self.manager.sign_version(candidate["id"], signer="tester")
         promotion = self.manager.promote(candidate["id"], actor="reviewer")
         active = self.registry.get_skill("daily_clock")
         rollback = self.manager.rollback(promotion["id"])
@@ -248,7 +252,7 @@ class SkillEvolutionTests(unittest.TestCase):
         )
         run = self.manager.evaluate(candidate["id"], suite["id"])
         manifest = self.manager.dependency_manifest(candidate["id"])
-        signature = self.manager.sign_version(candidate["id"], signer="tester", secret="secret")
+        signature = self.manager.sign_version(candidate["id"], signer="tester")
         audit = self.manager.fresh_agent_audit(candidate["id"], suite["id"])
         canary = self.manager.start_canary(candidate["id"], percent=5, actor="tester")
         promotion = self.manager.promote(candidate["id"], actor="tester")
@@ -257,8 +261,57 @@ class SkillEvolutionTests(unittest.TestCase):
         self.assertEqual(manifest["tools"], ["time_now"])
         self.assertEqual(signature["signer"], "tester")
         self.assertTrue(audit["passed"])
+        self.assertTrue(audit["metrics"]["isolated_process"])
         self.assertEqual(canary["percent"], 5.0)
         self.assertEqual(promotion["to_version_id"], candidate["id"])
+
+    def test_library_health_and_compaction_preserve_evidence(self):
+        for index in range(7):
+            candidate = self.manager.propose(
+                "daily_clock",
+                {
+                    "steps": [{"tool": "time_now", "args": {}}],
+                    "description": f"candidate-{index}",
+                },
+            )
+            self.manager.review(candidate["id"], "reject", reviewer="tester")
+
+        health = self.manager.library_health()
+        preview = self.manager.compact_library(dry_run=True, max_versions_per_skill=3)
+        applied = self.manager.compact_library(
+            dry_run=False, max_versions_per_skill=3, actor="tester"
+        )
+
+        self.assertGreaterEqual(health["skill_count"], 1)
+        self.assertGreater(preview["candidate_count"], 0)
+        self.assertEqual(applied["archived_count"], preview["candidate_count"])
+        self.assertFalse(applied["evidence_deleted"])
+
+    def test_skill_canary_uses_stable_runtime_bucket(self):
+        candidate = self.manager.propose(
+            "daily_clock",
+            {
+                "steps": [{"tool": "time_now", "args": {}}],
+                "description": "candidate runtime",
+            },
+        )
+        suite = self.manager.create_suite(
+            "clock-runtime-canary",
+            "daily_clock",
+            [{
+                "mode": "plan",
+                "expected": {"ok": True, "step_count": 1, "tools": ["time_now"]},
+            }],
+        )
+        self.manager.evaluate(candidate["id"], suite["id"])
+        self.manager.sign_version(candidate["id"], signer="tester")
+        self.manager.start_canary(candidate["id"], percent=100, actor="tester")
+        first = self.manager.select_runtime_definition("daily_clock", "session-1")
+        second = self.manager.select_runtime_definition("daily_clock", "session-1")
+
+        self.assertEqual(first["exposure"], "candidate")
+        self.assertEqual(first["version_id"], candidate["id"])
+        self.assertEqual(first["bucket"], second["bucket"])
 
     def test_new_scenario_skill_can_complete_evolution_loop(self):
         candidate = self.manager.propose(
@@ -295,6 +348,7 @@ class SkillEvolutionTests(unittest.TestCase):
             }],
         )
         run = self.manager.evaluate(candidate["id"], suite["id"])
+        self.manager.sign_version(candidate["id"], signer="tester")
         promotion = self.manager.promote(candidate["id"], actor="tester")
         active = self.registry.execute_skill(
             "delivery_brief",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 
 class SelfEvolutionManager:
     """Create, evaluate, and publish self-evolution runs without changing code."""
@@ -44,9 +46,15 @@ class SelfEvolutionManager:
         "cancel_rate": 0.15,
         "long_task_failure_rate": 0.10,
     }
+    MIN_CANARY_SAMPLES = 3
+    MIN_ACTIVATION_SAMPLES = 5
 
-    def __init__(self, store):
+    def __init__(self, store, benchmark_runner=None):
         self._store = store
+        if benchmark_runner is None:
+            from reflection.evolution_runtime import ExecutedEvolutionBenchmarkRunner
+            benchmark_runner = ExecutedEvolutionBenchmarkRunner()
+        self._benchmark_runner = benchmark_runner
 
     def create_run(
         self, target_type, target_key, baseline_payload, candidate_payload,
@@ -110,6 +118,10 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         if run.get("status") not in {"shadow", "canary"}:
             raise ValueError("self-evolution run must be in shadow before canary")
+        if self._quality_sample_count(run) < self.MIN_CANARY_SAMPLES:
+            raise ValueError(
+                f"canary requires at least {self.MIN_CANARY_SAMPLES} runtime quality samples"
+            )
         if not self._quality_gate_passed(run):
             raise ValueError("quality signals block canary promotion")
         traffic = max(1.0, min(float(traffic_percent or 10), 50.0))
@@ -125,8 +137,12 @@ class SelfEvolutionManager:
     def activate(self, run_id, actor_id="system", reason=""):
         run = self._require(run_id)
         self._assert_allowed_target(run["target_type"])
-        if run.get("status") not in {"shadow", "canary", "validated"}:
-            raise ValueError("self-evolution run must be validated, shadow, or canary before activation")
+        if run.get("status") != "canary":
+            raise ValueError("self-evolution run must complete canary before activation")
+        if self._quality_sample_count(run) < self.MIN_ACTIVATION_SAMPLES:
+            raise ValueError(
+                f"activation requires at least {self.MIN_ACTIVATION_SAMPLES} runtime quality samples"
+            )
         if not self._quality_gate_passed(run):
             raise ValueError("quality signals block activation")
         return self._store.publish_self_evolution_run(
@@ -142,6 +158,15 @@ class SelfEvolutionManager:
         run = self._store.record_self_evolution_quality_signal(
             run_id, signal_type, value, metadata=metadata, created_by=created_by
         )
+        if run.get("status") == "canary" and not self._quality_gate_passed(run):
+            run = self._store.update_self_evolution_run(
+                run_id,
+                status="rolled_back",
+                release_stage="stopped",
+                traffic_percent=0,
+                publish_decision="reject",
+                conclusion=f"Canary stopped automatically after unhealthy {signal_type} signal.",
+            )
         return run
 
     def attach_runtime_quality_snapshot(self, run_id, created_by="system"):
@@ -160,7 +185,7 @@ class SelfEvolutionManager:
 
     def run_automatic_benchmarks(self, run_id):
         run = self._require(run_id)
-        evidence = self.build_benchmark_evidence(
+        evidence = self._benchmark_runner.run(
             run["target_type"],
             run["baseline_payload"],
             run["candidate_payload"],
@@ -173,6 +198,36 @@ class SelfEvolutionManager:
         if evaluated.get("gate_result", {}).get("passed"):
             return self.start_shadow(run_id)
         return evaluated
+
+    def propose_from_recent_reflections(
+        self,
+        target_type,
+        target_key,
+        baseline_payload,
+        limit=50,
+        created_by="reflection-miner",
+    ):
+        cards = self._store.list_reflection_cards(limit=max(3, min(int(limit), 200)))
+        failures = [
+            card for card in cards
+            if str(card.get("outcome") or "") in {"failure", "partial"}
+        ]
+        if len(failures) < 3:
+            raise ValueError("at least three recent failure/partial reflections are required")
+        candidate = self.generate_candidate_from_failures(
+            target_type,
+            baseline_payload,
+            failures,
+        )
+        return self.create_run(
+            target_type,
+            target_key,
+            baseline_payload,
+            candidate,
+            title=f"Evidence-clustered evolution: {target_type}/{target_key}",
+            conclusion="Candidate mined from repeated recent reflection failures.",
+            created_by=created_by,
+        )
 
     @classmethod
     def generate_candidate(cls, target_type, baseline_payload, strategy="balanced"):
@@ -222,58 +277,40 @@ class SelfEvolutionManager:
         return base
 
     @classmethod
-    def build_benchmark_evidence(cls, target_type, baseline_payload, candidate_payload):
-        base_score = cls._payload_quality_score(target_type, baseline_payload)
-        candidate_score = max(base_score, cls._payload_quality_score(target_type, candidate_payload))
-        latency_delta = max(0, min(12, int((candidate_score - base_score) * 20)))
-        recall_bonus = max(0.0, min(0.08, (candidate_score - base_score) * 0.08))
-        return {
-            "frozen": {
-                "baseline": {"pass_rate": 1.0, "p95_latency_ms": 120, "passed": True},
-                "candidate": {
-                    "pass_rate": 1.0,
-                    "p95_latency_ms": max(60, 120 - latency_delta),
-                    "passed": True,
-                },
-                "metadata": {"runner": "self_evolution_worker"},
-            },
-            "core_e2e": {
-                "baseline": {"pass_rate": 1.0, "quality_score": round(base_score, 4), "passed": True},
-                "candidate": {"pass_rate": 1.0, "quality_score": round(candidate_score, 4), "passed": True},
-                "metadata": {"runner": "self_evolution_worker"},
-            },
-            "retrieval": {
-                "baseline": {"recall_at_5": 0.90, "mrr": 0.82, "hit_rate": 0.92, "passed": True},
-                "candidate": {
-                    "recall_at_5": round(min(1.0, 0.90 + recall_bonus), 4),
-                    "mrr": round(min(1.0, 0.82 + recall_bonus), 4),
-                    "hit_rate": round(min(1.0, 0.92 + recall_bonus), 4),
-                    "passed": True,
-                },
-                "metadata": {"runner": "self_evolution_worker"},
-            },
-        }
+    def generate_candidate_from_failures(
+        cls, target_type, baseline_payload, reflections, strategy="evidence_clustered",
+    ):
+        """Generate a low-risk candidate from repeated, evidence-backed failures."""
 
-    @classmethod
-    def _payload_quality_score(cls, target_type, payload):
-        payload = dict(payload or {})
-        score = 0.7
-        text = " ".join(str(value).lower() for value in payload.values())
-        if "citation" in text or "引用" in text:
-            score += 0.08
-        if "quality" in text or "gate" in text or "质量" in text:
-            score += 0.07
-        if int(payload.get("top_k") or payload.get("recall_top_k") or 0) >= 30:
-            score += 0.08
-        if int(payload.get("rerank_top_k") or 0) >= 5:
-            score += 0.05
-        if payload.get("citation_aware") or payload.get("prefer_citation_tools"):
-            score += 0.05
-        if payload.get("typography") == "journal":
-            score += 0.05
-        if str(target_type) in {"prompt", "prompt_policy"} and len(text) > 40:
-            score += 0.03
-        return round(min(score, 1.0), 4)
+        rows = [item for item in (reflections or []) if isinstance(item, dict)]
+        if not rows:
+            raise ValueError("at least one reflection is required")
+        categories = Counter(
+            str(item.get("failure_category") or "unknown") for item in rows
+        )
+        patterns = Counter()
+        for item in rows:
+            for pattern in item.get("patterns") or []:
+                normalized = " ".join(str(pattern).lower().split())[:160]
+                if normalized:
+                    patterns[normalized] += 1
+        candidate = cls.generate_candidate(target_type, baseline_payload, strategy=strategy)
+        candidate["evidence_summary"] = {
+            "reflection_count": len(rows),
+            "failure_categories": dict(categories.most_common()),
+            "repeated_patterns": [
+                {"pattern": key, "count": count}
+                for key, count in patterns.most_common(5)
+                if count >= 2
+            ],
+        }
+        if categories.get("parameter", 0):
+            candidate["validate_inputs"] = True
+        if categories.get("permission", 0):
+            candidate["confirm_high_risk"] = True
+        if categories.get("environment", 0):
+            candidate["fallback_order"] = ["local", "manual_review"]
+        return candidate
 
     def _quality_gate_passed(self, run):
         signals = run.get("quality_signals") or {}
@@ -285,6 +322,13 @@ class SelfEvolutionManager:
         if retrieval and float(retrieval.get("latest", retrieval.get("average", 1)) or 0) < 0.80:
             return False
         return True
+
+    @staticmethod
+    def _quality_sample_count(run):
+        signals = run.get("quality_signals") or {}
+        return max(
+            [int((item or {}).get("count") or 0) for item in signals.values()] or [0]
+        )
 
     def _require(self, run_id):
         run = self._store.get_self_evolution_run(run_id)
@@ -325,7 +369,14 @@ class SelfEvolutionManager:
             item = benchmarks.get(name) or {}
             baseline = item.get("baseline") or {}
             candidate = item.get("candidate") or {}
-            if not baseline or not candidate:
+            metadata = item.get("metadata") or {}
+            executed = (
+                metadata.get("evidence_type") == "executed"
+                and bool(metadata.get("baseline_report_digest"))
+                and bool(metadata.get("candidate_report_digest"))
+                and int(metadata.get("case_count") or 0) > 0
+            )
+            if not baseline or not candidate or not executed:
                 if name not in missing:
                     missing.append(name)
                 continue
@@ -407,7 +458,8 @@ class SelfEvolutionManager:
             "direction": "lower_or_equal",
             "baseline": base,
             "candidate": actual,
-            "passed": actual <= base,
+            "limit": max(base * 1.50, base + 150.0),
+            "passed": actual <= max(base * 1.50, base + 150.0),
         }
 
     @staticmethod

@@ -1,0 +1,21 @@
+{
+  "schema_version": "clawos.hardware-acceptance.v1",
+  "target_device": "",
+  "local_model": "",
+  "offline_mode": false,
+  "mtclaw_required": true,
+  "fallback_disabled": true,
+  "observed_at": "",
+  "metrics": {
+    "first_token_p95_ms": 0,
+    "throughput_tokens_per_second": 0,
+    "peak_memory_mb": 0
+  },
+  "benchmark": {
+    "sample_count": 0,
+    "pass_rate": 0,
+    "tool_accuracy": 0,
+    "citation_accuracy": 0
+  },
+  "notes": "Template only. Do not set fields without evidence from the target device."
+}

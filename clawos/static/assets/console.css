@@ -4249,3 +4249,11 @@ body.aether-console{
   .aether-console .intent-panel .web-search-toggle{grid-column:2;justify-self:start;min-height:36px}
   .aether-console .intent-panel #stop{grid-column:3}
 }
+
+.competition-readiness-panel{display:grid;gap:16px}
+.competition-phase-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.competition-phase-card{padding:16px;border:1px solid var(--workbench-line,#dfe3ea);border-radius:14px;background:#fff}
+.competition-phase-card>div{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.competition-phase-card ul,.competition-next-actions{margin:12px 0 0;padding-left:20px}
+.competition-phase-card li,.competition-next-actions li{margin:7px 0}
+@media(max-width:900px){.competition-phase-grid{grid-template-columns:1fr}}

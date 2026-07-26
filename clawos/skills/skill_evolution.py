@@ -6,10 +6,16 @@ import json
 import math
 import hashlib
 import hmac
+import os
+import subprocess
+import sys
+import tempfile
 from copy import deepcopy
 from datetime import datetime, timezone
+from pathlib import Path
 
 from skills import skill_registry
+from reflection.evolution_runtime import stable_bucket
 
 
 def _now_iso():
@@ -47,8 +53,16 @@ def _row(row):
 class SkillEvolutionManager:
     """Version, evaluate, promote, and roll back skills with evidence."""
 
-    def __init__(self, store):
+    HIGH_RISK_TOOLS = {
+        "shell_exec", "file_write", "skill_delete", "git_workspace",
+        "coding_workflow", "autonomous_subagents", "meeting_workflow",
+        "office_artifact", "office_productivity", "web_fetch",
+        "scholarly_download",
+    }
+
+    def __init__(self, store, signing_key_provider=None):
         self._store = store
+        self._signing_key_provider = signing_key_provider or self._load_signing_key
         self._init_db()
 
     def _init_db(self):
@@ -205,6 +219,7 @@ class SkillEvolutionManager:
         thresholds = {
             "min_pass_rate": 1.0,
             "max_p95_latency_ms": 5000.0,
+            "max_step_increase": 2,
             **(thresholds or {}),
         }
         with self._store._conn() as c:
@@ -250,9 +265,18 @@ class SkillEvolutionManager:
             "pass_rate": round(pass_rate, 6),
             "p95_latency_ms": round(p95, 3),
         }
+        active = skill_registry.get_skill(version["skill_name"]) or {}
+        baseline_steps = len(active.get("steps") or [])
+        candidate_steps = len(version["definition"].get("steps") or [])
+        metrics.update({
+            "baseline_step_count": baseline_steps,
+            "candidate_step_count": candidate_steps,
+            "step_count_delta": candidate_steps - baseline_steps,
+        })
         passed = (
             pass_rate >= float(thresholds["min_pass_rate"])
             and p95 <= float(thresholds["max_p95_latency_ms"])
+            and candidate_steps - baseline_steps <= int(thresholds["max_step_increase"])
         )
         status = "validated" if passed else "rejected"
         now = _now_iso()
@@ -288,6 +312,8 @@ class SkillEvolutionManager:
             raise ValueError("skill version not found")
         if version["status"] not in {"validated", "canary"}:
             raise ValueError("only validated or canary skill versions can be promoted")
+        if not self._latest_signature(version_id):
+            raise ValueError("skill version must be signed before promotion")
         current = skill_registry.get_skill(version["skill_name"])
         published = skill_registry.publish_skill_definition(version["definition"])
         if published.get("error"):
@@ -438,13 +464,18 @@ class SkillEvolutionManager:
             "version": version["version"],
             "tools": tools,
             "step_count": len(version["definition"].get("steps", [])),
-            "requires_confirmation": any(tool in {"shell_exec", "file_write", "skill_delete"} for tool in tools),
+            "requires_confirmation": any(tool in self.HIGH_RISK_TOOLS for tool in tools),
         }
         return manifest
 
-    def sign_version(self, version_id, signer="system", secret="clawos-local-signing"):
+    def sign_version(self, version_id, signer="system", secret=None):
         version = self._get_version(version_id)
         dependencies = self.dependency_manifest(version_id)
+        secret = secret or self._signing_key_provider()
+        if not secret:
+            raise ValueError(
+                "skill signing key is unavailable; configure OS keyring or CLAWOS_SKILL_SIGNING_KEY"
+            )
         payload = json.dumps({
             "definition": version["definition"],
             "dependencies": dependencies,
@@ -467,6 +498,19 @@ class SkillEvolutionManager:
                 "SELECT * FROM skill_signatures WHERE id=?", (int(cursor.lastrowid),)
             ).fetchone()
             return _row(row)
+
+    def verify_signature(self, version_id, signature):
+        version = self._get_version(version_id)
+        dependencies = self.dependency_manifest(version_id)
+        secret = self._signing_key_provider()
+        if not secret:
+            raise ValueError("skill signing key is unavailable")
+        payload = json.dumps({
+            "definition": version["definition"],
+            "dependencies": dependencies,
+        }, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        expected = hmac.new(str(secret).encode("utf-8"), payload, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, str(signature or ""))
 
     def fresh_agent_audit(self, version_id, suite_id=None):
         version = self._get_version(version_id)
@@ -492,26 +536,40 @@ class SkillEvolutionManager:
                     "tools": [step.get("tool") for step in version["definition"].get("steps", [])],
                 },
             }]
-        results = []
-        for case in cases:
-            result = skill_registry.execute_skill_definition(
-                version["definition"],
-                params=case.get("params") or {},
-                plan_only=str(case.get("mode", "plan")) == "plan",
+        script = Path(__file__).resolve().parents[1] / "scripts" / "fresh_agent_skill_audit.py"
+        audit_payload = {
+            "definition": version["definition"],
+            "cases": cases,
+        }
+        with tempfile.TemporaryDirectory() as td:
+            env = {
+                **os.environ,
+                "CLAWOS_DATA_DIR": td,
+                "CLAWOS_OUTPUT_DIR": str(Path(td) / "output"),
+                "CLAWOS_FRESH_AGENT_AUDIT": "1",
+            }
+            completed = subprocess.run(
+                [sys.executable, "-I", str(script)],
+                input=json.dumps(audit_payload, ensure_ascii=False),
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env=env,
             )
-            passed, reasons = self._check_case(case, result)
-            results.append({
-                "name": case.get("name", "case"),
-                "passed": passed,
-                "reasons": reasons,
-                "result": result,
-                "silent_bypass": not result.get("outputs"),
-            })
+        if completed.returncode not in {0, 1}:
+            raise ValueError(f"fresh-agent subprocess failed: {completed.stderr[-500:]}")
+        try:
+            isolated = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"fresh-agent subprocess returned invalid JSON: {exc}") from exc
+        results = isolated.get("results") or []
         passed = all(item["passed"] and not item["silent_bypass"] for item in results)
         metrics = {
             "case_count": len(results),
             "passed_count": sum(1 for item in results if item["passed"]),
             "silent_bypass_count": sum(1 for item in results if item["silent_bypass"]),
+            "isolated_process": True,
+            "process_returncode": completed.returncode,
         }
         now = _now_iso()
         with self._store._conn() as c:
@@ -537,11 +595,16 @@ class SkillEvolutionManager:
         version = self._get_version(version_id)
         if version["status"] != "validated":
             raise ValueError("only validated versions can enter canary")
+        if not self._latest_signature(version_id):
+            raise ValueError("skill version must be signed before canary")
+        dependencies = self.dependency_manifest(version_id)
+        if dependencies["requires_confirmation"]:
+            raise ValueError("high-risk skills cannot enter automatic canary")
         percent = max(0.0, min(float(percent), 100.0))
         manifest = {
             "actor": actor,
-            "dependencies": self.dependency_manifest(version_id),
-            "note": "Canary metadata only; production router still requires explicit promotion.",
+            "dependencies": dependencies,
+            "note": "Stable task/session bucketing routes the configured percentage to this candidate.",
         }
         now = _now_iso()
         with self._store._conn() as c:
@@ -564,6 +627,132 @@ class SkillEvolutionManager:
                 "SELECT * FROM skill_canaries WHERE id=?", (int(cursor.lastrowid),)
             ).fetchone()
             return _row(row)
+
+    def select_runtime_definition(self, skill_name, identity=""):
+        active = skill_registry.get_skill(skill_name)
+        with self._store._conn() as c:
+            row = c.execute(
+                """
+                SELECT c.*, v.definition, v.version
+                FROM skill_canaries c
+                JOIN skill_versions v ON v.id=c.version_id
+                WHERE c.skill_name=? AND c.status='running' AND v.status='canary'
+                ORDER BY c.id DESC LIMIT 1
+                """,
+                (skill_registry._sanitize_name(skill_name),),
+            ).fetchone()
+        if not row:
+            return {
+                "definition": active,
+                "exposure": "baseline",
+                "canary_id": None,
+                "bucket": None,
+            }
+        item = _row(row)
+        bucket = stable_bucket(identity, int(item["version_id"]))
+        candidate = item["definition"] if bucket < float(item["percent"]) else active
+        return {
+            "definition": candidate,
+            "exposure": "candidate" if candidate is item["definition"] else "baseline",
+            "canary_id": int(item["id"]),
+            "version_id": int(item["version_id"]),
+            "bucket": bucket,
+            "percent": float(item["percent"]),
+        }
+
+    def library_health(self):
+        skills = skill_registry.list_skills()
+        signatures = {}
+        duplicates = []
+        for skill in skills:
+            signature = tuple(
+                str(step.get("tool") or "") for step in skill.get("steps") or []
+            )
+            if signature in signatures:
+                duplicates.append({
+                    "skill": skill["name"],
+                    "duplicate_of": signatures[signature],
+                    "tool_sequence": list(signature),
+                })
+            else:
+                signatures[signature] = skill["name"]
+        stale = [
+            {
+                "skill": skill["name"],
+                "use_count": int(skill.get("use_count") or 0),
+                "last_used": skill.get("last_used") or "",
+            }
+            for skill in skills
+            if int(skill.get("use_count") or 0) == 0
+        ]
+        complexity = [
+            {
+                "skill": skill["name"],
+                "step_count": len(skill.get("steps") or []),
+                "high_risk": self._manifest_for_definition(skill)["requires_confirmation"],
+            }
+            for skill in skills
+        ]
+        return {
+            "skill_count": len(skills),
+            "duplicate_sequences": duplicates,
+            "stale_candidates": stale,
+            "complexity": complexity,
+            "recommendations_only": True,
+        }
+
+    def compact_library(self, dry_run=True, max_versions_per_skill=5, actor="system"):
+        """Archive surplus non-active candidate history without deleting evidence."""
+
+        keep = max(2, int(max_versions_per_skill))
+        with self._store._conn() as c:
+            names = [
+                row["skill_name"]
+                for row in c.execute(
+                    "SELECT DISTINCT skill_name FROM skill_versions ORDER BY skill_name"
+                ).fetchall()
+            ]
+            candidates = []
+            for name in names:
+                rows = c.execute(
+                    """
+                    SELECT id, version, status FROM skill_versions
+                    WHERE skill_name=? ORDER BY version DESC
+                    """,
+                    (name,),
+                ).fetchall()
+                surplus = [
+                    dict(row) for row in rows[keep:]
+                    if row["status"] not in {"active", "canary"}
+                ]
+                candidates.extend({"skill_name": name, **item} for item in surplus)
+            if not dry_run and candidates:
+                ids = [int(item["id"]) for item in candidates]
+                placeholders = ",".join("?" for _ in ids)
+                c.execute(
+                    f"""
+                    UPDATE skill_versions
+                    SET status='archived', updated_at=?
+                    WHERE id IN ({placeholders})
+                    """,
+                    (_now_iso(), *ids),
+                )
+                for item in candidates:
+                    c.execute(
+                        """
+                        INSERT INTO skill_review_events
+                            (version_id, action, reviewer, notes, created_at)
+                        VALUES (?, 'archive', ?, 'Library compaction', ?)
+                        """,
+                        (int(item["id"]), str(actor or "system"), _now_iso()),
+                    )
+        return {
+            "dry_run": bool(dry_run),
+            "archived_count": 0 if dry_run else len(candidates),
+            "candidate_count": len(candidates),
+            "versions": candidates,
+            "evidence_deleted": False,
+        }
 
     def list_versions(self, skill_name="", limit=100):
         query = "SELECT * FROM skill_versions"
@@ -598,6 +787,42 @@ class SkillEvolutionManager:
         if not version:
             raise ValueError("skill version not found")
         return version
+
+    def _latest_signature(self, version_id):
+        with self._store._conn() as c:
+            row = c.execute(
+                """
+                SELECT * FROM skill_signatures
+                WHERE version_id=? ORDER BY id DESC LIMIT 1
+                """,
+                (int(version_id),),
+            ).fetchone()
+        return _row(row)
+
+    @classmethod
+    def _manifest_for_definition(cls, definition):
+        tools = [
+            str(step.get("tool") or "")
+            for step in definition.get("steps") or []
+            if step.get("tool")
+        ]
+        return {
+            "tools": tools,
+            "requires_confirmation": any(
+                tool in cls.HIGH_RISK_TOOLS for tool in tools
+            ),
+        }
+
+    @staticmethod
+    def _load_signing_key():
+        try:
+            import keyring
+            value = keyring.get_password("ClawOS", "skill-signing")
+            if value:
+                return value
+        except Exception:
+            pass
+        return str(os.environ.get("CLAWOS_SKILL_SIGNING_KEY") or "")
 
     @staticmethod
     def _check_case(case, result):
