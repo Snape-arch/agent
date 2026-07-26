@@ -20,7 +20,7 @@ class TaskService:
     def create(self, session_id: str, title: str, source: str = "chat", metadata: dict[str, Any] | None = None):
         store = self.require_store()
         metadata = metadata or {}
-        return store.start_task(
+        task = store.start_task(
             session_id,
             title,
             source=source,
@@ -28,11 +28,13 @@ class TaskService:
             idempotency_key=str(metadata.get("idempotency_key", "") or ""),
             retry_of=metadata.get("retry_of"),
         )
+        self._ensure_trajectory(task)
+        return task
 
     def enqueue(self, session_id: str, title: str, source: str = "worker_job", metadata: dict[str, Any] | None = None):
         store = self.require_store()
         metadata = metadata or {}
-        return store.start_task(
+        task = store.start_task(
             session_id,
             title,
             source=source,
@@ -41,6 +43,8 @@ class TaskService:
             idempotency_key=str(metadata.get("idempotency_key", "") or ""),
             retry_of=metadata.get("retry_of"),
         )
+        self._ensure_trajectory(task)
+        return task
 
     def list(self, session_id: str = "", status: str = "", limit: int = 50):
         return self.require_store().list_tasks(session_id=session_id, status=status, limit=limit)
@@ -74,6 +78,12 @@ class TaskService:
                 # A selection may already have been rewarded explicitly.
                 pass
         try:
+            from agent_learning import TrajectoryLearningService
+
+            TrajectoryLearningService(store).complete_task(int(task_id))
+        except ValueError:
+            pass
+        try:
             from .runtime_records import run_from_task
 
             store.save_run_record(run_from_task({**task, "error": error}))
@@ -85,10 +95,26 @@ class TaskService:
         return self.require_store().cancel_task(task_id, reason=reason, actor_id=actor_id)
 
     def retry(self, task_id: int, reason: str = "", actor_id: str = "user"):
-        return self.require_store().retry_task(task_id, actor_id=actor_id, reason=reason)
+        task = self.require_store().retry_task(task_id, actor_id=actor_id, reason=reason)
+        self._ensure_trajectory(task)
+        return task
 
     def recover(self, actor_id: str = "user", create_retries: bool = False):
-        return self.require_store().recover_interrupted_tasks(actor_id=actor_id, create_retries=create_retries)
+        store = self.require_store()
+        result = store.recover_interrupted_tasks(
+            actor_id=actor_id, create_retries=create_retries
+        )
+        try:
+            from agent_learning import TrajectoryLearningService
+
+            learning = TrajectoryLearningService(store)
+            for task_id in result.get("recovered") or []:
+                learning.complete_task(int(task_id))
+            for task in result.get("retry_tasks") or []:
+                self._ensure_trajectory(task)
+        except ValueError:
+            pass
+        return result
 
     def events(self, session_id: str = "", after_id: int = 0, limit: int = 100):
         return self.require_store().list_task_events(session_id=session_id, after_id=after_id, limit=limit)
@@ -123,7 +149,7 @@ class TaskService:
         action = str(metadata.get("worker_action") or "noop")
         try:
             if self.is_cancelled(task_id):
-                item = store.finish_task(task_id, "canceled", error="canceled before worker execution")
+                item = self.finish(task_id, "canceled", error="canceled before worker execution")
                 return {"ok": True, "claimed": True, "canceled": True, "task": item}
             handler = self.action_handlers.get(action)
             if handler:
@@ -133,15 +159,15 @@ class TaskService:
             else:
                 result = await self._execute_worker_action(task, action)
             if self.is_cancelled(task_id):
-                item = store.finish_task(task_id, "canceled", error="canceled during worker execution")
+                item = self.finish(task_id, "canceled", error="canceled during worker execution")
                 return {"ok": True, "claimed": True, "canceled": True, "task": item}
-            item = store.finish_task(task_id, "succeeded", result_payload=result)
+            item = self.finish(task_id, "succeeded", result_payload=result)
             return {"ok": True, "claimed": True, "task": item, "result": result}
         except asyncio.CancelledError:
             store.finish_task(task_id, "interrupted", error="worker stopped")
             raise
         except Exception as exc:
-            item = store.finish_task(task_id, "failed", error=str(exc))
+            item = self.finish(task_id, "failed", error=str(exc))
             retry = {}
             if int(task.get("attempt") or 1) < int(max_attempts or 1):
                 retry = store.retry_task(task_id, actor_id=worker_id, reason=str(exc))
@@ -171,3 +197,26 @@ class TaskService:
             "message": "Task consumed by minimal background worker.",
             "metadata_keys": sorted(metadata.keys()),
         }
+
+    def _ensure_trajectory(self, task: dict[str, Any]) -> None:
+        if not task or not task.get("id"):
+            return
+        metadata = task.get("metadata") or {}
+        try:
+            from agent_learning import TrajectoryLearningService
+
+            TrajectoryLearningService(self.require_store()).ensure_task(
+                int(task["id"]),
+                scenario=str(metadata.get("scenario") or "general"),
+                task_context={
+                    "title": task.get("title") or "",
+                    "source": task.get("source") or "",
+                    "task_description": metadata.get("user_text") or task.get("title") or "",
+                    "tags": metadata.get("tags") or [],
+                },
+                user_context=metadata.get("user_context") or {},
+                environment_state=metadata.get("environment_state") or {},
+                policy_version=str(metadata.get("policy_version") or ""),
+            )
+        except ValueError:
+            pass

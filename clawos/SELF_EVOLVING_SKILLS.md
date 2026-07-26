@@ -1,5 +1,14 @@
 # ClawOS 受控自进化 Skill
 
+## Agent Learning P0-P2 扩展（2026-07-26）
+
+现有 UCB 已扩展为 Hybrid Agent Skill Policy：任务决策自动记录为版本化轨迹，
+由可持久化的轻量 Contextual-Q Router 学习 Agent/Skill/Tool/Workflow/Prompt
+组合，并通过 UCB 保留冷启动探索。候选模型使用留出轨迹和 Doubly-Robust
+Trajectory Critic 评估，通过后进入 Shadow；激活和回滚继续要求显式确认。
+
+详细数据结构、训练门禁、API 和安全边界见 `AGENT_LEARNING_P0_P2.md`。
+
 ## 2026-07-26 P0-P2 闭环
 
 本轮将“有状态机的治理原型”收口为真实运行闭环：

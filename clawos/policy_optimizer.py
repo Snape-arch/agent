@@ -10,13 +10,20 @@ from datetime import datetime
 class PolicyOptimizer:
     """Persistent Contextual UCB with explicit reward evidence."""
 
-    def __init__(self, store, random_seed=0):
+    def __init__(self, store, random_seed=0, policy_network=None):
         self._store = store
         self._random = random.Random(random_seed)
+        if policy_network is None:
+            from agent_learning import AgentSkillPolicyNetwork
+
+            policy_network = AgentSkillPolicyNetwork(store)
+        self._policy_network = policy_network
 
     def register_group(self, name, arms, exploration_rate=0.1):
         group = self._store.upsert_policy_group(
-            name, optimizer_type="contextual_ucb", exploration_rate=exploration_rate
+            name,
+            optimizer_type="hybrid_ucb_agent_skill_policy_v0",
+            exploration_rate=exploration_rate,
         )
         registered = []
         for arm in arms:
@@ -39,25 +46,74 @@ class PolicyOptimizer:
         eligible = eligible or arms
         total_pulls = sum(int(arm["pull_count"]) for arm in eligible)
         exploration_rate = max(0.0, min(float(group["exploration_rate"]), 1.0))
+        learned = self._policy_network.active_scores(
+            group_name, context, eligible
+        ) if self._policy_network else {"model": None, "scores": {}}
+        network_scores = learned.get("scores") or {}
+        exploit_scored = [
+            (
+                self._hybrid_score(
+                    arm, total_pulls, network_scores.get(arm["name"])
+                ),
+                arm,
+            )
+            for arm in eligible
+        ]
+        exploit_score, exploit_arm = max(
+            exploit_scored, key=lambda item: (item[0], -item[1]["id"])
+        )
         explore = self._random.random() < exploration_rate
         if explore:
             selected = self._random.choice(eligible)
-            score = 0.0
+            score = next(
+                item_score for item_score, arm in exploit_scored
+                if int(arm["id"]) == int(selected["id"])
+            )
         else:
-            scored = [
-                (self._ucb_score(arm, total_pulls), arm)
-                for arm in eligible
-            ]
-            score, selected = max(scored, key=lambda item: (item[0], -item[1]["id"]))
+            score, selected = exploit_score, exploit_arm
+        behavior_propensity = (
+            exploration_rate / max(len(eligible), 1)
+            + (
+                1.0 - exploration_rate
+                if int(selected["id"]) == int(exploit_arm["id"])
+                else 0.0
+            )
+        )
+        enriched_context = {
+            **context,
+            "_agent_learning": {
+                "model": learned.get("model"),
+                "network_score": network_scores.get(selected["name"]),
+                "behavior_propensity": round(behavior_propensity, 8),
+                "eligible_arms": [arm["name"] for arm in eligible],
+                "exploit_arm": exploit_arm["name"],
+            },
+        }
         selection = self._store.create_policy_selection(
             group["id"],
             selected["id"],
-            context,
-            score,
+            enriched_context,
+            1e12 if math.isinf(score) else score,
             exploration=explore,
             task_id=task_id,
             session_id=session_id,
         )
+        if task_id:
+            try:
+                from agent_learning import TrajectoryLearningService
+
+                TrajectoryLearningService(self._store).record_decision(
+                    int(task_id),
+                    state=enriched_context,
+                    action_type=selected["arm_type"],
+                    action_name=selected["name"],
+                    action_payload=selected.get("payload") or {},
+                    policy_selection_id=int(selection["id"]),
+                    behavior_propensity=behavior_propensity,
+                )
+            except ValueError:
+                # A caller may use a task identifier from another store.
+                pass
         return selection
 
     def reward(
@@ -84,6 +140,17 @@ class PolicyOptimizer:
             resource_cost,
             value,
             evidence=evidence,
+        )
+        self._store.complete_agent_trajectory_selection(
+            selection_id,
+            value,
+            reward_components={
+                "success": success,
+                "satisfaction": satisfaction,
+                "latency_cost": latency_cost,
+                "resource_cost": resource_cost,
+            },
+            observation=evidence or {},
         )
         return {"selection": selection, "reward": value}
 
@@ -171,6 +238,13 @@ class PolicyOptimizer:
         average = float(arm["reward_sum"]) / pulls
         bonus = math.sqrt(2.0 * math.log(max(2, total_pulls + 1)) / pulls)
         return average + bonus
+
+    @classmethod
+    def _hybrid_score(cls, arm, total_pulls, network_score=None):
+        ucb = cls._ucb_score(arm, total_pulls)
+        if math.isinf(ucb) or network_score is None:
+            return ucb
+        return ucb + 0.35 * float(network_score)
 
     @staticmethod
     def _context_matches(arm, context):

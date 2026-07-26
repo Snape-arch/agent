@@ -483,6 +483,86 @@ class MemoryStore:
                     FOREIGN KEY(group_id) REFERENCES policy_groups(id) ON DELETE CASCADE,
                     FOREIGN KEY(arm_id) REFERENCES policy_arms(id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS agent_trajectories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id INTEGER NOT NULL UNIQUE,
+                    session_id TEXT NOT NULL DEFAULT '',
+                    scenario TEXT NOT NULL DEFAULT 'general',
+                    status TEXT NOT NULL DEFAULT 'running',
+                    task_context TEXT NOT NULL DEFAULT '{}',
+                    user_context TEXT NOT NULL DEFAULT '{}',
+                    environment_state TEXT NOT NULL DEFAULT '{}',
+                    outcome TEXT NOT NULL DEFAULT '{}',
+                    reward_components TEXT NOT NULL DEFAULT '{}',
+                    total_reward REAL,
+                    policy_version TEXT DEFAULT '',
+                    data_version TEXT NOT NULL DEFAULT 'clawos.trajectory.v1',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    completed_at TEXT DEFAULT '',
+                    FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_agent_trajectories_status
+                    ON agent_trajectories(status, id DESC);
+                CREATE TABLE IF NOT EXISTS agent_trajectory_steps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    trajectory_id INTEGER NOT NULL,
+                    step_index INTEGER NOT NULL,
+                    state TEXT NOT NULL DEFAULT '{}',
+                    action_type TEXT NOT NULL DEFAULT 'workflow',
+                    action_name TEXT NOT NULL DEFAULT '',
+                    action_payload TEXT NOT NULL DEFAULT '{}',
+                    observation TEXT NOT NULL DEFAULT '{}',
+                    reward_components TEXT NOT NULL DEFAULT '{}',
+                    step_reward REAL,
+                    discounted_return REAL,
+                    policy_selection_id INTEGER,
+                    behavior_propensity REAL NOT NULL DEFAULT 1,
+                    safety_violation INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    completed_at TEXT DEFAULT '',
+                    FOREIGN KEY(trajectory_id) REFERENCES agent_trajectories(id) ON DELETE CASCADE,
+                    FOREIGN KEY(policy_selection_id) REFERENCES policy_selections(id) ON DELETE SET NULL,
+                    UNIQUE(trajectory_id, step_index)
+                );
+                CREATE INDEX IF NOT EXISTS idx_agent_trajectory_steps_trajectory
+                    ON agent_trajectory_steps(trajectory_id, step_index);
+                CREATE INDEX IF NOT EXISTS idx_agent_trajectory_steps_selection
+                    ON agent_trajectory_steps(policy_selection_id);
+                CREATE TABLE IF NOT EXISTS agent_preference_pairs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_id TEXT NOT NULL DEFAULT 'default',
+                    task_context TEXT NOT NULL DEFAULT '{}',
+                    chosen TEXT NOT NULL DEFAULT '{}',
+                    rejected TEXT NOT NULL DEFAULT '{}',
+                    chosen_trajectory_id INTEGER,
+                    rejected_trajectory_id INTEGER,
+                    source TEXT NOT NULL DEFAULT 'explicit_user',
+                    confidence REAL NOT NULL DEFAULT 1,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(chosen_trajectory_id) REFERENCES agent_trajectories(id) ON DELETE SET NULL,
+                    FOREIGN KEY(rejected_trajectory_id) REFERENCES agent_trajectories(id) ON DELETE SET NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_agent_preference_pairs_owner
+                    ON agent_preference_pairs(owner_id, id DESC);
+                CREATE TABLE IF NOT EXISTS agent_policy_models (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_name TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    status TEXT NOT NULL DEFAULT 'candidate',
+                    feature_dim INTEGER NOT NULL DEFAULT 128,
+                    weights TEXT NOT NULL DEFAULT '{}',
+                    training_metrics TEXT NOT NULL DEFAULT '{}',
+                    evaluation_metrics TEXT NOT NULL DEFAULT '{}',
+                    data_digest TEXT NOT NULL DEFAULT '',
+                    trained_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    evaluated_at TEXT DEFAULT '',
+                    activated_at TEXT DEFAULT '',
+                    UNIQUE(group_name, version)
+                );
+                CREATE INDEX IF NOT EXISTS idx_agent_policy_models_group
+                    ON agent_policy_models(group_name, status, version DESC);
                 CREATE TABLE IF NOT EXISTS audit_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     actor_id TEXT NOT NULL DEFAULT 'system',
@@ -2839,6 +2919,535 @@ class MemoryStore:
         item = dict(row)
         item["payload"] = self._json_loads(item.get("payload"), {})
         item["contexts"] = self._json_loads(item.get("contexts"), [])
+        return item
+
+    # ---- AGENT LEARNING DATA PLANE ----
+
+    def ensure_agent_trajectory(
+        self, task_id, scenario="general", task_context=None, user_context=None,
+        environment_state=None, policy_version="",
+    ):
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT * FROM agent_trajectories WHERE task_id=?",
+                (int(task_id),),
+            ).fetchone()
+            if row:
+                return self._agent_trajectory_from_row(row)
+            task = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
+            if not task:
+                raise ValueError("task not found")
+            metadata = self._json_loads(task["metadata"], {})
+            cursor = c.execute(
+                """
+                INSERT INTO agent_trajectories
+                    (task_id, session_id, scenario, task_context, user_context,
+                     environment_state, policy_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(task_id), str(task["session_id"] or ""),
+                    str(scenario or metadata.get("scenario") or "general"),
+                    json.dumps(task_context or {
+                        "title": task["title"],
+                        "source": task["source"],
+                        "attempt": int(task["attempt"] or 1),
+                    }, ensure_ascii=False),
+                    json.dumps(user_context or {}, ensure_ascii=False),
+                    json.dumps(environment_state or {}, ensure_ascii=False),
+                    str(policy_version or metadata.get("policy_version") or ""),
+                ),
+            )
+            row = c.execute(
+                "SELECT * FROM agent_trajectories WHERE id=?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            return self._agent_trajectory_from_row(row)
+
+    def append_agent_trajectory_step(
+        self, task_id, state, action_type, action_name, action_payload=None,
+        observation=None, reward_components=None, step_reward=None,
+        policy_selection_id=None, behavior_propensity=1.0,
+        safety_violation=False,
+    ):
+        trajectory = self.ensure_agent_trajectory(task_id)
+        with self._conn() as c:
+            if policy_selection_id:
+                existing = c.execute(
+                    """
+                    SELECT * FROM agent_trajectory_steps
+                    WHERE policy_selection_id=?
+                    """,
+                    (int(policy_selection_id),),
+                ).fetchone()
+                if existing:
+                    return self._agent_trajectory_step_from_row(existing)
+            next_index = int(c.execute(
+                """
+                SELECT COALESCE(MAX(step_index), -1) + 1
+                FROM agent_trajectory_steps WHERE trajectory_id=?
+                """,
+                (int(trajectory["id"]),),
+            ).fetchone()[0])
+            cursor = c.execute(
+                """
+                INSERT INTO agent_trajectory_steps
+                    (trajectory_id, step_index, state, action_type, action_name,
+                     action_payload, observation, reward_components, step_reward,
+                     policy_selection_id, behavior_propensity, safety_violation)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(trajectory["id"]), next_index,
+                    json.dumps(state or {}, ensure_ascii=False),
+                    str(action_type or "workflow"), str(action_name or ""),
+                    json.dumps(action_payload or {}, ensure_ascii=False),
+                    json.dumps(observation or {}, ensure_ascii=False),
+                    json.dumps(reward_components or {}, ensure_ascii=False),
+                    float(step_reward) if step_reward is not None else None,
+                    int(policy_selection_id) if policy_selection_id else None,
+                    max(0.000001, min(float(behavior_propensity or 1), 1.0)),
+                    1 if safety_violation else 0,
+                ),
+            )
+            row = c.execute(
+                "SELECT * FROM agent_trajectory_steps WHERE id=?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            return self._agent_trajectory_step_from_row(row)
+
+    def complete_agent_trajectory_selection(
+        self, selection_id, reward, reward_components=None, observation=None,
+    ):
+        with self._conn() as c:
+            row = c.execute(
+                """
+                SELECT * FROM agent_trajectory_steps
+                WHERE policy_selection_id=?
+                """,
+                (int(selection_id),),
+            ).fetchone()
+            if not row:
+                return None
+            c.execute(
+                """
+                UPDATE agent_trajectory_steps
+                SET step_reward=?, reward_components=?, observation=?,
+                    completed_at=datetime('now')
+                WHERE id=?
+                """,
+                (
+                    float(reward),
+                    json.dumps(reward_components or {}, ensure_ascii=False),
+                    json.dumps(observation or {}, ensure_ascii=False),
+                    int(row["id"]),
+                ),
+            )
+            updated = c.execute(
+                "SELECT * FROM agent_trajectory_steps WHERE id=?",
+                (int(row["id"]),),
+            ).fetchone()
+            return self._agent_trajectory_step_from_row(updated)
+
+    def complete_agent_trajectory(
+        self, task_id, outcome, reward_components, total_reward, gamma=0.95,
+    ):
+        gamma = max(0.0, min(float(gamma), 1.0))
+        with self._conn() as c:
+            trajectory = c.execute(
+                "SELECT * FROM agent_trajectories WHERE task_id=?",
+                (int(task_id),),
+            ).fetchone()
+            if not trajectory:
+                return None
+            c.execute(
+                """
+                UPDATE agent_trajectories
+                SET status='completed', outcome=?, reward_components=?,
+                    total_reward=?, completed_at=datetime('now')
+                WHERE id=?
+                """,
+                (
+                    json.dumps(outcome or {}, ensure_ascii=False),
+                    json.dumps(reward_components or {}, ensure_ascii=False),
+                    float(total_reward), int(trajectory["id"]),
+                ),
+            )
+            steps = c.execute(
+                """
+                SELECT * FROM agent_trajectory_steps
+                WHERE trajectory_id=? ORDER BY step_index DESC
+                """,
+                (int(trajectory["id"]),),
+            ).fetchall()
+            running_return = 0.0
+            for offset, step in enumerate(steps):
+                local_reward = float(step["step_reward"] or 0)
+                if offset == 0:
+                    local_reward += float(total_reward)
+                running_return = local_reward + gamma * running_return
+                c.execute(
+                    """
+                    UPDATE agent_trajectory_steps
+                    SET discounted_return=?,
+                        completed_at=CASE WHEN completed_at='' THEN datetime('now') ELSE completed_at END
+                    WHERE id=?
+                    """,
+                    (round(running_return, 8), int(step["id"])),
+                )
+            row = c.execute(
+                "SELECT * FROM agent_trajectories WHERE id=?",
+                (int(trajectory["id"]),),
+            ).fetchone()
+            return self._agent_trajectory_from_row(row)
+
+    def get_agent_trajectory(self, trajectory_id=None, task_id=None):
+        if trajectory_id is None and task_id is None:
+            raise ValueError("trajectory_id or task_id is required")
+        with self._conn() as c:
+            if trajectory_id is not None:
+                row = c.execute(
+                    "SELECT * FROM agent_trajectories WHERE id=?",
+                    (int(trajectory_id),),
+                ).fetchone()
+            else:
+                row = c.execute(
+                    "SELECT * FROM agent_trajectories WHERE task_id=?",
+                    (int(task_id),),
+                ).fetchone()
+            if not row:
+                return None
+            item = self._agent_trajectory_from_row(row)
+            steps = c.execute(
+                """
+                SELECT * FROM agent_trajectory_steps
+                WHERE trajectory_id=? ORDER BY step_index
+                """,
+                (int(row["id"]),),
+            ).fetchall()
+            item["steps"] = [
+                self._agent_trajectory_step_from_row(step) for step in steps
+            ]
+            return item
+
+    def list_agent_trajectories(self, status="", scenario="", limit=100):
+        with self._conn() as c:
+            clauses = []
+            params = []
+            if status:
+                clauses.append("status=?")
+                params.append(str(status))
+            if scenario:
+                clauses.append("scenario=?")
+                params.append(str(scenario))
+            where = " WHERE " + " AND ".join(clauses) if clauses else ""
+            params.append(max(1, min(int(limit or 100), 1000)))
+            rows = c.execute(
+                f"SELECT * FROM agent_trajectories{where} ORDER BY id DESC LIMIT ?",
+                params,
+            ).fetchall()
+            return [self._agent_trajectory_from_row(row) for row in rows]
+
+    def list_agent_learning_examples(self, group_name="", limit=5000):
+        with self._conn() as c:
+            params = []
+            group_filter = ""
+            if group_name:
+                group_filter = " AND pg.name=?"
+                params.append(str(group_name))
+            params.append(max(1, min(int(limit or 5000), 50000)))
+            rows = c.execute(
+                f"""
+                SELECT s.*, t.task_id, t.scenario, t.task_context,
+                       t.user_context, t.environment_state, t.total_reward,
+                       ps.context AS selection_context, pg.name AS group_name,
+                       pr.reward AS observed_reward
+                FROM agent_trajectory_steps s
+                JOIN agent_trajectories t ON t.id=s.trajectory_id
+                LEFT JOIN policy_selections ps ON ps.id=s.policy_selection_id
+                LEFT JOIN policy_groups pg ON pg.id=ps.group_id
+                LEFT JOIN policy_rewards pr ON pr.selection_id=ps.id
+                WHERE t.status='completed'
+                  AND s.action_name<>''
+                  AND COALESCE(pr.reward, s.discounted_return) IS NOT NULL
+                  {group_filter}
+                ORDER BY s.id DESC LIMIT ?
+                """,
+                params,
+            ).fetchall()
+            examples = []
+            for row in rows:
+                item = self._agent_trajectory_step_from_row(row)
+                for key in (
+                    "task_context", "user_context", "environment_state",
+                    "selection_context",
+                ):
+                    item[key] = self._json_loads(item.get(key), {})
+                observed = item.get("observed_reward")
+                if observed is None:
+                    observed = item.get("discounted_return")
+                item["observed_reward"] = float(observed or 0)
+                item["total_reward"] = float(item.get("total_reward") or 0)
+                examples.append(item)
+            return examples
+
+    def create_agent_preference_pair(
+        self, task_context, chosen, rejected, owner_id="default",
+        chosen_trajectory_id=None, rejected_trajectory_id=None,
+        source="explicit_user", confidence=1.0, metadata=None,
+    ):
+        with self._conn() as c:
+            cursor = c.execute(
+                """
+                INSERT INTO agent_preference_pairs
+                    (owner_id, task_context, chosen, rejected,
+                     chosen_trajectory_id, rejected_trajectory_id,
+                     source, confidence, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(owner_id or "default"),
+                    json.dumps(task_context or {}, ensure_ascii=False),
+                    json.dumps(chosen or {}, ensure_ascii=False),
+                    json.dumps(rejected or {}, ensure_ascii=False),
+                    int(chosen_trajectory_id) if chosen_trajectory_id else None,
+                    int(rejected_trajectory_id) if rejected_trajectory_id else None,
+                    str(source or "explicit_user"),
+                    max(0.0, min(float(confidence or 0), 1.0)),
+                    json.dumps(metadata or {}, ensure_ascii=False),
+                ),
+            )
+            row = c.execute(
+                "SELECT * FROM agent_preference_pairs WHERE id=?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            return self._agent_preference_from_row(row)
+
+    def list_agent_preference_pairs(self, owner_id="", limit=500):
+        with self._conn() as c:
+            if owner_id:
+                rows = c.execute(
+                    """
+                    SELECT * FROM agent_preference_pairs
+                    WHERE owner_id=? ORDER BY id DESC LIMIT ?
+                    """,
+                    (str(owner_id), max(1, min(int(limit or 500), 5000))),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    """
+                    SELECT * FROM agent_preference_pairs
+                    ORDER BY id DESC LIMIT ?
+                    """,
+                    (max(1, min(int(limit or 500), 5000)),),
+                ).fetchall()
+            return [self._agent_preference_from_row(row) for row in rows]
+
+    def create_agent_policy_model(
+        self, group_name, feature_dim, weights, training_metrics,
+        data_digest, trained_by="system",
+    ):
+        with self._conn() as c:
+            version = int(c.execute(
+                """
+                SELECT COALESCE(MAX(version), 0) + 1
+                FROM agent_policy_models WHERE group_name=?
+                """,
+                (str(group_name),),
+            ).fetchone()[0])
+            cursor = c.execute(
+                """
+                INSERT INTO agent_policy_models
+                    (group_name, version, feature_dim, weights,
+                     training_metrics, data_digest, trained_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(group_name), version, int(feature_dim),
+                    json.dumps(weights or {}, ensure_ascii=False),
+                    json.dumps(training_metrics or {}, ensure_ascii=False),
+                    str(data_digest or ""), str(trained_by or "system"),
+                ),
+            )
+            return self.get_agent_policy_model(int(cursor.lastrowid), conn=c)
+
+    def get_agent_policy_model(
+        self, model_id=None, group_name="", status="", conn=None,
+    ):
+        def fetch(c):
+            if model_id is not None:
+                row = c.execute(
+                    "SELECT * FROM agent_policy_models WHERE id=?",
+                    (int(model_id),),
+                ).fetchone()
+            else:
+                row = c.execute(
+                    """
+                    SELECT * FROM agent_policy_models
+                    WHERE group_name=? AND status=?
+                    ORDER BY version DESC LIMIT 1
+                    """,
+                    (str(group_name), str(status or "active")),
+                ).fetchone()
+            return self._agent_policy_model_from_row(row) if row else None
+        if conn is not None:
+            return fetch(conn)
+        with self._conn() as c:
+            return fetch(c)
+
+    def list_agent_policy_models(self, group_name="", limit=100):
+        with self._conn() as c:
+            if group_name:
+                rows = c.execute(
+                    """
+                    SELECT * FROM agent_policy_models
+                    WHERE group_name=? ORDER BY version DESC LIMIT ?
+                    """,
+                    (str(group_name), max(1, min(int(limit or 100), 1000))),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    """
+                    SELECT * FROM agent_policy_models
+                    ORDER BY id DESC LIMIT ?
+                    """,
+                    (max(1, min(int(limit or 100), 1000)),),
+                ).fetchall()
+            return [self._agent_policy_model_from_row(row) for row in rows]
+
+    def evaluate_agent_policy_model(self, model_id, metrics, passed):
+        with self._conn() as c:
+            model = c.execute(
+                "SELECT * FROM agent_policy_models WHERE id=?",
+                (int(model_id),),
+            ).fetchone()
+            if not model:
+                raise ValueError("agent policy model not found")
+            if model["status"] not in {"candidate", "shadow"}:
+                raise ValueError("only candidate or shadow models can be evaluated")
+            c.execute(
+                """
+                UPDATE agent_policy_models
+                SET status=?, evaluation_metrics=?, evaluated_at=datetime('now')
+                WHERE id=?
+                """,
+                (
+                    "shadow" if passed else "rejected",
+                    json.dumps(metrics or {}, ensure_ascii=False),
+                    int(model_id),
+                ),
+            )
+            return self.get_agent_policy_model(model_id, conn=c)
+
+    def activate_agent_policy_model(self, model_id):
+        with self._conn() as c:
+            model = c.execute(
+                "SELECT * FROM agent_policy_models WHERE id=?",
+                (int(model_id),),
+            ).fetchone()
+            if not model:
+                raise ValueError("agent policy model not found")
+            if model["status"] != "shadow":
+                raise ValueError("only a shadow-evaluated model can be activated")
+            c.execute(
+                """
+                UPDATE agent_policy_models SET status='retired'
+                WHERE group_name=? AND status='active'
+                """,
+                (model["group_name"],),
+            )
+            c.execute(
+                """
+                UPDATE agent_policy_models
+                SET status='active', activated_at=datetime('now')
+                WHERE id=?
+                """,
+                (int(model_id),),
+            )
+            return self.get_agent_policy_model(model_id, conn=c)
+
+    def rollback_agent_policy_model(self, model_id):
+        with self._conn() as c:
+            model = c.execute(
+                "SELECT * FROM agent_policy_models WHERE id=?",
+                (int(model_id),),
+            ).fetchone()
+            if not model:
+                raise ValueError("agent policy model not found")
+            if model["status"] != "active":
+                raise ValueError("only the active model can be rolled back")
+            previous = c.execute(
+                """
+                SELECT * FROM agent_policy_models
+                WHERE group_name=? AND status='retired' AND id<>?
+                ORDER BY version DESC LIMIT 1
+                """,
+                (model["group_name"], int(model_id)),
+            ).fetchone()
+            c.execute(
+                """
+                UPDATE agent_policy_models
+                SET status='rolled_back' WHERE id=?
+                """,
+                (int(model_id),),
+            )
+            restored = None
+            if previous:
+                c.execute(
+                    """
+                    UPDATE agent_policy_models
+                    SET status='active', activated_at=datetime('now')
+                    WHERE id=?
+                    """,
+                    (int(previous["id"]),),
+                )
+                restored = self.get_agent_policy_model(
+                    int(previous["id"]), conn=c
+                )
+            return {
+                "rolled_back": self.get_agent_policy_model(model_id, conn=c),
+                "restored": restored,
+            }
+
+    def _agent_trajectory_from_row(self, row):
+        item = dict(row)
+        for key in (
+            "task_context", "user_context", "environment_state",
+            "outcome", "reward_components",
+        ):
+            item[key] = self._json_loads(item.get(key), {})
+        if item.get("total_reward") is not None:
+            item["total_reward"] = float(item["total_reward"])
+        return item
+
+    def _agent_trajectory_step_from_row(self, row):
+        item = dict(row)
+        for key in (
+            "state", "action_payload", "observation", "reward_components",
+        ):
+            item[key] = self._json_loads(item.get(key), {})
+        item["behavior_propensity"] = float(
+            item.get("behavior_propensity") or 0.000001
+        )
+        item["safety_violation"] = bool(item.get("safety_violation"))
+        for key in ("step_reward", "discounted_return"):
+            if item.get(key) is not None:
+                item[key] = float(item[key])
+        return item
+
+    def _agent_preference_from_row(self, row):
+        item = dict(row)
+        for key in ("task_context", "chosen", "rejected", "metadata"):
+            item[key] = self._json_loads(item.get(key), {})
+        item["confidence"] = float(item.get("confidence") or 0)
+        return item
+
+    def _agent_policy_model_from_row(self, row):
+        item = dict(row)
+        for key in ("weights", "training_metrics", "evaluation_metrics"):
+            item[key] = self._json_loads(item.get(key), {})
+        item["feature_dim"] = int(item.get("feature_dim") or 128)
+        item["version"] = int(item.get("version") or 1)
         return item
 
     # ---- AUDIT AND SECRET REFERENCES ----

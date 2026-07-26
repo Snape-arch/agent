@@ -1818,6 +1818,16 @@ async def chat_completions(request: Request):
             metadata={
                 "stream": bool(stream),
                 "user_text": user_text,
+                "scenario": routing_strategy.get("scenario", "general"),
+                "tags": routing_strategy.get("matched_keywords", []),
+                "user_context": req_data.get("clawos_user_context") or {},
+                "environment_state": {
+                    "stream": bool(stream),
+                    "mtclaw_enabled": bool(
+                        g_mtclaw_adapter and g_mtclaw_adapter.enabled
+                    ),
+                    "attachment_count": len(attachment_meta),
+                },
                 "attachments": attachment_meta,
                 "runtime_policies": policy_trace,
                 "shadow_policy_evaluations": shadow_evaluations,
@@ -1839,6 +1849,23 @@ async def chat_completions(request: Request):
                     context={
                         "scenario": routing_strategy.get("scenario", "general"),
                         "tags": routing_strategy.get("matched_keywords", []),
+                        "task_description": user_text,
+                        "session_id": str(session_id),
+                        "history": {
+                            "message_count": len(messages),
+                            "user_turn_count": sum(
+                                1 for message in messages
+                                if message.get("role") == "user"
+                            ),
+                        },
+                        "user": req_data.get("clawos_user_context") or {},
+                        "environment": {
+                            "stream": bool(stream),
+                            "attachment_count": len(attachment_meta),
+                            "mtclaw_enabled": bool(
+                                g_mtclaw_adapter and g_mtclaw_adapter.enabled
+                            ),
+                        },
                     },
                     task_id=task_id,
                     session_id=session_id,
@@ -1856,6 +1883,41 @@ async def chat_completions(request: Request):
                     routing_strategy = g_runtime_policy_controller.apply_routing(
                         routing_strategy, optimizer_policy
                     )
+                optimizer_payload = optimizer_selection.get("payload") or {}
+                learned_prompt = (
+                    optimizer_payload.get("system")
+                    or optimizer_payload.get("prompt")
+                    or optimizer_payload.get("workflow_prompt")
+                )
+                if learned_prompt:
+                    prompt_policy = {
+                        **prompt_policy,
+                        "system": "\n".join(
+                            part for part in (
+                                str(prompt_policy.get("system") or "").strip(),
+                                str(learned_prompt).strip(),
+                            )
+                            if part
+                        ),
+                    }
+                learned_retrieval = optimizer_payload.get("retrieval_params")
+                if isinstance(learned_retrieval, dict):
+                    retrieval_policy = {
+                        **retrieval_policy,
+                        **learned_retrieval,
+                    }
+                routing_strategy["agent_learning_decision"] = {
+                    "selection_id": optimizer_selection["id"],
+                    "arm_name": optimizer_selection["arm_name"],
+                    "agent": optimizer_payload.get("agent"),
+                    "workflow": optimizer_payload.get("workflow"),
+                    "skills": optimizer_payload.get("skills") or [],
+                    "model": (
+                        (optimizer_selection.get("context") or {})
+                        .get("_agent_learning", {})
+                        .get("model")
+                    ),
+                }
                 g_memory_store.update_task_metadata(
                     task_id,
                     {
@@ -2551,6 +2613,151 @@ async def api_policy_promotion_rollback(promotion_id: int, request: Request):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse({"promotion": promotion})
+
+
+@app.get("/api/agent-learning/trajectories")
+async def api_agent_learning_trajectories(
+    status: str = "", scenario: str = "", limit: int = 100,
+):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    rows = g_memory_store.list_agent_trajectories(
+        status=status, scenario=scenario, limit=limit
+    )
+    return JSONResponse({"trajectories": rows, "count": len(rows)})
+
+
+@app.get("/api/agent-learning/trajectories/{trajectory_id}")
+async def api_agent_learning_trajectory(trajectory_id: int):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    item = g_memory_store.get_agent_trajectory(trajectory_id=trajectory_id)
+    if not item:
+        raise HTTPException(404, "trajectory not found")
+    return JSONResponse({"trajectory": item})
+
+
+@app.get("/api/agent-learning/dataset")
+async def api_agent_learning_dataset(group_name: str = "", limit: int = 5000):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import TrajectoryLearningService
+
+    dataset = TrajectoryLearningService(g_memory_store).export_dataset(
+        group_name=group_name, limit=limit
+    )
+    return JSONResponse(dataset)
+
+
+@app.post("/api/agent-learning/preferences")
+async def api_agent_learning_preference(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import TrajectoryLearningService
+
+    data = await request.json()
+    try:
+        item = TrajectoryLearningService(g_memory_store).record_preference(
+            task_context=data.get("task_context") or {},
+            chosen=data.get("chosen") or {},
+            rejected=data.get("rejected") or {},
+            owner_id=data.get("owner_id", "default"),
+            chosen_trajectory_id=data.get("chosen_trajectory_id"),
+            rejected_trajectory_id=data.get("rejected_trajectory_id"),
+            source=data.get("source", "explicit_user"),
+            confidence=data.get("confidence", 1.0),
+            metadata=data.get("metadata") or {},
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"preference": item})
+
+
+@app.get("/api/agent-learning/models")
+async def api_agent_learning_models(group_name: str = "", limit: int = 100):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    rows = g_memory_store.list_agent_policy_models(
+        group_name=group_name, limit=limit
+    )
+    return JSONResponse({"models": rows, "count": len(rows)})
+
+
+@app.post("/api/agent-learning/models/train")
+async def api_agent_learning_train(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import AgentSkillPolicyNetwork
+
+    data = await request.json()
+    group_name = str(data.get("group_name") or "").strip()
+    if not group_name:
+        raise HTTPException(400, "group_name is required")
+    try:
+        model = AgentSkillPolicyNetwork(
+            g_memory_store,
+            feature_dim=data.get("feature_dim", 128),
+            epochs=data.get("epochs", 60),
+        ).train(
+            group_name,
+            min_examples=data.get("min_examples", 8),
+            trained_by=data.get("actor_id", "system"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"model": model})
+
+
+@app.post("/api/agent-learning/models/{model_id}/evaluate")
+async def api_agent_learning_evaluate(model_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import TrajectoryCritic
+
+    data = await request.json()
+    try:
+        model = TrajectoryCritic(g_memory_store).evaluate(
+            model_id,
+            min_samples=data.get("min_samples", 5),
+            regression_tolerance=data.get("regression_tolerance", 0.02),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"model": model})
+
+
+@app.post("/api/agent-learning/models/{model_id}/activate")
+async def api_agent_learning_activate(model_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import TrajectoryCritic
+
+    data = await request.json()
+    try:
+        model = TrajectoryCritic(g_memory_store).activate(
+            model_id, confirmed=bool(data.get("confirmed"))
+        )
+    except ValueError as exc:
+        status_code = 409 if "confirmed=true" in str(exc) else 400
+        raise HTTPException(status_code, str(exc))
+    return JSONResponse({"model": model})
+
+
+@app.post("/api/agent-learning/models/{model_id}/rollback")
+async def api_agent_learning_rollback(model_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import TrajectoryCritic
+
+    data = await request.json()
+    try:
+        result = TrajectoryCritic(g_memory_store).rollback(
+            model_id, confirmed=bool(data.get("confirmed"))
+        )
+    except ValueError as exc:
+        status_code = 409 if "confirmed=true" in str(exc) else 400
+        raise HTTPException(status_code, str(exc))
+    return JSONResponse(result)
 
 
 @app.get("/api/security/audit")

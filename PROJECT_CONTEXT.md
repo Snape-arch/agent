@@ -1,5 +1,27 @@
 # Project Context
 
+## Agent Learning P0-P2 闭环（2026-07-26）
+
+- 开发分支：`codex/agent-learning-p0-p2`；基于自进化闭环提交 `1a6f12a`。
+- P0：新增版本化 Task Trajectory、逐决策 Step、行为概率、多目标 Reward、
+  折扣回报、chosen/rejected 偏好对和脱敏数据集 manifest。Task 创建、终态、
+  重试和中断恢复均已接入轨迹生命周期。
+- P1：新增无重型训练依赖的 Agent Skill Policy Network v0，使用确定性哈希特征
+  和分 Arm Contextual-Q Head，输入任务、用户、历史统计和环境状态，输出预注册的
+  Agent/Skill/Tool/Workflow/Prompt/检索组合。运行时使用
+  `empirical + UCB bonus + 0.35 * learned Q`，保留冷启动探索与安全边界。
+- P2：新增离线 Doubly-Robust Trajectory Critic，报告候选收益、lift、标准误、
+  95% 下界、effective sample size 和安全违规；通过后进入 Shadow，激活与回滚
+  均要求显式确认。Active 模型已进入真实聊天策略选择并继续回流 Task Outcome。
+- 新增 `/api/agent-learning/*` 轨迹、数据集、偏好、训练、评估、激活和回滚接口。
+- 验证：Agent Learning 专项 **6/6 通过**；Task/Policy/Self-Evolution 受影响测试
+  **37/37 通过**；根目录全量 **346 项 OK**（1 项按预期跳过）；Python 编译检查通过。
+- 非阻断警告保持不变：MTClaw FastAPI `on_event` 与 Chroma/OpenTelemetry
+  asyncio 弃用警告。
+- 详细结构、门禁和证据边界见 `clawos/AGENT_LEARNING_P0_P2.md`。
+- 下一步：先积累真实、明确反馈的轨迹并校准奖励；达到样本门槛后再做
+  Preference Ranker、深度 Router 或 LoRA，不把当前线性 Router 表述为在线 RL。
+
 ## 自进化 P0-P2 闭环（2026-07-26）
 
 - 开发分支：`codex/self-evolution-p0-p2`；基线为本地 `master` 的 `ae200cf`。
