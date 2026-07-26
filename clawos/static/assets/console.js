@@ -2205,6 +2205,60 @@ async function loadEvolution() {
   }
 }
 
+async function loadCompetitionReadiness() {
+  if (!$("competitionPhaseGrid")) return;
+  const status = $("competitionReadinessStatus");
+  if (status) status.textContent = "正在核对软件、数据、硬件和发布证据…";
+  try {
+    const data = await api("/api/competition/readiness");
+    const claims = data.claims || {};
+    if ($("competitionReadinessSummary")) {
+      $("competitionReadinessSummary").innerHTML = table(["结论", "状态", "证据边界"], [
+        ["软件 P0-P2", { html: statusBadge(data.software_p0_p2_closed ? "passed" : "failed") }, "版本化合同、真实本地数据和状态机"],
+        ["比赛发布", { html: statusBadge(data.competition_release_ready ? "ready" : "blocked") }, data.hardware?.ready ? "目标硬件证据完整" : "仍缺目标硬件真实报告"],
+        ["真实用户学习", { html: statusBadge(claims.real_user_learning_validated ? "ready" : "collecting") }, claims.real_user_learning_validated ? "Reward 与偏好门槛已达标" : "继续积累真实显式反馈"],
+        ["在线 RL", { html: statusBadge(claims.online_rl ? "claimed" : "not claimed") }, "当前实现保持离线、门控和人工确认"]
+      ]);
+    }
+    const phases = ["p0", "p1", "p2"].map(name => ({ name: name.toUpperCase(), ...(data[name] || {}) }));
+    $("competitionPhaseGrid").innerHTML = phases.map(phase => {
+      const checks = Object.entries(phase.checks || {});
+      const passed = checks.filter(([, value]) => value).length;
+      return `<article class="competition-phase-card"><div><span>${esc(phase.name)}</span>${statusBadge(phase.software_closed ? "software closed" : "blocked")}</div><b>${passed}/${checks.length} 门禁通过</b><ul>${checks.map(([name, value]) => `<li>${statusBadge(value ? "passed" : "failed")} ${esc(name)}</li>`).join("")}</ul></article>`;
+    }).join("");
+    const flows = data.p0?.demo_contracts?.flows || [];
+    if ($("competitionDemoTable")) {
+      $("competitionDemoTable").innerHTML = table(["场景", "演示链", "冻结用例", "合同"], flows.map(flow => [
+        flow.scenario || "",
+        flow.title || flow.id || "",
+        (flow.benchmark_cases || []).length,
+        { html: statusBadge(flow.backed_by_frozen_cases ? "backed" : "missing") }
+      ]));
+    }
+    if ($("competitionNextActions")) {
+      $("competitionNextActions").innerHTML = (data.next_actions || []).map(item => `<li>${esc(item)}</li>`).join("") || "<li>全部发布门禁已满足。</li>";
+    }
+    if (status) status.textContent = `证据摘要 ${String(data.evidence_digest || "").slice(0, 12)} · ${data.competition_release_ready ? "可进入比赛发布" : "保持门控"}`;
+  } catch (err) {
+    if (status) status.textContent = "Readiness 加载失败：" + err.message;
+  }
+}
+
+async function exportCompetitionReadiness() {
+  const status = $("competitionReadinessStatus");
+  try {
+    const data = await api("/api/competition/readiness/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmed: true })
+    });
+    if (status) status.textContent = `验收包已导出 · ${data.markdown_path || ""}`;
+    await loadCompetitionReadiness();
+  } catch (err) {
+    if (status) status.textContent = "导出失败：" + err.message;
+  }
+}
+
 async function queueEvolutionRun() {
   let baseline = {};
   try {
@@ -2987,7 +3041,7 @@ function chooseFirstRunModel(provider) {
 async function refreshAll() {
   ensureProfessionalBoard();
   renderKnowledgeWorkspaceShell();
-  await Promise.allSettled([loadHealth(), loadDash(), loadRoutingStrategy(), loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue(), loadMemory(), loadReflection(), loadEvolution(), loadSkills(), loadTools(), loadToolExecutions(), loadTasks(), loadBenchmarks(), loadCapabilities(), loadSecurityCenter(), loadOps(), refreshOfflineReadiness(), loadLocalAcceptanceHistory()]);
+  await Promise.allSettled([loadHealth(), loadDash(), loadRoutingStrategy(), loadKnowledge(), loadKnowledgeDocuments(), loadKnowledgeGraph(), loadOcrQueue(), loadMemory(), loadReflection(), loadEvolution(), loadCompetitionReadiness(), loadSkills(), loadTools(), loadToolExecutions(), loadTasks(), loadBenchmarks(), loadCapabilities(), loadSecurityCenter(), loadOps(), refreshOfflineReadiness(), loadLocalAcceptanceHistory()]);
   if (window.loadRuntimeRecords) window.loadRuntimeRecords();
 }
 
@@ -3001,7 +3055,7 @@ async function refreshView(viewName) {
     dash: [loadDash(), refreshOfflineReadiness(), loadLocalAcceptanceHistory()],
     memory: [loadMemory()],
     reflection: [loadReflection()],
-    evolution: [loadEvolution()],
+    evolution: [loadEvolution(), loadCompetitionReadiness()],
     skills: [loadSkills()],
     tools: [loadTools(), loadToolExecutions()],
     tasks: [loadTasks()],

@@ -1,0 +1,65 @@
+{
+  "schema_version": "clawos.competition-demo.v1",
+  "name": "competition-demo-v1",
+  "description": "Four judge-facing golden flows backed by frozen benchmark cases.",
+  "flows": [
+    {
+      "id": "research-evidence",
+      "scenario": "research",
+      "title": "科研证据链",
+      "prompt": "精读论文，核对引用并生成带证据的对比结论。",
+      "expected_route": "research",
+      "expected_tools": ["research_pdf", "paper_deep_read", "knowledge_search"],
+      "benchmark_cases": [
+        "research_search_returns_evidence_shape",
+        "research_citation_validator_empty_set",
+        "research_compare_matrix_empty_corpus"
+      ],
+      "required_evidence": ["task", "routing", "tool_trace", "citation", "user_feedback"]
+    },
+    {
+      "id": "learning-mastery",
+      "scenario": "learning",
+      "title": "学习掌握度闭环",
+      "prompt": "建立学习目标，生成练习，记录错题并更新掌握度。",
+      "expected_route": "learning",
+      "expected_tools": ["learning_workspace"],
+      "benchmark_cases": [
+        "learning_goal_creates_review_items",
+        "learning_review_updates_mastery",
+        "learning_mistake_records_evidence",
+        "learning_assessment_reports_mastery"
+      ],
+      "required_evidence": ["task", "routing", "tool_trace", "memory_update", "user_feedback"]
+    },
+    {
+      "id": "office-delivery",
+      "scenario": "office",
+      "title": "办公交付闭环",
+      "prompt": "把会议材料整理为行动项，并交付可审计的表格和演示文稿。",
+      "expected_route": "office",
+      "expected_tools": ["meeting_workflow", "office_artifact"],
+      "benchmark_cases": [
+        "meeting_create_structured_record",
+        "office_spreadsheet_artifact_create",
+        "office_presentation_artifact_create"
+      ],
+      "required_evidence": ["task", "routing", "tool_trace", "artifact", "user_feedback"]
+    },
+    {
+      "id": "project-recovery",
+      "scenario": "project",
+      "title": "项目执行与恢复",
+      "prompt": "分析项目、规划变更、执行低风险工具，并展示失败后的恢复与审计。",
+      "expected_route": "project",
+      "expected_tools": ["git_workspace", "code_stats", "find_todos"],
+      "benchmark_cases": [
+        "git_snapshot_reports_collaboration_state",
+        "git_commit_plan_is_dry_run",
+        "code_stats_reads_project_tree",
+        "find_todos_scans_project_tree"
+      ],
+      "required_evidence": ["task", "routing", "tool_trace", "recovery", "user_feedback"]
+    }
+  ]
+}

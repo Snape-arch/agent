@@ -1,5 +1,28 @@
 # Project Context
 
+## Competition Readiness P0-P2 闭环（2026-07-26）
+
+- 开发分支：`codex/competition-readiness-p0-p2`；基于反馈学习提交 `44c0283`。
+- P0：新增科研、学习、办公、项目四条黄金演示合同，每条均绑定版本化冻结基准；
+  聚合比赛架构、显式反馈数据面与 Task-bound Reward 修订证据。
+- P1：新增统一学习运营视图，展示真实轨迹、反馈覆盖、偏好场景覆盖、Reward
+  Calibration 与 Preference Ranker 的数据门槛和 Active / Shadow 状态。
+- P2：统一展示深度 Router、Trajectory RL 和行为 LoRA readiness，固定保持
+  `online_rl_claimed=false`，不自动训练或上线。
+- 新增目标硬件证据模板与严格校验：离线模式、MTClaw 必经、fallback 关闭、
+  首 Token P95、吞吐、峰值内存及不少于 30 条任务、90% 通过率必须全部有值。
+- 新增 `/api/competition/readiness`、硬件证据校验和显式确认导出 API；
+  CLI 可导出 JSON/Markdown，并在 `--strict` 下对未就绪状态返回非零。
+- 控制台 Self-Evolution 页面新增 Competition P0-P2 面板、四条黄金演示链和
+  下一步硬门槛。
+- 当前可验证结论：`software_p0_p2_closed=true`，
+  `competition_release_ready=false`；没有目标硬件和真实样本时不会误报 Ready。
+- 专项测试 **5/5 通过**；架构、Agent Learning、反馈学习、日常验收和前端
+  受影响回归 **75/75 通过**；Python、JavaScript 和补丁格式检查通过。
+- 根目录全量 **359 项 OK**（1 项按预期跳过）；非阻断警告仍是 MTClaw
+  FastAPI `on_event` 与 Chroma/OpenTelemetry asyncio 弃用警告。
+- 详细使用与边界见 `clawos/COMPETITION_READINESS_P0_P2.md`。
+
 ## 反馈学习与 Preference Ranker P0-P2 闭环（2026-07-26）
 
 - 开发分支：`codex/feedback-preference-p0-p2`；基于 Agent Learning 提交 `4ddff4c`。

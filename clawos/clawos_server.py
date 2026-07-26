@@ -2865,6 +2865,76 @@ async def api_agent_learning_advanced_readiness():
     return JSONResponse(AdvancedLearningReadiness(g_memory_store).report())
 
 
+def _competition_hardware_evidence() -> dict[str, Any]:
+    path = OUTPUT_ROOT / "competition_hardware_acceptance.json"
+    if not path.exists() or not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _competition_readiness_snapshot() -> dict[str, Any]:
+    from competition_readiness import CompetitionReadinessService
+    from scripts.validate_competition_architecture import validate
+
+    return CompetitionReadinessService(g_memory_store).snapshot(
+        architecture_report=validate(),
+        hardware_evidence=_competition_hardware_evidence(),
+    )
+
+
+@app.get("/api/competition/readiness")
+async def api_competition_readiness():
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    return JSONResponse(_competition_readiness_snapshot())
+
+
+@app.post("/api/competition/hardware-evidence/validate")
+async def api_competition_hardware_evidence_validate(request: Request):
+    from competition_readiness import CompetitionReadinessService
+
+    data = await request.json()
+    evidence = data.get("evidence") if isinstance(data, dict) else {}
+    if not isinstance(evidence, dict):
+        raise HTTPException(400, "evidence must be an object")
+    return JSONResponse(
+        CompetitionReadinessService.validate_hardware_evidence(evidence)
+    )
+
+
+@app.post("/api/competition/readiness/export")
+async def api_competition_readiness_export(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    if not bool(data.get("confirmed")):
+        raise HTTPException(400, "confirmed=true is required to export")
+    from competition_readiness import CompetitionReadinessService
+
+    snapshot = _competition_readiness_snapshot()
+    OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    json_path = OUTPUT_ROOT / "competition_readiness.json"
+    markdown_path = OUTPUT_ROOT / "competition_readiness.md"
+    json_path.write_text(
+        json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    markdown_path.write_text(
+        CompetitionReadinessService.to_markdown(snapshot),
+        encoding="utf-8",
+    )
+    return JSONResponse({
+        "ok": True,
+        "competition_release_ready": snapshot["competition_release_ready"],
+        "evidence_digest": snapshot["evidence_digest"],
+        "json_path": str(json_path),
+        "markdown_path": str(markdown_path),
+    })
+
+
 @app.get("/api/agent-learning/models")
 async def api_agent_learning_models(group_name: str = "", limit: int = 100):
     if not g_memory_store:
