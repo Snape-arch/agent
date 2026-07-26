@@ -1,5 +1,33 @@
 # Project Context
 
+## 自进化 P0-P2 闭环（2026-07-26）
+
+- 开发分支：`codex/self-evolution-p0-p2`；基线为本地 `master` 的 `ae200cf`。
+  开工前 `git fetch origin` 因网络连接重置失败；本地基线当时显示与已知
+  `origin/master` 对齐。
+- 自动自进化基准已从“根据候选字段合成分数”改为隔离子进程实际执行
+  frozen/core E2E 套件和确定性检索 case；证据包含 runner、报告摘要、配置摘要
+  和 case count，缺执行证据不能进入 Shadow。
+- `prompt_policy`、`retrieval_params`、`tool_routing_policy` 已接入聊天运行时。
+  Task 保存策略目标、版本、run、候选暴露、稳定分桶和 Shadow 物化结果。
+- Shadow 不影响用户响应；Canary 按 session/task 稳定哈希分桶并真实使用候选。
+  至少 3 个 Shadow 样本才可进入 Canary，至少 5 个 Canary 样本才可激活；
+  失败/取消/重试信号越线会自动停流。
+- Contextual UCB 已能接入 `routing:{scenario}`；选择绑定 Task，reward 从终态
+  Task 派生，策略晋升至少需要 5 个样本并按 95% 置信区间下界排序。
+- Reflection 可聚类近期重复失败并生成低风险候选；Fresh-agent audit 改为
+  `python -I` 独立进程并检测 silent bypass。
+- Skill Canary 使用真实稳定分桶，高风险工具不得自动灰度；Canary/晋升必须签名。
+  签名密钥来自 OS Keyring `ClawOS/skill-signing` 或本地
+  `CLAWOS_SKILL_SIGNING_KEY`，API 不接收 Secret。
+- 新增 Skill 库重复/零使用/复杂度审计和保留证据的归档式压缩。
+- 验证：受影响测试 **128/128 通过**；根目录标准发现命令全量
+  **340/340 通过**（1 项按预期跳过）。首次根目录运行暴露的两个既有测试导入路径问题已补最小修复。
+- 非阻断警告：MTClaw FastAPI `on_event` 弃用警告、PyMuPDF SWIG 类型警告。
+- 详细边界与验收见 `clawos/SELF_EVOLUTION_ACCEPTANCE_2026-07-26.md`。
+- 下一步：在 MTT AIBOOK/真实本地模型上补 A/B、首 token、吞吐、资源峰值和
+  多日 burn-in；本轮不把确定性软件基准表述为真实模型质量。
+
 ## Windows 桌面安装交付（2026-07-18）
 
 - 新增 `desktop/` 桌面交付层：PyInstaller 无控制台 `ClawOS.exe`、WebView2 原生窗口、单实例、ClawOS/MTClaw 隐藏启动与随窗口退出回收。
@@ -13,7 +41,7 @@
 
 这是 ClawOS 当前状态的简洁交接入口。2026-07-14 以前的详细记录已归档到 `clawos/docs/PROJECT_HISTORY_2026-07-14.md`。
 
-## 当前状态（2026-07-17）
+## 历史状态（2026-07-17）
 
 - 当前分支：`codex/p0-demo-polish`。
 - 当前提交：`4784d94`；与 `origin/codex/p0-demo-polish` 一致，相对 `origin/master` 超前 1 个文档提交。

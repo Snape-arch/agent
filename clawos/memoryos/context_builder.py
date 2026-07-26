@@ -19,7 +19,7 @@ class ContextBuilder:
         self._retrieval = RetrievalService(store, vector_store, reranker=reranker)
         self._evaluation = EvaluationService(store)
 
-    def build_system_prompt(self, session_id: str) -> str:
+    def build_system_prompt(self, session_id: str, prompt_policy: dict | None = None) -> str:
         """Construct system prompt enriched with 7 memory types and retrieved knowledge."""
         user_profile = os.environ.get("USERPROFILE", "")
         desktop = os.path.join(user_profile, "Desktop") if user_profile else ""
@@ -101,6 +101,10 @@ class ContextBuilder:
             "Follow stored preferences. Do not use emojis."
         )
 
+        policy = dict(prompt_policy or {})
+        addition = str(policy.get("system") or policy.get("prompt") or "").strip()
+        if addition:
+            parts.append("[Active runtime prompt policy]\n" + addition)
         return "\n\n".join(parts)
 
     def ingest_and_store(self, session_id: str, role: str, content: str):
@@ -114,12 +118,21 @@ class ContextBuilder:
         """Save a context snapshot for the current session."""
         self._store.save_context_snapshot(session_id, task, tools, environment, intent)
 
-    def build_messages(self, session_id: str, user_text: str, max_history: int = 12) -> list[dict[str, Any]]:
+    def build_messages(
+        self,
+        session_id: str,
+        user_text: str,
+        max_history: int = 12,
+        prompt_policy: dict | None = None,
+        retrieval_policy: dict | None = None,
+    ) -> list[dict[str, Any]]:
         """Build messages array with full memory pipeline: profile + knowledge + retrieval + history."""
-        system = self.build_system_prompt(session_id)
+        system = self.build_system_prompt(session_id, prompt_policy=prompt_policy)
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
 
-        retrieved = self._retrieval.retrieve_for_context(user_text)
+        retrieved = self._retrieval.retrieve_for_context(
+            user_text, policy=retrieval_policy or {}
+        )
         if retrieved:
             messages.append({
                 "role": "system",

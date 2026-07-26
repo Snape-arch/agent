@@ -59,6 +59,20 @@ class TaskService:
             return {}
         store = self.require_store()
         task = store.finish_task(task_id, status, error=error, result_payload=result_payload)
+        for selection in (task.get("metadata") or {}).get("policy_optimizer_selections") or []:
+            try:
+                from policy_optimizer import PolicyOptimizer
+
+                PolicyOptimizer(store).reward_from_task(
+                    int(selection["selection_id"]),
+                    int(task_id),
+                    satisfaction=float(
+                        (task.get("metadata") or {}).get("user_satisfaction", 0.5)
+                    ),
+                )
+            except (KeyError, TypeError, ValueError):
+                # A selection may already have been rewarded explicitly.
+                pass
         try:
             from .runtime_records import run_from_task
 

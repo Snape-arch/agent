@@ -21,10 +21,12 @@ class SelfEvolutionTests(unittest.TestCase):
             "frozen": {
                 "baseline": {"pass_rate": 1.0, "p95_latency_ms": 120, "passed": True},
                 "candidate": {"pass_rate": 1.0, "p95_latency_ms": 100, "passed": True},
+                "metadata": self._executed_metadata("frozen"),
             },
             "core_e2e": {
                 "baseline": {"pass_rate": 1.0, "p95_latency_ms": 80, "passed": True},
                 "candidate": {"pass_rate": 1.0, "p95_latency_ms": 80, "passed": True},
+                "metadata": self._executed_metadata("core"),
             },
             "retrieval": {
                 "baseline": {
@@ -34,7 +36,17 @@ class SelfEvolutionTests(unittest.TestCase):
                     "passed": True,
                 },
                 "candidate": retrieval_candidate,
+                "metadata": self._executed_metadata("retrieval"),
             },
+        }
+
+    @staticmethod
+    def _executed_metadata(name):
+        return {
+            "evidence_type": "executed",
+            "baseline_report_digest": f"{name}-baseline",
+            "candidate_report_digest": f"{name}-candidate",
+            "case_count": 1,
         }
 
     def test_run_moves_through_shadow_canary_before_activation(self):
@@ -58,10 +70,17 @@ class SelfEvolutionTests(unittest.TestCase):
             )
             evaluated = manager.evaluate(run["id"])
             shadow = manager.start_shadow(run["id"])
-            shadow = manager.record_quality_signal(
-                shadow["id"], "user_retry_rate", 0.02, created_by="test"
-            )
+            for _ in range(3):
+                for signal in ("user_retry_rate", "cancel_rate", "long_task_failure_rate"):
+                    shadow = manager.record_quality_signal(
+                        shadow["id"], signal, 0.02, created_by="test"
+                    )
             canary = manager.promote_canary(shadow["id"], traffic_percent=10)
+            for _ in range(2):
+                for signal in ("user_retry_rate", "cancel_rate", "long_task_failure_rate"):
+                    canary = manager.record_quality_signal(
+                        canary["id"], signal, 0.02, created_by="test"
+                    )
             published = manager.activate(canary["id"], actor_id="self-evolution")
             active = store.get_runtime_policy("retrieval_params", "default")
 

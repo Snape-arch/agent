@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+from datetime import datetime
 
 
 class PolicyOptimizer:
@@ -86,22 +87,70 @@ class PolicyOptimizer:
         )
         return {"selection": selection, "reward": value}
 
+    def reward_from_task(
+        self,
+        selection_id,
+        task_id,
+        satisfaction=0.5,
+        resource_cost=None,
+    ):
+        """Derive reward from a terminal server-side task instead of caller claims."""
+
+        selection = self._store.get_policy_selection(selection_id)
+        detail = self._store.get_task(task_id)
+        task = (detail or {}).get("task") or {}
+        if not selection or not task:
+            raise ValueError("policy selection or task not found")
+        if selection.get("task_id") and int(selection["task_id"]) != int(task_id):
+            raise ValueError("policy selection is bound to another task")
+        status = str(task.get("status") or "")
+        if status not in {"succeeded", "failed", "canceled", "cancelled"}:
+            raise ValueError("task must be terminal before reward")
+        latency_ms = self._task_latency_ms(task)
+        metadata = task.get("metadata") or {}
+        derived_resource = float(
+            metadata.get("resource_cost")
+            or metadata.get("token_cost_normalized")
+            or 0
+        )
+        return self.reward(
+            selection_id,
+            success=1.0 if status == "succeeded" else 0.0,
+            satisfaction=satisfaction,
+            latency_ms=latency_ms,
+            resource_cost=derived_resource if resource_cost is None else resource_cost,
+            evidence={
+                "source": "server_task",
+                "task_id": int(task_id),
+                "status": status,
+                "policy_version": metadata.get("policy_version"),
+            },
+        )
+
     def stats(self, group_name):
         return self._store.policy_group_stats(group_name)
 
-    def promote(self, group_name, target_type, target_key, min_pulls=3, actor_id="system"):
+    def promote(self, group_name, target_type, target_key, min_pulls=5, actor_id="system"):
         stats = self.stats(group_name)
         if not stats:
             raise ValueError("policy group not found")
+        required_pulls = max(5, int(min_pulls))
         eligible = [
             arm for arm in stats["arms"]
-            if arm["status"] == "active" and int(arm["pull_count"]) >= int(min_pulls)
+            if arm["status"] == "active" and int(arm["pull_count"]) >= required_pulls
         ]
         if not eligible:
-            raise ValueError("no policy arm has enough reward observations")
+            raise ValueError(
+                f"no policy arm has the required {required_pulls} reward observations"
+            )
         winner = max(
             eligible,
-            key=lambda arm: (arm["average_reward"], arm["success_rate"], -arm["id"]),
+            key=lambda arm: (
+                arm.get("confidence_lower_95", arm["average_reward"]),
+                arm["average_reward"],
+                arm["success_rate"],
+                -arm["id"],
+            ),
         )
         return self._store.promote_policy_arm(
             stats["group"]["id"],
@@ -137,3 +186,12 @@ class PolicyOptimizer:
     @staticmethod
     def _clamp(value):
         return max(0.0, min(float(value or 0), 1.0))
+
+    @staticmethod
+    def _task_latency_ms(task):
+        try:
+            started = datetime.fromisoformat(str(task.get("created_at", "")).replace("Z", "+00:00"))
+            completed = datetime.fromisoformat(str(task.get("completed_at", "")).replace("Z", "+00:00"))
+            return max(0.0, (completed - started).total_seconds() * 1000.0)
+        except (TypeError, ValueError):
+            return float((task.get("metadata") or {}).get("duration_ms") or 0)

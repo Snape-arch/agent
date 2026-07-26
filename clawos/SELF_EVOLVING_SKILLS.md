@@ -1,5 +1,33 @@
 # ClawOS 受控自进化 Skill
 
+## 2026-07-26 P0-P2 闭环
+
+本轮将“有状态机的治理原型”收口为真实运行闭环：
+
+1. 自动基准不再根据候选字段启发式合成分数。`ExecutedEvolutionBenchmarkRunner`
+   在隔离子进程运行文件化 frozen/core E2E 套件，并执行检索探针；证据包含
+   baseline/candidate 报告摘要、配置摘要、逐套件 case count 和 runner 类型。
+2. `prompt_policy`、`retrieval_params`、`tool_routing_policy` 已进入聊天执行链路。
+   Task 保存目标、版本、run、baseline/candidate 暴露、稳定分桶和 Shadow 物化结果。
+3. Shadow 物化候选 Prompt、检索参数和工具面但不影响用户结果；Canary 使用
+   session/task 稳定哈希分桶，命中的任务真实使用候选策略。
+4. Canary 任务完成后自动写入重试、取消和失败信号；越过红线立即停流。
+   至少 3 个 Shadow 样本才可进入 Canary，至少 5 个 Canary 样本才可激活。
+5. Contextual UCB 可进入真实场景路由；reward 从绑定的终态 Task 派生，
+   晋升至少需要 5 个样本并按 95% 置信区间下界排序。
+6. Reflection 可对近期重复失败做聚类并生成低风险候选，但仍只进入候选区，
+   不自动发布。
+7. Fresh-agent audit 改为 `python -I` 独立进程 plan 审计；检测 silent bypass。
+8. Skill Canary 使用真实稳定分桶；高风险工具禁止自动灰度。
+9. Skill 晋升和 Canary 必须先签名。签名密钥来自 OS Keyring
+   `ClawOS/skill-signing`，或本地环境变量 `CLAWOS_SKILL_SIGNING_KEY`；
+   API 不再接受客户端提交签名 Secret。
+10. 新增 Skill 库健康度、重复序列、零使用候选和保留证据的归档式压缩。
+
+证据边界：隔离 benchmark 是当前仓库的确定性软件基准，不代表真实大模型质量、
+MTT AIBOOK 性能或长期用户满意度。Canary 会真实选择候选策略，但正式发布继续要求
+人工确认。
+
 ## 目标
 
 把任务经验转化为可复用 Skill，同时避免模型直接修改生产工作流。进化对象是外部 Skill
@@ -55,8 +83,7 @@ active -> rolled_back
 
 ## 后续增强
 
-1. 用独立新会话执行 candidate 与 baseline A/B，防止作者上下文泄漏。
-2. 检测候选是否实际被路由调用，避免 silent bypass。
-3. 增加 baseline 对比、非劣门槛、成本和库复杂度惩罚。
-4. 为 Skill 增加权限清单、依赖锁、签名和来源可信度。
-5. 使用 canary 流量和自动回滚，但生产晋升继续保留人工授权。
+1. 在 MTT AIBOOK 上补本地模型真实 A/B、首 token、吞吐、资源峰值和多日 burn-in。
+2. 将用户显式满意度反馈绑定到 Task，使在线 reward 不只依赖默认中性满意度。
+3. 为 Shadow 增加可选的双模型执行预算；当前默认只物化候选配置，不重复调用模型。
+4. 接入不可伪造的登录身份和发布角色；当前仍是本机单用户确认模型。

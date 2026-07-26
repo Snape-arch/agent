@@ -778,6 +778,12 @@ class MemoryStore:
             metadata = self._json_loads(row["metadata"], {}) if row else {}
             if result_payload is not None:
                 metadata["response_payload"] = result_payload
+            metadata["quality_outcome"] = {
+                "success": str(status) == "succeeded",
+                "failed": str(status) == "failed",
+                "canceled": str(status) in {"canceled", "cancelled"},
+                "has_response": result_payload is not None,
+            }
             c.execute(
                 "UPDATE tasks SET status=?, metadata=?, completed_at=datetime('now') WHERE id=?",
                 (status, json.dumps(metadata, ensure_ascii=False), int(task_id)),
@@ -792,7 +798,73 @@ class MemoryStore:
                 ),
             )
             row = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
-            return self._task_row_to_dict(row) if row else {}
+            result = self._task_row_to_dict(row) if row else {}
+        self._record_task_policy_signals(result)
+        return result
+
+    def update_task_metadata(self, task_id, updates, event_type="task_metadata"):
+        """Merge traceable runtime metadata into a task and emit an audit event."""
+
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
+            if not row:
+                return {}
+            metadata = self._json_loads(row["metadata"], {})
+            metadata.update(dict(updates or {}))
+            c.execute(
+                "UPDATE tasks SET metadata=? WHERE id=?",
+                (json.dumps(metadata, ensure_ascii=False), int(task_id)),
+            )
+            c.execute(
+                """
+                INSERT INTO task_events (task_id, event_type, message, data)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    int(task_id),
+                    str(event_type or "task_metadata"),
+                    "Task runtime metadata updated",
+                    json.dumps(updates or {}, ensure_ascii=False),
+                ),
+            )
+            row = c.execute("SELECT * FROM tasks WHERE id=?", (int(task_id),)).fetchone()
+            return self._task_row_to_dict(row)
+
+    def _record_task_policy_signals(self, task):
+        metadata = (task or {}).get("metadata") or {}
+        selections = metadata.get("runtime_policies") or []
+        if isinstance(selections, dict):
+            selections = list(selections.values())
+        run_ids = {
+            int(item.get("run_id"))
+            for item in selections
+            if isinstance(item, dict)
+            and item.get("run_id")
+            and item.get("exposure") == "candidate"
+        }
+        if not run_ids:
+            return
+        status = str((task or {}).get("status") or "")
+        signals = {
+            "user_retry_rate": float(
+                int((task or {}).get("attempt") or 1) > 1 or bool((task or {}).get("retry_of"))
+            ),
+            "cancel_rate": float(status in {"canceled", "cancelled"}),
+            "long_task_failure_rate": float(status == "failed"),
+        }
+        for run_id in run_ids:
+            for signal_type, value in signals.items():
+                self.record_self_evolution_quality_signal(
+                    run_id,
+                    signal_type,
+                    value,
+                    metadata={
+                        "source": "task_outcome",
+                        "task_id": int((task or {}).get("id") or 0),
+                        "status": status,
+                    },
+                    created_by="runtime",
+                )
 
     def cancel_task(self, task_id, reason="", actor_id="user"):
         with self._conn() as c:
@@ -2211,6 +2283,33 @@ class MemoryStore:
                 """,
                 (json.dumps(aggregate, ensure_ascii=False), int(run_id)),
             )
+            run_row = c.execute(
+                "SELECT status FROM self_evolution_runs WHERE id=?", (int(run_id),)
+            ).fetchone()
+            limits = {
+                "user_retry_rate": 0.20,
+                "cancel_rate": 0.15,
+                "long_task_failure_rate": 0.10,
+            }
+            unhealthy = any(
+                float((aggregate.get(key) or {}).get("latest", 0) or 0) > limit
+                for key, limit in limits.items()
+            )
+            retrieval = aggregate.get("retrieval_hit_rate") or {}
+            if retrieval and float(retrieval.get("latest", 1) or 0) < 0.80:
+                unhealthy = True
+            if run_row and run_row["status"] == "canary" and unhealthy:
+                c.execute(
+                    """
+                    UPDATE self_evolution_runs
+                    SET status='rolled_back', release_stage='stopped',
+                        traffic_percent=0, publish_decision='reject',
+                        conclusion='Canary stopped automatically after unhealthy runtime signal.',
+                        updated_at=datetime('now')
+                    WHERE id=?
+                    """,
+                    (int(run_id),),
+                )
             return self.get_self_evolution_run(run_id, conn=c)
 
     def list_self_evolution_quality_signals(self, run_id, limit=100):
@@ -2228,7 +2327,7 @@ class MemoryStore:
 
     def runtime_quality_snapshot(self):
         with self._conn() as c:
-            rows = c.execute("SELECT status, source, metadata FROM tasks").fetchall()
+            rows = c.execute("SELECT * FROM tasks").fetchall()
             tasks = [self._task_row_to_dict(row) for row in rows]
             total = max(1, len(tasks))
             retry_count = sum(1 for task in tasks if int(task.get("attempt") or 1) > 1 or task.get("retry_of"))
@@ -2603,8 +2702,17 @@ class MemoryStore:
             return None
         for arm in arms:
             pulls = int(arm["pull_count"])
-            arm["average_reward"] = round(float(arm["reward_sum"]) / pulls, 4) if pulls else 0.0
+            average = float(arm["reward_sum"]) / pulls if pulls else 0.0
+            variance = max(
+                0.0,
+                (float(arm["reward_sq_sum"]) / pulls) - (average * average),
+            ) if pulls else 0.0
+            standard_error = (variance / pulls) ** 0.5 if pulls else 0.0
+            arm["average_reward"] = round(average, 4)
             arm["success_rate"] = round(int(arm["success_count"]) / pulls, 4) if pulls else 0.0
+            arm["standard_error"] = round(standard_error, 6)
+            arm["confidence_lower_95"] = round(average - 1.96 * standard_error, 6)
+            arm["confidence_upper_95"] = round(average + 1.96 * standard_error, 6)
         return {"group": group, "arms": arms}
 
     def promote_policy_arm(

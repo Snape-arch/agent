@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ClawOS Server - Self-contained AI Agent with DeepSeek + Function Router."""
 from __future__ import annotations
-import argparse, asyncio, base64, importlib.util, json, logging, os, re, sys, time, subprocess, shutil
+import argparse, asyncio, base64, hashlib, importlib.util, json, logging, os, re, sys, time, subprocess, shutil
 from dataclasses import asdict
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -83,6 +83,7 @@ g_secret_manager: Any = None
 g_workspace_services: Any = None
 g_skill_evolution: Any = None
 g_scenario_benchmark: Any = None
+g_runtime_policy_controller: Any = None
 g_knowledge_service: KnowledgeService | None = None
 g_paper_intelligence_service: PaperIntelligenceService | None = None
 g_scholarly_search_service: ScholarlySearchService | None = None
@@ -596,6 +597,89 @@ def build_routing_strategy(text: str) -> dict[str, Any]:
     }
 
 
+def resolve_runtime_policies(scenario: str, identity: str) -> dict[str, dict[str, Any]]:
+    if not g_runtime_policy_controller:
+        return {}
+
+    def resolve_with_default(target_type: str):
+        selected = g_runtime_policy_controller.resolve(target_type, scenario, identity)
+        if (
+            not selected.get("payload")
+            and not selected.get("run_id")
+            and scenario != "default"
+        ):
+            selected = g_runtime_policy_controller.resolve(target_type, "default", identity)
+        return selected
+
+    return {
+        "prompt": resolve_with_default("prompt_policy"),
+        "retrieval": resolve_with_default("retrieval_params"),
+        "routing": resolve_with_default("tool_routing_policy"),
+    }
+
+
+def runtime_policy_trace(selections: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for name, item in (selections or {}).items():
+        if not item:
+            continue
+        rows.append({
+            "name": name,
+            **{
+                key: item.get(key)
+                for key in (
+                    "target_type", "target_key", "policy_version", "source",
+                    "release_stage", "run_id", "exposure", "bucket",
+                    "candidate_digest", "baseline_digest",
+                )
+                if item.get(key) is not None
+            },
+        })
+    return rows
+
+
+def evaluate_shadow_policies(
+    base_routing: dict[str, Any],
+    selections: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Materialize candidate behavior without exposing it to the user."""
+
+    if not g_runtime_policy_controller:
+        return []
+    rows = []
+    for name, selection in (selections or {}).items():
+        candidate = selection.get("shadow_payload")
+        if candidate is None:
+            continue
+        candidate_selection = {**selection, "payload": candidate}
+        if name == "routing":
+            materialized = g_runtime_policy_controller.apply_routing(
+                base_routing, candidate_selection
+            )
+            summary = {
+                "allowed_tools": materialized.get("allowed_tools", []),
+                "requires_confirmation": materialized.get("requires_confirmation", []),
+            }
+        elif name == "retrieval":
+            summary = g_runtime_policy_controller.retrieval_options(candidate_selection)
+        else:
+            prompt = g_runtime_policy_controller.apply_prompt(
+                SYSTEM_PROMPT, candidate_selection
+            )
+            summary = {
+                "prompt_chars": len(prompt),
+                "prompt_digest": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            }
+        rows.append({
+            "name": name,
+            "run_id": selection.get("run_id"),
+            "candidate_digest": selection.get("candidate_digest"),
+            "materialized": summary,
+            "visible_to_user": False,
+        })
+    return rows
+
+
 def tools_for_routing_strategy(strategy: dict[str, Any]) -> list[dict[str, Any]]:
     allowed = set(strategy.get("allowed_tools") or [])
     return [
@@ -638,10 +722,13 @@ async def run_tool_loop(
     session_id: str = "default",
     confirmed_tools: set[str] | None = None,
     task_id: int | None = None,
+    routing_strategy_override: dict[str, Any] | None = None,
+    prompt_policy: dict[str, Any] | None = None,
+    retrieval_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Tool detection + execution loop."""
     confirmed_tools = confirmed_tools or set()
-    routing_strategy = build_routing_strategy(user_text)
+    routing_strategy = routing_strategy_override or build_routing_strategy(user_text)
     allowed_tool_names = set(routing_strategy.get("allowed_tools") or [])
     routed_tools = tools_for_routing_strategy(routing_strategy)
     # Fast path: known solidified skills should bypass the LLM router.
@@ -649,12 +736,42 @@ async def run_tool_loop(
         from skills.skill_registry import match_skill_by_text
         matched_skill = match_skill_by_text(user_text)
         if matched_skill:
-            args = json.dumps({"name": matched_skill["name"], "params": {}}, ensure_ascii=False)
-            result = execute_tool_call("skill_execute", args, session_id, confirmed_tools, task_id=task_id)
+            canary = (
+                g_skill_evolution.select_runtime_definition(
+                    matched_skill["name"], identity=f"{session_id}:{task_id or ''}"
+                )
+                if g_skill_evolution else {}
+            )
+            if canary.get("exposure") == "candidate":
+                from skills.skill_registry import execute_skill_definition
+                result = execute_skill_definition(
+                    canary["definition"], params={}, plan_only=False
+                )
+                args = json.dumps({
+                    "name": matched_skill["name"],
+                    "params": {},
+                    "candidate_version_id": canary.get("version_id"),
+                }, ensure_ascii=False)
+            else:
+                args = json.dumps({"name": matched_skill["name"], "params": {}}, ensure_ascii=False)
+                result = execute_tool_call(
+                    "skill_execute", args, session_id, confirmed_tools, task_id=task_id
+                )
             if result.get("ok"):
                 return {
                     "used_tools": True,
-                    "tool_calls": [{"name": "skill_execute", "arguments": args, "result": result}],
+                    "tool_calls": [{
+                        "name": "skill_execute",
+                        "arguments": args,
+                        "result": result,
+                        "skill_canary": {
+                            key: canary.get(key)
+                            for key in (
+                                "exposure", "canary_id", "version_id", "bucket", "percent"
+                            )
+                            if canary.get(key) is not None
+                        },
+                    }],
                     "final_text": "",
                     "routing_rounds": 0,
                     "matched_skill": matched_skill["name"],
@@ -686,7 +803,12 @@ async def run_tool_loop(
 
     # Use MemoryOS to build messages with context
     if g_context_builder:
-        messages = g_context_builder.build_messages(session_id, user_text)
+        messages = g_context_builder.build_messages(
+            session_id,
+            user_text,
+            prompt_policy=prompt_policy,
+            retrieval_policy=retrieval_policy,
+        )
     else:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_text}]
     max_rounds = config.get("max_tool_rounds", 6)
@@ -1245,6 +1367,7 @@ async def lifespan(app: FastAPI):
     global g_memory_store, g_context_builder, g_vector_store, g_policy_optimizer
     global g_security_policy, g_secret_manager
     global g_workspace_services, g_skill_evolution, g_scenario_benchmark, g_knowledge_service
+    global g_runtime_policy_controller
     global g_paper_intelligence_service, g_scholarly_search_service
     global g_security_service, g_task_service, g_maintenance_service
     from memoryos.memory_store import MemoryStore
@@ -1303,6 +1426,8 @@ async def lifespan(app: FastAPI):
     g_skill_evolution = SkillEvolutionManager(g_memory_store)
     from scenario_benchmarks import FrozenScenarioBenchmark
     g_scenario_benchmark = FrozenScenarioBenchmark(g_memory_store)
+    from reflection.evolution_runtime import RuntimePolicyController
+    g_runtime_policy_controller = RuntimePolicyController(g_memory_store)
     recovered = g_memory_store.recover_interrupted_tasks(actor_id="lifespan_startup")
     if recovered.get("count"):
         logger.info("Recovered interrupted tasks | count=%s ids=%s", recovered["count"], recovered["recovered"])
@@ -1658,6 +1783,25 @@ async def chat_completions(request: Request):
     effective_user_text = user_text + attachment_context
     stream = req_data.get("stream", False)
     routing_strategy = build_routing_strategy(effective_user_text)
+    base_routing_strategy = dict(routing_strategy)
+    policy_selections = resolve_runtime_policies(
+        routing_strategy.get("scenario", "general"),
+        str(session_id),
+    )
+    shadow_evaluations = evaluate_shadow_policies(
+        base_routing_strategy, policy_selections
+    )
+    if g_runtime_policy_controller and policy_selections.get("routing"):
+        routing_strategy = g_runtime_policy_controller.apply_routing(
+            routing_strategy, policy_selections["routing"]
+        )
+    prompt_policy = (policy_selections.get("prompt") or {}).get("payload") or {}
+    retrieval_policy = (
+        g_runtime_policy_controller.retrieval_options(policy_selections["retrieval"])
+        if g_runtime_policy_controller and policy_selections.get("retrieval")
+        else {}
+    )
+    policy_trace = runtime_policy_trace(policy_selections)
 
     if not user_text:
         resp = await proxy_upstream(req_data, stream)
@@ -1675,6 +1819,8 @@ async def chat_completions(request: Request):
                 "stream": bool(stream),
                 "user_text": user_text,
                 "attachments": attachment_meta,
+                "runtime_policies": policy_trace,
+                "shadow_policy_evaluations": shadow_evaluations,
                 "idempotency_key": str(
                     req_data.get("clawos_idempotency_key")
                     or request_headers.get("Idempotency-Key", "")
@@ -1686,6 +1832,46 @@ async def chat_completions(request: Request):
         stored_payload = runtime_task.get("metadata", {}).get("response_payload")
         if runtime_task.get("idempotent_replay") and stored_payload and not stream:
             return JSONResponse(stored_payload)
+        if g_policy_optimizer and task_id:
+            try:
+                optimizer_selection = g_policy_optimizer.select(
+                    f"routing:{routing_strategy.get('scenario', 'general')}",
+                    context={
+                        "scenario": routing_strategy.get("scenario", "general"),
+                        "tags": routing_strategy.get("matched_keywords", []),
+                    },
+                    task_id=task_id,
+                    session_id=session_id,
+                )
+                optimizer_policy = {
+                    "payload": optimizer_selection.get("payload") or {},
+                    "target_type": "tool_routing_policy",
+                    "target_key": routing_strategy.get("scenario", "general"),
+                    "policy_version": 0,
+                    "source": "contextual_ucb",
+                    "release_stage": "online_selection",
+                    "exposure": "candidate",
+                }
+                if g_runtime_policy_controller:
+                    routing_strategy = g_runtime_policy_controller.apply_routing(
+                        routing_strategy, optimizer_policy
+                    )
+                g_memory_store.update_task_metadata(
+                    task_id,
+                    {
+                        "policy_optimizer_selections": [{
+                            "selection_id": optimizer_selection["id"],
+                            "group_name": optimizer_selection["group_name"],
+                            "arm_name": optimizer_selection["arm_name"],
+                            "payload": optimizer_selection.get("payload") or {},
+                        }],
+                    },
+                    event_type="policy_selected",
+                )
+            except ValueError:
+                # Policy groups are opt-in; the enforced static/runtime policy
+                # remains active until a group has been registered.
+                pass
 
     # --- TOOL ROUTING ---
     if g_context_builder:
@@ -1693,11 +1879,29 @@ async def chat_completions(request: Request):
     elif g_memory_store:
         g_memory_store.add_message(session_id, "user", user_text)
 
-    if g_mtclaw_adapter and g_mtclaw_adapter.enabled:
+    routing_policy_payload = (policy_selections.get("routing") or {}).get("payload") or {}
+    mtclaw_policy_compatible = not (
+        routing_policy_payload.get("allowed_tools")
+        or routing_policy_payload.get("deny_tools")
+    )
+    if g_mtclaw_adapter and g_mtclaw_adapter.enabled and mtclaw_policy_compatible:
         mtclaw_messages = (
-            g_context_builder.build_messages(session_id, effective_user_text)
+            g_context_builder.build_messages(
+                session_id,
+                effective_user_text,
+                prompt_policy=prompt_policy,
+                retrieval_policy=retrieval_policy,
+            )
             if g_context_builder
-            else [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": effective_user_text}]
+            else [
+                {
+                    "role": "system",
+                    "content": g_runtime_policy_controller.apply_prompt(
+                        SYSTEM_PROMPT, policy_selections.get("prompt") or {}
+                    ) if g_runtime_policy_controller else SYSTEM_PROMPT,
+                },
+                {"role": "user", "content": effective_user_text},
+            ]
         )
         mtclaw_result = await g_mtclaw_adapter.route(
             mtclaw_messages,
@@ -1740,6 +1944,7 @@ async def chat_completions(request: Request):
                     for item in trace
                 ],
                 "routing_strategy": routing_strategy,
+                "runtime_policies": policy_trace,
             }
             finish_runtime_task(task_id, "succeeded", result_payload=raw)
             if stream:
@@ -1757,7 +1962,15 @@ async def chat_completions(request: Request):
         finish_runtime_task(task_id, "canceled", "Canceled before tool loop", result_payload=body)
         return JSONResponse(body)
 
-    tool_result = await run_tool_loop(effective_user_text, session_id, confirmed_tools, task_id=task_id)
+    tool_result = await run_tool_loop(
+        effective_user_text,
+        session_id,
+        confirmed_tools,
+        task_id=task_id,
+        routing_strategy_override=routing_strategy,
+        prompt_policy=prompt_policy,
+        retrieval_policy=retrieval_policy,
+    )
     confirmation_calls = [
         tc for tc in tool_result.get("tool_calls", [])
         if isinstance(tc.get("result"), dict) and tc["result"].get("status") == "needs_confirmation"
@@ -1774,6 +1987,7 @@ async def chat_completions(request: Request):
             "routing_strategy": tool_result.get("routing_strategy", routing_strategy),
             "attachments": attachment_meta,
             "task_id": task_id,
+            "runtime_policies": policy_trace,
         }
         if g_memory_store:
             g_memory_store.add_message(session_id, "assistant", text[:4000])
@@ -1804,7 +2018,21 @@ async def chat_completions(request: Request):
             tc_lines += f"\n[Tool: {tc['name']}]\n{json.dumps(tc['result'], ensure_ascii=False, indent=2)}\n"
 
         upstream_msgs = [
-            {"role": "system", "content": g_context_builder.build_system_prompt(session_id) if g_context_builder else SYSTEM_PROMPT},
+            {
+                "role": "system",
+                "content": (
+                    g_context_builder.build_system_prompt(
+                        session_id, prompt_policy=prompt_policy
+                    )
+                    if g_context_builder
+                    else (
+                        g_runtime_policy_controller.apply_prompt(
+                            SYSTEM_PROMPT, policy_selections.get("prompt") or {}
+                        )
+                        if g_runtime_policy_controller else SYSTEM_PROMPT
+                    )
+                ),
+            },
             {"role": "user", "content": effective_user_text},
             {"role": "assistant", "content": f"I executed these tools based on your request:\n{tc_lines}\n\nBased strictly on the tool results above and the conversation context, provide a concise and helpful answer. Address the user's original request directly."}
         ]
@@ -1821,6 +2049,7 @@ async def chat_completions(request: Request):
             "matched_skill": tool_result.get("matched_skill", ""),
             "routing_strategy": tool_result.get("routing_strategy", routing_strategy),
             "task_id": task_id,
+            "runtime_policies": policy_trace,
         }
         if not has_api_key("upstream"):
             text = "已完成本地工具执行，结果如下：\n" + tc_lines.strip()
@@ -1856,6 +2085,7 @@ async def chat_completions(request: Request):
             "attachments": attachment_meta,
             "task_id": task_id,
             "routing_strategy": tool_result.get("routing_strategy", routing_strategy),
+            "runtime_policies": policy_trace,
         })
 
     resp_payload = build_openai_response(final_text, extra={
@@ -1865,6 +2095,7 @@ async def chat_completions(request: Request):
         "attachments": attachment_meta,
         "task_id": task_id,
         "routing_strategy": tool_result.get("routing_strategy", routing_strategy),
+        "runtime_policies": policy_trace,
     })
     if g_memory_store and final_text:
         g_memory_store.add_message(session_id, "assistant", final_text[:4000])
@@ -2060,16 +2291,26 @@ async def api_self_evolution_create_run(request: Request):
     from reflection.self_evolution import SelfEvolutionManager
     data = await request.json()
     try:
-        run = SelfEvolutionManager(g_memory_store).create_run(
-            target_type=data.get("target_type", ""),
-            target_key=data.get("target_key", ""),
-            baseline_payload=data.get("baseline_payload", {}),
-            candidate_payload=data.get("candidate_payload", {}),
-            benchmarks=data.get("benchmarks", {}),
-            title=data.get("title", ""),
-            conclusion=data.get("conclusion", ""),
-            created_by=data.get("actor_id", "system"),
-        )
+        manager = SelfEvolutionManager(g_memory_store)
+        if data.get("mine_reflections"):
+            run = manager.propose_from_recent_reflections(
+                target_type=data.get("target_type", ""),
+                target_key=data.get("target_key", ""),
+                baseline_payload=data.get("baseline_payload", {}),
+                limit=data.get("reflection_limit", 50),
+                created_by=data.get("actor_id", "reflection-miner"),
+            )
+        else:
+            run = manager.create_run(
+                target_type=data.get("target_type", ""),
+                target_key=data.get("target_key", ""),
+                baseline_payload=data.get("baseline_payload", {}),
+                candidate_payload=data.get("candidate_payload", {}),
+                benchmarks=data.get("benchmarks", {}),
+                title=data.get("title", ""),
+                conclusion=data.get("conclusion", ""),
+                created_by=data.get("actor_id", "system"),
+            )
         queued = bool(data.get("auto_queue", True))
         task = {}
         if queued:
@@ -2093,11 +2334,19 @@ async def api_self_evolution_candidate(request: Request):
     from reflection.self_evolution import SelfEvolutionManager
     data = await request.json()
     try:
-        candidate = SelfEvolutionManager.generate_candidate(
-            data.get("target_type", ""),
-            data.get("baseline_payload", {}),
-            strategy=data.get("strategy", "balanced"),
-        )
+        if data.get("reflections"):
+            candidate = SelfEvolutionManager.generate_candidate_from_failures(
+                data.get("target_type", ""),
+                data.get("baseline_payload", {}),
+                data.get("reflections") or [],
+                strategy=data.get("strategy", "evidence_clustered"),
+            )
+        else:
+            candidate = SelfEvolutionManager.generate_candidate(
+                data.get("target_type", ""),
+                data.get("baseline_payload", {}),
+                strategy=data.get("strategy", "balanced"),
+            )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse({"candidate_payload": candidate})
@@ -2108,13 +2357,9 @@ async def api_self_evolution_evaluate(run_id: int, request: Request):
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
     from reflection.self_evolution import SelfEvolutionManager
-    data = await request.json()
+    await request.json()
     try:
-        run = SelfEvolutionManager(g_memory_store).evaluate(
-            run_id,
-            benchmarks=data.get("benchmarks"),
-            conclusion=data.get("conclusion", ""),
-        )
+        run = SelfEvolutionManager(g_memory_store).run_automatic_benchmarks(run_id)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse({"run": run})
@@ -2190,6 +2435,8 @@ async def api_self_evolution_activate(run_id: int, request: Request):
         raise HTTPException(503, "MemoryOS not initialized")
     from reflection.self_evolution import SelfEvolutionManager
     data = await request.json()
+    if not bool(data.get("confirmed")):
+        raise HTTPException(409, "explicit confirmed=true is required for activation")
     try:
         run = SelfEvolutionManager(g_memory_store).activate(
             run_id,
@@ -2243,7 +2490,7 @@ async def api_policy_select(group_name: str, request: Request):
             session_id=data.get("session_id", ""),
         )
     except ValueError as exc:
-        raise HTTPException(404, str(exc))
+        raise HTTPException(400, str(exc))
     return JSONResponse({"selection": selection})
 
 
@@ -2253,14 +2500,13 @@ async def api_policy_reward(selection_id: int, request: Request):
         raise HTTPException(503, "Policy Optimizer not initialized")
     data = await request.json()
     try:
-        result = g_policy_optimizer.reward(
+        if not data.get("task_id"):
+            raise ValueError("task_id is required; rewards are derived from terminal task evidence")
+        result = g_policy_optimizer.reward_from_task(
             selection_id,
-            success=data.get("success", 0),
+            task_id=int(data["task_id"]),
             satisfaction=data.get("satisfaction", 0.5),
-            latency_ms=data.get("latency_ms", 0),
-            resource_cost=data.get("resource_cost", 0),
-            latency_budget_ms=data.get("latency_budget_ms", 1000),
-            evidence=data.get("evidence", {}),
+            resource_cost=data.get("resource_cost"),
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
@@ -2280,6 +2526,8 @@ async def api_policy_stats(group_name: str):
 @app.post("/api/policy/groups/{group_name}/promote")
 async def api_policy_promote(group_name: str, request: Request):
     data = await request.json()
+    if not bool(data.get("confirmed")):
+        raise HTTPException(409, "explicit confirmed=true is required for policy promotion")
     try:
         promotion = g_policy_optimizer.promote(
             group_name,
@@ -6137,6 +6385,8 @@ async def skill_evolution_promote(version_id: int, request: Request):
     if not g_skill_evolution:
         raise HTTPException(503, "skill evolution is unavailable")
     data = await request.json()
+    if not bool(data.get("confirmed")):
+        raise HTTPException(409, "explicit confirmed=true is required for skill promotion")
     try:
         result = g_skill_evolution.promote(
             version_id, actor=str(data.get("actor", "user"))
@@ -6180,10 +6430,9 @@ async def skill_evolution_sign(version_id: int, request: Request):
         result = g_skill_evolution.sign_version(
             version_id,
             signer=str(data.get("signer", "user")),
-            secret=str(data.get("secret", "clawos-local-signing")),
         )
     except ValueError as exc:
-        raise HTTPException(404, str(exc))
+        raise HTTPException(400, str(exc))
     return JSONResponse(result)
 
 @app.post("/api/skills/evolution/versions/{version_id}/fresh-audit")
@@ -6216,14 +6465,39 @@ async def skill_evolution_canary(version_id: int, request: Request):
     return JSONResponse(result)
 
 @app.post("/api/skills/evolution/promotions/{promotion_id}/rollback")
-async def skill_evolution_rollback(promotion_id: int):
+async def skill_evolution_rollback(promotion_id: int, request: Request):
     if not g_skill_evolution:
         raise HTTPException(503, "skill evolution is unavailable")
+    data = await request.json()
+    if not bool(data.get("confirmed")):
+        raise HTTPException(409, "explicit confirmed=true is required for skill rollback")
     try:
         result = g_skill_evolution.rollback(promotion_id)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse(result)
+
+
+@app.get("/api/skills/evolution/library-health")
+async def skill_evolution_library_health():
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    return JSONResponse(g_skill_evolution.library_health())
+
+
+@app.post("/api/skills/evolution/library-compact")
+async def skill_evolution_library_compact(request: Request):
+    if not g_skill_evolution:
+        raise HTTPException(503, "skill evolution is unavailable")
+    data = await request.json()
+    dry_run = bool(data.get("dry_run", True))
+    if not dry_run and not bool(data.get("confirmed")):
+        raise HTTPException(409, "explicit confirmed=true is required for compaction")
+    return JSONResponse(g_skill_evolution.compact_library(
+        dry_run=dry_run,
+        max_versions_per_skill=data.get("max_versions_per_skill", 5),
+        actor=str(data.get("actor", "user")),
+    ))
 
 @app.get("/api/tools/list")
 async def api_tools_list():

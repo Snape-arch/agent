@@ -2104,7 +2104,7 @@ function evolutionActions(run) {
   const status = String(run.status || "");
   const canShadow = status === "validated";
   const canCanary = status === "shadow" || status === "canary";
-  const canActivate = status === "shadow" || status === "canary" || status === "validated";
+  const canActivate = status === "canary";
   return [
     canShadow ? `<button class="secondary" onclick="shadowEvolutionRun(${id})">Shadow</button>` : "",
     canCanary ? `<button class="secondary" onclick="canaryEvolutionRun(${id})">Canary</button>` : "",
@@ -2184,7 +2184,7 @@ async function canaryEvolutionRun(id) {
 }
 
 async function activateEvolutionRun(id) {
-  const data = await api(`/api/self-evolution/runs/${id}/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor_id: "console", reason: "console activation after shadow/canary review" }) });
+  const data = await api(`/api/self-evolution/runs/${id}/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor_id: "console", reason: "console activation after shadow/canary review", confirmed: true }) });
   if ($("evolutionResult")) $("evolutionResult").textContent = JSON.stringify(data, null, 2);
   await loadEvolution();
 }
@@ -2345,7 +2345,7 @@ async function loadCapabilities() {
       ["论文学习解析文件", { html: statusBadge(caps.document_understanding?.paper_learning_analysis?.length ? "success" : "failed") }, `可生成 ${(caps.document_understanding?.paper_learning_analysis || []).join(" / ")} 自我提问式报告`],
       ["音频会议", { html: statusBadge(caps.meeting_audio?.audio_file_registration ? "success" : "failed") }, `Whisper ${caps.meeting_audio?.local_whisper_available ? "可用" : "未检测到"}`],
       ["Git 审批写操作", { html: statusBadge(caps.git?.approval_commit ? "success" : "failed") }, "审批后 commit，回滚使用 git revert"],
-      ["Skill 治理", { html: statusBadge("success") }, "签名、依赖清单、fresh audit、canary 元数据"]
+      ["Skill 治理", { html: statusBadge("success") }, "Keyring/环境签名、依赖清单、独立进程 fresh audit、稳定分桶 canary"]
     ]);
     $("sceneBoundaryTable").innerHTML = table(["场景", "已交付", "仍需外部条件"], [
       ["会议", "音频登记、转写导入、说话人标签、会议纪要、ICS/EML 草稿", "真实 Whisper/说话人模型和自动发送连接器"],
@@ -2353,7 +2353,7 @@ async function loadCapabilities() {
       ["办公", "XLSX 生成/单元格编辑、PPTX 生成/文本替换、产物记录", "复杂图表、母版设计和高级动画后续增强"],
       ["学习", "知识图谱、错题证据、长期掌握度", "更长周期学习样本"],
       ["Git", "补丁预览、审批提交、checkpoint、revert 回滚", "远程 PR/CI 连接器"],
-      ["Skill", "签名、依赖、fresh-agent audit、canary", "真实流量灰度路由"]
+      ["Skill", "签名、依赖、独立 fresh-agent audit、真实稳定分桶 canary", "高风险 Skill 仍禁止自动灰度"]
     ]);
   } catch (err) {}
 }
@@ -2832,10 +2832,13 @@ async function renderSkillVersionTables() {
   skillReviews = reviews.items || reviews.reviews || [];
   if ($("skillVersionTable")) $("skillVersionTable").innerHTML = table(["技能", "版本", "状态"], skillVersions.map(item => [item.skill_name || item.name || "", item.version || "", item.status || ""]));
   if ($("skillRunTable")) $("skillRunTable").innerHTML = table(["技能", "结果", "时间"], skillRuns.map(item => [item.skill_name || item.name || "", item.passed ?? item.status ?? "", item.created_at || ""]));
-  if ($("skillReviewTable")) $("skillReviewTable").innerHTML = table(["技能", "状态", "操作"], skillReviews.map(item => [item.skill_name || item.name || "", item.status || "", { html: `<button class="secondary" onclick="promoteSkill('${esc(item.skill_name || item.name || "")}')">发布</button> <button class="secondary" onclick="reviewSkill('${esc(item.id || item.skill_name || "")}','needs_changes')">需修改</button>` }]));
+  if ($("skillReviewTable")) $("skillReviewTable").innerHTML = table(["技能", "状态", "操作"], skillReviews.map(item => [item.skill_name || item.name || "", item.status || "", { html: `<button class="secondary" onclick="signSkill(${Number(item.id)})">签名</button> <button class="secondary" onclick="auditSkill(${Number(item.id)})">独立审计</button> <button class="secondary" onclick="canarySkill(${Number(item.id)})">Canary</button> <button class="primary" onclick="promoteSkill(${Number(item.id)})">发布</button> <button class="secondary" onclick="reviewSkill('${esc(item.id || item.skill_name || "")}','needs_changes')">需修改</button>` }]));
 }
 
-async function promoteSkill(name) { await api("/api/skills/evolution/promote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).catch(() => ({})); await renderSkillVersionTables(); }
+async function signSkill(id) { await api(`/api/skills/evolution/versions/${id}/sign`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ signer: "console" }) }).catch(() => ({})); await renderSkillVersionTables(); }
+async function auditSkill(id) { await api(`/api/skills/evolution/versions/${id}/fresh-audit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }).catch(() => ({})); await renderSkillVersionTables(); }
+async function canarySkill(id) { await api(`/api/skills/evolution/versions/${id}/canary`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ percent: 10, actor: "console" }) }).catch(() => ({})); await renderSkillVersionTables(); }
+async function promoteSkill(id) { await api(`/api/skills/evolution/versions/${id}/promote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor: "console", confirmed: true }) }).catch(() => ({})); await renderSkillVersionTables(); }
 async function reviewSkill(id, status) { await api("/api/skills/evolution/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) }).catch(() => ({})); await renderSkillVersionTables(); }
 
 function toggleCommandDrawer() {
