@@ -285,6 +285,65 @@ function addAssistantStream() {
   };
 }
 
+function attachFeedbackControls(taskId) {
+  if (!taskId) return;
+  const messages = document.querySelectorAll("#chatInner .msg.agent");
+  const message = messages[messages.length - 1];
+  if (!message || message.querySelector(".message-feedback")) return;
+  const toolbar = document.createElement("div");
+  toolbar.className = "message-feedback";
+  toolbar.dataset.taskId = String(taskId);
+  toolbar.innerHTML = `
+    <span>这次结果符合预期吗？</span>
+    <button type="button" data-feedback-binary="true" aria-label="满意">&#128077;</button>
+    <button type="button" data-feedback-binary="false" aria-label="不满意">&#128078;</button>
+    <select aria-label="满意度评分">
+      <option value="">评分</option>
+      <option value="5">5 · 很满意</option>
+      <option value="4">4 · 满意</option>
+      <option value="3">3 · 一般</option>
+      <option value="2">2 · 不满意</option>
+      <option value="1">1 · 很不满意</option>
+    </select>
+    <span class="feedback-status" role="status"></span>`;
+  message.querySelector(".message-body")?.appendChild(toolbar);
+  toolbar.querySelectorAll("[data-feedback-binary]").forEach(button => {
+    button.addEventListener("click", () => submitTaskFeedback(taskId, {
+      signal_type: "binary",
+      value: button.dataset.feedbackBinary === "true"
+    }, toolbar));
+  });
+  toolbar.querySelector("select")?.addEventListener("change", event => {
+    if (!event.target.value) return;
+    submitTaskFeedback(taskId, {
+      signal_type: "rating",
+      value: Number(event.target.value)
+    }, toolbar);
+  });
+}
+
+async function submitTaskFeedback(taskId, feedback, toolbar) {
+  const status = toolbar.querySelector(".feedback-status");
+  const controls = toolbar.querySelectorAll("button, select");
+  controls.forEach(control => { control.disabled = true; });
+  if (status) status.textContent = "正在记录…";
+  try {
+    await api("/api/agent-learning/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task_id: Number(taskId),
+        ...feedback,
+        idempotency_key: `console:${taskId}:${feedback.signal_type}:${String(feedback.value)}`
+      })
+    });
+    if (status) status.textContent = "已记录";
+  } catch (err) {
+    controls.forEach(control => { control.disabled = false; });
+    if (status) status.textContent = "记录失败：" + err.message;
+  }
+}
+
 function sendMessage() {
   const prompt = $("prompt");
   let text = prompt.value.trim();
@@ -380,6 +439,7 @@ async function submitMessage(text, confirmedTools, attachments) {
     lastToolCalls = tools;
     lastRoutingStrategy = data.clawos?.routing_strategy || null;
     lastTaskId = data.clawos?.task_id || lastTaskId;
+    if (lastTaskId) attachFeedbackControls(lastTaskId);
     if (data.clawos?.needs_confirmation) {
       const toolNames = tools.map(t => t.name).filter(Boolean);
       const risks = [...new Set(tools.map(t => t.result?.risk_level).filter(Boolean))];

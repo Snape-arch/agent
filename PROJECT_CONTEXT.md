@@ -1,5 +1,30 @@
 # Project Context
 
+## 反馈学习与 Preference Ranker P0-P2 闭环（2026-07-26）
+
+- 开发分支：`codex/feedback-preference-p0-p2`；基于 Agent Learning 提交 `4ddff4c`。
+- P0：新增绑定终态 Task 的显式反馈记录、幂等写入和聊天赞/踩/1-5 分入口；
+  缺失反馈保持 missing，不再伪装成 0.5 中性分。真实反馈会修订对应 Policy Reward
+  与 Trajectory Reward。
+- Reward Calibration 使用任务隔离的训练/留出集、符号约束线性权重、candidate /
+  shadow / active 状态机和人工确认激活。硬门槛为 50 条完成轨迹、20 条显式反馈，
+  存在 Arm 时每个 Arm 至少暴露 10 次。
+- P1：新增用户条件化 Preference Ranker；训练硬门槛为 100 个有效偏好对，
+  learning/research/project/office 每类至少 20，矛盾率低于 15%。留出准确率必须
+  至少 55%，且高于长度 baseline 2 个百分点，才可进入 Shadow。
+- P2：新增深度 Router、Trajectory RL 和行为 LoRA 的证据型 readiness 报告；
+  只读取已观测本地数据，固定返回 `online_rl_claimed: false`，不自动启动训练或上线。
+- 新增反馈、数据质量、Reward 校准、Preference Ranker 和高级 readiness API；
+  激活操作均要求 `confirmed=true`。
+- 专项验证：新增闭环测试 **8/8 通过**；Agent Learning、UCB、Task Runtime 与
+  Self-Evolution 受影响回归 **30/30 通过**；根目录全量 **354 项 OK**
+  （1 项按预期跳过）。Python 编译、JavaScript 语法和补丁格式检查均通过。
+- 全量首轮发现 Windows GBK 无法输出前端字面量赞/踩 emoji；已改为等价 HTML
+  数字实体，界面显示不变，隔离基准与失败的 2 项测试复跑通过。
+- 无硬件支持的阶段只声明软件闭环和离线门禁成立，不声明真实设备吞吐、延迟、
+  功耗、多日稳定性或在线 RL。
+- 详细门槛、API 和边界见 `clawos/FEEDBACK_PREFERENCE_P0_P2.md`。
+
 ## Agent Learning P0-P2 闭环（2026-07-26）
 
 - 开发分支：`codex/agent-learning-p0-p2`；基于自进化闭环提交 `1a6f12a`。

@@ -2673,6 +2673,198 @@ async def api_agent_learning_preference(request: Request):
     return JSONResponse({"preference": item})
 
 
+@app.post("/api/agent-learning/feedback")
+async def api_agent_learning_feedback(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import FeedbackLearningService
+
+    data = await request.json()
+    try:
+        result = FeedbackLearningService(g_memory_store).record(
+            task_id=int(data.get("task_id") or 0),
+            signal_type=data.get("signal_type", ""),
+            value=data.get("value"),
+            owner_id=data.get("owner_id", "default"),
+            reason_category=data.get("reason_category", ""),
+            correction=data.get("correction") or {},
+            metadata=data.get("metadata") or {},
+            idempotency_key=str(
+                data.get("idempotency_key")
+                or request.headers.get("Idempotency-Key", "")
+                or ""
+            ),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+
+@app.get("/api/agent-learning/data-quality")
+async def api_agent_learning_data_quality():
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import FeedbackLearningService
+
+    return JSONResponse(FeedbackLearningService(g_memory_store).quality_report())
+
+
+@app.get("/api/agent-learning/reward-calibrations")
+async def api_agent_learning_reward_calibrations(limit: int = 100):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    rows = g_memory_store.list_reward_calibrations(limit=limit)
+    return JSONResponse({"calibrations": rows, "count": len(rows)})
+
+
+@app.post("/api/agent-learning/reward-calibrations/train")
+async def api_agent_learning_reward_calibration_train(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import RewardCalibrator
+
+    data = await request.json()
+    try:
+        calibration = RewardCalibrator(g_memory_store).train(
+            min_trajectories=data.get("min_trajectories", 50),
+            min_explicit_feedback=data.get("min_explicit_feedback", 20),
+            min_arm_exposure=data.get("min_arm_exposure", 10),
+            trained_by=data.get("actor_id", "system"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"calibration": calibration})
+
+
+@app.post("/api/agent-learning/reward-calibrations/{calibration_id}/evaluate")
+async def api_agent_learning_reward_calibration_evaluate(calibration_id: int):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import RewardCalibrator
+
+    try:
+        calibration = RewardCalibrator(g_memory_store).evaluate(calibration_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"calibration": calibration})
+
+
+@app.post("/api/agent-learning/reward-calibrations/{calibration_id}/activate")
+async def api_agent_learning_reward_calibration_activate(
+    calibration_id: int, request: Request,
+):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import RewardCalibrator
+
+    data = await request.json()
+    try:
+        calibration = RewardCalibrator(g_memory_store).activate(
+            calibration_id, confirmed=bool(data.get("confirmed"))
+        )
+    except ValueError as exc:
+        status_code = 409 if "confirmed=true" in str(exc) else 400
+        raise HTTPException(status_code, str(exc))
+    return JSONResponse({"calibration": calibration})
+
+
+@app.get("/api/agent-learning/preference-ranker/readiness")
+async def api_agent_learning_preference_ranker_readiness():
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import PreferenceRanker
+
+    return JSONResponse(PreferenceRanker.readiness(g_memory_store))
+
+
+@app.get("/api/agent-learning/preference-ranker/models")
+async def api_agent_learning_preference_ranker_models(limit: int = 100):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    rows = g_memory_store.list_preference_ranker_models(limit=limit)
+    return JSONResponse({"models": rows, "count": len(rows)})
+
+
+@app.post("/api/agent-learning/preference-ranker/train")
+async def api_agent_learning_preference_ranker_train(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import PreferenceRanker
+
+    data = await request.json()
+    try:
+        model = PreferenceRanker(
+            g_memory_store,
+            feature_dim=data.get("feature_dim", 128),
+            epochs=data.get("epochs", 80),
+        ).train(
+            min_pairs=data.get("min_pairs", 100),
+            min_per_scenario=data.get("min_per_scenario", 20),
+            trained_by=data.get("actor_id", "system"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"model": model})
+
+
+@app.post("/api/agent-learning/preference-ranker/models/{model_id}/evaluate")
+async def api_agent_learning_preference_ranker_evaluate(model_id: int):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import PreferenceRanker
+
+    try:
+        model = PreferenceRanker(g_memory_store).evaluate(model_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"model": model})
+
+
+@app.post("/api/agent-learning/preference-ranker/models/{model_id}/activate")
+async def api_agent_learning_preference_ranker_activate(
+    model_id: int, request: Request,
+):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import PreferenceRanker
+
+    data = await request.json()
+    try:
+        model = PreferenceRanker(g_memory_store).activate(
+            model_id, confirmed=bool(data.get("confirmed"))
+        )
+    except ValueError as exc:
+        status_code = 409 if "confirmed=true" in str(exc) else 400
+        raise HTTPException(status_code, str(exc))
+    return JSONResponse({"model": model})
+
+
+@app.post("/api/agent-learning/preference-ranker/rank")
+async def api_agent_learning_preference_ranker_rank(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import PreferenceRanker
+
+    data = await request.json()
+    try:
+        result = PreferenceRanker(g_memory_store).rank(
+            data.get("task_context") or {},
+            data.get("candidates") or [],
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+
+@app.get("/api/agent-learning/advanced-readiness")
+async def api_agent_learning_advanced_readiness():
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from agent_learning import AdvancedLearningReadiness
+
+    return JSONResponse(AdvancedLearningReadiness(g_memory_store).report())
+
+
 @app.get("/api/agent-learning/models")
 async def api_agent_learning_models(group_name: str = "", limit: int = 100):
     if not g_memory_store:

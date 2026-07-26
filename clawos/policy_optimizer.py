@@ -122,20 +122,30 @@ class PolicyOptimizer:
         evidence=None,
     ):
         success = self._clamp(success)
-        satisfaction = self._clamp(satisfaction)
+        satisfaction_available = satisfaction is not None
+        satisfaction_value = (
+            self._clamp(satisfaction) if satisfaction_available else 0.0
+        )
         latency_cost = self._clamp(float(latency_ms or 0) / max(1.0, float(latency_budget_ms)))
         resource_cost = self._clamp(resource_cost)
-        value = (
-            0.4 * success
-            + 0.3 * satisfaction
-            - 0.2 * latency_cost
-            - 0.1 * resource_cost
-        )
+        if satisfaction_available:
+            value = (
+                0.4 * success
+                + 0.3 * satisfaction_value
+                - 0.2 * latency_cost
+                - 0.1 * resource_cost
+            )
+        else:
+            value = (
+                0.55 * success
+                - 0.2 * latency_cost
+                - 0.1 * resource_cost
+            )
         value = round(value, 6)
         selection = self._store.record_policy_reward(
             selection_id,
             success,
-            satisfaction,
+            satisfaction_value,
             latency_cost,
             resource_cost,
             value,
@@ -146,7 +156,10 @@ class PolicyOptimizer:
             value,
             reward_components={
                 "success": success,
-                "satisfaction": satisfaction,
+                "satisfaction": (
+                    satisfaction_value if satisfaction_available else None
+                ),
+                "feedback_missing": not satisfaction_available,
                 "latency_cost": latency_cost,
                 "resource_cost": resource_cost,
             },
@@ -158,7 +171,7 @@ class PolicyOptimizer:
         self,
         selection_id,
         task_id,
-        satisfaction=0.5,
+        satisfaction=None,
         resource_cost=None,
     ):
         """Derive reward from a terminal server-side task instead of caller claims."""
@@ -175,6 +188,8 @@ class PolicyOptimizer:
             raise ValueError("task must be terminal before reward")
         latency_ms = self._task_latency_ms(task)
         metadata = task.get("metadata") or {}
+        if satisfaction is None and metadata.get("user_satisfaction") is not None:
+            satisfaction = metadata.get("user_satisfaction")
         derived_resource = float(
             metadata.get("resource_cost")
             or metadata.get("token_cost_normalized")
@@ -191,6 +206,7 @@ class PolicyOptimizer:
                 "task_id": int(task_id),
                 "status": status,
                 "policy_version": metadata.get("policy_version"),
+                "feedback_missing": satisfaction is None,
             },
         )
 
@@ -264,7 +280,7 @@ class PolicyOptimizer:
     @staticmethod
     def _task_latency_ms(task):
         try:
-            started = datetime.fromisoformat(str(task.get("created_at", "")).replace("Z", "+00:00"))
+            started = datetime.fromisoformat(str(task.get("started_at", "")).replace("Z", "+00:00"))
             completed = datetime.fromisoformat(str(task.get("completed_at", "")).replace("Z", "+00:00"))
             return max(0.0, (completed - started).total_seconds() * 1000.0)
         except (TypeError, ValueError):

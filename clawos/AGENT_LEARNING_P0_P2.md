@@ -82,3 +82,8 @@ score = empirical reward + UCB uncertainty bonus + 0.35 * learned Q
 - 当前线性 Router 是可解释的 v0，不代表已完成深度 Agentic RL。
 - 当前离线评估证明软件学习链路成立，不代表 MTT AIBOOK 性能或真实模型质量。
 - Trajectory RL、Preference Model 与 LoRA 应在真实轨迹数量和质量达到门槛后进行。
+
+## 后续闭环
+
+显式反馈、Reward 校准、Preference Ranker 和高级学习 readiness 已在下一阶段完成，
+详见 `FEEDBACK_PREFERENCE_P0_P2.md`。该阶段仍不宣称在线 RL。

@@ -70,8 +70,8 @@ class TaskService:
                 PolicyOptimizer(store).reward_from_task(
                     int(selection["selection_id"]),
                     int(task_id),
-                    satisfaction=float(
-                        (task.get("metadata") or {}).get("user_satisfaction", 0.5)
+                    satisfaction=(task.get("metadata") or {}).get(
+                        "user_satisfaction"
                     ),
                 )
             except (KeyError, TypeError, ValueError):

@@ -545,6 +545,59 @@ class MemoryStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_agent_preference_pairs_owner
                     ON agent_preference_pairs(owner_id, id DESC);
+                CREATE TABLE IF NOT EXISTS agent_feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id INTEGER NOT NULL,
+                    trajectory_id INTEGER,
+                    owner_id TEXT NOT NULL DEFAULT 'default',
+                    signal_type TEXT NOT NULL,
+                    score REAL,
+                    reason_category TEXT NOT NULL DEFAULT '',
+                    correction TEXT NOT NULL DEFAULT '{}',
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    explicit INTEGER NOT NULL DEFAULT 1,
+                    idempotency_key TEXT NOT NULL DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                    FOREIGN KEY(trajectory_id) REFERENCES agent_trajectories(id) ON DELETE SET NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_agent_feedback_task
+                    ON agent_feedback(task_id, id DESC);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_feedback_idempotency
+                    ON agent_feedback(idempotency_key)
+                    WHERE idempotency_key<>'';
+                CREATE TABLE IF NOT EXISTS reward_calibrations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    version INTEGER NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'candidate',
+                    weights TEXT NOT NULL DEFAULT '{}',
+                    training_metrics TEXT NOT NULL DEFAULT '{}',
+                    evaluation_metrics TEXT NOT NULL DEFAULT '{}',
+                    thresholds TEXT NOT NULL DEFAULT '{}',
+                    data_digest TEXT NOT NULL DEFAULT '',
+                    trained_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    evaluated_at TEXT DEFAULT '',
+                    activated_at TEXT DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_reward_calibrations_status
+                    ON reward_calibrations(status, version DESC);
+                CREATE TABLE IF NOT EXISTS preference_ranker_models (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    version INTEGER NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'candidate',
+                    feature_dim INTEGER NOT NULL DEFAULT 128,
+                    weights TEXT NOT NULL DEFAULT '[]',
+                    training_metrics TEXT NOT NULL DEFAULT '{}',
+                    evaluation_metrics TEXT NOT NULL DEFAULT '{}',
+                    data_digest TEXT NOT NULL DEFAULT '',
+                    trained_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    evaluated_at TEXT DEFAULT '',
+                    activated_at TEXT DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_preference_ranker_status
+                    ON preference_ranker_models(status, version DESC);
                 CREATE TABLE IF NOT EXISTS agent_policy_models (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     group_name TEXT NOT NULL,
@@ -3243,6 +3296,446 @@ class MemoryStore:
                 ).fetchall()
             return [self._agent_preference_from_row(row) for row in rows]
 
+    def create_agent_feedback(
+        self, task_id, signal_type, score=None, owner_id="default",
+        reason_category="", correction=None, metadata=None, explicit=True,
+        idempotency_key="",
+    ):
+        with self._conn() as c:
+            task = c.execute(
+                "SELECT * FROM tasks WHERE id=?", (int(task_id),)
+            ).fetchone()
+            if not task:
+                raise ValueError("task not found")
+            if str(task["status"]) not in {
+                "succeeded", "failed", "canceled", "cancelled", "interrupted"
+            }:
+                raise ValueError("feedback requires a terminal task")
+            key = str(idempotency_key or "")
+            if key:
+                existing = c.execute(
+                    "SELECT * FROM agent_feedback WHERE idempotency_key=?",
+                    (key,),
+                ).fetchone()
+                if existing:
+                    return self._agent_feedback_from_row(existing)
+            trajectory = c.execute(
+                "SELECT id FROM agent_trajectories WHERE task_id=?",
+                (int(task_id),),
+            ).fetchone()
+            cursor = c.execute(
+                """
+                INSERT INTO agent_feedback
+                    (task_id, trajectory_id, owner_id, signal_type, score,
+                     reason_category, correction, metadata, explicit,
+                     idempotency_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(task_id),
+                    int(trajectory["id"]) if trajectory else None,
+                    str(owner_id or "default"), str(signal_type),
+                    float(score) if score is not None else None,
+                    str(reason_category or ""),
+                    json.dumps(correction or {}, ensure_ascii=False),
+                    json.dumps(metadata or {}, ensure_ascii=False),
+                    1 if explicit else 0, key,
+                ),
+            )
+            row = c.execute(
+                "SELECT * FROM agent_feedback WHERE id=?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            return self._agent_feedback_from_row(row)
+
+    def list_agent_feedback(
+        self, task_id=None, owner_id="", explicit_only=False, limit=1000,
+    ):
+        with self._conn() as c:
+            clauses = []
+            params = []
+            if task_id is not None:
+                clauses.append("task_id=?")
+                params.append(int(task_id))
+            if owner_id:
+                clauses.append("owner_id=?")
+                params.append(str(owner_id))
+            if explicit_only:
+                clauses.append("explicit=1")
+            where = " WHERE " + " AND ".join(clauses) if clauses else ""
+            params.append(max(1, min(int(limit or 1000), 10000)))
+            rows = c.execute(
+                f"SELECT * FROM agent_feedback{where} ORDER BY id DESC LIMIT ?",
+                params,
+            ).fetchall()
+            return [self._agent_feedback_from_row(row) for row in rows]
+
+    def revise_policy_rewards_for_task(self, task_id, satisfaction, feedback_id):
+        satisfaction = max(0.0, min(float(satisfaction), 1.0))
+        revised = []
+        with self._conn() as c:
+            rows = c.execute(
+                """
+                SELECT pr.*, ps.arm_id
+                FROM policy_rewards pr
+                JOIN policy_selections ps ON ps.id=pr.selection_id
+                WHERE ps.task_id=?
+                """,
+                (int(task_id),),
+            ).fetchall()
+            for row in rows:
+                old_reward = float(row["reward"])
+                new_reward = round(
+                    0.4 * float(row["success"])
+                    + 0.3 * satisfaction
+                    - 0.2 * float(row["latency_cost"])
+                    - 0.1 * float(row["resource_cost"]),
+                    6,
+                )
+                evidence = self._json_loads(row["evidence"], {})
+                evidence["explicit_feedback"] = {
+                    "feedback_id": int(feedback_id),
+                    "satisfaction": satisfaction,
+                    "source": "agent_feedback",
+                }
+                c.execute(
+                    """
+                    UPDATE policy_rewards
+                    SET satisfaction=?, reward=?, evidence=?
+                    WHERE id=?
+                    """,
+                    (
+                        satisfaction, new_reward,
+                        json.dumps(evidence, ensure_ascii=False),
+                        int(row["id"]),
+                    ),
+                )
+                c.execute(
+                    """
+                    UPDATE policy_arms
+                    SET reward_sum=reward_sum-?+?,
+                        reward_sq_sum=reward_sq_sum-(?*?)+(?*?),
+                        updated_at=datetime('now')
+                    WHERE id=?
+                    """,
+                    (
+                        old_reward, new_reward,
+                        old_reward, old_reward, new_reward, new_reward,
+                        int(row["arm_id"]),
+                    ),
+                )
+                c.execute(
+                    """
+                    UPDATE agent_trajectory_steps
+                    SET step_reward=?,
+                        reward_components=json_set(
+                            COALESCE(reward_components, '{}'),
+                            '$.satisfaction', ?,
+                            '$.feedback_id', ?
+                        ),
+                        completed_at=datetime('now')
+                    WHERE policy_selection_id=?
+                    """,
+                    (
+                        new_reward, satisfaction, int(feedback_id),
+                        int(row["selection_id"]),
+                    ),
+                )
+                revised.append({
+                    "selection_id": int(row["selection_id"]),
+                    "old_reward": old_reward,
+                    "new_reward": new_reward,
+                })
+        return revised
+
+    def agent_learning_data_quality(self):
+        with self._conn() as c:
+            trajectory_count = int(c.execute(
+                "SELECT COUNT(*) FROM agent_trajectories WHERE status='completed'"
+            ).fetchone()[0])
+            step_count = int(c.execute(
+                """
+                SELECT COUNT(*) FROM agent_trajectory_steps s
+                JOIN agent_trajectories t ON t.id=s.trajectory_id
+                WHERE t.status='completed'
+                """
+            ).fetchone()[0])
+            preference_count = int(c.execute(
+                "SELECT COUNT(*) FROM agent_preference_pairs"
+            ).fetchone()[0])
+            explicit_feedback_count = int(c.execute(
+                """
+                SELECT COUNT(*) FROM agent_feedback
+                WHERE explicit=1 AND score IS NOT NULL
+                """
+            ).fetchone()[0])
+            feedback_task_count = int(c.execute(
+                """
+                SELECT COUNT(DISTINCT task_id) FROM agent_feedback
+                WHERE explicit=1 AND score IS NOT NULL
+                """
+            ).fetchone()[0])
+            valid_propensity_count = int(c.execute(
+                """
+                SELECT COUNT(*) FROM agent_trajectory_steps
+                WHERE behavior_propensity>0 AND behavior_propensity<=1
+                """
+            ).fetchone()[0])
+            scenarios = {
+                str(row["scenario"]): int(row["count"])
+                for row in c.execute(
+                    """
+                    SELECT scenario, COUNT(*) AS count
+                    FROM agent_trajectories WHERE status='completed'
+                    GROUP BY scenario ORDER BY scenario
+                    """
+                ).fetchall()
+            }
+            arm_exposures = {
+                str(row["action_name"]): int(row["count"])
+                for row in c.execute(
+                    """
+                    SELECT action_name, COUNT(*) AS count
+                    FROM agent_trajectory_steps s
+                    JOIN agent_trajectories t ON t.id=s.trajectory_id
+                    WHERE t.status='completed' AND action_name<>''
+                    GROUP BY action_name ORDER BY action_name
+                    """
+                ).fetchall()
+            }
+            conflicting_tasks = int(c.execute(
+                """
+                SELECT COUNT(*) FROM (
+                    SELECT task_id
+                    FROM agent_feedback
+                    WHERE explicit=1 AND score IS NOT NULL
+                    GROUP BY task_id
+                    HAVING COUNT(*)>1 AND MAX(score)-MIN(score)>=0.5
+                )
+                """
+            ).fetchone()[0])
+            return {
+                "trajectory_count": trajectory_count,
+                "decision_step_count": step_count,
+                "preference_pair_count": preference_count,
+                "explicit_feedback_count": explicit_feedback_count,
+                "feedback_task_count": feedback_task_count,
+                "feedback_coverage": round(
+                    feedback_task_count / trajectory_count, 6
+                ) if trajectory_count else 0.0,
+                "missing_feedback_count": max(
+                    0, trajectory_count - feedback_task_count
+                ),
+                "valid_propensity_count": valid_propensity_count,
+                "valid_propensity_rate": round(
+                    valid_propensity_count / step_count, 6
+                ) if step_count else 0.0,
+                "conflicting_feedback_task_count": conflicting_tasks,
+                "scenario_counts": scenarios,
+                "arm_exposures": arm_exposures,
+            }
+
+    def create_reward_calibration(
+        self, weights, training_metrics, thresholds, data_digest,
+        trained_by="system",
+    ):
+        with self._conn() as c:
+            version = int(c.execute(
+                "SELECT COALESCE(MAX(version), 0)+1 FROM reward_calibrations"
+            ).fetchone()[0])
+            cursor = c.execute(
+                """
+                INSERT INTO reward_calibrations
+                    (version, weights, training_metrics, thresholds,
+                     data_digest, trained_by)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    version, json.dumps(weights or {}, ensure_ascii=False),
+                    json.dumps(training_metrics or {}, ensure_ascii=False),
+                    json.dumps(thresholds or {}, ensure_ascii=False),
+                    str(data_digest or ""), str(trained_by or "system"),
+                ),
+            )
+            return self.get_reward_calibration(int(cursor.lastrowid), conn=c)
+
+    def get_reward_calibration(self, calibration_id=None, status="", conn=None):
+        def fetch(c):
+            if calibration_id is not None:
+                row = c.execute(
+                    "SELECT * FROM reward_calibrations WHERE id=?",
+                    (int(calibration_id),),
+                ).fetchone()
+            else:
+                row = c.execute(
+                    """
+                    SELECT * FROM reward_calibrations WHERE status=?
+                    ORDER BY version DESC LIMIT 1
+                    """,
+                    (str(status or "active"),),
+                ).fetchone()
+            return self._reward_calibration_from_row(row) if row else None
+        if conn is not None:
+            return fetch(conn)
+        with self._conn() as c:
+            return fetch(c)
+
+    def list_reward_calibrations(self, limit=100):
+        with self._conn() as c:
+            rows = c.execute(
+                """
+                SELECT * FROM reward_calibrations
+                ORDER BY version DESC LIMIT ?
+                """,
+                (max(1, min(int(limit or 100), 1000)),),
+            ).fetchall()
+            return [self._reward_calibration_from_row(row) for row in rows]
+
+    def evaluate_reward_calibration(self, calibration_id, metrics, passed):
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT * FROM reward_calibrations WHERE id=?",
+                (int(calibration_id),),
+            ).fetchone()
+            if not row or row["status"] != "candidate":
+                raise ValueError("reward calibration candidate not found")
+            c.execute(
+                """
+                UPDATE reward_calibrations
+                SET status=?, evaluation_metrics=?, evaluated_at=datetime('now')
+                WHERE id=?
+                """,
+                (
+                    "shadow" if passed else "rejected",
+                    json.dumps(metrics or {}, ensure_ascii=False),
+                    int(calibration_id),
+                ),
+            )
+            return self.get_reward_calibration(calibration_id, conn=c)
+
+    def activate_reward_calibration(self, calibration_id):
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT * FROM reward_calibrations WHERE id=?",
+                (int(calibration_id),),
+            ).fetchone()
+            if not row or row["status"] != "shadow":
+                raise ValueError("only a shadow reward calibration can be activated")
+            c.execute(
+                "UPDATE reward_calibrations SET status='retired' WHERE status='active'"
+            )
+            c.execute(
+                """
+                UPDATE reward_calibrations
+                SET status='active', activated_at=datetime('now') WHERE id=?
+                """,
+                (int(calibration_id),),
+            )
+            return self.get_reward_calibration(calibration_id, conn=c)
+
+    def create_preference_ranker_model(
+        self, feature_dim, weights, training_metrics, data_digest,
+        trained_by="system",
+    ):
+        with self._conn() as c:
+            version = int(c.execute(
+                "SELECT COALESCE(MAX(version), 0)+1 FROM preference_ranker_models"
+            ).fetchone()[0])
+            cursor = c.execute(
+                """
+                INSERT INTO preference_ranker_models
+                    (version, feature_dim, weights, training_metrics,
+                     data_digest, trained_by)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    version, int(feature_dim),
+                    json.dumps(weights or [], ensure_ascii=False),
+                    json.dumps(training_metrics or {}, ensure_ascii=False),
+                    str(data_digest or ""), str(trained_by or "system"),
+                ),
+            )
+            return self.get_preference_ranker_model(
+                int(cursor.lastrowid), conn=c
+            )
+
+    def get_preference_ranker_model(self, model_id=None, status="", conn=None):
+        def fetch(c):
+            if model_id is not None:
+                row = c.execute(
+                    "SELECT * FROM preference_ranker_models WHERE id=?",
+                    (int(model_id),),
+                ).fetchone()
+            else:
+                row = c.execute(
+                    """
+                    SELECT * FROM preference_ranker_models WHERE status=?
+                    ORDER BY version DESC LIMIT 1
+                    """,
+                    (str(status or "active"),),
+                ).fetchone()
+            return self._preference_ranker_from_row(row) if row else None
+        if conn is not None:
+            return fetch(conn)
+        with self._conn() as c:
+            return fetch(c)
+
+    def list_preference_ranker_models(self, limit=100):
+        with self._conn() as c:
+            rows = c.execute(
+                """
+                SELECT * FROM preference_ranker_models
+                ORDER BY version DESC LIMIT ?
+                """,
+                (max(1, min(int(limit or 100), 1000)),),
+            ).fetchall()
+            return [self._preference_ranker_from_row(row) for row in rows]
+
+    def evaluate_preference_ranker_model(self, model_id, metrics, passed):
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT * FROM preference_ranker_models WHERE id=?",
+                (int(model_id),),
+            ).fetchone()
+            if not row or row["status"] != "candidate":
+                raise ValueError("preference ranker candidate not found")
+            c.execute(
+                """
+                UPDATE preference_ranker_models
+                SET status=?, evaluation_metrics=?, evaluated_at=datetime('now')
+                WHERE id=?
+                """,
+                (
+                    "shadow" if passed else "rejected",
+                    json.dumps(metrics or {}, ensure_ascii=False),
+                    int(model_id),
+                ),
+            )
+            return self.get_preference_ranker_model(model_id, conn=c)
+
+    def activate_preference_ranker_model(self, model_id):
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT * FROM preference_ranker_models WHERE id=?",
+                (int(model_id),),
+            ).fetchone()
+            if not row or row["status"] != "shadow":
+                raise ValueError("only a shadow preference ranker can be activated")
+            c.execute(
+                """
+                UPDATE preference_ranker_models
+                SET status='retired' WHERE status='active'
+                """
+            )
+            c.execute(
+                """
+                UPDATE preference_ranker_models
+                SET status='active', activated_at=datetime('now') WHERE id=?
+                """,
+                (int(model_id),),
+            )
+            return self.get_preference_ranker_model(model_id, conn=c)
+
     def create_agent_policy_model(
         self, group_name, feature_dim, weights, training_metrics,
         data_digest, trained_by="system",
@@ -3440,6 +3933,37 @@ class MemoryStore:
         for key in ("task_context", "chosen", "rejected", "metadata"):
             item[key] = self._json_loads(item.get(key), {})
         item["confidence"] = float(item.get("confidence") or 0)
+        return item
+
+    def _agent_feedback_from_row(self, row):
+        item = dict(row)
+        item["correction"] = self._json_loads(item.get("correction"), {})
+        item["metadata"] = self._json_loads(item.get("metadata"), {})
+        item["explicit"] = bool(item.get("explicit"))
+        if item.get("score") is not None:
+            item["score"] = float(item["score"])
+        return item
+
+    def _reward_calibration_from_row(self, row):
+        item = dict(row)
+        for key in (
+            "weights", "training_metrics", "evaluation_metrics", "thresholds",
+        ):
+            item[key] = self._json_loads(item.get(key), {})
+        item["version"] = int(item.get("version") or 1)
+        return item
+
+    def _preference_ranker_from_row(self, row):
+        item = dict(row)
+        item["weights"] = self._json_loads(item.get("weights"), [])
+        item["training_metrics"] = self._json_loads(
+            item.get("training_metrics"), {}
+        )
+        item["evaluation_metrics"] = self._json_loads(
+            item.get("evaluation_metrics"), {}
+        )
+        item["version"] = int(item.get("version") or 1)
+        item["feature_dim"] = int(item.get("feature_dim") or 128)
         return item
 
     def _agent_policy_model_from_row(self, row):
