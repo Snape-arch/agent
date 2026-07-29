@@ -174,10 +174,22 @@ class CodingWorkflowService:
                         raise ValueError("repair rounds may only modify checkpointed files")
                 else:
                     break
+                round_checkpoint = checkpoint_dir / f"round-{round_no:02d}"
+                round_checkpoint.mkdir(parents=True, exist_ok=False)
+                self._checkpoint(
+                    repo, round_checkpoint, round_changes, base_head,
+                    f"{objective} (round {round_no})",
+                )
                 self._apply_changes(repo, round_changes)
                 tests = [self._run_command(repo, command, timeout_seconds) for command in commands]
                 review = self._review(repo, [item["path"] for item in manifest["files"]], tests)
-                rounds.append({"round": round_no, "changes": [item["path"] for item in round_changes], "tests": tests, "review": review})
+                rounds.append({
+                    "round": round_no,
+                    "changes": [item["path"] for item in round_changes],
+                    "checkpoint": str(round_checkpoint / "manifest.json"),
+                    "tests": tests,
+                    "review": review,
+                })
                 if review["gate"] == "pass":
                     status = "passed"
                     break

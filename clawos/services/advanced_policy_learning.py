@@ -101,6 +101,9 @@ class RobustOffPolicyEvaluator:
     ) -> dict[str, Any]:
         audit = CounterfactualTraceAudit.audit(records)
         arm_rewards: dict[str, list[float]] = defaultdict(list)
+        group_arm_rewards: dict[str, dict[str, list[float]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
         for record in records:
             trace = (
                 (record.get("action_payload") or {}).get("_policy_trace")
@@ -109,9 +112,11 @@ class RobustOffPolicyEvaluator:
             )
             arm = str(trace.get("selected_action") or record.get("action_name") or "")
             try:
-                arm_rewards[arm].append(float(
+                reward_value = float(
                     record.get("observed_reward", record.get("reward", 0.0))
-                ))
+                )
+                arm_rewards[arm].append(reward_value)
+                group_arm_rewards[self._group(record)][arm].append(reward_value)
             except (TypeError, ValueError):
                 continue
         global_reward = _mean([
@@ -154,14 +159,23 @@ class RobustOffPolicyEvaluator:
             }
             target = normalized.get(logged, 0.0)
             weight = min(50.0, target / behavior)
+            group = self._group(record)
+            cross_fit_values = {
+                arm: self._leave_group_out_mean(
+                    arm_rewards.get(arm, []),
+                    group_arm_rewards.get(group, {}).get(arm, []),
+                    global_reward,
+                )
+                for arm in candidates
+            }
             q_logged = (
                 float(reward_model(record, logged))
-                if reward_model else arm_values.get(logged, global_reward)
+                if reward_model else cross_fit_values.get(logged, global_reward)
             )
             q_target = sum(
                 normalized[arm] * (
                     float(reward_model(record, arm))
-                    if reward_model else arm_values.get(arm, global_reward)
+                    if reward_model else cross_fit_values.get(arm, global_reward)
                 )
                 for arm in candidates
             )
@@ -183,6 +197,7 @@ class RobustOffPolicyEvaluator:
                     or (record.get("task_context") or {}).get("scenario")
                     or "general"
                 ),
+                "cross_fit_group": group,
             })
         weights = [row["weight"] for row in rows]
         ips = _mean([row["ips"] for row in rows])
@@ -229,6 +244,14 @@ class RobustOffPolicyEvaluator:
             "temporal_holdout": temporal,
             "segments": self._segments(rows),
             "counterfactual_audit": audit,
+            "reward_model": {
+                "type": (
+                    "external" if reward_model
+                    else "leave_repository_or_task_group_out_arm_mean"
+                ),
+                "cross_fitted": not bool(reward_model),
+                "group_count": len(group_arm_rewards),
+            },
             "gates": {
                 "support": support_passed,
                 "estimator_agreement": agreement_passed,
@@ -242,6 +265,27 @@ class RobustOffPolicyEvaluator:
                 else "confidence_lower_bound_regressed"
             ),
         }
+
+    @staticmethod
+    def _group(record: dict[str, Any]) -> str:
+        context = record.get("task_context") or {}
+        return str(
+            record.get("repository_id")
+            or context.get("repository_id")
+            or record.get("task_id")
+            or record.get("session_id")
+            or record.get("id")
+            or "ungrouped"
+        )
+
+    @staticmethod
+    def _leave_group_out_mean(
+        all_values: list[float], group_values: list[float], fallback: float
+    ) -> float:
+        remaining = len(all_values) - len(group_values)
+        if remaining <= 0:
+            return fallback
+        return (sum(all_values) - sum(group_values)) / remaining
 
     @staticmethod
     def _bootstrap(
@@ -411,4 +455,47 @@ class OfflinePolicySandbox:
             "online_rl_claimed": False,
             "runtime_policy_mutated": False,
             "next_gate": "offline_ope_then_shadow",
+        }
+
+
+class AdaptationReadiness:
+    """Truthful gate for router, trajectory, preference and behavior adapters."""
+
+    THRESHOLDS = {
+        "skill_router": {"trajectories": 500, "task_families": 8},
+        "trajectory_rl": {"trajectories": 2000, "decision_steps": 10000},
+        "preference_ranker": {"explicit_pairs": 100, "users": 10},
+        "behavior_adapter": {
+            "demonstrations": 1000, "task_families": 8,
+            "prompt_policy_plateau_weeks": 4,
+        },
+    }
+
+    @classmethod
+    def report(cls, metrics: dict[str, Any]) -> dict[str, Any]:
+        result = {}
+        for name, thresholds in cls.THRESHOLDS.items():
+            observed = dict(metrics.get(name) or {})
+            checks = {
+                key: float(observed.get(key) or 0) >= value
+                for key, value in thresholds.items()
+            }
+            result[name] = {
+                "ready": all(checks.values()),
+                "checks": checks,
+                "observed": observed,
+                "thresholds": thresholds,
+            }
+        return {
+            "schema": "clawos.adaptation-readiness.v1",
+            "components": result,
+            "deep_training_ready": all(
+                item["ready"] for item in result.values()
+            ),
+            "recommended_next": next(
+                (name for name, item in result.items() if not item["ready"]),
+                "offline_candidate_evaluation",
+            ),
+            "online_rl_claimed": False,
+            "adapter_training_claimed": False,
         }

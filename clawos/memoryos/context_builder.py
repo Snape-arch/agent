@@ -13,11 +13,15 @@ from .services.evaluation import EvaluationService
 class ContextBuilder:
     """Build contextual system prompt from full MemoryOS pipeline."""
 
-    def __init__(self, store: MemoryStore, vector_store=None, reranker=None):
+    def __init__(
+        self, store: MemoryStore, vector_store=None, reranker=None,
+        coding_context_service=None,
+    ):
         self._store = store
         self._ingestion = IngestionService(store)
         self._retrieval = RetrievalService(store, vector_store, reranker=reranker)
         self._evaluation = EvaluationService(store)
+        self._coding_context = coding_context_service
 
     def build_system_prompt(self, session_id: str, prompt_policy: dict | None = None) -> str:
         """Construct system prompt enriched with 7 memory types and retrieved knowledge."""
@@ -125,6 +129,10 @@ class ContextBuilder:
         max_history: int = 12,
         prompt_policy: dict | None = None,
         retrieval_policy: dict | None = None,
+        repo_path: str = "",
+        focus_paths: list[str] | None = None,
+        diagnostics: list[dict[str, Any]] | None = None,
+        coding_token_budget: int = 12000,
     ) -> list[dict[str, Any]]:
         """Build messages array with full memory pipeline: profile + knowledge + retrieval + history."""
         system = self.build_system_prompt(session_id, prompt_policy=prompt_policy)
@@ -138,6 +146,40 @@ class ContextBuilder:
                 "role": "system",
                 "content": retrieved + "\nUse only relevant records. Ignore stale or unrelated memory.",
             })
+
+        if repo_path:
+            try:
+                service = self._coding_context
+                if service is None:
+                    from services.coding_context_service import CodingContextService
+                    service = CodingContextService()
+                    self._coding_context = service
+                context_pack = service.build(
+                    repo_path,
+                    user_text,
+                    focus_paths=focus_paths,
+                    diagnostics=diagnostics,
+                    token_budget=coding_token_budget,
+                )
+                messages.append({
+                    "role": "system",
+                    "content": service.render_for_prompt(context_pack),
+                    "clawos_context": {
+                        "schema": context_pack.get("schema"),
+                        "digest": context_pack.get("context_digest"),
+                        "repo": context_pack.get("repo"),
+                        "budget": context_pack.get("budget"),
+                    },
+                })
+            except (OSError, RuntimeError, ValueError) as exc:
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "[ClawOS repository context unavailable]\n"
+                        f"{type(exc).__name__}: {exc}\n"
+                        "Do not assume repository state that was not provided."
+                    ),
+                })
 
         # Inject conversation history
         history = self._store.get_recent_messages(session_id, max_history * 2)

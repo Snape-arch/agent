@@ -1,5 +1,31 @@
 # Project Context
 
+## Coding Agent Product P0-P2 closure (2026-07-30)
+
+- The normal chat/MTClaw context path now injects the repository context pack;
+  repository symbol/dependency analysis uses a persistent content-addressed
+  incremental cache.
+- Coding readiness is fail-closed. The previous static `verified=true` map was
+  removed and replaced by integrity-checked, expiring capability evidence.
+- Added real stdio JSON-RPC LSP handshake and document-symbol support.
+- Added a bounded model-driven propose/patch/test/repair loop. Every write
+  requires confirmation, every edit round has a checkpoint, failed attempts
+  restore files, and commits remain human-reviewed.
+- OPE now accepts per-record target probabilities and uses group-held-out
+  reward estimates. OPE, trajectory-ranker, and offline-policy outputs have a
+  durable candidate/evaluated/shadow/active/rollback registry.
+- Added a minimum-30 real blinded patch-task A/B gate, IDE context contract,
+  traceable CI plus two-reviewer gate, safe worktree cleanup, and read-only
+  merge planning.
+- Focused product-closure tests: **8/8 passed**. Root full regression:
+  **374 passed, 1 skipped, 0 failed**. Python compile checks passed.
+- The evidence verifier reported `software_p0_p2_closed=true`; its local
+  evidence expires on 2026-08-29 and must then be regenerated.
+- Truth boundary: online RL, real-model patch lift, real user feedback,
+  target-hardware validation, LoRA/adapter training, and production editor/CI
+  distribution are **not claimed**. See
+  `clawos/CODING_AGENT_PRODUCT_CLOSURE_P0_P2.md`.
+
 ## Coding Agent Excellence P0-P2 软件闭环（2026-07-29）
 
 - 当前开发分支：`codex/coding-agent-excellence-p0-p2`，基于

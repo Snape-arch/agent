@@ -63,6 +63,63 @@ class CodingWorkspaceService:
             rows.append(current)
         return {"repo": str(repo), "worktrees": rows}
 
+    def merge_plan(
+        self, repo_path: str | Path, branch: str, *, base_ref: str = "HEAD"
+    ) -> dict[str, Any]:
+        """Return a read-only delivery plan; never merge automatically."""
+
+        repo = self._repo(repo_path)
+        if not BRANCH_RE.fullmatch(str(branch or "")):
+            raise ValueError("branch must use the codex/ prefix and safe characters")
+        commits = self._git(
+            repo, "log", "--oneline", f"{base_ref}..{branch}"
+        ).splitlines()
+        files = self._git(
+            repo, "diff", "--name-only", f"{base_ref}...{branch}"
+        ).splitlines()
+        return {
+            "schema": "clawos.coding-delivery-plan.v1",
+            "branch": branch,
+            "base_ref": base_ref,
+            "commits": commits,
+            "files": files,
+            "merge_performed": False,
+            "requires_human_review": True,
+        }
+
+    def remove(
+        self,
+        repo_path: str | Path,
+        workspace_path: str | Path,
+        *,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
+        if confirmed is not True:
+            raise PermissionError("confirmed=true is required to remove a worktree")
+        repo = self._repo(repo_path)
+        target = Path(workspace_path).expanduser().resolve()
+        worktrees = self.status(repo)["worktrees"]
+        registered = next(
+            (
+                item for item in worktrees
+                if Path(str(item.get("worktree") or "")).resolve() == target
+            ),
+            None,
+        )
+        if not registered:
+            raise ValueError("workspace is not a registered worktree")
+        target_repo = self._repo(target)
+        dirty = self._git(target_repo, "status", "--porcelain").strip()
+        if dirty:
+            raise ValueError("refusing to remove a dirty worktree")
+        self._git(repo, "worktree", "remove", str(target))
+        return {
+            "removed": True,
+            "workspace": str(target),
+            "recoverable_from_branch": bool(registered.get("branch")),
+            "branch": str(registered.get("branch") or "").removeprefix("refs/heads/"),
+        }
+
     def commit(
         self,
         workspace_path: str | Path,

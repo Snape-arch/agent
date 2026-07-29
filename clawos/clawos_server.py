@@ -725,6 +725,7 @@ async def run_tool_loop(
     routing_strategy_override: dict[str, Any] | None = None,
     prompt_policy: dict[str, Any] | None = None,
     retrieval_policy: dict[str, Any] | None = None,
+    coding_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Tool detection + execution loop."""
     confirmed_tools = confirmed_tools or set()
@@ -803,11 +804,16 @@ async def run_tool_loop(
 
     # Use MemoryOS to build messages with context
     if g_context_builder:
+        coding = dict(coding_context or {})
         messages = g_context_builder.build_messages(
             session_id,
             user_text,
             prompt_policy=prompt_policy,
             retrieval_policy=retrieval_policy,
+            repo_path=str(coding.get("repo_path") or ""),
+            focus_paths=coding.get("focus_paths") or [],
+            diagnostics=coding.get("diagnostics") or [],
+            coding_token_budget=int(coding.get("token_budget") or 12000),
         )
     else:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_text}]
@@ -1404,7 +1410,15 @@ async def lifespan(app: FastAPI):
             model_path=reranker_model_path,
             provider=reranker_provider,
         )
-    g_context_builder = ContextBuilder(g_memory_store, g_vector_store, reranker=reranker)
+    from services.coding_context_service import CodingContextService
+    g_context_builder = ContextBuilder(
+        g_memory_store,
+        g_vector_store,
+        reranker=reranker,
+        coding_context_service=CodingContextService(
+            OUTPUT_ROOT / "coding" / "repository_index.json"
+        ),
+    )
     from policy_optimizer import PolicyOptimizer
     g_policy_optimizer = PolicyOptimizer(g_memory_store)
     from security import SecretManager, SecurityGrantStore, ToolSecurityPolicy
@@ -1781,6 +1795,7 @@ async def chat_completions(request: Request):
 
     attachment_context, attachment_meta = _build_uploaded_document_context(req_data.get("clawos_attachments", []), user_text)
     effective_user_text = user_text + attachment_context
+    coding_context = dict(req_data.get("clawos_coding_context") or {})
     stream = req_data.get("stream", False)
     routing_strategy = build_routing_strategy(effective_user_text)
     base_routing_strategy = dict(routing_strategy)
@@ -1953,6 +1968,10 @@ async def chat_completions(request: Request):
                 effective_user_text,
                 prompt_policy=prompt_policy,
                 retrieval_policy=retrieval_policy,
+                repo_path=str(coding_context.get("repo_path") or ""),
+                focus_paths=coding_context.get("focus_paths") or [],
+                diagnostics=coding_context.get("diagnostics") or [],
+                coding_token_budget=int(coding_context.get("token_budget") or 12000),
             )
             if g_context_builder
             else [
@@ -2032,6 +2051,7 @@ async def chat_completions(request: Request):
         routing_strategy_override=routing_strategy,
         prompt_policy=prompt_policy,
         retrieval_policy=retrieval_policy,
+        coding_context=coding_context,
     )
     confirmation_calls = [
         tc for tc in tool_result.get("tool_calls", [])
@@ -2079,25 +2099,40 @@ async def chat_completions(request: Request):
         for tc in tool_result["tool_calls"]:
             tc_lines += f"\n[Tool: {tc['name']}]\n{json.dumps(tc['result'], ensure_ascii=False, indent=2)}\n"
 
-        upstream_msgs = [
-            {
-                "role": "system",
-                "content": (
-                    g_context_builder.build_system_prompt(
-                        session_id, prompt_policy=prompt_policy
-                    )
-                    if g_context_builder
-                    else (
+        upstream_msgs = (
+            g_context_builder.build_messages(
+                session_id,
+                effective_user_text,
+                prompt_policy=prompt_policy,
+                retrieval_policy=retrieval_policy,
+                repo_path=str(coding_context.get("repo_path") or ""),
+                focus_paths=coding_context.get("focus_paths") or [],
+                diagnostics=coding_context.get("diagnostics") or [],
+                coding_token_budget=int(coding_context.get("token_budget") or 12000),
+            )
+            if g_context_builder
+            else [
+                {
+                    "role": "system",
+                    "content": (
                         g_runtime_policy_controller.apply_prompt(
                             SYSTEM_PROMPT, policy_selections.get("prompt") or {}
                         )
                         if g_runtime_policy_controller else SYSTEM_PROMPT
-                    )
-                ),
-            },
-            {"role": "user", "content": effective_user_text},
-            {"role": "assistant", "content": f"I executed these tools based on your request:\n{tc_lines}\n\nBased strictly on the tool results above and the conversation context, provide a concise and helpful answer. Address the user's original request directly."}
-        ]
+                    ),
+                },
+                {"role": "user", "content": effective_user_text},
+            ]
+        )
+        upstream_msgs.append({
+            "role": "assistant",
+            "content": (
+                f"I executed these tools based on your request:\n{tc_lines}\n\n"
+                "Based strictly on the tool results above and the conversation "
+                "context, provide a concise and helpful answer. Address the "
+                "user's original request directly."
+            ),
+        })
         # Store tool-call context in memory before returning
         if g_memory_store:
             for tc in tool_result["tool_calls"]:
@@ -2868,19 +2903,30 @@ async def api_agent_learning_advanced_readiness():
 @app.post("/api/agent-learning/ope/evaluate")
 async def api_agent_learning_ope_evaluate(request: Request):
     from services.advanced_policy_learning import RobustOffPolicyEvaluator
+    from services.evidence_registry import LearningArtifactRegistry
 
     data = await request.json()
     probabilities = {
         str(key): float(value)
         for key, value in (data.get("candidate_probabilities") or {}).items()
     }
-    if not probabilities:
-        raise HTTPException(400, "candidate_probabilities are required")
+    records = data.get("records") or []
+    if not probabilities and not any(
+        item.get("candidate_probabilities") for item in records
+    ):
+        raise HTTPException(
+            400, "global or per-record candidate_probabilities are required"
+        )
     try:
         result = RobustOffPolicyEvaluator().evaluate(
-            data.get("records") or [],
+            records,
             lambda record, candidates: {
-                arm: probabilities.get(arm, 0.0) for arm in candidates
+                arm: float(
+                    (record.get("candidate_probabilities") or probabilities).get(
+                        arm, 0.0
+                    )
+                )
+                for arm in candidates
             },
             bootstrap_samples=data.get("bootstrap_samples", 400),
             minimum_ess=data.get("minimum_ess", 20),
@@ -2888,35 +2934,81 @@ async def api_agent_learning_ope_evaluate(request: Request):
         )
     except (TypeError, ValueError) as exc:
         raise HTTPException(400, str(exc))
+    if data.get("persist") is True:
+        try:
+            result["artifact"] = LearningArtifactRegistry(
+                OUTPUT_ROOT / "evidence" / "learning_artifacts.json"
+            ).create(
+                "robust_ope",
+                result,
+                source_data_digest=hashlib.sha256(
+                    json.dumps(records, sort_keys=True).encode("utf-8")
+                ).hexdigest(),
+                confirmed=data.get("confirmed") is True,
+            )
+        except (PermissionError, ValueError) as exc:
+            raise HTTPException(400, str(exc))
     return JSONResponse(result)
 
 
 @app.post("/api/agent-learning/trajectory-ranker/train")
 async def api_agent_learning_trajectory_ranker_train(request: Request):
     from services.advanced_policy_learning import TrajectoryPreferenceRanker
+    from services.evidence_registry import LearningArtifactRegistry
 
     data = await request.json()
+    pairs = data.get("pairs") or []
     result = TrajectoryPreferenceRanker().train(
-        data.get("pairs") or [],
+        pairs,
         epochs=data.get("epochs", 200),
         learning_rate=data.get("learning_rate", 0.05),
         minimum_pairs=data.get("minimum_pairs", 100),
     )
+    if data.get("persist") is True and result.get("status") != "blocked":
+        try:
+            result["artifact"] = LearningArtifactRegistry(
+                OUTPUT_ROOT / "evidence" / "learning_artifacts.json"
+            ).create(
+                "trajectory_ranker",
+                result,
+                source_data_digest=hashlib.sha256(
+                    json.dumps(pairs, sort_keys=True).encode("utf-8")
+                ).hexdigest(),
+                confirmed=data.get("confirmed") is True,
+            )
+        except (PermissionError, ValueError) as exc:
+            raise HTTPException(400, str(exc))
     return JSONResponse(result)
 
 
 @app.post("/api/agent-learning/offline-policy/sandbox")
 async def api_agent_learning_offline_policy_sandbox(request: Request):
     from services.advanced_policy_learning import OfflinePolicySandbox
+    from services.evidence_registry import LearningArtifactRegistry
 
     data = await request.json()
+    trajectories = data.get("trajectories") or []
     result = OfflinePolicySandbox.advantage_weights(
-        data.get("trajectories") or [],
+        trajectories,
         temperature=data.get("temperature", 0.5),
         maximum_weight=data.get("maximum_weight", 20),
         minimum_trajectories=data.get("minimum_trajectories", 2000),
         minimum_steps=data.get("minimum_steps", 10000),
     )
+    if data.get("persist") is True and result.get("status") != "blocked":
+        try:
+            result["artifact"] = LearningArtifactRegistry(
+                OUTPUT_ROOT / "evidence" / "learning_artifacts.json"
+            ).create(
+                "offline_policy_dataset",
+                result,
+                source_data_digest=hashlib.sha256(
+                    json.dumps(trajectories, sort_keys=True).encode("utf-8")
+                ).hexdigest(),
+                confirmed=data.get("confirmed") is True,
+            )
+        except (PermissionError, ValueError) as exc:
+            raise HTTPException(400, str(exc))
     return JSONResponse(result)
 
 
@@ -2925,12 +3017,11 @@ async def api_coding_agent_readiness():
     from agent_learning import AdvancedLearningReadiness
     from services.execution_governance import CodingAgentReadiness
 
-    capability_names = {
-        name
-        for requirements in CodingAgentReadiness.REQUIRED.values()
-        for name in requirements
-    }
-    evidence = {name: {"verified": True} for name in capability_names}
+    from services.evidence_registry import CapabilityEvidenceRegistry
+    registry = CapabilityEvidenceRegistry(
+        OUTPUT_ROOT / "evidence" / "capabilities.json"
+    )
+    evidence = registry.latest()
     learning = (
         AdvancedLearningReadiness(g_memory_store).report()
         if g_memory_store else {}
@@ -2951,10 +3042,77 @@ async def api_coding_agent_readiness():
     }
     result = CodingAgentReadiness.report(evidence)
     result["learning_readiness"] = learning
+    result["evidence"] = evidence
     result["truth_boundary"] = (
-        "P0-P2 software capabilities are implemented; production learning and "
-        "hardware claims remain gated by observed evidence."
+        "Readiness is fail-closed and evidence-backed. Missing or expired "
+        "software evidence, production learning data, and hardware acceptance "
+        "remain unverified; online RL is not claimed."
     )
+    return JSONResponse(result)
+
+
+@app.get("/api/coding-agent/evidence")
+async def api_coding_agent_evidence():
+    from services.evidence_registry import CapabilityEvidenceRegistry
+    return JSONResponse({
+        "records": CapabilityEvidenceRegistry(
+            OUTPUT_ROOT / "evidence" / "capabilities.json"
+        ).list()
+    })
+
+
+@app.post("/api/coding-agent/evidence")
+async def api_coding_agent_evidence_record(request: Request):
+    from services.evidence_registry import CapabilityEvidenceRegistry
+    data = await request.json()
+    try:
+        result = CapabilityEvidenceRegistry(
+            OUTPUT_ROOT / "evidence" / "capabilities.json"
+        ).record(
+            str(data.get("capability") or ""),
+            status=str(data.get("status") or ""),
+            evidence_type=str(data.get("evidence_type") or ""),
+            source=str(data.get("source") or ""),
+            metrics=data.get("metrics") or {},
+            artifact_digest=str(data.get("artifact_digest") or ""),
+            commit=str(data.get("commit") or ""),
+            environment=str(data.get("environment") or ""),
+            expires_at=str(data.get("expires_at") or ""),
+            truth_scope=str(data.get("truth_scope") or "software"),
+            confirmed=data.get("confirmed") is True,
+        )
+    except (PermissionError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+
+@app.get("/api/agent-learning/artifacts")
+async def api_agent_learning_artifacts(kind: str = ""):
+    from services.evidence_registry import LearningArtifactRegistry
+    return JSONResponse({
+        "artifacts": LearningArtifactRegistry(
+            OUTPUT_ROOT / "evidence" / "learning_artifacts.json"
+        ).list(kind)
+    })
+
+
+@app.post("/api/agent-learning/artifacts/{artifact_id}/transition")
+async def api_agent_learning_artifact_transition(
+    artifact_id: str, request: Request
+):
+    from services.evidence_registry import LearningArtifactRegistry
+    data = await request.json()
+    try:
+        result = LearningArtifactRegistry(
+            OUTPUT_ROOT / "evidence" / "learning_artifacts.json"
+        ).transition(
+            artifact_id,
+            str(data.get("state") or ""),
+            evidence=data.get("evidence") or {},
+            confirmed=data.get("confirmed") is True,
+        )
+    except (PermissionError, ValueError, KeyError) as exc:
+        raise HTTPException(400, str(exc))
     return JSONResponse(result)
 
 
@@ -7053,6 +7211,90 @@ async def skill_evolution_rollback(promotion_id: int, request: Request):
     return JSONResponse(result)
 
 
+@app.post("/api/workspace/coding/autonomous")
+async def api_autonomous_coding(request: Request):
+    if not g_upstream_provider:
+        raise HTTPException(503, "model provider is not initialized")
+    from services.autonomous_coding_service import AutonomousCodingService
+
+    data = await request.json()
+    service = AutonomousCodingService(
+        g_upstream_provider,
+        workflow=get_coding_workflow_service(),
+        context=getattr(g_context_builder, "_coding_context", None),
+    )
+    try:
+        result = await service.run(
+            data.get("repo_path", ""),
+            data.get("objective", ""),
+            confirmed=data.get("confirmed") is True,
+            focus_paths=data.get("focus_paths") or [],
+            diagnostics=data.get("diagnostics") or [],
+            max_attempts=data.get("max_attempts", 3),
+            timeout_seconds=data.get("timeout_seconds", 180),
+        )
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(
+            409 if isinstance(exc, PermissionError) else 400, str(exc)
+        )
+    return JSONResponse(result)
+
+
+@app.post("/api/workspace/coding/lsp/probe")
+async def api_coding_lsp_probe(request: Request):
+    from services.lsp_bridge_service import LanguageServerBridge
+
+    data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(
+            409, "confirmed=true is required to launch a language server"
+        )
+    bridge = LanguageServerBridge(
+        data.get("command") or [],
+        timeout_seconds=data.get("timeout_seconds", 5),
+    )
+    try:
+        status = await asyncio.to_thread(
+            bridge.start, data.get("repo_path", "")
+        )
+        symbols = []
+        if status.get("available") and data.get("document_path"):
+            symbols = await asyncio.to_thread(
+                bridge.document_symbols,
+                data.get("document_path"),
+                language_id=data.get("language_id", ""),
+            )
+        return JSONResponse({**status, "symbols": symbols})
+    except (ValueError, RuntimeError, TimeoutError, OSError) as exc:
+        raise HTTPException(400, str(exc))
+    finally:
+        await asyncio.to_thread(bridge.stop)
+
+
+@app.post("/api/workspace/coding/outcome-benchmark")
+async def api_coding_outcome_benchmark(request: Request):
+    from services.coding_quality_service import CodingOutcomeBenchmark
+
+    data = await request.json()
+    return JSONResponse(CodingOutcomeBenchmark().evaluate(
+        data.get("cases") or [],
+        minimum_cases=data.get("minimum_cases", 30),
+        bootstrap_samples=data.get("bootstrap_samples", 1000),
+    ))
+
+
+@app.post("/api/workspace/coding/review-gate")
+async def api_coding_review_gate(request: Request):
+    from services.coding_quality_service import CodingReviewGate
+
+    data = await request.json()
+    return JSONResponse(CodingReviewGate.evaluate(
+        data.get("changed_paths") or [],
+        data.get("ci_runs") or [],
+        data.get("reviews") or [],
+    ))
+
+
 @app.post("/api/workspace/coding/worktrees")
 async def api_coding_worktree_create(request: Request):
     from services.coding_workspace_service import CodingWorkspaceService
@@ -7080,6 +7322,40 @@ async def api_coding_worktree_status(repo_path: str):
         return JSONResponse(CodingWorkspaceService().status(repo_path))
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(400, str(exc))
+
+
+@app.post("/api/workspace/coding/worktrees/merge-plan")
+async def api_coding_worktree_merge_plan(request: Request):
+    from services.coding_workspace_service import CodingWorkspaceService
+
+    data = await request.json()
+    try:
+        return JSONResponse(CodingWorkspaceService().merge_plan(
+            data.get("repo_path", ""),
+            data.get("branch", ""),
+            base_ref=data.get("base_ref", "HEAD"),
+        ))
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/workspace/coding/worktrees/remove")
+async def api_coding_worktree_remove(request: Request):
+    from services.coding_workspace_service import CodingWorkspaceService
+
+    data = await request.json()
+    try:
+        result = await asyncio.to_thread(
+            CodingWorkspaceService().remove,
+            data.get("repo_path", ""),
+            data.get("workspace_path", ""),
+            confirmed=data.get("confirmed") is True,
+        )
+    except (ValueError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(
+            409 if isinstance(exc, PermissionError) else 400, str(exc)
+        )
+    return JSONResponse(result)
 
 
 @app.post("/api/workspace/coding/commit")
