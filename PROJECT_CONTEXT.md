@@ -1,5 +1,27 @@
 # Project Context
 
+## Coding Agent Trust P0-P2 closure (2026-07-30)
+
+- Release evidence is now commit-bound and reproducible: a dirty worktree is
+  rejected, each capability maps to exact test IDs and its own transcript
+  digest, and readiness rejects stale-commit evidence.
+- Missing satisfaction stays missing. Self-evolution, UCB policy, lightweight
+  router, trajectory critic, and artifact activation use a shared 30
+  independent-sample floor; repeated aggregate snapshots cannot inflate it.
+- Autonomous coding persists Context/Model/Edit/Test/Review trajectories.
+  Normal tool routing and autonomous coding share identity, resource budgets,
+  lifecycle hooks, and application-level egress governance.
+- Context assembly now performs repository inference, enforces a global token
+  budget, and persists real conversation summaries before deleting compacted
+  history. CI/review provenance supports tamper-evident HMAC verification.
+- Focused affected regression: **34/34 passed**. Root full regression:
+  **377/377 passed, 0 failed**. Python compilation and `git diff --check`
+  passed; only pre-existing FastAPI/PyMuPDF deprecation warnings remain.
+- Truth boundary remains unchanged: current local learning data is still
+  below real-data thresholds; `online_rl_claimed=false`; no target-hardware,
+  real-model lift, behavior-LoRA, editor-extension, or hosted CI integration is
+  claimed. See `clawos/CODING_AGENT_TRUST_CLOSURE_P0_P2.md`.
+
 ## Coding Agent Product P0-P2 closure (2026-07-30)
 
 - The normal chat/MTClaw context path now injects the repository context pack;

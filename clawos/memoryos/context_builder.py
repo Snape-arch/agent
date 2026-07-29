@@ -2,6 +2,7 @@
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 from .memory_store import MemoryStore
@@ -133,6 +134,7 @@ class ContextBuilder:
         focus_paths: list[str] | None = None,
         diagnostics: list[dict[str, Any]] | None = None,
         coding_token_budget: int = 12000,
+        total_token_budget: int = 32000,
     ) -> list[dict[str, Any]]:
         """Build messages array with full memory pipeline: profile + knowledge + retrieval + history."""
         system = self.build_system_prompt(session_id, prompt_policy=prompt_policy)
@@ -147,7 +149,8 @@ class ContextBuilder:
                 "content": retrieved + "\nUse only relevant records. Ignore stale or unrelated memory.",
             })
 
-        if repo_path:
+        resolved_repo = self._resolve_repo(repo_path, focus_paths or [])
+        if resolved_repo:
             try:
                 service = self._coding_context
                 if service is None:
@@ -155,7 +158,7 @@ class ContextBuilder:
                     service = CodingContextService()
                     self._coding_context = service
                 context_pack = service.build(
-                    repo_path,
+                    resolved_repo,
                     user_text,
                     focus_paths=focus_paths,
                     diagnostics=diagnostics,
@@ -191,8 +194,49 @@ class ContextBuilder:
             messages.append({"role": m["role"], "content": m.get("content", "")[:4000]})
 
         messages.append({"role": "user", "content": user_text})
-        return messages
+        return self._fit_global_budget(messages, total_token_budget)
 
     def retrieve(self, query: str, top_k: int = 5) -> list[dict]:
         """Run the full retrieval pipeline."""
         return self._retrieval.retrieve(query, top_k)
+
+    @staticmethod
+    def _resolve_repo(repo_path: str, focus_paths: list[str]) -> str:
+        candidates = [repo_path, *focus_paths]
+        for raw in candidates:
+            if not raw:
+                continue
+            path = Path(raw).expanduser().resolve()
+            if path.is_file():
+                path = path.parent
+            for candidate in (path, *path.parents):
+                if (candidate / ".git").exists():
+                    return str(candidate)
+        return ""
+
+    @staticmethod
+    def _fit_global_budget(
+        messages: list[dict[str, Any]], token_budget: int
+    ) -> list[dict[str, Any]]:
+        # Conservative four characters per token. Preserve the current user
+        # request and trim oldest non-system history before trusted context.
+        limit = max(4_000, min(int(token_budget), 128_000)) * 4
+        result = [dict(item) for item in messages]
+        while sum(len(str(item.get("content") or "")) for item in result) > limit:
+            removable = next(
+                (index for index, item in enumerate(result[1:-1], 1)
+                 if item.get("role") != "system"),
+                None,
+            )
+            if removable is not None:
+                result.pop(removable)
+                continue
+            longest = max(
+                range(len(result) - 1),
+                key=lambda index: len(str(result[index].get("content") or "")),
+            )
+            content = str(result[longest].get("content") or "")
+            if len(content) <= 1000:
+                break
+            result[longest]["content"] = content[: max(1000, len(content) // 2)]
+        return result

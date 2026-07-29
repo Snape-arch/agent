@@ -349,7 +349,7 @@ class AgentSkillPolicyNetwork:
         self,
         group_name: str,
         *,
-        min_examples: int = 8,
+        min_examples: int = 30,
         trained_by: str = "system",
     ) -> dict[str, Any]:
         arms, group = self.store.list_policy_arms(group_name)
@@ -360,7 +360,7 @@ class AgentSkillPolicyNetwork:
             item for item in self.store.list_agent_learning_examples(group_name)
             if item.get("action_name") in arm_map
         ]
-        required = max(4, int(min_examples))
+        required = max(30, int(min_examples))
         if len(examples) < required:
             raise ValueError(
                 f"at least {required} completed trajectory decisions are required"
@@ -514,7 +514,7 @@ class TrajectoryCritic:
         self,
         model_id: int,
         *,
-        min_samples: int = 5,
+        min_samples: int = 30,
         regression_tolerance: float = 0.02,
     ) -> dict[str, Any]:
         model = self.store.get_agent_policy_model(model_id)
@@ -591,7 +591,7 @@ class TrajectoryCritic:
             (weight_sum * weight_sum) /
             max(sum(weight * weight for weight in importance_weights), 0.000001)
         )
-        required = max(2, int(min_samples))
+        required = max(30, int(min_samples))
         passed = bool(
             len(estimates) >= required
             and safety_violations == 0

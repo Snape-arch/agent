@@ -48,8 +48,9 @@ class SelfEvolutionManager:
         "cancel_rate": 0.15,
         "long_task_failure_rate": 0.10,
     }
-    MIN_CANARY_SAMPLES = 3
-    MIN_ACTIVATION_SAMPLES = 5
+    from services.learning_governance import THRESHOLDS
+    MIN_CANARY_SAMPLES = THRESHOLDS.canary_samples
+    MIN_ACTIVATION_SAMPLES = THRESHOLDS.activation_samples
 
     def __init__(self, store, benchmark_runner=None):
         self._store = store
@@ -120,7 +121,7 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         if run.get("status") not in {"shadow", "canary"}:
             raise ValueError("self-evolution run must be in shadow before canary")
-        if self._quality_sample_count(run) < self.MIN_CANARY_SAMPLES:
+        if self._quality_sample_count(run["id"]) < self.MIN_CANARY_SAMPLES:
             raise ValueError(
                 f"canary requires at least {self.MIN_CANARY_SAMPLES} runtime quality samples"
             )
@@ -141,7 +142,7 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         if run.get("status") != "canary":
             raise ValueError("self-evolution run must complete canary before activation")
-        if self._quality_sample_count(run) < self.MIN_ACTIVATION_SAMPLES:
+        if self._quality_sample_count(run["id"]) < self.MIN_ACTIVATION_SAMPLES:
             raise ValueError(
                 f"activation requires at least {self.MIN_ACTIVATION_SAMPLES} runtime quality samples"
             )
@@ -325,12 +326,11 @@ class SelfEvolutionManager:
             return False
         return True
 
-    @staticmethod
-    def _quality_sample_count(run):
-        signals = run.get("quality_signals") or {}
-        return max(
-            [int((item or {}).get("count") or 0) for item in signals.values()] or [0]
-        )
+    def _quality_sample_count(self, run_id):
+        from services.learning_governance import independent_evidence_ids
+
+        rows = self._store.list_self_evolution_quality_signals(run_id, limit=500)
+        return len(independent_evidence_ids(rows))
 
     def _require(self, run_id):
         run = self._store.get_self_evolution_run(run_id)

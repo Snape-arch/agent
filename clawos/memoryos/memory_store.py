@@ -76,6 +76,12 @@ class MemoryStore:
                     created_at TEXT DEFAULT (datetime('now'))
                 );
                 CREATE INDEX IF NOT EXISTS idx_conv_session ON conversations(session_id, created_at);
+                CREATE TABLE IF NOT EXISTS conversation_summaries (
+                    session_id TEXT PRIMARY KEY,
+                    summary TEXT NOT NULL,
+                    source_message_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
                 CREATE TABLE IF NOT EXISTS projects (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -4256,16 +4262,56 @@ class MemoryStore:
             return [dict(r) for r in reversed(rows)]
 
     def get_session_summary(self, session_id: str) -> str:
-        """Generate a text summary of recent session activity."""
+        """Return the persistent semantic summary plus recent activity."""
+        persisted = self.get_persisted_session_summary(session_id)
         msgs = self.get_recent_messages(session_id, 30)
         if not msgs:
-            return "No previous conversation."
+            return persisted or "No previous conversation."
         summary_parts = []
         user_msgs = [m for m in msgs if m["role"] == "user"]
         for m in user_msgs[-5:]:
             content = m.get("content", "")
             summary_parts.append(f"user asked: {content[:200]}")
-        return "Recent conversation:\n" + "\n".join(summary_parts)
+        recent = "Recent conversation:\n" + "\n".join(summary_parts)
+        return f"Persistent conversation summary:\n{persisted}\n\n{recent}" if persisted else recent
+
+    def get_persisted_session_summary(self, session_id: str) -> str:
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT summary FROM conversation_summaries WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+            return str(row["summary"]) if row else ""
+
+    def save_session_summary(
+        self, session_id: str, summary: str, source_message_count: int
+    ) -> None:
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO conversation_summaries
+                    (session_id, summary, source_message_count, updated_at)
+                VALUES (?, ?, ?, datetime('now'))
+                ON CONFLICT(session_id) DO UPDATE SET
+                    summary=excluded.summary,
+                    source_message_count=excluded.source_message_count,
+                    updated_at=datetime('now')
+                """,
+                (session_id, str(summary)[:20_000], int(source_message_count)),
+            )
+
+    def delete_oldest_session_messages(self, session_id: str, count: int) -> int:
+        with self._conn() as c:
+            cursor = c.execute(
+                """
+                DELETE FROM conversations WHERE id IN (
+                    SELECT id FROM conversations WHERE session_id=?
+                    ORDER BY id ASC LIMIT ?
+                )
+                """,
+                (session_id, max(0, int(count))),
+            )
+            return int(cursor.rowcount or 0)
 
     # ── PROJECTS ──
 

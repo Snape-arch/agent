@@ -10,6 +10,7 @@ from typing import Any, Callable
 from .coding_context_service import CodingContextService
 from .coding_workflow_service import CodingWorkflowService
 from .execution_governance import ExecutionBudget, PolicyHookRegistry
+from .coding_trace_service import CodingTraceService
 
 
 class AutonomousCodingService:
@@ -23,11 +24,13 @@ class AutonomousCodingService:
         context: CodingContextService | None = None,
         hooks: PolicyHookRegistry | None = None,
         budget_factory: Callable[[], ExecutionBudget] | None = None,
+        trace: CodingTraceService | None = None,
     ):
         self.provider = provider
         self.workflow = workflow or CodingWorkflowService()
         self.context = context or CodingContextService()
         self.hooks = hooks or PolicyHookRegistry()
+        self.trace = trace
         self.budget_factory = budget_factory or (
             lambda: ExecutionBudget(
                 max_model_calls=4, max_tool_calls=12,
@@ -56,6 +59,12 @@ class AutonomousCodingService:
             focus_paths=focus_paths,
             diagnostics=diagnostics,
         )
+        after_context = self.hooks.run("after_context", {
+            "repo_path": str(repo_path),
+            "context_digest": manifest["context_digest"],
+        })
+        if not after_context["allowed"]:
+            raise PermissionError("after_context policy hook denied the request")
         prompt = (
             "Return exactly one JSON object, without markdown, using schema "
             '{"changes":[{"path":"relative","operation":"replace|create|hunks",'
@@ -93,6 +102,9 @@ class AutonomousCodingService:
             {"temperature": 0.0},
         )
         if not response.get("ok"):
+            self.hooks.run("on_failure", {
+                "stage": "model", "error": response.get("error") or "",
+            })
             raise RuntimeError(response.get("error") or "model proposal failed")
         content = str(response.get("content") or "").strip()
         try:
@@ -103,6 +115,12 @@ class AutonomousCodingService:
         execution_budget.consume(
             tokens=int((response.get("usage") or {}).get("total_tokens") or 0)
         )
+        after_model = self.hooks.run("after_model", {
+            "objective": objective,
+            "response_digest": hashlib.sha256(content.encode()).hexdigest(),
+        })
+        if not after_model["allowed"]:
+            raise PermissionError("after_model policy hook denied the response")
         plan = self.workflow.plan(
             repo_path,
             objective,
@@ -131,13 +149,34 @@ class AutonomousCodingService:
         diagnostics: list[dict[str, Any]] | None = None,
         max_attempts: int = 3,
         timeout_seconds: int = 180,
+        task_id: str = "",
+        session_id: str = "",
+        actor_id: str = "local-user",
     ) -> dict[str, Any]:
+        trace_run = self.trace.start(
+            objective=objective, repo_path=repo_path, task_id=task_id,
+            session_id=session_id, actor_id=actor_id,
+        ) if self.trace else None
         if confirmed is not True:
             proposal = await self.propose(
                 repo_path, objective,
                 focus_paths=focus_paths, diagnostics=diagnostics,
             )
-            return {**proposal, "status": "waiting_confirmation"}
+            if trace_run:
+                self.trace.step(
+                    trace_run["id"], "context", status="observed",
+                    output_value=proposal["context_digest"],
+                )
+                self.trace.step(
+                    trace_run["id"], "model", status="proposed",
+                    output_value=proposal["proposal_digest"],
+                    behavior_propensity=1.0,
+                )
+                self.trace.finish(trace_run["id"], "waiting_confirmation")
+            return {
+                **proposal, "status": "waiting_confirmation",
+                "trajectory_id": trace_run["id"] if trace_run else "",
+            }
         budget = self.budget_factory()
         attempts = []
         previous_failure = None
@@ -150,6 +189,18 @@ class AutonomousCodingService:
                 previous_failure=previous_failure,
                 budget=budget,
             )
+            if trace_run:
+                self.trace.step(
+                    trace_run["id"], "context", status="observed",
+                    output_value=proposal["context_digest"],
+                    metadata={"attempt": attempt},
+                )
+                self.trace.step(
+                    trace_run["id"], "model", status="proposed",
+                    output_value=proposal["proposal_digest"],
+                    behavior_propensity=1.0,
+                    metadata={"attempt": attempt},
+                )
             before_write = self.hooks.run("before_write", {
                 "attempt": attempt,
                 "proposal_digest": proposal["proposal_digest"],
@@ -172,6 +223,23 @@ class AutonomousCodingService:
                 timeout_seconds=timeout_seconds,
                 actor="autonomous-coding-service",
             )
+            if trace_run:
+                self.trace.step(
+                    trace_run["id"], "edit", status=result["status"],
+                    input_value=proposal["proposal"]["changes"],
+                    output_value=result.get("rounds"),
+                    metadata={"attempt": attempt},
+                )
+                for test in (
+                    test for round_item in result.get("rounds") or []
+                    for test in round_item.get("tests") or []
+                ):
+                    self.trace.step(
+                        trace_run["id"], "test",
+                        status="passed" if test.get("exit_code") == 0 else "failed",
+                        input_value=test.get("command"), output_value=test,
+                        metadata={"attempt": attempt},
+                    )
             attempts.append({
                 "attempt": attempt,
                 "proposal_digest": proposal["proposal_digest"],
@@ -179,6 +247,17 @@ class AutonomousCodingService:
                 "workflow": result,
             })
             if result["status"] == "passed":
+                after_write = self.hooks.run("after_write", {
+                    "attempt": attempt, "status": "passed",
+                })
+                if not after_write["allowed"]:
+                    raise PermissionError("after_write policy hook denied completion")
+                if trace_run:
+                    self.trace.step(
+                        trace_run["id"], "review", status="human_required",
+                        output_value={"commit_created": False},
+                    )
+                    self.trace.finish(trace_run["id"], "passed")
                 return {
                     "schema": "clawos.autonomous-coding-run.v1",
                     "status": "passed",
@@ -186,11 +265,21 @@ class AutonomousCodingService:
                     "human_review_required": True,
                     "commit_created": False,
                     "online_rl_claimed": False,
+                    "trajectory_id": trace_run["id"] if trace_run else "",
                 }
             previous_failure = {
                 "failure": result.get("failure"),
                 "rounds": result.get("rounds"),
             }
+        self.hooks.run("on_failure", {
+            "objective": objective, "attempts": len(attempts),
+        })
+        if trace_run:
+            self.trace.step(
+                trace_run["id"], "failure", status="failed",
+                output_value=previous_failure,
+            )
+            self.trace.finish(trace_run["id"], "failed")
         return {
             "schema": "clawos.autonomous-coding-run.v1",
             "status": "failed",
@@ -201,6 +290,7 @@ class AutonomousCodingService:
             "human_review_required": True,
             "commit_created": False,
             "online_rl_claimed": False,
+            "trajectory_id": trace_run["id"] if trace_run else "",
         }
 
     @staticmethod

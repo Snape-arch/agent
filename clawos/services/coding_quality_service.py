@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import random
 from collections import defaultdict
@@ -177,12 +178,15 @@ class CodingReviewGate:
         changed_paths: list[str],
         ci_runs: list[dict[str, Any]],
         reviews: list[dict[str, Any]],
+        *,
+        verification_key: str = "",
     ) -> dict[str, Any]:
         scoped = {str(item).replace("\\", "/") for item in changed_paths}
         valid_ci = [
             item for item in ci_runs
             if item.get("command") and item.get("evidence_digest")
             and item.get("exit_code") == 0
+            and CodingReviewGate._signature_valid(item, verification_key)
         ]
         valid_reviews = []
         for review in reviews:
@@ -193,7 +197,7 @@ class CodingReviewGate:
                 and int(item.get("line") or 0) > 0
                 and item.get("evidence")
             ]
-            if reviewer:
+            if reviewer and CodingReviewGate._signature_valid(review, verification_key):
                 valid_reviews.append({
                     "reviewer_id": reviewer,
                     "decision": review.get("decision"),
@@ -214,7 +218,30 @@ class CodingReviewGate:
             "independent_reviewer_count": reviewer_count,
             "blocking_findings": blocking,
             "requires_human_review": True,
+            "signed_provenance_required": bool(verification_key),
             "evidence_digest": _digest({
                 "paths": sorted(scoped), "ci": valid_ci, "reviews": valid_reviews,
             }),
         }
+
+    @staticmethod
+    def sign(item: dict[str, Any], key: str) -> dict[str, Any]:
+        if not key:
+            raise ValueError("signing key is required")
+        payload = {name: value for name, value in item.items() if name != "signature"}
+        signature = hmac.new(
+            key.encode("utf-8"),
+            json.dumps(
+                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return {**payload, "signature": signature}
+
+    @staticmethod
+    def _signature_valid(item: dict[str, Any], key: str) -> bool:
+        if not key:
+            return True
+        signature = str(item.get("signature") or "")
+        expected = CodingReviewGate.sign(item, key)["signature"]
+        return bool(signature and hmac.compare_digest(signature, expected))

@@ -726,8 +726,17 @@ async def run_tool_loop(
     prompt_policy: dict[str, Any] | None = None,
     retrieval_policy: dict[str, Any] | None = None,
     coding_context: dict[str, Any] | None = None,
+    governance=None,
 ) -> dict[str, Any]:
     """Tool detection + execution loop."""
+    if governance is None:
+        from services.execution_governance import GovernedExecutionContext
+        governance = GovernedExecutionContext.local(
+            actor_id=f"session:{session_id}", workspace_id="default"
+        )
+    governance.gate("before_context", {
+        "session_id": session_id, "task_id": task_id, "user_text": user_text,
+    })
     confirmed_tools = confirmed_tools or set()
     routing_strategy = routing_strategy_override or build_routing_strategy(user_text)
     allowed_tool_names = set(routing_strategy.get("allowed_tools") or [])
@@ -755,9 +764,20 @@ async def run_tool_loop(
                 }, ensure_ascii=False)
             else:
                 args = json.dumps({"name": matched_skill["name"], "params": {}}, ensure_ascii=False)
+                governance.budget.consume(tool_calls=1)
+                try:
+                    governance.authorize_egress(json.loads(fn_args))
+                except json.JSONDecodeError:
+                    pass
+                governance.gate("before_tool", {
+                    "tool": "skill_execute", "skill": matched_skill["name"],
+                })
                 result = execute_tool_call(
                     "skill_execute", args, session_id, confirmed_tools, task_id=task_id
                 )
+                governance.gate("after_tool", {
+                    "tool": "skill_execute", "ok": bool(result.get("ok")),
+                })
             if result.get("ok"):
                 return {
                     "used_tools": True,
@@ -787,7 +807,12 @@ async def run_tool_loop(
     if rb:
         fn_name, fn_args_obj = rb
         fn_args = json.dumps(fn_args_obj, ensure_ascii=False)
+        governance.budget.consume(tool_calls=1)
+        governance.gate("before_tool", {"tool": fn_name})
         result = execute_tool_call(fn_name, fn_args, session_id, confirmed_tools, task_id=task_id)
+        governance.gate("after_tool", {
+            "tool": fn_name, "ok": bool(result.get("ok")),
+        })
         return {
             "used_tools": True,
             "tool_calls": [{"name": fn_name, "arguments": fn_args, "result": result}],
@@ -817,14 +842,26 @@ async def run_tool_loop(
         )
     else:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_text}]
+    governance.gate("after_context", {
+        "message_count": len(messages), "task_id": task_id,
+    })
     max_rounds = config.get("max_tool_rounds", 6)
     tc_log: list[dict[str, Any]] = []
     used = False
 
     for ri in range(1, max_rounds + 1):
         try:
+            governance.budget.consume(model_calls=1)
+            governance.gate("before_model", {"round": ri, "task_id": task_id})
             resp = await call_routing_llm(messages, routed_tools)
+            governance.gate("after_model", {"round": ri, "task_id": task_id})
         except Exception as e:
+            try:
+                governance.gate("on_failure", {
+                    "stage": "model", "round": ri, "error": type(e).__name__,
+                })
+            except PermissionError:
+                pass
             logger.warning(f"Routing LLM error round {ri}: {e}")
             break
         choices = resp.get("choices", [])
@@ -854,7 +891,22 @@ async def run_tool_loop(
                     "error": f"tool is outside the enforced {routing_strategy['scenario']} scenario policy",
                 }
             else:
-                result = execute_tool_call(fn_name, fn_args, session_id, confirmed_tools, task_id=task_id)
+                governance.budget.consume(tool_calls=1)
+                try:
+                    governance.authorize_egress(json.loads(fn_args))
+                except json.JSONDecodeError:
+                    pass
+                governance.gate("before_tool", {
+                    "tool": fn_name, "arguments_digest": hashlib.sha256(
+                        fn_args.encode("utf-8")
+                    ).hexdigest(),
+                })
+                result = execute_tool_call(
+                    fn_name, fn_args, session_id, confirmed_tools, task_id=task_id
+                )
+                governance.gate("after_tool", {
+                    "tool": fn_name, "ok": bool(result.get("ok")),
+                })
             tc_log.append({"name": fn_name, "arguments": fn_args, "result": result})
             tool_messages.append({"role": "tool", "tool_call_id": tc_id, "name": fn_name, "content": json.dumps(result, ensure_ascii=False)})
         assistant_msg = {"role": "assistant", "content": content or "", "tool_calls": tc_msgs}
@@ -2602,7 +2654,7 @@ async def api_policy_reward(selection_id: int, request: Request):
         result = g_policy_optimizer.reward_from_task(
             selection_id,
             task_id=int(data["task_id"]),
-            satisfaction=data.get("satisfaction", 0.5),
+            satisfaction=data.get("satisfaction"),
             resource_cost=data.get("resource_cost"),
         )
     except ValueError as exc:
@@ -2630,7 +2682,7 @@ async def api_policy_promote(group_name: str, request: Request):
             group_name,
             data.get("target_type", "agent_policy"),
             data.get("target_key", group_name),
-            min_pulls=data.get("min_pulls", 3),
+            min_pulls=data.get("min_pulls", 30),
             actor_id=data.get("actor_id", "system"),
         )
     except ValueError as exc:
@@ -3021,7 +3073,15 @@ async def api_coding_agent_readiness():
     registry = CapabilityEvidenceRegistry(
         OUTPUT_ROOT / "evidence" / "capabilities.json"
     )
-    evidence = registry.latest()
+    commit = ""
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=BASE_DIR.parent,
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    evidence = registry.latest(expected_commit=commit)
     learning = (
         AdvancedLearningReadiness(g_memory_store).report()
         if g_memory_store else {}
@@ -3213,7 +3273,7 @@ async def api_agent_learning_train(request: Request):
             epochs=data.get("epochs", 60),
         ).train(
             group_name,
-            min_examples=data.get("min_examples", 8),
+            min_examples=data.get("min_examples", 30),
             trained_by=data.get("actor_id", "system"),
         )
     except ValueError as exc:
@@ -3231,7 +3291,7 @@ async def api_agent_learning_evaluate(model_id: int, request: Request):
     try:
         model = TrajectoryCritic(g_memory_store).evaluate(
             model_id,
-            min_samples=data.get("min_samples", 5),
+            min_samples=data.get("min_samples", 30),
             regression_tolerance=data.get("regression_tolerance", 0.02),
         )
     except ValueError as exc:

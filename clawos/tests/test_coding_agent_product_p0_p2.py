@@ -11,12 +11,14 @@ from pathlib import Path
 
 from memoryos.context_builder import ContextBuilder
 from memoryos.memory_store import MemoryStore
+from memoryos.services.management import ManagementService
 from providers.base import model_result
 from services.advanced_policy_learning import (
     AdaptationReadiness,
     RobustOffPolicyEvaluator,
 )
 from services.autonomous_coding_service import AutonomousCodingService
+from services.coding_trace_service import CodingTraceService
 from services.coding_context_service import CodingContextService
 from services.coding_quality_service import (
     CodingOutcomeBenchmark,
@@ -97,6 +99,11 @@ class ProductClosureTests(unittest.TestCase):
                 confirmed=True,
             )
             self.assertTrue(registry.latest()["coding_context_kernel"]["verified"])
+            self.assertFalse(
+                registry.latest(expected_commit="different")[
+                    "coding_context_kernel"
+                ]["verified"]
+            )
             value = json.loads(path.read_text(encoding="utf-8"))
             value["records"][0]["source"] = "tampered"
             path.write_text(json.dumps(value), encoding="utf-8")
@@ -105,6 +112,36 @@ class ProductClosureTests(unittest.TestCase):
             readiness = CodingAgentReadiness.report(evidence)
             self.assertFalse(readiness["software_p0_p2_closed"])
             self.assertTrue(record["record_digest"])
+
+    def test_automated_acceptance_requires_reproducible_commit_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = CapabilityEvidenceRegistry(Path(tmp) / "evidence.json")
+            registry.record(
+                "coding_context_kernel", status="verified",
+                evidence_type="automated_acceptance", source="unittest",
+                artifact_digest="digest", commit="abc",
+                test_ids=["tests.test_x.X.test_y"], worktree_clean=True,
+                confirmed=True,
+            )
+            self.assertTrue(registry.latest(
+                expected_commit="abc"
+            )["coding_context_kernel"]["verified"])
+            self.assertFalse(registry.latest(
+                expected_commit="def"
+            )["coding_context_kernel"]["verified"])
+
+    def test_conversation_compaction_persists_summary_and_deletes_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = MemoryStore(str(Path(tmp) / "memory.db"))
+            for index in range(12):
+                store.add_message("s1", "user", f"decision {index}")
+                store.add_message("s1", "assistant", f"result {index}")
+            report = ManagementService(store).compact_conversation(
+                "s1", keep_recent=6
+            )
+            self.assertTrue(report["compacted"])
+            self.assertEqual(len(store.get_session_messages("s1", 100)), 6)
+            self.assertIn("decision 0", store.get_session_summary("s1"))
 
     def test_learning_registry_enforces_state_machine_and_activation_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -136,7 +173,10 @@ class ProductClosureTests(unittest.TestCase):
                 )
             active = registry.transition(
                 candidate["id"], "active",
-                evidence={"passed": True, "human_approved": True, "sample_count": 30},
+                evidence={
+                    "passed": True, "human_approved": True,
+                    "sample_count": 30, "independent_sample_count": 30,
+                },
                 confirmed=True,
             )
             self.assertEqual(active["state"], "active")
@@ -172,6 +212,7 @@ class ProductClosureTests(unittest.TestCase):
                     "services.coding_workflow_service",
                     fromlist=["CodingWorkflowService"],
                 ).CodingWorkflowService(artifact_root=root / "runs"),
+                trace=CodingTraceService(root / "coding-traces.json"),
             )
             proposal = asyncio.run(service.run(repo, "fix add", confirmed=False))
             self.assertEqual(proposal["status"], "waiting_confirmation")
@@ -182,6 +223,12 @@ class ProductClosureTests(unittest.TestCase):
             self.assertTrue(Path(workflow["rounds"][0]["checkpoint"]).is_file())
             self.assertIn("a + b", (repo / "maths.py").read_text(encoding="utf-8"))
             self.assertFalse(result["commit_created"])
+            trace = service.trace.get(result["trajectory_id"])
+            self.assertEqual(trace["status"], "passed")
+            self.assertEqual(
+                {item["type"] for item in trace["steps"]},
+                {"context", "model", "edit", "test", "review"},
+            )
 
     def test_real_lsp_stdio_handshake_and_symbol_request(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -257,6 +304,25 @@ class ProductClosureTests(unittest.TestCase):
             ],
         )
         self.assertTrue(review["passed"])
+        key = "test-only-key"
+        signed_ci = CodingReviewGate.sign(
+            {"command": "pytest", "exit_code": 0, "evidence_digest": "ci"},
+            key,
+        )
+        signed_reviews = [
+            CodingReviewGate.sign(
+                {"reviewer_id": reviewer, "decision": "approve", "findings": []},
+                key,
+            )
+            for reviewer in ("a", "b")
+        ]
+        self.assertTrue(CodingReviewGate.evaluate(
+            ["maths.py"], [signed_ci], signed_reviews, verification_key=key
+        )["passed"])
+        signed_reviews[0]["decision"] = "reject"
+        self.assertFalse(CodingReviewGate.evaluate(
+            ["maths.py"], [signed_ci], signed_reviews, verification_key=key
+        )["passed"])
         readiness = AdaptationReadiness.report({})
         self.assertFalse(readiness["deep_training_ready"])
         self.assertFalse(readiness["adapter_training_claimed"])

@@ -22,6 +22,7 @@ from services.coding_workspace_service import CodingWorkspaceService
 from services.execution_governance import (
     CodingAgentReadiness,
     ExecutionBudget,
+    GovernedExecutionContext,
     IdentityContext,
     NetworkEgressPolicy,
     PolicyHookRegistry,
@@ -174,6 +175,18 @@ class CodingAgentExcellenceTests(unittest.TestCase):
         )
         self.assertTrue(egress.evaluate("https://api.example.com/v1")["allowed"])
         self.assertFalse(egress.evaluate("http://127.0.0.1")["allowed"])
+        governed = GovernedExecutionContext(
+            identity=identity, egress=egress,
+            budget=ExecutionBudget(max_tool_calls=2),
+        )
+        self.assertEqual(
+            governed.authorize_egress({"url": "https://api.example.com/v1"})[0][
+                "host"
+            ],
+            "api.example.com",
+        )
+        with self.assertRaises(PermissionError):
+            governed.authorize_egress({"url": "http://127.0.0.1/private"})
         budget = ExecutionBudget(max_tool_calls=2)
         self.assertEqual(budget.consume(tool_calls=1)["remaining"]["tool_calls"], 1)
         hooks = PolicyHookRegistry()

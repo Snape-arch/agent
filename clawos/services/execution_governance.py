@@ -177,6 +177,62 @@ class PolicyHookRegistry:
         }
 
 
+@dataclass
+class GovernedExecutionContext:
+    """One identity, policy, budget, and hook context for a complete run."""
+
+    identity: IdentityContext
+    budget: ExecutionBudget = field(default_factory=ExecutionBudget)
+    hooks: PolicyHookRegistry = field(default_factory=PolicyHookRegistry)
+    egress: NetworkEgressPolicy = field(default_factory=NetworkEgressPolicy)
+
+    @classmethod
+    def local(
+        cls, actor_id: str = "local-user", workspace_id: str = "default"
+    ) -> "GovernedExecutionContext":
+        return cls(IdentityContext(
+            actor_id=actor_id, workspace_id=workspace_id,
+            roles=("developer",), authenticated=True,
+        ))
+
+    def gate(self, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self.identity.require("developer", "operator", "admin")
+        result = self.hooks.run(event, {
+            **dict(payload or {}),
+            "actor_id": self.identity.actor_id,
+            "workspace_id": self.identity.workspace_id,
+        })
+        if not result["allowed"]:
+            raise PermissionError(
+                f"{event} denied by {result.get('denied_by') or 'policy'}"
+            )
+        return result
+
+    def authorize_egress(self, value: Any) -> list[dict[str, Any]]:
+        urls: list[str] = []
+
+        def visit(item: Any) -> None:
+            if isinstance(item, dict):
+                for child in item.values():
+                    visit(child)
+            elif isinstance(item, (list, tuple)):
+                for child in item:
+                    visit(child)
+            elif isinstance(item, str) and item.startswith(("http://", "https://")):
+                urls.append(item)
+
+        visit(value)
+        decisions = [self.egress.evaluate(url) for url in urls]
+        denied = [item for item in decisions if not item["allowed"]]
+        if denied:
+            raise PermissionError(
+                "network egress denied: " + ", ".join(
+                    item.get("host") or "invalid-url" for item in denied
+                )
+            )
+        return decisions
+
+
 class CodingAgentReadiness:
     """Evidence-only product gate spanning P0-P2 software capabilities."""
 

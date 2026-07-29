@@ -88,6 +88,8 @@ class CapabilityEvidenceRegistry:
         environment: str = "",
         expires_at: str = "",
         truth_scope: str = "software",
+        test_ids: list[str] | None = None,
+        worktree_clean: bool | None = None,
         confirmed: bool = False,
     ) -> dict[str, Any]:
         if confirmed is not True:
@@ -109,6 +111,10 @@ class CapabilityEvidenceRegistry:
             "observed_at": _iso(),
             "expires_at": str(expires_at or ""),
             "truth_scope": str(truth_scope or "software"),
+            "test_ids": sorted({
+                str(item).strip() for item in (test_ids or []) if str(item).strip()
+            }),
+            "worktree_clean": worktree_clean,
         }
         payload["record_digest"] = _digest(payload)
         value = self._store.read()
@@ -117,7 +123,10 @@ class CapabilityEvidenceRegistry:
         return payload
 
     @staticmethod
-    def validate(record: dict[str, Any], *, at: datetime | None = None) -> dict[str, Any]:
+    def validate(
+        record: dict[str, Any], *, at: datetime | None = None,
+        expected_commit: str = "",
+    ) -> dict[str, Any]:
         item = dict(record or {})
         digest = item.pop("record_digest", "")
         integrity = bool(digest and digest == _digest(item))
@@ -128,21 +137,36 @@ class CapabilityEvidenceRegistry:
                 expired = expiry <= (at or _now())
             except ValueError:
                 expired = True
+        acceptance = item.get("evidence_type") == "automated_acceptance"
+        reproducible = bool(
+            not acceptance or (
+                item.get("artifact_digest")
+                and item.get("commit")
+                and item.get("test_ids")
+                and item.get("worktree_clean") is True
+            )
+        )
+        commit_matches = bool(
+            not expected_commit or item.get("commit") == expected_commit
+        )
         verified = bool(
             integrity and not expired and item.get("status") == "verified"
             and item.get("source") and item.get("evidence_type")
+            and reproducible and commit_matches
         )
         return {
             **record,
             "integrity_valid": integrity,
             "expired": expired,
             "verified": verified,
+            "reproducible": reproducible,
+            "commit_matches": commit_matches,
         }
 
-    def latest(self) -> dict[str, dict[str, Any]]:
+    def latest(self, *, expected_commit: str = "") -> dict[str, dict[str, Any]]:
         rows: dict[str, dict[str, Any]] = {}
         for raw in self._store.read().get("records", []):
-            item = self.validate(raw)
+            item = self.validate(raw, expected_commit=expected_commit)
             name = str(item.get("capability") or "")
             previous = rows.get(name)
             if name and (
@@ -219,8 +243,13 @@ class LearningArtifactRegistry:
         proof = dict(evidence or {})
         if requested in {"evaluated", "shadow", "active"} and not proof.get("passed"):
             raise ValueError(f"{requested} requires passed evidence")
+        if requested == "active":
+            from .learning_governance import THRESHOLDS
         if requested == "active" and (
-            not proof.get("human_approved") or int(proof.get("sample_count") or 0) < 30
+            not proof.get("human_approved")
+            or int(proof.get("sample_count") or 0) < THRESHOLDS.activation_samples
+            or int(proof.get("independent_sample_count") or 0)
+            < THRESHOLDS.activation_samples
         ):
             raise ValueError("activation requires human approval and at least 30 samples")
         target["state"] = requested
