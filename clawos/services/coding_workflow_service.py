@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from .coding_context_service import CodingContextService
 from .runtime_records import RunRecord, now_iso
 
 
@@ -31,10 +32,23 @@ class CodingWorkflowService:
     def __init__(self, store: Any | None = None, artifact_root: str | Path = "output/coding"):
         self.store = store
         self.artifact_root = Path(artifact_root).expanduser().resolve()
+        self.context_service = CodingContextService()
 
-    def inspect(self, repo_path: str | Path, query: str = "", limit: int = 80) -> dict[str, Any]:
+    def inspect(
+        self,
+        repo_path: str | Path,
+        query: str = "",
+        limit: int = 80,
+        *,
+        token_budget: int = 12000,
+        focus_paths: list[str] | None = None,
+        diagnostics: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         repo = self._repo(repo_path)
         files = self._git(repo, "ls-files").splitlines()
+        files.extend(
+            self._git(repo, "ls-files", "--others", "--exclude-standard").splitlines()
+        )
         selected = []
         tokens = [item.lower() for item in re.findall(r"[A-Za-z0-9_./-]{2,}", query or "")]
         for rel in files:
@@ -51,6 +65,13 @@ class CodingWorkflowService:
             selected.append({"path": rel.replace("\\", "/"), "bytes": path.stat().st_size, "match_score": score})
         selected.sort(key=lambda item: (item["match_score"], -item["bytes"]), reverse=True)
         status = self._git(repo, "status", "--short")
+        context_pack = self.context_service.build(
+            repo,
+            query,
+            focus_paths=focus_paths,
+            token_budget=token_budget,
+            diagnostics=diagnostics,
+        )
         return {
             "repo": str(repo),
             "head": self._git(repo, "rev-parse", "HEAD").strip(),
@@ -59,7 +80,40 @@ class CodingWorkflowService:
             "status": status.splitlines(),
             "candidate_files": selected[: max(1, min(int(limit or 80), 200))],
             "query": query,
+            "context_pack": context_pack,
+            "recommended_tests": self.discover_tests(repo, [
+                item["path"] for item in selected[:10]
+            ]),
         }
+
+    def discover_tests(
+        self, repo_path: str | Path, changed_paths: list[str] | None = None
+    ) -> list[list[str]]:
+        """Return bounded, deterministic test commands for the repository."""
+
+        repo = self._repo(repo_path)
+        changed = [str(item).replace("\\", "/") for item in (changed_paths or [])]
+        commands: list[list[str]] = []
+        if (repo / "pyproject.toml").exists() or (repo / "pytest.ini").exists():
+            related = [
+                rel for rel in self._git(repo, "ls-files").splitlines()
+                if ("test" in rel.lower() or "spec" in rel.lower())
+                and any(Path(path).stem.removeprefix("test_") in rel for path in changed)
+            ][:20]
+            commands.append(["python", "-m", "pytest", *(related or ["-q"])])
+        elif any((repo / name).exists() for name in ("setup.py", "requirements.txt")):
+            commands.append(["python", "-m", "unittest", "discover"])
+        if (repo / "package.json").exists():
+            commands.append(["npm", "test", "--", "--runInBand"])
+        if (repo / "Cargo.toml").exists():
+            commands.append(["cargo", "test"])
+        if (repo / "go.mod").exists():
+            commands.append(["go", "test", "./..."])
+        if (repo / "pom.xml").exists():
+            commands.append(["mvn", "test"])
+        if any((repo / name).exists() for name in ("build.gradle", "build.gradle.kts")):
+            commands.append(["gradle", "test"])
+        return commands[:5]
 
     def plan(self, repo_path: str | Path, objective: str, changes: list[dict[str, Any]], test_commands: list[Any] | None = None) -> dict[str, Any]:
         repo = self._repo(repo_path)
@@ -216,6 +270,19 @@ class CodingWorkflowService:
                 if not expected or expected != self._sha(before.encode("utf-8")):
                     raise ValueError(f"overwrite requires matching expected_sha256: {rel}")
                 after = str(raw.get("content") or "")
+            elif operation == "hunks":
+                after = before
+                hunks = list(raw.get("hunks") or [])
+                if not hunks:
+                    raise ValueError(f"hunks operation requires hunks: {rel}")
+                for hunk in hunks:
+                    old = str(hunk.get("old_text") or "")
+                    new = str(hunk.get("new_text") or "")
+                    if not old or after.count(old) != 1:
+                        raise ValueError(
+                            f"each hunk old_text must match exactly once: {rel}"
+                        )
+                    after = after.replace(old, new, 1)
             else:
                 raise ValueError(f"unsupported change operation: {operation}")
             rows.append({"path": rel, "operation": operation, "content": after, "before_sha256": self._sha(before.encode("utf-8")), "after_sha256": self._sha(after.encode("utf-8"))})
@@ -252,7 +319,26 @@ class CodingWorkflowService:
         changed = self._git(repo, "diff", "--name-only", "--", *files).splitlines()
         if not changed:
             failures.append("no scoped diff produced")
-        return {"gate": "pass" if not failures else "revision_required", "failures": failures, "changed_files": changed, "diff_check": diff_check.stdout + diff_check.stderr, "all_tests_passed": all(item["exit_code"] == 0 and not item.get("timed_out") for item in tests)}
+        syntax = self._syntax_review(repo, changed)
+        failures.extend(
+            f"syntax failed: {item['path']}: {item['message']}"
+            for item in syntax if not item["passed"]
+        )
+        return {"gate": "pass" if not failures else "revision_required", "failures": failures, "changed_files": changed, "diff_check": diff_check.stdout + diff_check.stderr, "syntax_review": syntax, "all_tests_passed": all(item["exit_code"] == 0 and not item.get("timed_out") for item in tests)}
+
+    @staticmethod
+    def _syntax_review(repo: Path, files: list[str]) -> list[dict[str, Any]]:
+        rows = []
+        for rel in files:
+            path = repo / rel
+            if path.suffix.lower() != ".py" or not path.is_file():
+                continue
+            try:
+                compile(path.read_text(encoding="utf-8"), str(path), "exec")
+                rows.append({"path": rel, "passed": True, "message": ""})
+            except (SyntaxError, UnicodeError) as exc:
+                rows.append({"path": rel, "passed": False, "message": str(exc)})
+        return rows
 
     @staticmethod
     def _validate_command(command: Any) -> list[str]:

@@ -18,6 +18,8 @@ class SelfEvolutionManager:
         "core_e2e_benchmark": "core_e2e",
         "retrieval": "retrieval_benchmark",
         "retrieval_benchmark": "retrieval_benchmark",
+        "policy": "policy_materialization",
+        "policy_materialization": "policy_materialization",
     }
     ALLOWED_TARGET_TYPES = {
         "prompt",
@@ -353,7 +355,7 @@ class SelfEvolutionManager:
         normalized = {}
         for raw_name, result in (benchmarks or {}).items():
             name = cls.BENCHMARK_ALIASES.get(str(raw_name), str(raw_name))
-            if name in cls.REQUIRED_BENCHMARKS and isinstance(result, dict):
+            if name in {*cls.REQUIRED_BENCHMARKS, "policy_materialization"} and isinstance(result, dict):
                 normalized[name] = {
                     "baseline": cls._extract_metrics(result.get("baseline", {})),
                     "candidate": cls._extract_metrics(result.get("candidate", {})),
@@ -365,6 +367,10 @@ class SelfEvolutionManager:
     def _evaluate_gate(cls, benchmarks):
         checks = []
         missing = [name for name in cls.REQUIRED_BENCHMARKS if name not in benchmarks]
+        causal_required = any(
+            "baseline_materialized" in ((benchmarks.get(name) or {}).get("metadata") or {})
+            for name in cls.REQUIRED_BENCHMARKS
+        )
         for name in cls.REQUIRED_BENCHMARKS:
             item = benchmarks.get(name) or {}
             baseline = item.get("baseline") or {}
@@ -381,6 +387,35 @@ class SelfEvolutionManager:
                     missing.append(name)
                 continue
             checks.extend(cls._compare_suite(name, baseline, candidate))
+
+        if causal_required:
+            policy = benchmarks.get("policy_materialization") or {}
+            metadata = policy.get("metadata") or {}
+            materialized = bool(
+                metadata.get("baseline_materialized")
+                and metadata.get("candidate_materialized")
+                and metadata.get("baseline_execution_digest")
+                and metadata.get("candidate_execution_digest")
+            )
+            changed = bool(metadata.get("causal_effect_observed"))
+            if not materialized:
+                missing.append("policy_materialization")
+            checks.append({
+                "benchmark": "policy_materialization",
+                "metric": "candidate_materialized",
+                "direction": "required_true",
+                "baseline": bool(metadata.get("baseline_materialized")),
+                "candidate": bool(metadata.get("candidate_materialized")),
+                "passed": materialized,
+            })
+            checks.append({
+                "benchmark": "policy_materialization",
+                "metric": "causal_effect_observed",
+                "direction": "required_true",
+                "baseline": metadata.get("baseline_execution_digest", ""),
+                "candidate": metadata.get("candidate_execution_digest", ""),
+                "passed": changed,
+            })
 
         passed = not missing and bool(checks) and all(check["passed"] for check in checks)
         return {

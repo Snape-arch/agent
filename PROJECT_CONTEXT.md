@@ -1,5 +1,48 @@
 # Project Context
 
+## Coding Agent Excellence P0-P2 软件闭环（2026-07-29）
+
+- 当前开发分支：`codex/coding-agent-excellence-p0-p2`，基于
+  `codex/competition-readiness-p0-p2` 的 `3b702ba`；本轮已创建本地提交
+  `feat: close coding agent excellence P0-P2`。远端推送被租户安全策略阻止，
+  当前分支尚未发布。
+- P0 因果评测：自进化 frozen/core 子进程现在真实接收 baseline/candidate
+  payload，工具路由候选在执行器中生效；新增 prompt/retrieval/routing/report
+  runtime materializer。自动门禁要求执行摘要存在且候选产生可观察变化，避免
+  “配置只进入 digest、没有进入执行”的静默通过。
+- P0 学习证据：决策轨迹新增完整候选集、全量分数、选择概率、策略版本、
+  探索来源、随机种子和上下文摘要；新增 IPS/SNIPS/DR、cluster bootstrap、
+  ESS、overlap、时间留出和场景分段门禁。支持不足时明确 abort，不激活策略。
+- P0 Coding Context Kernel：新增层级指令、Token 预算、任务相关代码片段、
+  Repo Map、Python AST/轻量跨语言符号和依赖、测试映射、Git 上下文、
+  IDE/LSP diagnostics、来源信任和 digest。Coding Workflow inspect 已直接返回
+  Context Pack，并纳入未跟踪但未忽略的工作区文件。
+- P1 编码执行：新增结构化多 hunk 修改、自动测试建议、Python 语法审查、
+  `git diff --check`、有界修复、原子写入、checkpoint 和失败精确恢复；
+  新增显式确认的 Git Worktree 隔离与 scoped local commit，永不自动 push。
+- P2 离线学习与治理：新增 Trajectory Preference Ranker、AWR candidate dataset
+  sandbox、身份/角色边界、网络 host/port egress、模型/工具/Token/时间预算、
+  lifecycle hooks 和统一 Coding Agent Readiness。
+- 新增 API：`/api/agent-learning/ope/evaluate`、
+  `/api/agent-learning/trajectory-ranker/train`、
+  `/api/agent-learning/offline-policy/sandbox`、
+  `/api/coding-agent/readiness`、Coding Worktree/Commit 入口；coding tool schema
+  同步支持 Context Pack 与 test discovery。
+- 新增 20 条真实 ClawOS 仓库上下文冻结任务：
+  `clawos/benchmarks/coding_repository_v1.json`。最新执行 **20/20 通过**，
+  MRR `0.377222`，P95 `1312.264ms`。该结果只证明仓库上下文获取，不证明
+  模型补丁质量。
+- 专项回归 **31/31 通过**；根目录全量 **366/366 通过**。`git diff --check`
+  通过，仅有行尾转换提示；原有非阻断警告仍为 MTClaw FastAPI `on_event`
+  和 PyMuPDF SWIG 类型弃用警告。
+- 事实边界保持：`online_rl_claimed=false`；真实轨迹、Preference、反馈与 OPE
+  样本门槛未达时不激活深度 Router/Trajectory RL/LoRA；无目标硬件时
+  `hardware_validated=false`。完整说明见
+  `clawos/CODING_AGENT_EXCELLENCE_P0_P2.md`。
+- 下一步：用 20-50 个真实“修改+测试”仓库任务采集完整反事实轨迹，补真实
+  模型补丁成功率；随后接入实际 LSP 进程/IDE client，达到数据门槛后才允许
+  Router/Trajectory Ranker 进入 Shadow。不要先扩大网络或启动 Nightly LoRA。
+
 ## Competition Readiness P0-P2 闭环（2026-07-26）
 
 - 开发分支：`codex/competition-readiness-p0-p2`；基于反馈学习提交 `44c0283`。

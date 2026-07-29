@@ -76,13 +76,48 @@ class TrajectoryLearningService:
         policy_selection_id: int | None = None,
         behavior_propensity: float = 1.0,
         safety_violation: bool = False,
+        candidate_set: list[str] | None = None,
+        candidate_scores: dict[str, float] | None = None,
+        policy_version: str = "",
+        exploration_source: str = "",
+        random_seed: int | None = None,
+        context_digest: str = "",
     ) -> dict[str, Any]:
+        candidates = [str(item) for item in (candidate_set or [])]
+        scores = {
+            str(key): round(float(value), 8)
+            for key, value in (candidate_scores or {}).items()
+        }
+        if candidates and action_name not in candidates:
+            raise ValueError("selected action must be present in candidate_set")
+        if scores and set(scores) != set(candidates):
+            raise ValueError("candidate_scores must cover the complete candidate_set")
+        payload = self._sanitize(action_payload or {})
+        payload["_policy_trace"] = {
+            "schema": "clawos.counterfactual-decision.v1",
+            "candidate_set": candidates,
+            "candidate_scores": scores,
+            "selected_action": action_name,
+            "selected_probability": round(
+                max(0.0, min(float(behavior_propensity), 1.0)), 8
+            ),
+            "policy_version": str(policy_version or ""),
+            "exploration_source": str(exploration_source or ""),
+            "random_seed": random_seed,
+            "context_digest": str(context_digest or _stable_digest(state or {})),
+            "complete": bool(
+                candidates
+                and scores
+                and 0 < float(behavior_propensity or 0) <= 1
+                and policy_version
+            ),
+        }
         return self.store.append_agent_trajectory_step(
             task_id,
             state=self._sanitize(state or {}),
             action_type=action_type,
             action_name=action_name,
-            action_payload=self._sanitize(action_payload or {}),
+            action_payload=payload,
             policy_selection_id=policy_selection_id,
             behavior_propensity=behavior_propensity,
             safety_violation=safety_violation,

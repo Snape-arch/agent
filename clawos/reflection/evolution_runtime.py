@@ -160,19 +160,24 @@ class ExecutedEvolutionBenchmarkRunner:
         baseline_payload: dict[str, Any],
         candidate_payload: dict[str, Any],
     ) -> dict[str, Any]:
-        frozen_base = self._run_suite(FROZEN_SUITE, baseline_payload)
-        frozen_candidate = self._run_suite(FROZEN_SUITE, candidate_payload)
-        core_base = self._run_suite(CORE_SUITE, baseline_payload)
-        core_candidate = self._run_suite(CORE_SUITE, candidate_payload)
+        frozen_base = self._run_suite(FROZEN_SUITE, target_type, baseline_payload)
+        frozen_candidate = self._run_suite(FROZEN_SUITE, target_type, candidate_payload)
+        core_base = self._run_suite(CORE_SUITE, target_type, baseline_payload)
+        core_candidate = self._run_suite(CORE_SUITE, target_type, candidate_payload)
         retrieval_base = self._run_retrieval_probe(baseline_payload)
         retrieval_candidate = self._run_retrieval_probe(candidate_payload)
+        policy_base = self._run_policy_probe(target_type, baseline_payload)
+        policy_candidate = self._run_policy_probe(target_type, candidate_payload)
         return {
             "frozen_benchmark": self._pair(frozen_base, frozen_candidate),
             "core_e2e": self._pair(core_base, core_candidate),
             "retrieval_benchmark": self._pair(retrieval_base, retrieval_candidate),
+            "policy_materialization": self._pair(policy_base, policy_candidate),
         }
 
-    def _run_suite(self, suite_path: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    def _run_suite(
+        self, suite_path: Path, target_type: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         started = time.perf_counter()
         completed = subprocess.run(
             [
@@ -182,6 +187,10 @@ class ExecutedEvolutionBenchmarkRunner:
                 "--suite",
                 str(suite_path),
                 "--json",
+                "--target-type",
+                str(target_type or ""),
+                "--policy-json",
+                json.dumps(payload or {}, ensure_ascii=False, sort_keys=True),
             ],
             cwd=str(ROOT.parent),
             capture_output=True,
@@ -204,8 +213,80 @@ class ExecutedEvolutionBenchmarkRunner:
             "metrics": metrics,
             "report_digest": payload_digest(report),
             "config_digest": payload_digest(payload),
+            "execution_digest": str(
+                (report.get("policy_execution") or {}).get("trace_digest") or ""
+            ),
+            "materialized": bool(
+                (report.get("policy_execution") or {}).get("materialized")
+            ),
             "case_count": len(report.get("case_results") or []),
             "runner": "isolated_subprocess",
+        }
+
+    def _run_policy_probe(
+        self, target_type: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute the target-specific materializer and retain causal evidence."""
+
+        started = time.perf_counter()
+        controller = RuntimePolicyController
+        selection = {
+            "payload": dict(payload or {}),
+            "target_type": target_type,
+            "target_key": "benchmark",
+            "policy_version": 1,
+            "source": "causal_benchmark",
+            "release_stage": "candidate",
+            "exposure": "candidate",
+        }
+        if target_type == "prompt_policy":
+            output = controller.apply_prompt("BASE_SYSTEM_PROMPT", selection)
+        elif target_type == "retrieval_params":
+            output = controller.retrieval_options(selection)
+        elif target_type == "tool_routing_policy":
+            output = controller.apply_routing(
+                {
+                    "allowed_tools": [
+                        "knowledge_search", "web_fetch", "file_write", "shell_exec"
+                    ],
+                    "requires_confirmation": ["file_write", "shell_exec"],
+                },
+                selection,
+            )
+        elif target_type == "report_template":
+            template = str(
+                payload.get("template")
+                or payload.get("content")
+                or "{title}\n{body}"
+            )
+            output = template.replace("{title}", "Benchmark").replace(
+                "{body}", "Evidence"
+            )
+        else:
+            output = dict(payload or {})
+        report = {
+            "target_type": target_type,
+            "input_digest": payload_digest(payload),
+            "output": output,
+            "output_digest": payload_digest(
+                output if isinstance(output, dict) else {"value": output}
+            ),
+        }
+        return {
+            "metrics": {
+                "pass_rate": 1.0,
+                "passed": True,
+                "materialized": True,
+                "p95_latency_ms": round(
+                    (time.perf_counter() - started) * 1000, 3
+                ),
+            },
+            "report_digest": payload_digest(report),
+            "config_digest": payload_digest(payload),
+            "execution_digest": report["output_digest"],
+            "materialized": True,
+            "case_count": 1,
+            "runner": f"runtime_{target_type or 'generic'}_materializer",
         }
 
     def _run_retrieval_probe(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -273,6 +354,16 @@ class ExecutedEvolutionBenchmarkRunner:
                 "candidate_config_digest": candidate["config_digest"],
                 "baseline_runner": baseline["runner"],
                 "candidate_runner": candidate["runner"],
+                "baseline_execution_digest": baseline.get("execution_digest", ""),
+                "candidate_execution_digest": candidate.get("execution_digest", ""),
+                "baseline_materialized": bool(baseline.get("materialized")),
+                "candidate_materialized": bool(candidate.get("materialized")),
+                "causal_effect_observed": bool(
+                    baseline.get("execution_digest")
+                    and candidate.get("execution_digest")
+                    and baseline.get("execution_digest")
+                    != candidate.get("execution_digest")
+                ),
                 "case_count": min(baseline["case_count"], candidate["case_count"]),
             },
         }

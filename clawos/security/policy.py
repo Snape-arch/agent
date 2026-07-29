@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import fnmatch
 import re
 import shlex
 import tempfile
@@ -226,7 +227,7 @@ class ToolSecurityPolicy:
         decision = "allow"
         reason = "policy checks passed"
         writes_optional_output = tool_name in {"meeting_action_items", "paper_deep_read", "exam_practice_builder"} and bool(args.get("output_path"))
-        readonly_action = (tool_name == "coding_workflow" and str(args.get("action") or "") in {"inspect", "plan"}) or (tool_name == "office_productivity" and str(args.get("action") or "") == "inspect")
+        readonly_action = (tool_name == "coding_workflow" and str(args.get("action") or "") in {"inspect", "discover_tests", "plan"}) or (tool_name == "office_productivity" and str(args.get("action") or "") == "inspect")
         if (tool_name in self.WRITE_TOOLS and not readonly_action) or tool_name in self.NETWORK_TOOLS or writes_optional_output:
             decision = "confirm"
             reason = f"{risk_level} risk tool requires confirmation"
@@ -268,7 +269,7 @@ class ToolSecurityPolicy:
         arguments = arguments or {}
         if tool_name == "office_productivity" and str(arguments.get("action") or "") in {"email_send", "calendar_publish"}:
             return "high"
-        if tool_name == "coding_workflow" and str(arguments.get("action") or "") in {"inspect", "plan"}:
+        if tool_name == "coding_workflow" and str(arguments.get("action") or "") in {"inspect", "discover_tests", "plan"}:
             return "low"
         if tool_name in self.HIGH_RISK_TOOLS:
             return "high"
@@ -291,6 +292,21 @@ class ToolSecurityPolicy:
             return {"allowed": False, "decision": "deny", "reason": "only http(s) URLs are allowed"}
         if re.match(r"^https?://(?:localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[0-1])\.)", raw, re.I):
             return {"allowed": False, "decision": "deny", "reason": "private or local network URLs are not allowed"}
+        host = (urlparse(raw).hostname or "").lower()
+        denied = [
+            item.strip().lower()
+            for item in os.environ.get("CLAWOS_DENIED_EGRESS_HOSTS", "").split(",")
+            if item.strip()
+        ]
+        allowed = [
+            item.strip().lower()
+            for item in os.environ.get("CLAWOS_ALLOWED_EGRESS_HOSTS", "").split(",")
+            if item.strip()
+        ]
+        if any(fnmatch.fnmatch(host, pattern) for pattern in denied):
+            return {"allowed": False, "decision": "deny", "reason": "network host matched deny policy"}
+        if allowed and not any(fnmatch.fnmatch(host, pattern) for pattern in allowed):
+            return {"allowed": False, "decision": "deny", "reason": "network host is not allowlisted"}
         return {"allowed": True, "decision": "confirm", "reason": "network URL policy passed"}
 
     def resolve_path(self, value):
