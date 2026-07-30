@@ -168,11 +168,19 @@ class ProductReadinessService:
             self.root / "clawos" / "services" / "agent_product_kernel.py"
         )
         agent_sdk = self.root / "clawos" / "services" / "agent_sdk.py"
+        learning_product = (
+            self.root / "clawos" / "services" / "learning_product_service.py"
+        )
+        academy_js = (
+            self.root / "clawos" / "static" / "assets" / "academy.js"
+        )
         workflow_text = self._read(workflow)
         extension_text = self._read(extension)
         agent_router_text = self._read(agent_router)
         agent_kernel_text = self._read(agent_kernel)
         agent_sdk_text = self._read(agent_sdk)
+        learning_product_text = self._read(learning_product)
+        academy_text = self._read(academy_js)
         package_value = self._json(package)
         return {
             "hosted_ci_contract": bool(
@@ -230,6 +238,17 @@ class ProductReadinessService:
                 "git.openChange" in extension_text
                 and "clawos.rewindLastTask" in extension_text
                 and "checkpoint_restored" in extension_text
+            ),
+            "education_evidence_truth_source": bool(
+                "clawos.learning-dashboard.v1" in learning_product_text
+                and "bkt-fsrs-lite.v1" in learning_product_text
+                and "/api/academy/learning/dashboard" in academy_text
+                and "clawos_academy_completed" not in academy_text
+            ),
+            "context_review_evidence_ledger": bool(
+                "/task-runs/{task_id}/ledger" in agent_router_text
+                and "/task-runs/{task_id}/reviews" in agent_router_text
+                and "run.review" in agent_kernel_text
             ),
         }
 

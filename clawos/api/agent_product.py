@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from services.agent_product_kernel import AgentProductKernel, TaskRunContract
 from services.coding_context_service import CodingContextService
+from services.context_ledger import ContextLedgerService
 from services.os_sandbox import WindowsJobSandbox
 from services.task_service import TaskService
 
@@ -27,6 +28,9 @@ def create_agent_product_router(
         if not store:
             raise HTTPException(503, "MemoryOS not initialized")
         return TaskService(store)
+
+    def ledger() -> ContextLedgerService:
+        return ContextLedgerService(service().require_store())
 
     @router.get("/api/agent-product/contracts")
     async def contracts() -> JSONResponse:
@@ -104,7 +108,38 @@ def create_agent_product_router(
                 diagnostics=data.get("diagnostics") or [],
                 token_budget=int(data.get("token_budget") or 12000),
             )
-        return JSONResponse(AgentProductKernel.explain_context(manifest))
+        explanation = AgentProductKernel.explain_context(manifest)
+        if data.get("task_id") is not None:
+            try:
+                explanation["ledger"] = ledger().record_context(
+                    int(data["task_id"]), manifest,
+                    omitted_candidates=data.get("omitted_candidates") or [],
+                    decision_dependencies=(
+                        data.get("decision_dependencies") or []
+                    ),
+                )
+            except ValueError as exc:
+                raise HTTPException(400, str(exc))
+        return JSONResponse(explanation)
+
+    @router.get("/api/agent-product/task-runs/{task_id}/ledger")
+    async def task_evidence_ledger(task_id: int) -> JSONResponse:
+        if not service().detail(task_id):
+            raise HTTPException(404, "task run not found")
+        return JSONResponse(ledger().task_ledger(task_id))
+
+    @router.post("/api/agent-product/task-runs/{task_id}/reviews")
+    async def record_coding_review(
+        task_id: int, request: Request
+    ) -> JSONResponse:
+        if not service().detail(task_id):
+            raise HTTPException(404, "task run not found")
+        try:
+            return JSONResponse(
+                ledger().record_review(task_id, await request.json())
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
 
     @router.get("/api/agent-product/memories/{memory_id}/explain")
     async def explain_memory(memory_id: int) -> JSONResponse:

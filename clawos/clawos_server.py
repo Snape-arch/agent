@@ -4291,6 +4291,190 @@ async def api_learning_goal_create(request: Request):
     return JSONResponse({"goal": goal})
 
 
+def _learning_product():
+    from services.learning_product_service import LearningProductService
+
+    if g_memory_store is None:
+        raise HTTPException(503, "MemoryOS not initialized")
+    return LearningProductService(g_memory_store)
+
+
+@app.get("/api/academy/learning/courses")
+async def api_academy_learning_courses():
+    return JSONResponse({
+        "schema": "clawos.learning-course-list.v1",
+        "courses": _learning_product().list_courses(),
+    })
+
+
+@app.post("/api/academy/learning/courses")
+async def api_academy_create_course(request: Request):
+    data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(400, "confirmed=true is required")
+    try:
+        return JSONResponse(_learning_product().create_course(
+            course_key=str(data.get("course_key") or ""),
+            title=str(data.get("title") or ""),
+            description=str(data.get("description") or ""),
+            topics=list(data.get("topics") or []),
+            created_by=str(data.get("created_by") or "local-user"),
+        ))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/academy/learning/enroll")
+async def api_academy_learning_enroll(request: Request):
+    data = await request.json()
+    courses = _learning_product().list_courses()
+    course_id = int(
+        data.get("course_id")
+        or (courses[0]["id"] if courses else 0)
+    )
+    try:
+        enrollment = _learning_product().enroll(
+            course_id,
+            learner_id=str(data.get("learner_id") or "local-user"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"enrollment": enrollment})
+
+
+@app.get("/api/academy/learning/dashboard")
+async def api_academy_learning_dashboard(learner_id: str = "local-user"):
+    try:
+        return JSONResponse(
+            _learning_product().dashboard(learner_id=learner_id)
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/api/academy/learning/quiz")
+async def api_academy_learning_quiz(learner_id: str = "local-user"):
+    try:
+        return JSONResponse(
+            _learning_product().next_quiz(learner_id=learner_id)
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/academy/learning/questions/{question_id}/answers")
+async def api_academy_learning_answer(question_id: int, request: Request):
+    data = await request.json()
+    try:
+        return JSONResponse(_learning_product().submit_answer(
+            question_id,
+            str(data.get("answer") or ""),
+            learner_id=str(data.get("learner_id") or "local-user"),
+        ))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/api/academy/learning/mistakes")
+async def api_academy_learning_mistakes(
+    learner_id: str = "local-user",
+):
+    return JSONResponse(
+        _learning_product().mistake_queue(learner_id=learner_id)
+    )
+
+
+@app.post("/api/academy/learning/mistakes/{mistake_id}/resolve")
+async def api_academy_resolve_mistake(
+    mistake_id: int, request: Request
+):
+    data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(400, "confirmed=true is required")
+    try:
+        return JSONResponse(_learning_product().resolve_mistake(
+            mistake_id,
+            resolution_evidence=str(
+                data.get("resolution_evidence") or ""
+            ),
+            learner_id=str(data.get("learner_id") or "local-user"),
+        ))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/api/academy/learning/items/{item_id}/explain")
+async def api_academy_explain_mastery(
+    item_id: int, learner_id: str = "local-user",
+):
+    try:
+        return JSONResponse(_learning_product().explain_item(
+            item_id, learner_id=learner_id
+        ))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.post("/api/academy/learning/project-evidence")
+async def api_academy_learning_project_evidence(request: Request):
+    data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(400, "confirmed=true is required")
+    try:
+        return JSONResponse(_learning_product().record_project_evidence(
+            learner_id=str(data.get("learner_id") or "local-user"),
+            item_id=int(data.get("item_id") or 0),
+            task_id=str(data.get("task_id") or ""),
+            artifact_digest=str(data.get("artifact_digest") or ""),
+            evidence_type=str(
+                data.get("evidence_type") or "coding_artifact"
+            ),
+            score=float(data.get("score") or 0),
+            explanation=str(data.get("explanation") or ""),
+        ))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/academy/learning/courses/{course_id}/questions")
+async def api_academy_add_question(course_id: int, request: Request):
+    data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(400, "confirmed=true is required")
+    try:
+        return JSONResponse(_learning_product().add_question(
+            course_id,
+            topic_key=str(data.get("topic_key") or ""),
+            prompt=str(data.get("prompt") or ""),
+            expected_concepts=list(data.get("expected_concepts") or []),
+            cognitive_level=str(
+                data.get("cognitive_level") or "explain"
+            ),
+            difficulty=float(data.get("difficulty") or 0.5),
+            source_ref=str(data.get("source_ref") or ""),
+        ))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/api/academy/learning/courses/{course_id}/publish-validation")
+async def api_academy_course_publish_validation(course_id: int):
+    return JSONResponse(
+        _learning_product().validate_course_for_publish(course_id)
+    )
+
+
+@app.post("/api/academy/learning/courses/{course_id}/publish")
+async def api_academy_publish_course(course_id: int, request: Request):
+    data = await request.json()
+    if data.get("confirmed") is not True:
+        raise HTTPException(400, "confirmed=true is required")
+    try:
+        return JSONResponse(_learning_product().publish_course(course_id))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.get("/api/workspace/learning/goals/{goal_id}")
 async def api_learning_goal_detail(goal_id: int):
     goal = g_workspace_services.get_learning_goal(goal_id)

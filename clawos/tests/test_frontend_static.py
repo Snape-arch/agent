@@ -205,9 +205,23 @@ class FrontendStaticTests(unittest.TestCase):
             "academyQueueKnowledge",
             "academyGenerateQuiz",
             "academyAnswerQuiz",
-            "clawos_academy_completed",
+            "academyLoadLearningDashboard",
+            "/api/academy/learning/dashboard",
+            "/api/academy/learning/quiz",
+            "/api/academy/learning/questions/",
         ):
             self.assertIn(token, academy_js)
+        self.assertNotIn("clawos_academy_completed", academy_js)
+        self.assertNotIn("completed.add(node)", academy_js)
+        for endpoint in (
+            "/api/academy/learning/dashboard",
+            "/api/academy/learning/quiz",
+            "/api/academy/learning/questions/{question_id}/answers",
+            "/api/academy/learning/mistakes",
+            "/api/academy/learning/project-evidence",
+            "/api/academy/learning/courses/{course_id}/publish",
+        ):
+            self.assertIn(endpoint, server)
         for token in (
             ".academy-page",
             ".academy-hero",

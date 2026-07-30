@@ -1,5 +1,34 @@
 # Project Context
 
+## Learning and Agent Product P0-P2 software closure (2026-07-31)
+
+- Academy mastery is now backend-only: browser clicks, knowledge queue actions,
+  and mistake resolution cannot directly point-light a route node.
+- Added a persisted `bkt-fsrs-lite.v1` learner model with probability,
+  stability, difficulty, review timing, evidence minimums, due review, mistake
+  workflow, and per-item mastery explanations.
+- Quiz answers are withheld until submission. Attempts persist rubric/model
+  evidence and low scores create mistakes. The deterministic concept rubric is
+  explicitly not claimed as unrestricted semantic grading.
+- Coding project evidence must bind to a succeeded canonical TaskRun and an
+  artifact SHA-256 already present in its durable evidence; duplicates are
+  idempotent.
+- Added draft course authoring and fail-closed publication checks for sources,
+  question coverage, valid thresholds, known prerequisites, and an acyclic
+  prerequisite graph.
+- Added one TaskRun evidence ledger for context snapshots, omitted candidates,
+  decision dependencies, and digest-bound coding review findings/tests.
+- Preference Ranker, deep Router, Trajectory RL, behavior LoRA, and online RL
+  remain data-gated and inactive. See
+  `clawos/LEARNING_AGENT_PRODUCT_P0_P2.md`.
+- Validation passed: focused learning/frontend/product checks **70/70**, full
+  repository suite **410/410**, Python compilation, frontend JavaScript syntax,
+  and `git diff --check`. Only the existing FastAPI `on_event` and
+  PyMuPDF/SWIG deprecation warnings remain.
+- Next step: collect consented, explicit learner outcomes and reviewer-labeled
+  task trajectories; calibrate the rubric/reward against those labels before
+  enabling a Preference Ranker or evaluating deeper Router/RL/LoRA work.
+
 ## Windows isolation, release identity, and soak hardening (2026-07-31)
 
 - Added a Windows Restricted Token + Low Mandatory Integrity backend probe.

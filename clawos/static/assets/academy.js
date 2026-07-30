@@ -155,7 +155,10 @@ assert report.citation_hit_rate >= 0.85`
 };
 
 const academyState = {
-  completed: new Set(JSON.parse(localStorage.getItem("clawos_academy_completed") || '["foundation"]')),
+  completed: new Set(),
+  mastery: {},
+  learningDashboard: null,
+  activeQuiz: null,
   ingestQueue: JSON.parse(localStorage.getItem("clawos_academy_ingest") || "[]")
 };
 
@@ -181,7 +184,6 @@ const academyPaperState = {
 };
 
 function academySave() {
-  localStorage.setItem("clawos_academy_completed", JSON.stringify([...academyState.completed]));
   localStorage.setItem("clawos_academy_ingest", JSON.stringify(academyState.ingestQueue));
 }
 
@@ -208,10 +210,36 @@ function academyRenderHtml(id, html) {
   if (node) node.innerHTML = html;
 }
 
+async function academyLoadLearningDashboard() {
+  const dashboard = await academyApi("/api/academy/learning/dashboard");
+  academyState.learningDashboard = dashboard;
+  academyState.mastery = Object.fromEntries(
+    (dashboard.topics || []).map(item => [item.topic_key, Number(item.p_known || 0)])
+  );
+  academyState.completed = new Set(
+    (dashboard.topics || []).filter(item => item.mastered).map(item => item.topic_key)
+  );
+  academyRenderLayerGraph(document.querySelector(".academy-layer-node.active")?.dataset.layer);
+  academyRenderProgressNodes();
+  const progress = dashboard.topics?.length
+    ? Math.round((dashboard.mastered_count / dashboard.topics.length) * 100)
+    : 0;
+  academySetText("academyProgress", `${progress}%`);
+  academySetText("academyDueCount", String(dashboard.due_count || 0));
+  academySetText(
+    "academyMasterySummary",
+    `已掌握 ${dashboard.mastered_count || 0}/${dashboard.topics?.length || 0}；证据模型 ${dashboard.topics?.[0]?.algorithm_version || "未初始化"}`
+  );
+  return dashboard;
+}
+
 function academyCompleteNode(key) {
-  academyState.completed.add(key);
-  academySave();
-  academyRenderLayerGraph(document.querySelector(".academy-layer-node.active")?.dataset.layer || key);
+  const item = academyState.learningDashboard?.topics?.find(row => row.topic_key === key);
+  if (item?.mastered) {
+    academySetText("academyProgress", "该节点已有至少两份掌握证据。");
+    return;
+  }
+  window.location.href = "/academy/quiz";
 }
 
 function academyRenderLayerStrip() {
@@ -393,13 +421,9 @@ function academyRenderPaperReport() {
 }
 
 function academyLightPaperGraph(stage = "paper") {
-  ["nlp_llm", "rag", "governance"].forEach(node => academyState.completed.add(node));
-  if (stage === "saved") academyState.completed.add("application");
-  academySave();
-  academyRenderProgressNodes();
   const saved = academyPaperState.savedKnowledgeId ? `知识库条目 #${academyPaperState.savedKnowledgeId}` : "等待保存知识库";
   academyRenderPaperRuntimeStatus();
-  academySetText("academyPaperGraphStatus", `已点亮 NLP/LLM、RAG、Evaluation/Safety 节点；${saved}。`);
+  academySetText("academyPaperGraphStatus", `论文产物阶段：${stage}；${saved}。掌握度需要独立评估或绑定 TaskRun 的项目证据。`);
 }
 
 async function academyRefreshPaperAudit() {
@@ -945,9 +969,6 @@ function academyGeneratePaperRead() {
   const abstract = academyPaperSnippet();
   const target = document.getElementById("paperDeepReadOutput");
   if (!target) return;
-  academyState.completed.add("nlp_llm");
-  academyState.completed.add("rag");
-  academySave();
   const terms = abstract.split(/\W+/).filter(Boolean).slice(0, 10).join(" / ");
   const cards = [
     ["概念与定义", "抽取论文核心对象、变量、任务定义、输入输出边界和评价指标。"],
@@ -1289,8 +1310,6 @@ function academySetupInk() {
 function academyGenerateNote() {
   const input = document.getElementById("academyNoteInput")?.value || "今天学习了一个 AI 概念。";
   const target = document.getElementById("academyNoteOutput");
-  academyState.completed.add("foundation");
-  academySave();
   if (target) {
     target.innerHTML = `<b>Cornell Note</b><p>关键词：${academyEsc(input.slice(0, 56))}</p><p>核心解释：用自己的话重述概念，再写一个例子和一个反例。</p><p>复盘问题：它解决什么问题？依赖什么假设？如何验证？和哪一层图谱相关？</p>`;
   }
@@ -1316,9 +1335,10 @@ function academyRenderCode(topic = "embedding") {
 }
 
 function academyCompleteExperiment() {
-  academyState.completed.add("infra");
-  academyState.completed.add("governance");
-  academySave();
+  academySetText(
+    "academyCodeEvidenceStatus",
+    "本地草稿不会直接改变掌握度。请运行、测试并通过 TaskRun 项目证据入口提交产物摘要。"
+  );
 }
 
 async function academyCopyCode() {
@@ -1329,34 +1349,57 @@ async function academyCopyCode() {
 function academyQueueKnowledge(kind) {
   academyState.ingestQueue.unshift({ kind, time: new Date().toISOString() });
   academyState.ingestQueue = academyState.ingestQueue.slice(0, 5);
-  academyState.completed.add("application");
   academySave();
   const target = document.getElementById("academyIngestStatus");
   if (target) target.textContent = `已加入知识入库队列：${academyState.ingestQueue.map(item => item.kind).join(" / ")}`;
 }
 
-function academyGenerateQuiz() {
-  const questions = [
-    ["RAG 最核心的价值是什么？", "把外部证据引入生成过程", "rag"],
-    ["为什么需要 rerank？", "提升召回候选的最终证据质量", "infra"],
-    ["Agent trace 的作用是什么？", "让规划、工具、产物和门禁可审计", "agent"],
-    ["论文精读最容易漏掉什么？", "历史来源、实验设置和失败样本", "nlp_llm"],
-    ["企业级验收为什么要记录 failure reason？", "让失败可复现、可返工、可治理", "governance"]
-  ];
+async function academyGenerateQuiz() {
   const grid = document.getElementById("academyQuizGrid");
   if (!grid) return;
-  grid.innerHTML = questions.map((item, index) => `<article><b>Q${index + 1}</b><p>${academyEsc(item[0])}</p><button type="button" onclick="academyAnswerQuiz(this, '${academyEsc(item[2])}')">${academyEsc(item[1])}</button></article>`).join("");
+  grid.innerHTML = "<article><p>正在加载到期复习题……</p></article>";
+  try {
+    const quiz = await academyApi("/api/academy/learning/quiz");
+    academyState.activeQuiz = quiz;
+    const question = quiz.question;
+    grid.innerHTML = `<article class="academy-evidence-quiz">
+      <b>${academyEsc(question.cognitive_level)} · 难度 ${academyEsc(question.difficulty)}</b>
+      <p>${academyEsc(question.prompt)}</p>
+      <textarea class="academy-quiz-answer" placeholder="请先作答，再查看评分与缺失概念。至少 24 个字符。"></textarea>
+      <button type="button" onclick="academyAnswerQuiz(this, ${Number(question.id)})">提交掌握证据</button>
+      <small>答案不会在提交前披露；仅持久化评估或项目证据可以改变掌握度。</small>
+    </article>`;
+  } catch (error) {
+    grid.innerHTML = `<article><b>题目暂不可用</b><p>${academyEsc(error.message)}</p></article>`;
+  }
 }
 
-function academyAnswerQuiz(button, node) {
-  button.closest("article")?.classList.add("answered");
-  academyState.completed.add(node);
-  academySave();
+async function academyAnswerQuiz(button, questionId) {
+  const article = button.closest("article");
+  const answer = article?.querySelector(".academy-quiz-answer")?.value || "";
+  button.disabled = true;
+  try {
+    const result = await academyApi(`/api/academy/learning/questions/${questionId}/answers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answer })
+    });
+    article?.classList.add("answered");
+    const missing = result.rubric?.missing_concepts || [];
+    article?.insertAdjacentHTML("beforeend", `<div class="academy-quiz-result">
+      <b>得分 ${Math.round(Number(result.score || 0) * 100)}%</b>
+      <p>${missing.length ? `仍需补充：${academyEsc(missing.join(" / "))}` : "本轮概念覆盖通过。"}</p>
+      <small>下次复习：${Number(result.next_review_days || 1)} 天后；算法 ${academyEsc(result.model_after?.algorithm_version || "")}</small>
+    </div>`);
+    await academyLoadLearningDashboard();
+  } catch (error) {
+    article?.insertAdjacentHTML("beforeend", `<p class="academy-error">${academyEsc(error.message)}</p>`);
+    button.disabled = false;
+  }
 }
 
 function academyResetProgress() {
-  academyState.completed = new Set(["foundation"]);
-  academySave();
+  academySetText("academyProgress", "掌握证据不能在浏览器中重置；请通过学习记录治理入口操作。");
   academyGenerateQuiz();
 }
 
@@ -1364,6 +1407,9 @@ function academyBoot() {
   academyRenderLayerStrip();
   academyRenderLayerGraph();
   academyRenderProgressNodes();
+  academyLoadLearningDashboard().catch(error => {
+    academySetText("academyProgress", `学习后端不可用：${error.message}`);
+  });
   academyRenderCode("embedding");
   academyGenerateQuiz();
   academySetupInk();

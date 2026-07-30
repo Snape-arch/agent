@@ -33,7 +33,8 @@ class TaskRunContract:
     EVENT_TYPES = {
         "run.created", "run.transitioned", "run.progress", "run.approval",
         "run.tool", "run.diff", "run.test", "run.checkpoint",
-        "run.context", "run.policy", "run.failure", "run.completed",
+        "run.context", "run.review", "run.policy", "run.failure",
+        "run.completed",
     }
 
     @classmethod
@@ -119,6 +120,17 @@ class AgentProductKernel:
             "personalization": {
                 "memory_explanation": True,
                 "confirmed_enable_disable": True,
+                "online_rl_claimed": False,
+            },
+            "evidence_ledger": {
+                "context_snapshots": True,
+                "coding_reviews": True,
+                "digest_bound": True,
+            },
+            "education": {
+                "mastery_truth_source": "persisted-evidence-only",
+                "learner_model": "bkt-fsrs-lite.v1",
+                "project_evidence": True,
                 "online_rl_claimed": False,
             },
         }
