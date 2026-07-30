@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -46,11 +47,31 @@ def _write_fixtures(fixtures: list[dict], variables: dict[str, str]) -> None:
             path.write_text(str(fixture.get("content", "")), encoding="utf-8")
 
 
-def _run_tool(tool_name: str, args: dict, variables: dict[str, str] | None = None) -> dict:
+def _run_tool(
+    tool_name: str,
+    args: dict,
+    variables: dict[str, str] | None = None,
+    target_type: str = "",
+    policy: dict | None = None,
+) -> dict:
     from scripts import tool_runner
 
     variables = variables or {}
     started = time.perf_counter()
+    policy = dict(policy or {})
+    if target_type == "tool_routing_policy":
+        allowed = {str(item) for item in policy.get("allowed_tools") or []}
+        denied = {str(item) for item in policy.get("deny_tools") or []}
+        if tool_name in denied or (allowed and tool_name not in allowed):
+            return {
+                "ok": False,
+                "status": "blocked_by_candidate_policy",
+                "tool": tool_name,
+                "arguments": args,
+                "data": None,
+                "error": f"tool blocked by evaluated policy: {tool_name}",
+                "duration_ms": 0,
+            }
     if tool_name not in tool_runner.handlers:
         return {
             "ok": False,
@@ -106,7 +127,15 @@ def main() -> int:
     parser.add_argument("--suite", default=str(DEFAULT_SUITE_FILE))
     parser.add_argument("--db", default="")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--target-type", default="")
+    parser.add_argument("--policy-json", default="{}")
     args = parser.parse_args()
+    try:
+        policy = json.loads(args.policy_json)
+    except json.JSONDecodeError as exc:
+        parser.error(f"--policy-json must contain valid JSON: {exc}")
+    if not isinstance(policy, dict):
+        parser.error("--policy-json must contain a JSON object")
 
     suite = load_suite_file(args.suite)
     temp_dir = tempfile.TemporaryDirectory()
@@ -135,10 +164,29 @@ def main() -> int:
             )
         run = benchmark.run_suite(
             created["id"],
-            lambda tool, tool_args: _run_tool(tool, tool_args, variables),
+            lambda tool, tool_args: _run_tool(
+                tool,
+                tool_args,
+                variables,
+                target_type=args.target_type,
+                policy=policy,
+            ),
             thresholds=suite.get("thresholds") or {},
             created_by="frozen-runner",
         )
+        policy_trace = {
+            "target_type": args.target_type,
+            "policy_digest": hashlib.sha256(
+                json.dumps(policy, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            ).hexdigest(),
+            "materialized": bool(args.target_type),
+            "routing_enforced": args.target_type == "tool_routing_policy",
+            "case_count": len(run.get("case_results") or []),
+        }
+        policy_trace["trace_digest"] = hashlib.sha256(
+            json.dumps(policy_trace, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        run["policy_execution"] = policy_trace
     finally:
         if old_memory_db is None:
             os.environ.pop("CLAWOS_MEMORY_DB", None)

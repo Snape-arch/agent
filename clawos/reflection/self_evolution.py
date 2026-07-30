@@ -18,6 +18,8 @@ class SelfEvolutionManager:
         "core_e2e_benchmark": "core_e2e",
         "retrieval": "retrieval_benchmark",
         "retrieval_benchmark": "retrieval_benchmark",
+        "policy": "policy_materialization",
+        "policy_materialization": "policy_materialization",
     }
     ALLOWED_TARGET_TYPES = {
         "prompt",
@@ -46,8 +48,9 @@ class SelfEvolutionManager:
         "cancel_rate": 0.15,
         "long_task_failure_rate": 0.10,
     }
-    MIN_CANARY_SAMPLES = 3
-    MIN_ACTIVATION_SAMPLES = 5
+    from services.learning_governance import THRESHOLDS
+    MIN_CANARY_SAMPLES = THRESHOLDS.canary_samples
+    MIN_ACTIVATION_SAMPLES = THRESHOLDS.activation_samples
 
     def __init__(self, store, benchmark_runner=None):
         self._store = store
@@ -118,7 +121,7 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         if run.get("status") not in {"shadow", "canary"}:
             raise ValueError("self-evolution run must be in shadow before canary")
-        if self._quality_sample_count(run) < self.MIN_CANARY_SAMPLES:
+        if self._paired_quality_sample_count(run["id"]) < self.MIN_CANARY_SAMPLES:
             raise ValueError(
                 f"canary requires at least {self.MIN_CANARY_SAMPLES} runtime quality samples"
             )
@@ -139,7 +142,7 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         if run.get("status") != "canary":
             raise ValueError("self-evolution run must complete canary before activation")
-        if self._quality_sample_count(run) < self.MIN_ACTIVATION_SAMPLES:
+        if self._paired_quality_sample_count(run["id"]) < self.MIN_ACTIVATION_SAMPLES:
             raise ValueError(
                 f"activation requires at least {self.MIN_ACTIVATION_SAMPLES} runtime quality samples"
             )
@@ -321,14 +324,55 @@ class SelfEvolutionManager:
         retrieval = signals.get("retrieval_hit_rate") or {}
         if retrieval and float(retrieval.get("latest", retrieval.get("average", 1)) or 0) < 0.80:
             return False
+        rows = self._store.list_self_evolution_quality_signals(
+            run["id"], limit=500
+        )
+        grouped = {}
+        for row in rows:
+            variant = str((row.get("metadata") or {}).get("variant") or "")
+            if variant not in {"control", "candidate"}:
+                continue
+            grouped.setdefault(
+                (str(row.get("signal_type") or ""), variant), []
+            ).append(float(row.get("value") or 0))
+        for signal in {
+            key[0] for key in grouped
+            if (key[0], "control") in grouped
+            and (key[0], "candidate") in grouped
+        }:
+            control = sum(grouped[(signal, "control")]) / len(
+                grouped[(signal, "control")]
+            )
+            candidate = sum(grouped[(signal, "candidate")]) / len(
+                grouped[(signal, "candidate")]
+            )
+            if signal in self.QUALITY_LIMITS and candidate > control + 0.02:
+                return False
+            if signal == "retrieval_hit_rate" and candidate < control - 0.02:
+                return False
         return True
 
-    @staticmethod
-    def _quality_sample_count(run):
-        signals = run.get("quality_signals") or {}
-        return max(
-            [int((item or {}).get("count") or 0) for item in signals.values()] or [0]
+    def _quality_sample_count(self, run_id):
+        from services.learning_governance import independent_evidence_ids
+
+        rows = self._store.list_self_evolution_quality_signals(run_id, limit=500)
+        return len(independent_evidence_ids(rows))
+
+    def _paired_quality_sample_count(self, run_id):
+        from services.learning_governance import independent_evidence_ids
+
+        rows = self._store.list_self_evolution_quality_signals(
+            run_id, limit=500
         )
+        control = independent_evidence_ids(
+            row for row in rows
+            if (row.get("metadata") or {}).get("variant") == "control"
+        )
+        candidate = independent_evidence_ids(
+            row for row in rows
+            if (row.get("metadata") or {}).get("variant") == "candidate"
+        )
+        return len(control & candidate)
 
     def _require(self, run_id):
         run = self._store.get_self_evolution_run(run_id)
@@ -353,7 +397,7 @@ class SelfEvolutionManager:
         normalized = {}
         for raw_name, result in (benchmarks or {}).items():
             name = cls.BENCHMARK_ALIASES.get(str(raw_name), str(raw_name))
-            if name in cls.REQUIRED_BENCHMARKS and isinstance(result, dict):
+            if name in {*cls.REQUIRED_BENCHMARKS, "policy_materialization"} and isinstance(result, dict):
                 normalized[name] = {
                     "baseline": cls._extract_metrics(result.get("baseline", {})),
                     "candidate": cls._extract_metrics(result.get("candidate", {})),
@@ -365,6 +409,10 @@ class SelfEvolutionManager:
     def _evaluate_gate(cls, benchmarks):
         checks = []
         missing = [name for name in cls.REQUIRED_BENCHMARKS if name not in benchmarks]
+        causal_required = any(
+            "baseline_materialized" in ((benchmarks.get(name) or {}).get("metadata") or {})
+            for name in cls.REQUIRED_BENCHMARKS
+        )
         for name in cls.REQUIRED_BENCHMARKS:
             item = benchmarks.get(name) or {}
             baseline = item.get("baseline") or {}
@@ -381,6 +429,35 @@ class SelfEvolutionManager:
                     missing.append(name)
                 continue
             checks.extend(cls._compare_suite(name, baseline, candidate))
+
+        if causal_required:
+            policy = benchmarks.get("policy_materialization") or {}
+            metadata = policy.get("metadata") or {}
+            materialized = bool(
+                metadata.get("baseline_materialized")
+                and metadata.get("candidate_materialized")
+                and metadata.get("baseline_execution_digest")
+                and metadata.get("candidate_execution_digest")
+            )
+            changed = bool(metadata.get("causal_effect_observed"))
+            if not materialized:
+                missing.append("policy_materialization")
+            checks.append({
+                "benchmark": "policy_materialization",
+                "metric": "candidate_materialized",
+                "direction": "required_true",
+                "baseline": bool(metadata.get("baseline_materialized")),
+                "candidate": bool(metadata.get("candidate_materialized")),
+                "passed": materialized,
+            })
+            checks.append({
+                "benchmark": "policy_materialization",
+                "metric": "causal_effect_observed",
+                "direction": "required_true",
+                "baseline": metadata.get("baseline_execution_digest", ""),
+                "candidate": metadata.get("candidate_execution_digest", ""),
+                "passed": changed,
+            })
 
         passed = not missing and bool(checks) and all(check["passed"] for check in checks)
         return {

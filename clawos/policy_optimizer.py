@@ -117,7 +117,7 @@ class PolicyOptimizer:
         return selection
 
     def reward(
-        self, selection_id, success, satisfaction=0.5,
+        self, selection_id, success, satisfaction=None,
         latency_ms=0, resource_cost=0, latency_budget_ms=1000,
         evidence=None,
     ):
@@ -213,11 +213,12 @@ class PolicyOptimizer:
     def stats(self, group_name):
         return self._store.policy_group_stats(group_name)
 
-    def promote(self, group_name, target_type, target_key, min_pulls=5, actor_id="system"):
+    def promote(self, group_name, target_type, target_key, min_pulls=30, actor_id="system"):
+        from services.learning_governance import THRESHOLDS
         stats = self.stats(group_name)
         if not stats:
             raise ValueError("policy group not found")
-        required_pulls = max(5, int(min_pulls))
+        required_pulls = max(THRESHOLDS.activation_samples, int(min_pulls))
         eligible = [
             arm for arm in stats["arms"]
             if arm["status"] == "active" and int(arm["pull_count"]) >= required_pulls

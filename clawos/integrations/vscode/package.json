@@ -1,0 +1,27 @@
+{
+  "name": "clawos-coding",
+  "displayName": "ClawOS Coding",
+  "description": "Send trusted VS Code context to the local ClawOS coding agent.",
+  "version": "0.1.0",
+  "engines": {"vscode": "^1.85.0"},
+  "main": "./extension.js",
+  "activationEvents": [
+    "onCommand:clawos.inspectContext",
+    "onCommand:clawos.runCodingTask"
+  ],
+  "contributes": {
+    "commands": [
+      {"command": "clawos.inspectContext", "title": "ClawOS: Inspect Context"},
+      {"command": "clawos.runCodingTask", "title": "ClawOS: Run Coding Task"}
+    ],
+    "configuration": {
+      "title": "ClawOS",
+      "properties": {
+        "clawos.baseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:18790"
+        }
+      }
+    }
+  }
+}

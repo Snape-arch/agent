@@ -2,22 +2,28 @@
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 from .memory_store import MemoryStore
 from .services.ingestion import IngestionService
 from .services.retrieval import RetrievalService
 from .services.evaluation import EvaluationService
+from .services.management import ManagementService
 
 
 class ContextBuilder:
     """Build contextual system prompt from full MemoryOS pipeline."""
 
-    def __init__(self, store: MemoryStore, vector_store=None, reranker=None):
+    def __init__(
+        self, store: MemoryStore, vector_store=None, reranker=None,
+        coding_context_service=None,
+    ):
         self._store = store
         self._ingestion = IngestionService(store)
         self._retrieval = RetrievalService(store, vector_store, reranker=reranker)
         self._evaluation = EvaluationService(store)
+        self._coding_context = coding_context_service
 
     def build_system_prompt(self, session_id: str, prompt_policy: dict | None = None) -> str:
         """Construct system prompt enriched with 7 memory types and retrieved knowledge."""
@@ -125,8 +131,20 @@ class ContextBuilder:
         max_history: int = 12,
         prompt_policy: dict | None = None,
         retrieval_policy: dict | None = None,
+        repo_path: str = "",
+        focus_paths: list[str] | None = None,
+        diagnostics: list[dict[str, Any]] | None = None,
+        coding_token_budget: int = 12000,
+        total_token_budget: int = 32000,
     ) -> list[dict[str, Any]]:
         """Build messages array with full memory pipeline: profile + knowledge + retrieval + history."""
+        message_count = len(
+            self._store.get_session_messages(session_id, limit=101)
+        )
+        if message_count > max(40, max_history * 4):
+            ManagementService(self._store).compact_conversation(
+                session_id, keep_recent=max(20, max_history * 2)
+            )
         system = self.build_system_prompt(session_id, prompt_policy=prompt_policy)
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
 
@@ -139,6 +157,41 @@ class ContextBuilder:
                 "content": retrieved + "\nUse only relevant records. Ignore stale or unrelated memory.",
             })
 
+        resolved_repo = self._resolve_repo(repo_path, focus_paths or [])
+        if resolved_repo:
+            try:
+                service = self._coding_context
+                if service is None:
+                    from services.coding_context_service import CodingContextService
+                    service = CodingContextService()
+                    self._coding_context = service
+                context_pack = service.build(
+                    resolved_repo,
+                    user_text,
+                    focus_paths=focus_paths,
+                    diagnostics=diagnostics,
+                    token_budget=coding_token_budget,
+                )
+                messages.append({
+                    "role": "system",
+                    "content": service.render_for_prompt(context_pack),
+                    "clawos_context": {
+                        "schema": context_pack.get("schema"),
+                        "digest": context_pack.get("context_digest"),
+                        "repo": context_pack.get("repo"),
+                        "budget": context_pack.get("budget"),
+                    },
+                })
+            except (OSError, RuntimeError, ValueError) as exc:
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "[ClawOS repository context unavailable]\n"
+                        f"{type(exc).__name__}: {exc}\n"
+                        "Do not assume repository state that was not provided."
+                    ),
+                })
+
         # Inject conversation history
         history = self._store.get_recent_messages(session_id, max_history * 2)
         history = [m for m in history if m["role"] in ("user", "assistant")]
@@ -149,8 +202,49 @@ class ContextBuilder:
             messages.append({"role": m["role"], "content": m.get("content", "")[:4000]})
 
         messages.append({"role": "user", "content": user_text})
-        return messages
+        return self._fit_global_budget(messages, total_token_budget)
 
     def retrieve(self, query: str, top_k: int = 5) -> list[dict]:
         """Run the full retrieval pipeline."""
         return self._retrieval.retrieve(query, top_k)
+
+    @staticmethod
+    def _resolve_repo(repo_path: str, focus_paths: list[str]) -> str:
+        candidates = [repo_path, *focus_paths]
+        for raw in candidates:
+            if not raw:
+                continue
+            path = Path(raw).expanduser().resolve()
+            if path.is_file():
+                path = path.parent
+            for candidate in (path, *path.parents):
+                if (candidate / ".git").exists():
+                    return str(candidate)
+        return ""
+
+    @staticmethod
+    def _fit_global_budget(
+        messages: list[dict[str, Any]], token_budget: int
+    ) -> list[dict[str, Any]]:
+        # Conservative four characters per token. Preserve the current user
+        # request and trim oldest non-system history before trusted context.
+        limit = max(4_000, min(int(token_budget), 128_000)) * 4
+        result = [dict(item) for item in messages]
+        while sum(len(str(item.get("content") or "")) for item in result) > limit:
+            removable = next(
+                (index for index, item in enumerate(result[1:-1], 1)
+                 if item.get("role") != "system"),
+                None,
+            )
+            if removable is not None:
+                result.pop(removable)
+                continue
+            longest = max(
+                range(len(result) - 1),
+                key=lambda index: len(str(result[index].get("content") or "")),
+            )
+            content = str(result[longest].get("content") or "")
+            if len(content) <= 1000:
+                break
+            result[longest]["content"] = content[: max(1000, len(content) // 2)]
+        return result

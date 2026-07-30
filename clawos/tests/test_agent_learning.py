@@ -130,7 +130,7 @@ class AgentLearningTests(unittest.TestCase):
                 ],
                 exploration_rate=1,
             )
-            for index in range(30):
+            for index in range(150):
                 task = tasks.create(
                     f"session-{index}",
                     f"Research task {index}",
@@ -159,10 +159,10 @@ class AgentLearningTests(unittest.TestCase):
 
             network = AgentSkillPolicyNetwork(store, feature_dim=64, epochs=80)
             candidate = network.train(
-                "routing:research", min_examples=20, trained_by="test"
+                "routing:research", min_examples=30, trained_by="test"
             )
             evaluated = TrajectoryCritic(store).evaluate(
-                candidate["id"], min_samples=5, regression_tolerance=0.1
+                candidate["id"], min_samples=30, regression_tolerance=0.1
             )
             with self.assertRaisesRegex(ValueError, "confirmed=true"):
                 TrajectoryCritic(store).activate(candidate["id"], confirmed=False)
@@ -203,7 +203,21 @@ class AgentLearningTests(unittest.TestCase):
             )
 
         self.assertEqual(candidate["status"], "candidate")
+        self.assertTrue(candidate["training_metrics"]["group_disjoint_holdout"])
+        self.assertEqual(candidate["training_metrics"]["holdout_count"], 30)
+        self.assertTrue(
+            set(candidate["weights"]["training_example_ids"]).isdisjoint(
+                candidate["weights"]["holdout_example_ids"]
+            )
+        )
         self.assertTrue(evaluated["evaluation_metrics"]["passed"])
+        self.assertTrue(
+            evaluated["evaluation_metrics"]["group_disjoint_holdout"]
+        )
+        self.assertEqual(
+            evaluated["evaluation_metrics"]["independent_reward_model"],
+            "training_arm_mean_v1",
+        )
         self.assertEqual(evaluated["status"], "shadow")
         self.assertEqual(active["status"], "active")
         self.assertEqual(
@@ -233,7 +247,7 @@ class AgentLearningTests(unittest.TestCase):
                 payload={"workflow": "unsafe"},
             )
             group = store.upsert_policy_group("routing:general", exploration_rate=0)
-            for index in range(10):
+            for index in range(150):
                 task = tasks.create(
                     f"unsafe-{index}", "Unsafe candidate",
                     metadata={"scenario": "general"},
@@ -265,9 +279,9 @@ class AgentLearningTests(unittest.TestCase):
                 tasks.finish(task["id"], "succeeded")
             candidate = AgentSkillPolicyNetwork(
                 store, feature_dim=32
-            ).train("routing:general", min_examples=8)
+            ).train("routing:general", min_examples=30)
             evaluated = TrajectoryCritic(store).evaluate(
-                candidate["id"], min_samples=2
+                candidate["id"], min_samples=30
             )
 
         self.assertFalse(evaluated["evaluation_metrics"]["passed"])

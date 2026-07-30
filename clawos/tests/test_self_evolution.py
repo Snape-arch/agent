@@ -70,17 +70,20 @@ class SelfEvolutionTests(unittest.TestCase):
             )
             evaluated = manager.evaluate(run["id"])
             shadow = manager.start_shadow(run["id"])
-            for _ in range(3):
+            for sample in range(30):
                 for signal in ("user_retry_rate", "cancel_rate", "long_task_failure_rate"):
-                    shadow = manager.record_quality_signal(
-                        shadow["id"], signal, 0.02, created_by="test"
-                    )
+                    for variant, value in (("control", 0.03), ("candidate", 0.02)):
+                        shadow = manager.record_quality_signal(
+                            shadow["id"], signal, value,
+                            metadata={
+                                "task_id": sample + 1,
+                                "session_id": f"shadow-{sample}",
+                                "repository_id": "repo-a",
+                                "variant": variant,
+                            },
+                            created_by="test",
+                        )
             canary = manager.promote_canary(shadow["id"], traffic_percent=10)
-            for _ in range(2):
-                for signal in ("user_retry_rate", "cancel_rate", "long_task_failure_rate"):
-                    canary = manager.record_quality_signal(
-                        canary["id"], signal, 0.02, created_by="test"
-                    )
             published = manager.activate(canary["id"], actor_id="self-evolution")
             active = store.get_runtime_policy("retrieval_params", "default")
 
@@ -95,6 +98,27 @@ class SelfEvolutionTests(unittest.TestCase):
         self.assertEqual(published["release_stage"], "active")
         self.assertEqual(active["payload"], {"top_k": 30, "rerank_top_k": 5})
         self.assertTrue(published["rollback_payload"]["existed"])
+
+    def test_repeated_aggregate_snapshot_does_not_count_as_independent_evidence(self):
+        from memoryos.memory_store import MemoryStore
+        from reflection.self_evolution import SelfEvolutionManager
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            manager = SelfEvolutionManager(store)
+            run = manager.create_run(
+                "prompt_policy", "default", {"prompt": "a"}, {"prompt": "b"},
+                benchmarks=self._benchmarks(),
+            )
+            manager.evaluate(run["id"])
+            manager.start_shadow(run["id"])
+            for _ in range(40):
+                manager.record_quality_signal(
+                    run["id"], "user_retry_rate", 0.01,
+                    metadata={"source": "same aggregate snapshot"},
+                )
+            with self.assertRaisesRegex(ValueError, "30 runtime quality"):
+                manager.promote_canary(run["id"])
 
     def test_candidate_generator_covers_low_risk_targets(self):
         from reflection.self_evolution import SelfEvolutionManager

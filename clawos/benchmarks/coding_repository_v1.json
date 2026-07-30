@@ -1,0 +1,32 @@
+{
+  "schema": "clawos.coding-repository-benchmark.v1",
+  "name": "ClawOS real repository coding context v1",
+  "truth_boundary": "Measures repository-context acquisition, not model patch quality.",
+  "thresholds": {
+    "pass_rate": 0.9,
+    "mrr": 0.25,
+    "p95_latency_ms": 5000
+  },
+  "cases": [
+    {"id": "evolution-runtime", "objective": "fix self evolution runtime policy materialization benchmark", "expected_path": "clawos/reflection/evolution_runtime.py"},
+    {"id": "evolution-gate", "objective": "change self evolution shadow canary activation gate", "expected_path": "clawos/reflection/self_evolution.py"},
+    {"id": "trajectory-learning", "objective": "improve agent learning trajectory reward preference ranker agent policy", "expected_path": "clawos/agent_learning.py"},
+    {"id": "policy-optimizer", "objective": "debug contextual UCB policy optimizer arm selection", "expected_path": "clawos/policy_optimizer.py"},
+    {"id": "coding-workflow", "objective": "repair coding workflow checkpoint patch test rollback", "expected_path": "clawos/services/coding_workflow_service.py"},
+    {"id": "coding-context", "objective": "improve coding context token budget repository symbols diagnostics", "expected_path": "clawos/services/coding_context_service.py"},
+    {"id": "coding-worktree", "objective": "add isolated git worktree scoped commit", "expected_path": "clawos/services/coding_workspace_service.py"},
+    {"id": "offline-ope", "objective": "fix robust off policy IPS SNIPS doubly robust bootstrap", "expected_path": "clawos/services/advanced_policy_learning.py"},
+    {"id": "execution-governance", "objective": "enforce execution identity budget lifecycle hooks", "expected_path": "clawos/services/execution_governance.py"},
+    {"id": "security-policy", "objective": "restrict network egress host and shell command policy", "expected_path": "clawos/security/policy.py"},
+    {"id": "memory-context", "objective": "fix memoryos context builder memory retrieval conversation system prompt", "expected_path": "clawos/memoryos/context_builder.py"},
+    {"id": "task-runtime", "objective": "fix task retry cancellation resume terminal status", "expected_path": "clawos/services/task_service.py"},
+    {"id": "runtime-record", "objective": "add runtime records run record artifact evidence failure case", "expected_path": "clawos/services/runtime_records.py"},
+    {"id": "competition-readiness", "objective": "validate competition hardware evidence software readiness", "expected_path": "clawos/competition_readiness.py"},
+    {"id": "mtclaw-adapter", "objective": "debug MTClaw function router provider trace adapter", "expected_path": "clawos/mtclaw/adapter.py"},
+    {"id": "feishu-connector", "objective": "fix Feishu approval dispatch connector workflow", "expected_path": "clawos/services/feishu/connector_service.py"},
+    {"id": "paper-intelligence", "objective": "improve paper intelligence service claim citation comparison readiness", "expected_path": "clawos/services/paper_intelligence_service.py"},
+    {"id": "office-workflow", "objective": "repair office productivity document spreadsheet presentation workflow", "expected_path": "clawos/services/office_productivity_service.py"},
+    {"id": "skill-evolution", "objective": "audit skill evolution canary signing rollback", "expected_path": "clawos/skills/skill_evolution.py"},
+    {"id": "scenario-benchmark", "objective": "update frozen scenario benchmark pass rate latency", "expected_path": "clawos/scenario_benchmarks.py"}
+  ]
+}
