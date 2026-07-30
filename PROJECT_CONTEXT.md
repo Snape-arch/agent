@@ -1,5 +1,37 @@
 # Project Context
 
+## Agent Product P0-P2 software closure (2026-07-30)
+
+- Added the canonical `clawos.task-run.v2` state/event protocol across API,
+  existing task streaming, workers, and the VS Code source integration.
+  Transitions are fail-closed; terminal runs cannot silently resume; checkpoint
+  URI/digest evidence is included in a replayable event graph.
+- The VS Code MVP now creates and updates the canonical run, opens native Git
+  changes, retains the last result, supports explicit checkpoint rewind, and
+  records cancellation/failure rather than leaving a hidden running task.
+- Expanded deterministic lifecycle governance to `clawos.agent-hooks.v2` with
+  matcher, scope, handler type, and task/subagent/worktree/checkpoint/compact
+  events. Existing synchronous enforcement remains compatible.
+- Added default-deny plugin manifest validation, a capability-aware Agent SDK
+  registry, multi-agent graph/worktree validation, and a least-privilege
+  sandbox plan. The sandbox truth boundary fixes `os_enforced=false` until a
+  real OS backend probe passes.
+- Added context and memory explanations, explicit confirmed memory enable/
+  disable controls, and modular `/api/agent-product/*` contracts. Product
+  Readiness now detects the unified protocol, Hook v2, SDK, safety truth
+  boundary, explainability, and IDE change/rewind loop.
+- Validation: 32 focused tests passed; full regression passed **396 tests** with
+  0 failures. Python compilation and bundled-Node VS Code syntax validation
+  passed. Only pre-existing FastAPI `on_event` and PyMuPDF/SWIG deprecation
+  warnings remain.
+- Truth boundary: this is software-contract closure only. Signed VSIX,
+  production OS sandbox enforcement, real-user/repository lift, target
+  hardware, advanced Router/Trajectory RL/LoRA promotion, and online RL are not
+  claimed. See `clawos/AGENT_PRODUCT_P0_P2.md`.
+- Next step: implement and probe Windows/Linux OS sandbox backends, package/sign
+  the VS Code extension, then run long-lived real-repository TaskRun recovery
+  acceptance without relaxing any learning or product evidence gate.
+
 ## Product maturity P0-P2 software closure (2026-07-30)
 
 - Real coding A/B evidence now has a strict JSON contract: unique blinded

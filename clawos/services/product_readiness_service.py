@@ -122,8 +122,16 @@ class ProductReadinessService:
         extension = self.root / "clawos" / "integrations" / "vscode" / "extension.js"
         package = self.root / "clawos" / "integrations" / "vscode" / "package.json"
         router = self.root / "clawos" / "api" / "product_readiness.py"
+        agent_router = self.root / "clawos" / "api" / "agent_product.py"
+        agent_kernel = (
+            self.root / "clawos" / "services" / "agent_product_kernel.py"
+        )
+        agent_sdk = self.root / "clawos" / "services" / "agent_sdk.py"
         workflow_text = self._read(workflow)
         extension_text = self._read(extension)
+        agent_router_text = self._read(agent_router)
+        agent_kernel_text = self._read(agent_kernel)
+        agent_sdk_text = self._read(agent_sdk)
         package_value = self._json(package)
         return {
             "hosted_ci_contract": bool(
@@ -149,6 +157,39 @@ class ProductReadinessService:
                 == "node --check extension.js"
             ),
             "modular_readiness_api": router.is_file(),
+            "unified_task_run_protocol": bool(
+                "clawos.task-run.v2" in agent_kernel_text
+                and "/api/agent-product/task-runs" in agent_router_text
+                and "transition_task" in agent_router_text
+            ),
+            "event_hook_v2": bool(
+                "clawos.agent-hooks.v2" in self._read(
+                    self.root / "clawos" / "services"
+                    / "execution_governance.py"
+                )
+                and "checkpoint_created" in self._read(
+                    self.root / "clawos" / "services"
+                    / "execution_governance.py"
+                )
+            ),
+            "capability_aware_sdk": bool(
+                "clawos.agent-sdk.v1" in agent_sdk_text
+                and "granted_capabilities" in agent_sdk_text
+            ),
+            "sandbox_plan_truth_boundary": bool(
+                "os_enforced" in agent_kernel_text
+                and "remains unclaimed" in agent_kernel_text
+            ),
+            "context_memory_explainability": bool(
+                "/api/agent-product/context/explain" in agent_router_text
+                and "/explain" in agent_router_text
+                and "confirmed=true is required" in agent_router_text
+            ),
+            "ide_native_change_rewind": bool(
+                "git.openChange" in extension_text
+                and "clawos.rewindLastTask" in extension_text
+                and "checkpoint_restored" in extension_text
+            ),
         }
 
     @staticmethod

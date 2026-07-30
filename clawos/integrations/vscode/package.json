@@ -10,12 +10,16 @@
   "main": "./extension.js",
   "activationEvents": [
     "onCommand:clawos.inspectContext",
-    "onCommand:clawos.runCodingTask"
+    "onCommand:clawos.runCodingTask",
+    "onCommand:clawos.showLastChanges",
+    "onCommand:clawos.rewindLastTask"
   ],
   "contributes": {
     "commands": [
       {"command": "clawos.inspectContext", "title": "ClawOS: Inspect Context"},
-      {"command": "clawos.runCodingTask", "title": "ClawOS: Run Coding Task"}
+      {"command": "clawos.runCodingTask", "title": "ClawOS: Run Coding Task"},
+      {"command": "clawos.showLastChanges", "title": "ClawOS: Show Last Changes"},
+      {"command": "clawos.rewindLastTask", "title": "ClawOS: Rewind Last Task"}
     ],
     "configuration": {
       "title": "ClawOS",

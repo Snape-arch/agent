@@ -1290,6 +1290,81 @@ class MemoryStore:
             row = c.execute("SELECT * FROM task_events WHERE id=?", (int(cursor.lastrowid),)).fetchone()
             return self._event_row_to_dict(row)
 
+    def transition_task(
+        self, task_id, status, actor_id="system", reason="", checkpoint=None
+    ):
+        """Apply the canonical TaskRun state machine and persist one audit event."""
+
+        from services.agent_product_kernel import TaskRunContract
+
+        target = str(status or "").strip()
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT * FROM tasks WHERE id=?", (int(task_id),)
+            ).fetchone()
+            if not row:
+                return {}
+            current = str(row["status"] or "created")
+            TaskRunContract.validate_transition(current, target)
+            metadata = self._json_loads(row["metadata"], {})
+            checkpoint = dict(checkpoint or {})
+            if checkpoint:
+                if not checkpoint.get("uri") or not checkpoint.get("digest"):
+                    raise ValueError("checkpoint requires uri and digest")
+                metadata["latest_checkpoint"] = checkpoint
+            terminal = target in TaskRunContract.TERMINAL
+            cancellation_requested = int(target == "cancel_requested")
+            completed = "datetime('now')" if terminal else "completed_at"
+            c.execute(
+                f"""
+                UPDATE tasks
+                SET status=?, metadata=?, cancellation_requested=?,
+                    completed_at={completed},
+                    resume_state=?
+                WHERE id=?
+                """,
+                (
+                    target,
+                    json.dumps(metadata, ensure_ascii=False),
+                    cancellation_requested,
+                    "checkpoint_available" if checkpoint else target,
+                    int(task_id),
+                ),
+            )
+            if checkpoint:
+                c.execute(
+                    """
+                    INSERT INTO task_events (task_id, event_type, message, data)
+                    VALUES (?, 'run.checkpoint', ?, ?)
+                    """,
+                    (
+                        int(task_id), "Checkpoint attached to task run",
+                        json.dumps({
+                            "actor_id": str(actor_id or "system"),
+                            "checkpoint": checkpoint,
+                        }, ensure_ascii=False),
+                    ),
+                )
+            event_type = "run.completed" if terminal else "run.transitioned"
+            c.execute(
+                """
+                INSERT INTO task_events (task_id, event_type, message, data)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    int(task_id), event_type, reason or f"{current} -> {target}",
+                    json.dumps({
+                        "from": current, "to": target,
+                        "actor_id": str(actor_id or "system"),
+                        "checkpoint": checkpoint,
+                    }, ensure_ascii=False),
+                ),
+            )
+            updated = c.execute(
+                "SELECT * FROM tasks WHERE id=?", (int(task_id),)
+            ).fetchone()
+            return self._task_row_to_dict(updated)
+
     def list_tasks(self, session_id="", status="", limit=50):
         with self._conn() as c:
             limit = max(1, min(int(limit or 50), 200))

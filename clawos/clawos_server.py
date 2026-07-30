@@ -3202,6 +3202,13 @@ app.include_router(create_product_readiness_router(
     hardware_provider=_competition_hardware_evidence,
 ))
 
+from api.agent_product import create_agent_product_router
+
+app.include_router(create_agent_product_router(
+    lambda: g_memory_store,
+    BASE_DIR.parent,
+))
+
 
 def _competition_readiness_snapshot() -> dict[str, Any]:
     from competition_readiness import CompetitionReadinessService
