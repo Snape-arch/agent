@@ -15,6 +15,8 @@ from .paper_intelligence_service import PaperIntelligenceService, ScholarlySearc
 from .coding_workflow_service import CodingWorkflowService
 from .coding_context_service import CodingContextService
 from .coding_workspace_service import CodingWorkspaceService
+from .agentic_coding_loop_service import AgenticCodingLoopService
+from .lsp_bridge_service import LanguageServerBridge, LanguageServerManager
 from .advanced_policy_learning import (
     CounterfactualTraceAudit,
     OfflinePolicySandbox,
@@ -49,6 +51,9 @@ __all__ = [
     "CodingWorkflowService",
     "CodingContextService",
     "CodingWorkspaceService",
+    "AgenticCodingLoopService",
+    "LanguageServerBridge",
+    "LanguageServerManager",
     "CounterfactualTraceAudit",
     "RobustOffPolicyEvaluator",
     "TrajectoryPreferenceRanker",

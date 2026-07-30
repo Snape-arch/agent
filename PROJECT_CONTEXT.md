@@ -1,5 +1,33 @@
 # Project Context
 
+## Coding Agent Competitive P0-P2 closure (2026-07-30)
+
+- Production autonomous coding now uses a bounded multi-turn
+  observe/action/edit/test/review loop and requires task/session identity.
+  Context, model, tool, edit, test, review, and recoverable-failure steps are
+  persisted in atomic, digest-bound trajectories.
+- Context governance now auto-compacts long sessions and supports path-scoped
+  `.clawos/rules` and `.claude/rules` alongside `AGENTS.md`/`CLAUDE.md`.
+- LSP sessions are persistent per repo/command and cover symbols, definition,
+  references, hover, rename, diagnostics, and document synchronization.
+  Headless text/JSON/stream-JSON and a source-level VS Code MVP are present.
+- Router training and evaluation use persisted repository/task/session
+  group-disjoint splits. The critic evaluates only holdout IDs with a
+  training-only outcome estimate. Self-evolution requires 30 paired,
+  independent control/candidate identities before promotion.
+- Trusted review evidence now requires the server-side HMAC key. Coding
+  readiness gained exact evidence mappings for trace wiring, signatures,
+  agentic loop, persistent LSP, IDE/headless entry, scoped rules, disjoint
+  evaluation, and paired canary control.
+- Focused competitive/RL/self-evolution regression: **35/35 passed**. Root
+  full regression: **381 passed, 1 skipped, 0 failed**. Python compilation,
+  bundled-Node JavaScript syntax, and `git diff --check` passed.
+- Truth boundary: this is a software closure only. Real trajectories,
+  preference pairs, model lift, target-hardware/OS sandbox validation, packaged
+  VS Code distribution, online RL, deep Router, Trajectory RL, and behavior
+  LoRA are not claimed. See
+  `clawos/CODING_AGENT_COMPETITIVE_CLOSURE_P0_P2.md`.
+
 ## Coding Agent Trust P0-P2 closure (2026-07-30)
 
 - Release evidence is now commit-bound and reproducible: a dirty worktree is

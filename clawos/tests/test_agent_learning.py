@@ -130,7 +130,7 @@ class AgentLearningTests(unittest.TestCase):
                 ],
                 exploration_rate=1,
             )
-            for index in range(30):
+            for index in range(150):
                 task = tasks.create(
                     f"session-{index}",
                     f"Research task {index}",
@@ -203,7 +203,21 @@ class AgentLearningTests(unittest.TestCase):
             )
 
         self.assertEqual(candidate["status"], "candidate")
+        self.assertTrue(candidate["training_metrics"]["group_disjoint_holdout"])
+        self.assertEqual(candidate["training_metrics"]["holdout_count"], 30)
+        self.assertTrue(
+            set(candidate["weights"]["training_example_ids"]).isdisjoint(
+                candidate["weights"]["holdout_example_ids"]
+            )
+        )
         self.assertTrue(evaluated["evaluation_metrics"]["passed"])
+        self.assertTrue(
+            evaluated["evaluation_metrics"]["group_disjoint_holdout"]
+        )
+        self.assertEqual(
+            evaluated["evaluation_metrics"]["independent_reward_model"],
+            "training_arm_mean_v1",
+        )
         self.assertEqual(evaluated["status"], "shadow")
         self.assertEqual(active["status"], "active")
         self.assertEqual(
@@ -233,7 +247,7 @@ class AgentLearningTests(unittest.TestCase):
                 payload={"workflow": "unsafe"},
             )
             group = store.upsert_policy_group("routing:general", exploration_rate=0)
-            for index in range(30):
+            for index in range(150):
                 task = tasks.create(
                     f"unsafe-{index}", "Unsafe candidate",
                     metadata={"scenario": "general"},

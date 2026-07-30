@@ -121,7 +121,7 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         if run.get("status") not in {"shadow", "canary"}:
             raise ValueError("self-evolution run must be in shadow before canary")
-        if self._quality_sample_count(run["id"]) < self.MIN_CANARY_SAMPLES:
+        if self._paired_quality_sample_count(run["id"]) < self.MIN_CANARY_SAMPLES:
             raise ValueError(
                 f"canary requires at least {self.MIN_CANARY_SAMPLES} runtime quality samples"
             )
@@ -142,7 +142,7 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         if run.get("status") != "canary":
             raise ValueError("self-evolution run must complete canary before activation")
-        if self._quality_sample_count(run["id"]) < self.MIN_ACTIVATION_SAMPLES:
+        if self._paired_quality_sample_count(run["id"]) < self.MIN_ACTIVATION_SAMPLES:
             raise ValueError(
                 f"activation requires at least {self.MIN_ACTIVATION_SAMPLES} runtime quality samples"
             )
@@ -324,6 +324,32 @@ class SelfEvolutionManager:
         retrieval = signals.get("retrieval_hit_rate") or {}
         if retrieval and float(retrieval.get("latest", retrieval.get("average", 1)) or 0) < 0.80:
             return False
+        rows = self._store.list_self_evolution_quality_signals(
+            run["id"], limit=500
+        )
+        grouped = {}
+        for row in rows:
+            variant = str((row.get("metadata") or {}).get("variant") or "")
+            if variant not in {"control", "candidate"}:
+                continue
+            grouped.setdefault(
+                (str(row.get("signal_type") or ""), variant), []
+            ).append(float(row.get("value") or 0))
+        for signal in {
+            key[0] for key in grouped
+            if (key[0], "control") in grouped
+            and (key[0], "candidate") in grouped
+        }:
+            control = sum(grouped[(signal, "control")]) / len(
+                grouped[(signal, "control")]
+            )
+            candidate = sum(grouped[(signal, "candidate")]) / len(
+                grouped[(signal, "candidate")]
+            )
+            if signal in self.QUALITY_LIMITS and candidate > control + 0.02:
+                return False
+            if signal == "retrieval_hit_rate" and candidate < control - 0.02:
+                return False
         return True
 
     def _quality_sample_count(self, run_id):
@@ -331,6 +357,22 @@ class SelfEvolutionManager:
 
         rows = self._store.list_self_evolution_quality_signals(run_id, limit=500)
         return len(independent_evidence_ids(rows))
+
+    def _paired_quality_sample_count(self, run_id):
+        from services.learning_governance import independent_evidence_ids
+
+        rows = self._store.list_self_evolution_quality_signals(
+            run_id, limit=500
+        )
+        control = independent_evidence_ids(
+            row for row in rows
+            if (row.get("metadata") or {}).get("variant") == "control"
+        )
+        candidate = independent_evidence_ids(
+            row for row in rows
+            if (row.get("metadata") or {}).get("variant") == "candidate"
+        )
+        return len(control & candidate)
 
     def _require(self, run_id):
         run = self._store.get_self_evolution_run(run_id)

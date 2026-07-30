@@ -8,6 +8,7 @@ unbounded repository text.
 from __future__ import annotations
 
 import ast
+import fnmatch
 import hashlib
 import json
 import re
@@ -231,10 +232,20 @@ class CodingContextService:
         managed = repo / ".clawos" / "managed-policy.md"
         if managed.is_file():
             candidates.append((managed, "managed", 120, "managed"))
-        rules = repo / ".clawos" / "rules"
-        if rules.is_dir():
-            for path in sorted(rules.glob("*.md")):
-                candidates.append((path, "path_scoped", 110, "repository"))
+        target_paths = [
+            str(item.get("path") or "") for item in ranked[:30]
+        ]
+        for rules in (repo / ".clawos" / "rules", repo / ".claude" / "rules"):
+            if rules.is_dir():
+                for path in sorted(rules.glob("*.md")):
+                    text = path.read_text(encoding="utf-8", errors="replace")
+                    patterns = self._rule_paths(text)
+                    if patterns and not any(
+                        fnmatch.fnmatch(target, pattern)
+                        for target in target_paths for pattern in patterns
+                    ):
+                        continue
+                    candidates.append((path, "path_scoped", 110, "repository"))
         directories = {
             str(Path(item["path"]).parent).replace("\\", "/")
             for item in ranked[:20]
@@ -269,6 +280,36 @@ class CodingContextService:
             remaining -= len(content)
             seen.add(resolved)
         return rows
+
+    @staticmethod
+    def _rule_paths(text: str) -> list[str]:
+        """Read a small `paths`/`globs` frontmatter subset without YAML."""
+
+        if not text.startswith("---"):
+            return []
+        end = text.find("\n---", 3)
+        if end < 0:
+            return []
+        header = text[3:end].splitlines()
+        values: list[str] = []
+        collecting = False
+        for raw in header:
+            line = raw.strip()
+            match = re.match(r"^(paths|globs)\s*:\s*(.*)$", line)
+            if match:
+                collecting = True
+                inline = match.group(2).strip().strip("[]")
+                if inline:
+                    values.extend(
+                        item.strip().strip("'\"")
+                        for item in inline.split(",") if item.strip()
+                    )
+                continue
+            if collecting and line.startswith("-"):
+                values.append(line[1:].strip().strip("'\""))
+            elif collecting and line and not line.startswith("#"):
+                collecting = False
+        return [item.replace("\\", "/") for item in values if item]
 
     def _rank_files(
         self,

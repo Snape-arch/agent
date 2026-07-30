@@ -35,6 +35,13 @@ CAPABILITY_TESTS = {
     "network_egress_policy": [
         "clawos.tests.test_coding_agent_excellence.CodingAgentExcellenceTests.test_governance_identity_egress_budget_hooks_and_readiness",
     ],
+    "production_trace_wiring": [
+        "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_production_entrypoints_enforce_trace_identity_and_signatures",
+    ],
+    "signed_review_evidence": [
+        "clawos.tests.test_coding_agent_product_p0_p2.ProductClosureTests.test_ide_ci_review_and_adaptation_gates",
+        "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_production_entrypoints_enforce_trace_identity_and_signatures",
+    ],
     "structured_patch_loop": [
         "clawos.tests.test_coding_agent_product_p0_p2.ProductClosureTests.test_autonomous_loop_is_model_driven_confirmed_and_checkpointed",
     ],
@@ -50,6 +57,18 @@ CAPABILITY_TESTS = {
     "router_shadow_gate": [
         "clawos.tests.test_coding_agent_product_p0_p2.ProductClosureTests.test_learning_registry_enforces_state_machine_and_activation_gate",
     ],
+    "agentic_action_loop": [
+        "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_agentic_loop_observes_edits_tests_and_records_bound_trace",
+    ],
+    "persistent_lsp": [
+        "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_language_server_manager_reuses_process_and_supports_rich_actions",
+    ],
+    "headless_ide_entry": [
+        "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_production_entrypoints_enforce_trace_identity_and_signatures",
+    ],
+    "path_scoped_context": [
+        "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_context_auto_compacts_and_applies_only_matching_rules",
+    ],
     "trajectory_ranker": [
         "clawos.tests.test_coding_agent_excellence.CodingAgentExcellenceTests.test_trajectory_ranker_and_offline_sandbox_respect_data_gates",
     ],
@@ -64,6 +83,12 @@ CAPABILITY_TESTS = {
     ],
     "lifecycle_hooks": [
         "clawos.tests.test_coding_agent_excellence.CodingAgentExcellenceTests.test_governance_identity_egress_budget_hooks_and_readiness",
+    ],
+    "group_disjoint_policy_evaluation": [
+        "clawos.tests.test_agent_learning.AgentLearningTests.test_train_evaluate_activate_and_route_with_policy_network",
+    ],
+    "paired_canary_control": [
+        "clawos.tests.test_self_evolution.SelfEvolutionTests.test_run_moves_through_shadow_canary_before_activation",
     ],
 }
 

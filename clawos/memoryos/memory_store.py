@@ -2505,11 +2505,17 @@ class MemoryStore:
     def _aggregate_self_evolution_quality_signals(self, run_id, conn=None):
         def aggregate(c):
             rows = c.execute(
-                "SELECT signal_type, value FROM self_evolution_quality_signals WHERE run_id=?",
+                """
+                SELECT signal_type, value, metadata
+                FROM self_evolution_quality_signals WHERE run_id=?
+                """,
                 (int(run_id),),
             ).fetchall()
             grouped = {}
             for row in rows:
+                metadata = self._json_loads(row["metadata"], {})
+                if str(metadata.get("variant") or "") == "control":
+                    continue
                 grouped.setdefault(row["signal_type"], []).append(float(row["value"] or 0))
             return {
                 key: {

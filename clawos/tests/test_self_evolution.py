@@ -72,15 +72,17 @@ class SelfEvolutionTests(unittest.TestCase):
             shadow = manager.start_shadow(run["id"])
             for sample in range(30):
                 for signal in ("user_retry_rate", "cancel_rate", "long_task_failure_rate"):
-                    shadow = manager.record_quality_signal(
-                        shadow["id"], signal, 0.02,
-                        metadata={
-                            "task_id": sample + 1,
-                            "session_id": f"shadow-{sample}",
-                            "repository_id": "repo-a",
-                        },
-                        created_by="test",
-                    )
+                    for variant, value in (("control", 0.03), ("candidate", 0.02)):
+                        shadow = manager.record_quality_signal(
+                            shadow["id"], signal, value,
+                            metadata={
+                                "task_id": sample + 1,
+                                "session_id": f"shadow-{sample}",
+                                "repository_id": "repo-a",
+                                "variant": variant,
+                            },
+                            created_by="test",
+                        )
             canary = manager.promote_canary(shadow["id"], traffic_percent=10)
             published = manager.activate(canary["id"], actor_id="self-evolution")
             active = store.get_runtime_policy("retrieval_params", "default")

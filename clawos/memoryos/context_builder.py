@@ -9,6 +9,7 @@ from .memory_store import MemoryStore
 from .services.ingestion import IngestionService
 from .services.retrieval import RetrievalService
 from .services.evaluation import EvaluationService
+from .services.management import ManagementService
 
 
 class ContextBuilder:
@@ -137,6 +138,13 @@ class ContextBuilder:
         total_token_budget: int = 32000,
     ) -> list[dict[str, Any]]:
         """Build messages array with full memory pipeline: profile + knowledge + retrieval + history."""
+        message_count = len(
+            self._store.get_session_messages(session_id, limit=101)
+        )
+        if message_count > max(40, max_history * 4):
+            ManagementService(self._store).compact_conversation(
+                session_id, keep_recent=max(20, max_history * 2)
+            )
         system = self.build_system_prompt(session_id, prompt_policy=prompt_policy)
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
 

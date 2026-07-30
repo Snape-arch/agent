@@ -49,39 +49,49 @@ class CodingTraceService:
     ) -> dict[str, Any]:
         if step_type not in self.STEP_TYPES:
             raise ValueError(f"unsupported coding trace step: {step_type}")
-        value = self._read()
-        run = next((item for item in value["records"] if item["id"] == run_id), None)
-        if run is None:
-            raise KeyError("coding trajectory not found")
-        item = {
-            "sequence": len(run["steps"]) + 1,
-            "type": step_type,
-            "status": str(status),
-            "input_digest": self._digest(input_value),
-            "output_digest": self._digest(output_value),
-            "behavior_propensity": (
-                None if behavior_propensity is None else float(behavior_propensity)
-            ),
-            "metadata": dict(metadata or {}),
-            "observed_at": self._now(),
-        }
-        item["step_digest"] = self._digest(item)
-        run["steps"].append(item)
-        self._write(value)
-        return item
+        with self._lock:
+            value = self._read()
+            run = next(
+                (item for item in value["records"] if item["id"] == run_id), None
+            )
+            if run is None:
+                raise KeyError("coding trajectory not found")
+            item = {
+                "sequence": len(run["steps"]) + 1,
+                "type": step_type,
+                "status": str(status),
+                "input_digest": self._digest(input_value),
+                "output_digest": self._digest(output_value),
+                "behavior_propensity": (
+                    None
+                    if behavior_propensity is None
+                    else float(behavior_propensity)
+                ),
+                "metadata": dict(metadata or {}),
+                "observed_at": self._now(),
+            }
+            item["step_digest"] = self._digest(item)
+            run["steps"].append(item)
+            self._write(value)
+            return item
 
     def finish(self, run_id: str, status: str) -> dict[str, Any]:
-        value = self._read()
-        run = next((item for item in value["records"] if item["id"] == run_id), None)
-        if run is None:
-            raise KeyError("coding trajectory not found")
-        run["status"] = str(status)
-        run["completed_at"] = self._now()
-        run["trajectory_digest"] = self._digest({
-            key: item for key, item in run.items() if key != "trajectory_digest"
-        })
-        self._write(value)
-        return run
+        with self._lock:
+            value = self._read()
+            run = next(
+                (item for item in value["records"] if item["id"] == run_id), None
+            )
+            if run is None:
+                raise KeyError("coding trajectory not found")
+            run["status"] = str(status)
+            run["completed_at"] = self._now()
+            run["trajectory_digest"] = self._digest({
+                key: item
+                for key, item in run.items()
+                if key != "trajectory_digest"
+            })
+            self._write(value)
+            return run
 
     def get(self, run_id: str) -> dict[str, Any] | None:
         return next(
@@ -90,9 +100,10 @@ class CodingTraceService:
         )
 
     def _append(self, run: dict[str, Any]) -> None:
-        value = self._read()
-        value["records"].append(run)
-        self._write(value)
+        with self._lock:
+            value = self._read()
+            value["records"].append(run)
+            self._write(value)
 
     def _read(self) -> dict[str, Any]:
         with self._lock:

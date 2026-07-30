@@ -366,12 +366,21 @@ class AgentSkillPolicyNetwork:
                 f"at least {required} completed trajectory decisions are required"
             )
         ordered = sorted(examples, key=lambda item: int(item["id"]))
-        holdout_ids = {
-            int(item["id"]) for index, item in enumerate(ordered)
-            if index % 5 == 4
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for item in ordered:
+            groups.setdefault(self._split_group(item), []).append(item)
+        group_names = sorted(groups)
+        if len(group_names) < 5:
+            raise ValueError(
+                "at least 5 independent repository/task/session groups are "
+                "required for group-disjoint training"
+            )
+        holdout_groups = {
+            name for index, name in enumerate(group_names) if index % 5 == 4
         }
-        if not holdout_ids:
-            holdout_ids.add(int(ordered[-1]["id"]))
+        holdout_ids = {
+            int(item["id"]) for name in holdout_groups for item in groups[name]
+        }
         training = [
             item for item in ordered if int(item["id"]) not in holdout_ids
         ]
@@ -403,6 +412,16 @@ class AgentSkillPolicyNetwork:
             "schema": "clawos.agent-skill-policy.v1",
             "heads": weights,
             "arm_names": sorted(arm_map),
+            "training_example_ids": [
+                int(item["id"]) for item in training
+            ],
+            "holdout_example_ids": [
+                int(item["id"]) for item in holdout
+            ],
+            "split_groups": {
+                "training": sorted(set(groups) - holdout_groups),
+                "holdout": sorted(holdout_groups),
+            },
         }
         data_manifest = [
             {
@@ -416,10 +435,12 @@ class AgentSkillPolicyNetwork:
             "sample_count": len(ordered),
             "training_count": len(training),
             "holdout_count": len(holdout),
+            "group_count": len(group_names),
             "arm_sample_counts": counts,
             "train_mae": round(train_mae, 6),
             "holdout_mae": round(holdout_mae, 6),
             "algorithm": "hashed_linear_contextual_q_v0",
+            "group_disjoint_holdout": True,
         }
         return self.store.create_agent_policy_model(
             group_name,
@@ -429,6 +450,17 @@ class AgentSkillPolicyNetwork:
             _stable_digest(data_manifest),
             trained_by=trained_by,
         )
+
+    @staticmethod
+    def _split_group(item: dict[str, Any]) -> str:
+        task_id = str(item.get("task_id") or "").strip()
+        session_id = str(item.get("session_id") or "").strip()
+        repository = str(
+            (item.get("environment_state") or {}).get("repository_id")
+            or (item.get("selection_context") or {}).get("repository_id")
+            or ""
+        ).strip()
+        return f"repo:{repository}|task:{task_id}|session:{session_id}"
 
     def active_scores(
         self,
@@ -536,11 +568,33 @@ class TrajectoryCritic:
             if item.get("action_name") in arm_map
         ]
         ordered = sorted(examples, key=lambda item: int(item["id"]))
+        payload = model.get("weights") or {}
+        holdout_ids = {
+            int(item) for item in payload.get("holdout_example_ids") or []
+        }
+        training_ids = {
+            int(item) for item in payload.get("training_example_ids") or []
+        }
+        if (
+            not holdout_ids or not training_ids
+            or not holdout_ids.isdisjoint(training_ids)
+        ):
+            raise ValueError(
+                "candidate model lacks a valid group-disjoint evaluation split"
+            )
         holdout = [
-            item for index, item in enumerate(ordered) if index % 5 == 4
+            item for item in ordered if int(item["id"]) in holdout_ids
         ]
-        if len(holdout) < max(1, int(min_samples)):
-            holdout = ordered[-max(1, int(min_samples)):]
+        training = [
+            item for item in ordered if int(item["id"]) in training_ids
+        ]
+        reward_means: dict[str, float] = {}
+        for name in arm_map:
+            values = [
+                float(item["observed_reward"]) for item in training
+                if item.get("action_name") == name
+            ]
+            reward_means[name] = self._mean(values)
         estimates = []
         observed_rewards = []
         importance_weights = []
@@ -560,8 +614,8 @@ class TrajectoryCritic:
                 continue
             chosen = max(scores, key=lambda name: (scores[name], name))
             logged = item["action_name"]
-            behavior_q = float(scores.get(logged, 0))
-            candidate_q = float(scores[chosen])
+            behavior_q = reward_means.get(logged, 0.0)
+            candidate_q = reward_means.get(chosen, 0.0)
             observed = float(item["observed_reward"])
             propensity = max(
                 0.000001, min(float(item.get("behavior_propensity") or 1), 1.0)
@@ -611,6 +665,9 @@ class TrajectoryCritic:
             "regression_tolerance": float(regression_tolerance),
             "passed": passed,
             "decision_digest": _stable_digest(decisions),
+            "group_disjoint_holdout": True,
+            "independent_reward_model": "training_arm_mean_v1",
+            "training_sample_count": len(training),
         }
         return self.store.evaluate_agent_policy_model(model_id, metrics, passed)
 

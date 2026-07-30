@@ -243,6 +243,8 @@ class CodingAgentReadiness:
             "robust_ope",
             "coding_context_kernel",
             "network_egress_policy",
+            "production_trace_wiring",
+            "signed_review_evidence",
         ),
         "p1": (
             "structured_patch_loop",
@@ -250,6 +252,10 @@ class CodingAgentReadiness:
             "worktree_isolation",
             "human_confirmed_commit",
             "router_shadow_gate",
+            "agentic_action_loop",
+            "persistent_lsp",
+            "headless_ide_entry",
+            "path_scoped_context",
         ),
         "p2": (
             "trajectory_ranker",
@@ -257,6 +263,8 @@ class CodingAgentReadiness:
             "identity_boundary",
             "resource_budget",
             "lifecycle_hooks",
+            "group_disjoint_policy_evaluation",
+            "paired_canary_control",
         ),
     }
 

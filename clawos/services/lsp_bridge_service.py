@@ -7,6 +7,7 @@ extensions or configuration alone.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import queue
 import subprocess
@@ -30,6 +31,7 @@ class LanguageServerBridge:
         self._reader: threading.Thread | None = None
         self._root = ""
         self._server_capabilities: dict[str, Any] = {}
+        self._documents: dict[str, tuple[int, str]] = {}
 
     def start(self, repo_path: str | Path) -> dict[str, Any]:
         repo = Path(repo_path).expanduser().resolve()
@@ -131,20 +133,123 @@ class LanguageServerBridge:
         self, path: str | Path, *, language_id: str = ""
     ) -> list[dict[str, Any]]:
         file_path = Path(path).expanduser().resolve()
-        text = file_path.read_text(encoding="utf-8", errors="replace")
-        uri = file_path.as_uri()
-        self.notify("textDocument/didOpen", {
-            "textDocument": {
-                "uri": uri,
-                "languageId": language_id or file_path.suffix.lstrip("."),
-                "version": 1,
-                "text": text,
-            }
-        })
+        uri = self._open_document(file_path, language_id)
         result = self.request(
             "textDocument/documentSymbol", {"textDocument": {"uri": uri}}
         )
         return list(result.get("result") or [])
+
+    def definition(
+        self, path: str | Path, line: int, character: int,
+        *, language_id: str = "",
+    ) -> Any:
+        uri = self._open_document(path, language_id)
+        return (self.request("textDocument/definition", {
+            "textDocument": {"uri": uri},
+            "position": {
+                "line": max(0, int(line)), "character": max(0, int(character)),
+            },
+        }).get("result"))
+
+    def references(
+        self, path: str | Path, line: int, character: int,
+        *, language_id: str = "", include_declaration: bool = True,
+    ) -> list[dict[str, Any]]:
+        uri = self._open_document(path, language_id)
+        result = self.request("textDocument/references", {
+            "textDocument": {"uri": uri},
+            "position": {
+                "line": max(0, int(line)), "character": max(0, int(character)),
+            },
+            "context": {"includeDeclaration": bool(include_declaration)},
+        }).get("result")
+        return list(result or [])
+
+    def hover(
+        self, path: str | Path, line: int, character: int,
+        *, language_id: str = "",
+    ) -> Any:
+        uri = self._open_document(path, language_id)
+        return self.request("textDocument/hover", {
+            "textDocument": {"uri": uri},
+            "position": {
+                "line": max(0, int(line)), "character": max(0, int(character)),
+            },
+        }).get("result")
+
+    def rename(
+        self, path: str | Path, line: int, character: int, new_name: str,
+        *, language_id: str = "",
+    ) -> Any:
+        if not str(new_name).strip():
+            raise ValueError("new_name is required")
+        uri = self._open_document(path, language_id)
+        return self.request("textDocument/rename", {
+            "textDocument": {"uri": uri},
+            "position": {
+                "line": max(0, int(line)), "character": max(0, int(character)),
+            },
+            "newName": str(new_name),
+        }).get("result")
+
+    def diagnostics(
+        self, path: str | Path, *, language_id: str = ""
+    ) -> list[dict[str, Any]]:
+        uri = self._open_document(path, language_id)
+        capabilities = self._server_capabilities
+        if capabilities.get("diagnosticProvider"):
+            result = self.request("textDocument/diagnostic", {
+                "textDocument": {"uri": uri},
+            }).get("result") or {}
+            return list(result.get("items") or [])
+        deferred = []
+        while True:
+            try:
+                message = self._messages.get_nowait()
+            except queue.Empty:
+                break
+            if (
+                message.get("method") == "textDocument/publishDiagnostics"
+                and (message.get("params") or {}).get("uri") == uri
+            ):
+                deferred.extend(
+                    (message.get("params") or {}).get("diagnostics") or []
+                )
+            else:
+                self._messages.put(message)
+                break
+        return deferred
+
+    def _open_document(
+        self, path: str | Path, language_id: str = ""
+    ) -> str:
+        file_path = Path(path).expanduser().resolve()
+        if not file_path.is_file():
+            raise ValueError("document does not exist")
+        text = file_path.read_text(encoding="utf-8", errors="replace")
+        uri = file_path.as_uri()
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        current = self._documents.get(uri)
+        if current is None:
+            version = 1
+            self.notify("textDocument/didOpen", {
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": language_id or file_path.suffix.lstrip("."),
+                    "version": version,
+                    "text": text,
+                }
+            })
+        elif current[1] != digest:
+            version = current[0] + 1
+            self.notify("textDocument/didChange", {
+                "textDocument": {"uri": uri, "version": version},
+                "contentChanges": [{"text": text}],
+            })
+        else:
+            return uri
+        self._documents[uri] = (version, digest)
+        return uri
 
     def stop(self) -> None:
         process = self._process
@@ -171,6 +276,7 @@ class LanguageServerBridge:
                         pass
             self._process = None
             self._server_capabilities = {}
+            self._documents = {}
 
     def _send(self, payload: dict[str, Any]) -> None:
         if not self._process or not self._process.stdin:
@@ -208,3 +314,57 @@ class LanguageServerBridge:
 
     def __exit__(self, *_):
         self.stop()
+
+
+class LanguageServerManager:
+    """Keep one initialized language server per repo/command pair."""
+
+    def __init__(self):
+        self._bridges: dict[str, LanguageServerBridge] = {}
+        self._lock = threading.RLock()
+
+    @staticmethod
+    def _key(repo_path: str | Path, command: list[str]) -> str:
+        repo = str(Path(repo_path).expanduser().resolve())
+        return json.dumps([repo, list(command)], separators=(",", ":"))
+
+    def get(
+        self, repo_path: str | Path, command: list[str],
+        *, timeout_seconds: float = 5.0,
+    ) -> LanguageServerBridge:
+        if not command:
+            raise ValueError("language server command is required")
+        key = self._key(repo_path, command)
+        with self._lock:
+            bridge = self._bridges.get(key)
+            if bridge and bridge.status().get("available"):
+                return bridge
+            bridge = LanguageServerBridge(
+                command, timeout_seconds=timeout_seconds
+            )
+            status = bridge.start(repo_path)
+            if not status.get("available"):
+                raise RuntimeError(status.get("error") or "language server unavailable")
+            self._bridges[key] = bridge
+            return bridge
+
+    def stop(
+        self, repo_path: str | Path, command: list[str]
+    ) -> bool:
+        key = self._key(repo_path, command)
+        with self._lock:
+            bridge = self._bridges.pop(key, None)
+        if bridge:
+            bridge.stop()
+            return True
+        return False
+
+    def stop_all(self) -> None:
+        with self._lock:
+            bridges = list(self._bridges.values())
+            self._bridges.clear()
+        for bridge in bridges:
+            bridge.stop()
+
+
+DEFAULT_LANGUAGE_SERVER_MANAGER = LanguageServerManager()

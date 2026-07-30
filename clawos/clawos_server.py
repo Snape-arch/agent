@@ -7275,13 +7275,17 @@ async def skill_evolution_rollback(promotion_id: int, request: Request):
 async def api_autonomous_coding(request: Request):
     if not g_upstream_provider:
         raise HTTPException(503, "model provider is not initialized")
-    from services.autonomous_coding_service import AutonomousCodingService
+    from services.agentic_coding_loop_service import AgenticCodingLoopService
+    from services.coding_trace_service import CodingTraceService
 
     data = await request.json()
-    service = AutonomousCodingService(
+    if not data.get("task_id") or not data.get("session_id"):
+        raise HTTPException(400, "task_id and session_id are required")
+    service = AgenticCodingLoopService(
         g_upstream_provider,
         workflow=get_coding_workflow_service(),
         context=getattr(g_context_builder, "_coding_context", None),
+        trace=CodingTraceService(OUTPUT_ROOT / "traces" / "coding.json"),
     )
     try:
         result = await service.run(
@@ -7290,8 +7294,11 @@ async def api_autonomous_coding(request: Request):
             confirmed=data.get("confirmed") is True,
             focus_paths=data.get("focus_paths") or [],
             diagnostics=data.get("diagnostics") or [],
-            max_attempts=data.get("max_attempts", 3),
+            max_turns=data.get("max_turns", 8),
             timeout_seconds=data.get("timeout_seconds", 180),
+            task_id=str(data.get("task_id") or ""),
+            session_id=str(data.get("session_id") or "default"),
+            actor_id=str(data.get("actor_id") or "local-user"),
         )
     except (ValueError, PermissionError, RuntimeError) as exc:
         raise HTTPException(
@@ -7300,35 +7307,78 @@ async def api_autonomous_coding(request: Request):
     return JSONResponse(result)
 
 
+@app.post("/api/workspace/coding/ide-context")
+async def api_coding_ide_context(request: Request):
+    """Normalize untrusted editor state into repository-scoped context."""
+    from services.coding_quality_service import IDEContextContract
+
+    data = await request.json()
+    try:
+        return JSONResponse(IDEContextContract.normalize(
+            data.get("repo_path", ""), data.get("context") or {}
+        ))
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.post("/api/workspace/coding/lsp/probe")
 async def api_coding_lsp_probe(request: Request):
-    from services.lsp_bridge_service import LanguageServerBridge
+    from services.lsp_bridge_service import DEFAULT_LANGUAGE_SERVER_MANAGER
 
     data = await request.json()
     if data.get("confirmed") is not True:
         raise HTTPException(
             409, "confirmed=true is required to launch a language server"
         )
-    bridge = LanguageServerBridge(
-        data.get("command") or [],
-        timeout_seconds=data.get("timeout_seconds", 5),
-    )
+    command = data.get("command") or []
+    repo_path = data.get("repo_path", "")
+    action = str(data.get("action") or "symbols")
     try:
-        status = await asyncio.to_thread(
-            bridge.start, data.get("repo_path", "")
-        )
-        symbols = []
-        if status.get("available") and data.get("document_path"):
-            symbols = await asyncio.to_thread(
-                bridge.document_symbols,
-                data.get("document_path"),
-                language_id=data.get("language_id", ""),
+        if action == "stop":
+            stopped = await asyncio.to_thread(
+                DEFAULT_LANGUAGE_SERVER_MANAGER.stop, repo_path, command
             )
-        return JSONResponse({**status, "symbols": symbols})
+            return JSONResponse({"stopped": stopped})
+        bridge = await asyncio.to_thread(
+            DEFAULT_LANGUAGE_SERVER_MANAGER.get,
+            repo_path,
+            command,
+            timeout_seconds=data.get("timeout_seconds", 5),
+        )
+        path = data.get("document_path", "")
+        language_id = data.get("language_id", "")
+        if action == "status":
+            result = bridge.status()
+        elif action == "symbols":
+            result = {"symbols": await asyncio.to_thread(
+                bridge.document_symbols, path, language_id=language_id
+            )}
+        elif action in {"definition", "hover"}:
+            method = getattr(bridge, action)
+            result = {action: await asyncio.to_thread(
+                method, path, data.get("line", 0), data.get("character", 0),
+                language_id=language_id,
+            )}
+        elif action == "references":
+            result = {"references": await asyncio.to_thread(
+                bridge.references, path, data.get("line", 0),
+                data.get("character", 0), language_id=language_id,
+            )}
+        elif action == "rename":
+            result = {"workspace_edit": await asyncio.to_thread(
+                bridge.rename, path, data.get("line", 0),
+                data.get("character", 0), data.get("new_name", ""),
+                language_id=language_id,
+            )}
+        elif action == "diagnostics":
+            result = {"diagnostics": await asyncio.to_thread(
+                bridge.diagnostics, path, language_id=language_id
+            )}
+        else:
+            raise ValueError("unsupported LSP action")
+        return JSONResponse({**bridge.status(), **result, "persistent": True})
     except (ValueError, RuntimeError, TimeoutError, OSError) as exc:
         raise HTTPException(400, str(exc))
-    finally:
-        await asyncio.to_thread(bridge.stop)
 
 
 @app.post("/api/workspace/coding/outcome-benchmark")
@@ -7348,10 +7398,17 @@ async def api_coding_review_gate(request: Request):
     from services.coding_quality_service import CodingReviewGate
 
     data = await request.json()
+    verification_key = os.environ.get("CLAWOS_REVIEW_SIGNING_KEY", "")
+    if not verification_key:
+        raise HTTPException(
+            503,
+            "CLAWOS_REVIEW_SIGNING_KEY is required for trusted review evidence",
+        )
     return JSONResponse(CodingReviewGate.evaluate(
         data.get("changed_paths") or [],
         data.get("ci_runs") or [],
         data.get("reviews") or [],
+        verification_key=verification_key,
     ))
 
 
