@@ -150,6 +150,149 @@ class VsixReleaseService:
         return {"valid": all(checks.values()), "checks": checks}
 
     @staticmethod
+    def validate_publisher_identity(
+        private_key_pem: bytes,
+        certificate_pem: bytes,
+        trust_bundle_pem: bytes = b"",
+    ) -> dict[str, Any]:
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+        from cryptography.x509.oid import ExtendedKeyUsageOID
+
+        checks: dict[str, bool] = {}
+        errors: list[str] = []
+        try:
+            key = serialization.load_pem_private_key(
+                private_key_pem, password=None
+            )
+            certificate = x509.load_pem_x509_certificate(certificate_pem)
+        except ValueError as exc:
+            return {
+                "schema": "clawos.publisher-identity.v1",
+                "valid": False, "trusted_publisher": False,
+                "checks": {"parse": False}, "errors": [str(exc)],
+            }
+        public_format = serialization.PublicFormat.SubjectPublicKeyInfo
+        checks["private_key_matches"] = (
+            key.public_key().public_bytes(
+                serialization.Encoding.DER, public_format
+            )
+            == certificate.public_key().public_bytes(
+                serialization.Encoding.DER, public_format
+            )
+        )
+        now = datetime.now(timezone.utc)
+        checks["currently_valid"] = (
+            certificate.not_valid_before_utc <= now
+            <= certificate.not_valid_after_utc
+        )
+        checks["not_self_signed"] = certificate.issuer != certificate.subject
+        try:
+            eku = certificate.extensions.get_extension_for_class(
+                x509.ExtendedKeyUsage
+            ).value
+            checks["code_signing_eku"] = (
+                ExtendedKeyUsageOID.CODE_SIGNING in eku
+            )
+        except x509.ExtensionNotFound:
+            checks["code_signing_eku"] = False
+        try:
+            basic = certificate.extensions.get_extension_for_class(
+                x509.BasicConstraints
+            ).value
+            checks["leaf_not_ca"] = not basic.ca
+        except x509.ExtensionNotFound:
+            checks["leaf_not_ca"] = True
+
+        trust_certificates = []
+        marker = b"-----END CERTIFICATE-----"
+        for chunk in trust_bundle_pem.split(marker):
+            if b"-----BEGIN CERTIFICATE-----" not in chunk:
+                continue
+            try:
+                trust_certificates.append(
+                    x509.load_pem_x509_certificate(chunk + marker + b"\n")
+                )
+            except ValueError:
+                errors.append("trust bundle contains an invalid certificate")
+
+        def verify_signature(child: Any, issuer: Any) -> bool:
+            public_key = issuer.public_key()
+            try:
+                if isinstance(public_key, rsa.RSAPublicKey):
+                    public_key.verify(
+                        child.signature, child.tbs_certificate_bytes,
+                        padding.PKCS1v15(), child.signature_hash_algorithm,
+                    )
+                elif isinstance(public_key, ec.EllipticCurvePublicKey):
+                    public_key.verify(
+                        child.signature, child.tbs_certificate_bytes,
+                        ec.ECDSA(child.signature_hash_algorithm),
+                    )
+                else:
+                    return False
+                return True
+            except Exception:
+                return False
+
+        current = certificate
+        seen = set()
+        chain_valid = bool(trust_certificates)
+        trusted_root = False
+        issuers_currently_valid = True
+        issuers_are_ca = True
+        for _ in range(len(trust_certificates) + 1):
+            fingerprint = current.fingerprint(hashes.SHA256())
+            if fingerprint in seen:
+                chain_valid = False
+                break
+            seen.add(fingerprint)
+            issuer = next(
+                (
+                    item for item in trust_certificates
+                    if item.subject == current.issuer
+                    and verify_signature(current, item)
+                ),
+                None,
+            )
+            if issuer is None:
+                chain_valid = False
+                break
+            issuers_currently_valid = bool(
+                issuers_currently_valid
+                and issuer.not_valid_before_utc <= now
+                <= issuer.not_valid_after_utc
+            )
+            try:
+                issuer_basic = issuer.extensions.get_extension_for_class(
+                    x509.BasicConstraints
+                ).value
+                issuers_are_ca = bool(issuers_are_ca and issuer_basic.ca)
+            except x509.ExtensionNotFound:
+                issuers_are_ca = False
+            if issuer.subject == issuer.issuer:
+                trusted_root = verify_signature(issuer, issuer)
+                break
+            current = issuer
+        checks["trusted_chain"] = chain_valid and trusted_root
+        checks["chain_currently_valid"] = issuers_currently_valid
+        checks["chain_issuers_are_ca"] = issuers_are_ca
+        valid = all(checks.values())
+        return {
+            "schema": "clawos.publisher-identity.v1",
+            "valid": valid,
+            "trusted_publisher": valid,
+            "checks": checks,
+            "errors": errors,
+            "subject": certificate.subject.rfc4514_string(),
+            "issuer": certificate.issuer.rfc4514_string(),
+            "certificate_fingerprint_sha256": certificate.fingerprint(
+                hashes.SHA256()
+            ).hex(),
+        }
+
+    @staticmethod
     def sign(
         artifact_path: str | Path,
         private_key_pem: bytes,

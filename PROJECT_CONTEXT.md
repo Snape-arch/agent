@@ -1,5 +1,38 @@
 # Project Context
 
+## Windows isolation, release identity, and soak hardening (2026-07-31)
+
+- Added a Windows Restricted Token + Low Mandatory Integrity backend probe.
+  `CreateProcessAsUserW` launched the child, inside-directory writing passed,
+  repository-root escape writing was blocked, and the secret environment
+  marker was absent. AppContainer APIs are available but no persistent profile
+  was installed; read isolation and production sandbox readiness remain false.
+- Added an authenticated default-deny HTTP/CONNECT egress proxy with host/port
+  allowlists, DNS/private-address checks, credential stripping, byte limits,
+  and sanitized audit records. Its local probe passed, but host-level
+  non-bypass enforcement still requires AppContainer or WFP/Firewall policy.
+- Production publisher identity is now fail-closed on matching key,
+  certificate validity, Code Signing EKU, non-CA leaf, and a verified chain to
+  an explicitly trusted root. No CA-issued release certificate was supplied,
+  so `trusted_publisher=false`.
+- Added a durable multi-worker recovery soak with one post-claim crash,
+  continuous enqueueing, complete task accounting up to 200,000 rows, and
+  unique databases. Four workers completed 64/64 logical tasks in 10.07
+  seconds, recovered exactly one interrupted claim, produced no duplicate
+  claims, and drained the queue. `multi_worker_passed=true`;
+  `multi_hour_passed=false` until at least two real elapsed hours are observed.
+- Product Readiness consumes Restricted Token, egress proxy, and soak evidence
+  separately. See `clawos/WINDOWS_ISOLATION_RELEASE_SOAK.md`.
+- Validation: the focused platform suite passed **7/7**, the full repository
+  suite passed **403/403**, Python compilation and `git diff --check` passed.
+  Only the existing FastAPI `on_event` and PyMuPDF/SWIG deprecation warnings
+  remain. A final `git fetch origin` attempt timed out; the last available
+  reference shows this branch ahead of its remote by four commits and
+  `HEAD...origin/master` diverged 4/2 before this block is committed.
+- Next step: install and grant a real AppContainer profile, force non-bypass
+  network policy, supply a CA Code Signing certificate, and run the release
+  build for at least two hours with eight workers.
+
 ## Platform hardening acceptance (2026-07-31)
 
 - Added and locally probed a real Windows Job Object backend. The child was

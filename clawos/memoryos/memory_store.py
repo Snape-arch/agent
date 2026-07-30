@@ -1383,6 +1383,21 @@ class MemoryStore:
             ).fetchall()
             return [self._task_row_to_dict(row) for row in rows]
 
+    def list_tasks_for_soak(self, session_id, limit=200000):
+        """Return the complete bounded task set used by offline soak validation."""
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 200000), 200000))
+            rows = c.execute(
+                """
+                SELECT * FROM tasks
+                WHERE session_id=?
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                (str(session_id), limit),
+            ).fetchall()
+            return [self._task_row_to_dict(row) for row in rows]
+
     def list_task_queue(self, statuses=None, limit=50):
         statuses = statuses or ["pending_retry", "pending"]
         statuses = [str(status) for status in statuses if str(status or "").strip()]

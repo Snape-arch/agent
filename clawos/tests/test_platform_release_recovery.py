@@ -93,13 +93,33 @@ class PlatformReleaseRecoveryTests(unittest.TestCase):
                 "passed": True, "os_enforced": True,
                 "production_sandbox_ready": False,
             },
+            restricted_token_artifact={
+                "passed": True, "restricted_token": True,
+                "filesystem_write_isolated": True,
+                "appcontainer": {"enabled": False},
+            },
+            egress_proxy_artifact={
+                "passed": True, "default_deny": True,
+                "proxy_authentication": True,
+                "dns_resolution_checked": True,
+            },
             recovery_artifact={"passed": True},
+            recovery_soak_artifact={
+                "multi_worker_passed": True,
+                "multi_hour_passed": False,
+            },
         )
         checks = report["phases"]["p1_product_engineering"]["checks"]
         self.assertFalse(checks["signed_packaged_ide"])
         self.assertTrue(checks["os_sandbox_backend_probe"])
         self.assertFalse(checks["production_os_sandbox"])
+        self.assertTrue(checks["restricted_token_filesystem_probe"])
+        self.assertTrue(
+            checks["authenticated_default_deny_egress_proxy"]
+        )
         self.assertTrue(checks["process_restart_recovery"])
+        self.assertTrue(checks["multi_worker_recovery_soak"])
+        self.assertFalse(checks["multi_hour_recovery_soak"])
         self.assertFalse(report["product_ready"])
 
 

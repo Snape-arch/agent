@@ -229,3 +229,297 @@ class WindowsJobSandbox:
             ]
 
         return {"extended": EXTENDED_LIMIT_INFORMATION}
+
+
+class WindowsRestrictedTokenSandbox:
+    """Run one child with a restricted low-integrity primary token."""
+
+    TOKEN_ALL_ACCESS = 0xF01FF
+    DISABLE_MAX_PRIVILEGE = 0x1
+    LUA_TOKEN = 0x4
+    TOKEN_INTEGRITY_LEVEL = 25
+    SE_GROUP_INTEGRITY = 0x20
+    CREATE_UNICODE_ENVIRONMENT = 0x00000400
+    WAIT_OBJECT_0 = 0
+
+    @staticmethod
+    def available() -> bool:
+        return platform.system().lower() == "windows"
+
+    def run_probe(
+        self, workspace: str | Path, sandbox_root: str | Path,
+        *, timeout_seconds: float = 20,
+    ) -> dict[str, Any]:
+        if not self.available():
+            return {
+                "schema": "clawos.restricted-token-probe.v1",
+                "passed": False, "restricted_token": False,
+                "reason": "Windows backend is unavailable",
+            }
+        workspace_path = Path(workspace).expanduser().resolve()
+        root = Path(sandbox_root).expanduser().resolve()
+        if not workspace_path.is_dir():
+            raise ValueError("workspace must be an existing directory")
+        try:
+            root.relative_to(workspace_path)
+        except ValueError as exc:
+            raise ValueError("sandbox_root must be inside workspace") from exc
+        root.mkdir(parents=True, exist_ok=True)
+        label = subprocess.run(
+            ["icacls", str(root), "/setintegritylevel", "(OI)(CI)L"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=15,
+        )
+        if label.returncode != 0:
+            return {
+                "schema": "clawos.restricted-token-probe.v1",
+                "passed": False, "restricted_token": False,
+                "reason": "failed to label sandbox directory low integrity",
+                "icacls_exit_code": label.returncode,
+            }
+        report_path = root / "restricted-token-report.json"
+        inside_path = root / "inside-write.txt"
+        outside_path = workspace_path / "restricted-token-escape.txt"
+        for path in (report_path, inside_path):
+            if path.exists():
+                path.unlink()
+        if outside_path.exists():
+            outside_path.unlink()
+        child = (
+            "import ctypes,json,os,pathlib;"
+            f"inside=pathlib.Path({str(inside_path)!r});"
+            f"outside=pathlib.Path({str(outside_path)!r});"
+            f"report=pathlib.Path({str(report_path)!r});"
+            "inside_ok=outside_ok=False;"
+            "\ntry:\n inside.write_text('inside',encoding='utf-8');inside_ok=True\n"
+            "except Exception: pass\n"
+            "try:\n outside.write_text('escape',encoding='utf-8');outside_ok=True\n"
+            "except Exception: pass\n"
+            "a=ctypes.WinDLL('advapi32',use_last_error=True);"
+            "a.OpenProcessToken.argtypes=[ctypes.c_void_p,ctypes.c_uint32,"
+            "ctypes.POINTER(ctypes.c_void_p)];"
+            "a.IsTokenRestricted.argtypes=[ctypes.c_void_p];"
+            "a.IsTokenRestricted.restype=ctypes.c_int;"
+            "k=ctypes.WinDLL('kernel32');k.GetCurrentProcess.restype=ctypes.c_void_p;"
+            "token=ctypes.c_void_p();"
+            "a.OpenProcessToken(k.GetCurrentProcess(),8,ctypes.byref(token));"
+            "restricted=bool(a.IsTokenRestricted(token));"
+            "report.write_text(json.dumps({'inside_write':inside_ok,"
+            "'outside_write':outside_ok,'restricted_token':restricted,"
+            "'secret_visible':'CLAWOS_SANDBOX_TEST_SECRET' in os.environ}),"
+            "encoding='utf-8')"
+        )
+        result = self._create_low_process(
+            child, root, timeout_seconds=timeout_seconds
+        )
+        payload = {}
+        if report_path.is_file():
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+        escaped = outside_path.exists()
+        if escaped:
+            outside_path.unlink()
+        appcontainer = self.appcontainer_capability()
+        checks = {
+            "restricted_token": bool(result.get("restricted_token_created")),
+            "low_integrity_directory_write": bool(payload.get("inside_write")),
+            "workspace_escape_blocked": not bool(payload.get("outside_write"))
+            and not escaped,
+            "secret_environment_removed": not bool(payload.get("secret_visible")),
+            "child_exit_success": result.get("exit_code") == 0,
+        }
+        return {
+            "schema": "clawos.restricted-token-probe.v1",
+            "passed": all(checks.values()),
+            "backend": "windows-restricted-token-low-integrity",
+            "checks": checks,
+            "restricted_token": bool(result.get("restricted_token_created")),
+            "is_token_restricted_api": bool(payload.get("restricted_token")),
+            "filesystem_write_isolated": checks["workspace_escape_blocked"],
+            "sandbox_root": str(root),
+            "appcontainer": appcontainer,
+            "network_isolated": False,
+            "production_sandbox_ready": bool(
+                all(checks.values()) and appcontainer.get("enabled")
+            ),
+            **result,
+            "truth_boundary": (
+                "Restricted Token and low mandatory integrity enforce the tested "
+                "write boundary. AppContainer remains disabled until an explicit "
+                "installation/profile grant; network isolation is delegated to "
+                "the authenticated egress proxy."
+            ),
+        }
+
+    @staticmethod
+    def appcontainer_capability() -> dict[str, Any]:
+        if platform.system().lower() != "windows":
+            return {"api_available": False, "enabled": False}
+        try:
+            userenv = ctypes.WinDLL("userenv", use_last_error=True)
+            available = all(hasattr(userenv, name) for name in (
+                "CreateAppContainerProfile",
+                "DeriveAppContainerSidFromAppContainerName",
+                "DeleteAppContainerProfile",
+            ))
+        except OSError:
+            available = False
+        return {
+            "api_available": available,
+            "enabled": False,
+            "requires_explicit_installation_grant": True,
+        }
+
+    def _create_low_process(
+        self, script: str, cwd: Path, *, timeout_seconds: float
+    ) -> dict[str, Any]:
+        advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        class SID_AND_ATTRIBUTES(ctypes.Structure):
+            _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
+
+        class TOKEN_MANDATORY_LABEL(ctypes.Structure):
+            _fields_ = [("Label", SID_AND_ATTRIBUTES)]
+
+        class STARTUPINFO(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD), ("lpReserved", wintypes.LPWSTR),
+                ("lpDesktop", wintypes.LPWSTR), ("lpTitle", wintypes.LPWSTR),
+                ("dwX", wintypes.DWORD), ("dwY", wintypes.DWORD),
+                ("dwXSize", wintypes.DWORD), ("dwYSize", wintypes.DWORD),
+                ("dwXCountChars", wintypes.DWORD),
+                ("dwYCountChars", wintypes.DWORD),
+                ("dwFillAttribute", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+                ("wShowWindow", wintypes.WORD), ("cbReserved2", wintypes.WORD),
+                ("lpReserved2", ctypes.POINTER(ctypes.c_byte)),
+                ("hStdInput", wintypes.HANDLE), ("hStdOutput", wintypes.HANDLE),
+                ("hStdError", wintypes.HANDLE),
+            ]
+
+        class PROCESS_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("hProcess", wintypes.HANDLE), ("hThread", wintypes.HANDLE),
+                ("dwProcessId", wintypes.DWORD), ("dwThreadId", wintypes.DWORD),
+            ]
+
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.GetExitCodeProcess.argtypes = [
+            wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+        advapi.OpenProcessToken.argtypes = [
+            wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE),
+        ]
+        advapi.OpenProcessToken.restype = wintypes.BOOL
+        advapi.CreateRestrictedToken.argtypes = [
+            wintypes.HANDLE, wintypes.DWORD,
+            wintypes.DWORD, ctypes.c_void_p,
+            wintypes.DWORD, ctypes.c_void_p,
+            wintypes.DWORD, ctypes.c_void_p,
+            ctypes.POINTER(wintypes.HANDLE),
+        ]
+        advapi.CreateRestrictedToken.restype = wintypes.BOOL
+        advapi.ConvertStringSidToSidW.argtypes = [
+            wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p),
+        ]
+        advapi.ConvertStringSidToSidW.restype = wintypes.BOOL
+        advapi.GetLengthSid.argtypes = [ctypes.c_void_p]
+        advapi.GetLengthSid.restype = wintypes.DWORD
+        advapi.SetTokenInformation.argtypes = [
+            wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+        ]
+        advapi.SetTokenInformation.restype = wintypes.BOOL
+        token = wintypes.HANDLE()
+        restricted = wintypes.HANDLE()
+        sid = ctypes.c_void_p()
+        current = kernel32.GetCurrentProcess()
+        if not advapi.OpenProcessToken(
+            current, self.TOKEN_ALL_ACCESS, ctypes.byref(token)
+        ):
+            raise OSError(ctypes.get_last_error(), "OpenProcessToken failed")
+        process_info = PROCESS_INFORMATION()
+        try:
+            if not advapi.CreateRestrictedToken(
+                token, self.DISABLE_MAX_PRIVILEGE | self.LUA_TOKEN,
+                0, None, 0, None, 0, None, ctypes.byref(restricted),
+            ):
+                raise OSError(
+                    ctypes.get_last_error(), "CreateRestrictedToken failed"
+                )
+            if not advapi.ConvertStringSidToSidW(
+                "S-1-16-4096", ctypes.byref(sid)
+            ):
+                raise OSError(
+                    ctypes.get_last_error(), "ConvertStringSidToSidW failed"
+                )
+            label = TOKEN_MANDATORY_LABEL(
+                SID_AND_ATTRIBUTES(sid, self.SE_GROUP_INTEGRITY)
+            )
+            length = ctypes.sizeof(label) + advapi.GetLengthSid(sid)
+            if not advapi.SetTokenInformation(
+                restricted, self.TOKEN_INTEGRITY_LEVEL,
+                ctypes.byref(label), length,
+            ):
+                raise OSError(
+                    ctypes.get_last_error(), "SetTokenInformation failed"
+                )
+            interpreter = str(
+                getattr(sys, "_base_executable", "") or sys.executable
+            )
+            command = ctypes.create_unicode_buffer(
+                subprocess.list2cmdline([interpreter, "-c", script])
+            )
+            environment = (
+                f"SYSTEMROOT={os.environ.get('SYSTEMROOT', '')}\0"
+                f"PATH={os.environ.get('PATH', '')}\0"
+                f"TEMP={cwd}\0TMP={cwd}\0PYTHONIOENCODING=utf-8\0\0"
+            )
+            environment_buffer = ctypes.create_unicode_buffer(environment)
+            startup = STARTUPINFO()
+            startup.cb = ctypes.sizeof(startup)
+            created = advapi.CreateProcessAsUserW(
+                restricted, None, command, None, None, False,
+                self.CREATE_UNICODE_ENVIRONMENT, environment_buffer,
+                str(cwd), ctypes.byref(startup), ctypes.byref(process_info),
+            )
+            backend = "CreateProcessAsUserW"
+            if not created:
+                create_with_token = getattr(advapi, "CreateProcessWithTokenW")
+                created = create_with_token(
+                    restricted, 0, None, command,
+                    self.CREATE_UNICODE_ENVIRONMENT, environment_buffer,
+                    str(cwd), ctypes.byref(startup), ctypes.byref(process_info),
+                )
+                backend = "CreateProcessWithTokenW"
+            if not created:
+                raise OSError(
+                    ctypes.get_last_error(), "restricted process creation failed"
+                )
+            wait = kernel32.WaitForSingleObject(
+                process_info.hProcess, int(max(1, timeout_seconds) * 1000)
+            )
+            if wait != self.WAIT_OBJECT_0:
+                kernel32.TerminateProcess(process_info.hProcess, 124)
+                raise TimeoutError("restricted process probe timed out")
+            exit_code = wintypes.DWORD()
+            kernel32.GetExitCodeProcess(
+                process_info.hProcess, ctypes.byref(exit_code)
+            )
+            return {
+                "process_creation_backend": backend,
+                "restricted_token_created": True,
+                "low_integrity_sid": "S-1-16-4096",
+                "exit_code": int(exit_code.value),
+            }
+        finally:
+            for handle in (
+                process_info.hThread, process_info.hProcess,
+                restricted, token,
+            ):
+                if handle:
+                    kernel32.CloseHandle(handle)
+            if sid.value:
+                kernel32.LocalFree(sid)

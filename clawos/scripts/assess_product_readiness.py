@@ -53,8 +53,17 @@ def main() -> int:
         sandbox_artifact=load_json(
             output / "evidence" / "os-sandbox.json"
         ),
+        restricted_token_artifact=load_json(
+            output / "evidence" / "restricted-token.json"
+        ),
+        egress_proxy_artifact=load_json(
+            output / "evidence" / "egress-proxy.json"
+        ),
         recovery_artifact=load_json(
             output / "evidence" / "task-recovery.json"
+        ),
+        recovery_soak_artifact=load_json(
+            output / "evidence" / "multi-worker-recovery-soak.json"
         ),
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))

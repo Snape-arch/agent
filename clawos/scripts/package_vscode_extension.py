@@ -53,7 +53,7 @@ def main() -> int:
     parser.add_argument("--private-key")
     parser.add_argument("--certificate")
     parser.add_argument("--development-signing", action="store_true")
-    parser.add_argument("--trusted-publisher", action="store_true")
+    parser.add_argument("--trust-bundle")
     parser.add_argument("--code-cli")
     parser.add_argument("--report", default=str(ROOT.parent / "output" / "evidence" / "vscode-extension.json"))
     args = parser.parse_args()
@@ -107,10 +107,21 @@ def main() -> int:
     else:
         key = certificate = b""
     if key:
+        publisher_identity = service.validate_publisher_identity(
+            key, certificate,
+            Path(args.trust_bundle).read_bytes()
+            if args.trust_bundle else b"",
+        )
         signature = service.sign(
             args.output, key, certificate, str(args.output) + ".sig.json",
-            trusted_publisher=args.trusted_publisher,
+            trusted_publisher=publisher_identity["trusted_publisher"],
         )
+        signature["publisher_identity"] = publisher_identity
+    else:
+        publisher_identity = {
+            "valid": False, "trusted_publisher": False,
+            "errors": ["publisher key and certificate were not supplied"],
+        }
     report = {
         **package,
         "clean_install": installation,
@@ -120,6 +131,7 @@ def main() -> int:
         ),
         "signed": bool(signature.get("verified")),
         "signature": signature,
+        "publisher_identity": publisher_identity,
         "trusted_publisher": bool(signature.get("trusted_publisher")),
         "production_distribution_ready": bool(
             package["compatibility_passed"]

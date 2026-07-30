@@ -45,8 +45,17 @@ def create_product_readiness_router(
         sandbox_artifact = _load_json(
             output / "evidence" / "os-sandbox.json"
         )
+        restricted_token_artifact = _load_json(
+            output / "evidence" / "restricted-token.json"
+        )
+        egress_proxy_artifact = _load_json(
+            output / "evidence" / "egress-proxy.json"
+        )
         recovery_artifact = _load_json(
             output / "evidence" / "task-recovery.json"
+        )
+        recovery_soak_artifact = _load_json(
+            output / "evidence" / "multi-worker-recovery-soak.json"
         )
         result = ProductReadinessService(root).report(
             learning=learning_provider(),
@@ -55,7 +64,10 @@ def create_product_readiness_router(
             hardware=hardware_provider(),
             ide_artifact=ide_artifact,
             sandbox_artifact=sandbox_artifact,
+            restricted_token_artifact=restricted_token_artifact,
+            egress_proxy_artifact=egress_proxy_artifact,
             recovery_artifact=recovery_artifact,
+            recovery_soak_artifact=recovery_soak_artifact,
         )
         return JSONResponse(result)
 

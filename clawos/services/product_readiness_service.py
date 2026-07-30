@@ -23,7 +23,10 @@ class ProductReadinessService:
         hardware: dict[str, Any] | None = None,
         ide_artifact: dict[str, Any] | None = None,
         sandbox_artifact: dict[str, Any] | None = None,
+        restricted_token_artifact: dict[str, Any] | None = None,
+        egress_proxy_artifact: dict[str, Any] | None = None,
         recovery_artifact: dict[str, Any] | None = None,
+        recovery_soak_artifact: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         learning = dict(learning or {})
         evaluator = dict(evaluator or {})
@@ -31,7 +34,10 @@ class ProductReadinessService:
         hardware = dict(hardware or {})
         ide_artifact = dict(ide_artifact or {})
         sandbox_artifact = dict(sandbox_artifact or {})
+        restricted_token_artifact = dict(restricted_token_artifact or {})
+        egress_proxy_artifact = dict(egress_proxy_artifact or {})
         recovery_artifact = dict(recovery_artifact or {})
+        recovery_soak_artifact = dict(recovery_soak_artifact or {})
         quality = dict(learning.get("quality") or {})
 
         software = self._software_contracts()
@@ -62,8 +68,30 @@ class ProductReadinessService:
             ),
             "production_os_sandbox": bool(
                 sandbox_artifact.get("production_sandbox_ready")
+                and (
+                    restricted_token_artifact.get("appcontainer") or {}
+                ).get("enabled")
+                and restricted_token_artifact.get("filesystem_read_isolated")
+                and egress_proxy_artifact.get("host_enforced")
+            ),
+            "restricted_token_filesystem_probe": bool(
+                restricted_token_artifact.get("passed")
+                and restricted_token_artifact.get("restricted_token")
+                and restricted_token_artifact.get("filesystem_write_isolated")
+            ),
+            "authenticated_default_deny_egress_proxy": bool(
+                egress_proxy_artifact.get("passed")
+                and egress_proxy_artifact.get("default_deny")
+                and egress_proxy_artifact.get("proxy_authentication")
+                and egress_proxy_artifact.get("dns_resolution_checked")
             ),
             "process_restart_recovery": bool(recovery_artifact.get("passed")),
+            "multi_worker_recovery_soak": bool(
+                recovery_soak_artifact.get("multi_worker_passed")
+            ),
+            "multi_hour_recovery_soak": bool(
+                recovery_soak_artifact.get("multi_hour_passed")
+            ),
         }
         p2_checks = {
             "preference_ranker": bool(quality.get("preference_ranker_ready")),
