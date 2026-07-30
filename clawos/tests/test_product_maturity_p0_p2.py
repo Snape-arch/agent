@@ -156,6 +156,7 @@ class ProductMaturityClosureTests(unittest.TestCase):
                 "signed": True,
                 "artifact_digest": "digest",
                 "compatibility_passed": True,
+                "trusted_publisher": True,
             }
         )
         checks = report["phases"]["p1_product_engineering"]["checks"]

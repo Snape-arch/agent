@@ -1,5 +1,36 @@
 # Project Context
 
+## Platform hardening acceptance (2026-07-31)
+
+- Added and locally probed a real Windows Job Object backend. The child was
+  inside the Job, one-process/resource limits were enforced, nested process
+  creation was blocked, and a reduced environment excluded the test secret.
+  Evidence remains exact: filesystem/network isolation are false and
+  `production_sandbox_ready=false`.
+- Added deterministic VSIX packaging, archive compatibility validation,
+  RSA-PSS-SHA256 detached signing and verification, and tamper detection.
+  The generated `snape-arch.clawos-coding@0.1.0` VSIX installed and listed
+  successfully through VS Code CLI in isolated acceptance directories.
+- Local development signing uses an ephemeral self-signed certificate and never
+  persists its private key. Cryptographic signature validity is true, but
+  `trusted_publisher=false`; production signed distribution is not claimed.
+- Added a two-process long-task recovery acceptance. Process A persisted a
+  repository checkpoint then exited with code 73; process B reopened the same
+  SQLite database, preserved repository/checkpoint identity, created a replay,
+  and completed it while retaining recovery events.
+- Product Readiness now consumes OS sandbox, VSIX, and recovery artifacts.
+  Current evidence reports `os_sandbox_backend_probe=true`,
+  `process_restart_recovery=true`, `signed_packaged_ide=false`,
+  `production_os_sandbox=false`, and `product_ready=false`.
+- Router, Preference Ranker, Trajectory RL, behavior LoRA, and online RL remain
+  below data gates and inactive. Platform acceptance does not inflate their
+  evidence.
+- Validation: 45 focused tests and the full **400/400** repository suite passed.
+  See `clawos/PLATFORM_HARDENING_ACCEPTANCE.md`.
+- Next step: add AppContainer/restricted-token filesystem isolation and brokered
+  network egress, then obtain a trusted publisher certificate for production
+  VSIX signing and run multi-hour/multi-worker recovery soak tests.
+
 ## Agent Product P0-P2 software closure (2026-07-30)
 
 - Added the canonical `clawos.task-run.v2` state/event protocol across API,

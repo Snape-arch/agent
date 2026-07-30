@@ -1,6 +1,8 @@
 {
   "name": "clawos-coding",
   "displayName": "ClawOS Coding",
+  "publisher": "snape-arch",
+  "license": "MIT",
   "description": "Send trusted VS Code context to the local ClawOS coding agent.",
   "version": "0.1.0",
   "scripts": {

@@ -50,6 +50,12 @@ def main() -> int:
         ide_artifact=load_json(
             output / "evidence" / "vscode-extension.json"
         ),
+        sandbox_artifact=load_json(
+            output / "evidence" / "os-sandbox.json"
+        ),
+        recovery_artifact=load_json(
+            output / "evidence" / "task-recovery.json"
+        ),
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if (report["product_ready"] or not args.strict) else 2

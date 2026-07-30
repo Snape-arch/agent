@@ -22,12 +22,16 @@ class ProductReadinessService:
         outcome_benchmark: dict[str, Any] | None = None,
         hardware: dict[str, Any] | None = None,
         ide_artifact: dict[str, Any] | None = None,
+        sandbox_artifact: dict[str, Any] | None = None,
+        recovery_artifact: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         learning = dict(learning or {})
         evaluator = dict(evaluator or {})
         outcome_benchmark = dict(outcome_benchmark or {})
         hardware = dict(hardware or {})
         ide_artifact = dict(ide_artifact or {})
+        sandbox_artifact = dict(sandbox_artifact or {})
+        recovery_artifact = dict(recovery_artifact or {})
         quality = dict(learning.get("quality") or {})
 
         software = self._software_contracts()
@@ -50,7 +54,16 @@ class ProductReadinessService:
                 ide_artifact.get("signed")
                 and ide_artifact.get("artifact_digest")
                 and ide_artifact.get("compatibility_passed")
+                and ide_artifact.get("trusted_publisher")
             ),
+            "os_sandbox_backend_probe": bool(
+                sandbox_artifact.get("passed")
+                and sandbox_artifact.get("os_enforced")
+            ),
+            "production_os_sandbox": bool(
+                sandbox_artifact.get("production_sandbox_ready")
+            ),
+            "process_restart_recovery": bool(recovery_artifact.get("passed")),
         }
         p2_checks = {
             "preference_ranker": bool(quality.get("preference_ranker_ready")),

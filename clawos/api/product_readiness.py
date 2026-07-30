@@ -42,12 +42,20 @@ def create_product_readiness_router(
         ide_artifact = _load_json(
             output / "evidence" / "vscode-extension.json"
         )
+        sandbox_artifact = _load_json(
+            output / "evidence" / "os-sandbox.json"
+        )
+        recovery_artifact = _load_json(
+            output / "evidence" / "task-recovery.json"
+        )
         result = ProductReadinessService(root).report(
             learning=learning_provider(),
             evaluator=evaluator,
             outcome_benchmark=outcome,
             hardware=hardware_provider(),
             ide_artifact=ide_artifact,
+            sandbox_artifact=sandbox_artifact,
+            recovery_artifact=recovery_artifact,
         )
         return JSONResponse(result)
 

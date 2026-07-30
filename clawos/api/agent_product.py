@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Request
@@ -10,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from services.agent_product_kernel import AgentProductKernel, TaskRunContract
 from services.coding_context_service import CodingContextService
+from services.os_sandbox import WindowsJobSandbox
 from services.task_service import TaskService
 
 
@@ -149,5 +151,19 @@ def create_agent_product_router(
         return JSONResponse(AgentProductKernel.sandbox_plan(
             await request.json()
         ))
+
+    @router.post("/api/agent-product/sandbox/probe")
+    async def sandbox_probe(request: Request) -> JSONResponse:
+        data = await request.json()
+        if data.get("confirmed") is not True:
+            raise HTTPException(400, "confirmed=true is required")
+        try:
+            result = WindowsJobSandbox(
+                max_processes=int(data.get("max_processes") or 1),
+                process_memory_mb=int(data.get("process_memory_mb") or 256),
+            ).run_probe(str(data.get("workspace") or repository_root))
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            raise HTTPException(400, str(exc))
+        return JSONResponse(result)
 
     return router
