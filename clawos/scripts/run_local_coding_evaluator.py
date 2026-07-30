@@ -70,21 +70,71 @@ def _fixture(root: Path) -> Path:
     return repo
 
 
-def _hidden_test(repo: Path) -> dict:
+def _hidden_test(repo: Path, command: list[str] | None = None) -> dict:
+    command = command or [
+        sys.executable, "-c",
+        "from maths import add; assert add(4, 7) == 11; "
+        "assert add(-2, 5) == 3",
+    ]
     result = subprocess.run(
-        [
-            sys.executable, "-c",
-            "from maths import add; assert add(4, 7) == 11; "
-            "assert add(-2, 5) == 3",
-        ],
+        command,
         cwd=repo, capture_output=True, text=True,
         encoding="utf-8", errors="replace", timeout=30,
     )
     return {
+        "command_digest": _digest(command),
         "exit_code": result.returncode,
         "stdout_digest": _digest(result.stdout),
         "stderr_digest": _digest(result.stderr),
     }
+
+
+def _prepare_repository(args, output: Path) -> tuple[Path, str, str, list[str]]:
+    if not args.repo:
+        return (
+            _fixture(output),
+            "controlled_repository_fixture",
+            (
+                "Fix maths.add so it performs addition. Inspect the file, make "
+                "the smallest patch, run test_maths, then finish."
+            ),
+            [],
+        )
+    source = Path(args.repo).expanduser().resolve()
+    if not (source / ".git").exists():
+        raise ValueError("--repo must point to a Git repository")
+    if not args.repository_id or not args.objective or not args.hidden_test_json:
+        raise ValueError(
+            "--repository-id, --objective, and --hidden-test-json are "
+            "required with --repo"
+        )
+    try:
+        hidden_command = json.loads(args.hidden_test_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError("--hidden-test-json must be a JSON argv array") from exc
+    if (
+        not isinstance(hidden_command, list)
+        or not hidden_command
+        or not all(isinstance(item, str) and item for item in hidden_command)
+    ):
+        raise ValueError("--hidden-test-json must be a non-empty JSON argv array")
+    repo = output / "repo"
+    cloned = subprocess.run(
+        [
+            "git", "clone", "--local", "--no-hardlinks", "--no-tags",
+            str(source), str(repo),
+        ],
+        cwd=output,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+    if cloned.returncode:
+        raise RuntimeError(cloned.stderr.strip() or "isolated clone failed")
+    _git(repo, "checkout", "--detach", "HEAD")
+    return repo, "repository", str(args.objective), hidden_command
 
 
 def _write_summary(output_root: Path) -> dict:
@@ -109,22 +159,30 @@ async def _run(args) -> dict:
     run_id = f"local-eval-{int(time.time())}-{uuid.uuid4().hex[:8]}"
     output = Path(args.output_root).expanduser().resolve() / run_id
     output.mkdir(parents=True)
-    repo = _fixture(output)
+    repo, repository_origin, objective, hidden_command = _prepare_repository(
+        args, output
+    )
+    repository_id = (
+        str(args.repository_id)
+        if repository_origin == "repository"
+        else "controlled-add-fixture"
+    )
     store = MemoryStore(str(Path(args.database).expanduser().resolve()))
     tasks = TaskService(store)
     task = tasks.create(
         run_id,
-        "Controlled local-model evaluation: repair integer addition",
+        objective,
         source="codex_evaluator",
         metadata={
             "scenario": "coding",
-            "user_text": "Fix maths.add and verify it with tests.",
+            "user_text": objective,
             "user_context": {
                 "evaluator_origin": "codex_evaluator",
                 "evaluator_id": "codex-single-evaluator",
             },
             "environment_state": {
-                "repository_origin": "controlled_repository_fixture",
+                "repository_origin": repository_origin,
+                "repository_id": repository_id,
                 "model": args.model,
             },
             "latency_budget_ms": 120_000,
@@ -147,8 +205,7 @@ async def _run(args) -> dict:
     try:
         result = await service.run(
             repo,
-            "Fix maths.add so it performs addition. Inspect the file, make the "
-            "smallest patch, run test_maths, then finish.",
+            objective,
             confirmed=True,
             task_id=str(task["id"]),
             session_id=run_id,
@@ -163,7 +220,7 @@ async def _run(args) -> dict:
             "online_rl_claimed": False,
         }
     duration_ms = round((time.perf_counter() - started) * 1000, 3)
-    hidden = _hidden_test(repo)
+    hidden = _hidden_test(repo, hidden_command or None)
     patch = _git(repo, "diff", "--binary")
     patch_digest = _digest(patch)
     passed = bool(result.get("status") == "passed" and hidden["exit_code"] == 0)
@@ -198,7 +255,8 @@ async def _run(args) -> dict:
             "evaluator_origin": "codex_evaluator",
             "evidence_digest": evidence_digest,
             "evaluation_method": "hidden_tests_and_patch_review",
-            "repository_origin": "controlled_repository_fixture",
+            "repository_origin": repository_origin,
+            "repository_id": repository_id,
             "model": args.model,
             "run_id": run_id,
         },
@@ -210,7 +268,10 @@ async def _run(args) -> dict:
         "task_id": task["id"],
         "sample_passed": passed,
         "model_execution_real": True,
-        "repository_origin": "controlled_repository_fixture",
+        "repository_origin": repository_origin,
+        "repository_id": repository_id,
+        "issue_digest": _digest(objective),
+        "hidden_test_digest": hidden["command_digest"],
         "evaluator_origin": "codex_evaluator",
         "evaluator_id": "codex-single-evaluator",
         "independent_human_user_claimed": False,
@@ -246,6 +307,18 @@ def main() -> int:
         "--base-url", default="http://127.0.0.1:11434/v1"
     )
     parser.add_argument("--model", default="qwen3.5:0.8b")
+    parser.add_argument(
+        "--repo",
+        default="",
+        help="Optional real Git repository; evaluated in an isolated detached clone.",
+    )
+    parser.add_argument("--repository-id", default="")
+    parser.add_argument("--objective", default="")
+    parser.add_argument(
+        "--hidden-test-json",
+        default="",
+        help='Hidden test argv as JSON, for example ["python","-m","pytest","-q"].',
+    )
     parser.add_argument("--max-turns", type=int, default=5)
     parser.add_argument("--timeout-seconds", type=int, default=120)
     parser.add_argument("--summary-only", action="store_true")

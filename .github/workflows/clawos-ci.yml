@@ -1,0 +1,39 @@
+name: ClawOS CI
+
+on:
+  push:
+    branches: ["master", "codex/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-tests:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: clawos/requirements-test.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install deterministic test dependencies
+        run: python -m pip install -r clawos/requirements-test.txt
+      - name: Compile critical Python entrypoints
+        run: >-
+          python -m py_compile
+          clawos/clawos_server.py
+          clawos/agent_learning.py
+          clawos/services/agentic_coding_loop_service.py
+          clawos/services/product_readiness_service.py
+          clawos/api/product_readiness.py
+      - name: Run repository tests
+        run: python -m unittest discover -s clawos/tests -p "test_*.py"
+      - name: Check VS Code extension syntax
+        run: node --check clawos/integrations/vscode/extension.js

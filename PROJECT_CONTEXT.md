@@ -1,5 +1,30 @@
 # Project Context
 
+## Product maturity P0-P2 software closure (2026-07-30)
+
+- Real coding A/B evidence now has a strict JSON contract: unique blinded
+  cases, repository/issue identity, distinct baseline/candidate policies,
+  hidden-test and patch digests, latency, cost, regression, rollback, human
+  intervention, and safety metrics. Promotion requires at least 30 valid cases
+  across five repositories plus positive cluster-bootstrap lift.
+- The local evaluator can run real Git repositories in isolated detached clones;
+  the paired benchmark CLI can persist a fail-closed report.
+- Added a Python 3.12 hosted-CI contract with exact test dependencies, full
+  tests, compilation, and VS Code syntax validation.
+- Added a modular `GET /api/product/readiness` router and CLI. Current truth:
+  `software_contracts_closed=true`, `product_ready=false`, and
+  `online_rl_claimed=false`.
+- The VS Code source MVP now has health preflight, proposal preview, explicit
+  apply/test confirmation, cancellation, timeout, and visible error handling.
+  A signed VSIX is still not claimed.
+- Current observed evidence remains 3 controlled fixtures, 0 passes,
+  0 real-repository cases, 3 trajectories, 3 grounded evaluator feedback
+  records, 0 independent humans, and no target-hardware result.
+- Validation: 52 focused product/coding/learning tests passed; full repository
+  regression passed **390 tests** with 1 environment-dependent skip. Python
+  compilation, bundled-Node syntax validation, and `git diff --check` passed.
+- See `clawos/PRODUCT_MATURITY_P0_P2.md`.
+
 ## Coding evaluator data P0-P2 closure (2026-07-30)
 
 - Codex feedback is now an explicit `codex_evaluator` provenance class. It

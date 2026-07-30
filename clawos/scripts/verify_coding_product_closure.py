@@ -45,6 +45,10 @@ CAPABILITY_TESTS = {
     "evaluator_feedback_provenance": [
         "clawos.tests.test_feedback_preference_learning.FeedbackPreferenceLearningTests.test_codex_evaluator_feedback_is_grounded_but_not_a_human_user",
     ],
+    "real_repository_benchmark_contract": [
+        "clawos.tests.test_product_maturity_p0_p2.ProductMaturityClosureTests.test_real_benchmark_requires_identity_diversity_and_complete_metrics",
+        "clawos.tests.test_product_maturity_p0_p2.ProductMaturityClosureTests.test_real_repository_evaluator_uses_isolated_detached_checkout",
+    ],
     "structured_patch_loop": [
         "clawos.tests.test_coding_agent_product_p0_p2.ProductClosureTests.test_autonomous_loop_is_model_driven_confirmed_and_checkpointed",
     ],
@@ -75,6 +79,15 @@ CAPABILITY_TESTS = {
     "recoverable_model_patch_errors": [
         "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_agentic_loop_repairs_invalid_proposal_inside_same_trajectory",
     ],
+    "hosted_ci_reproducibility": [
+        "clawos.tests.test_product_maturity_p0_p2.ProductMaturityClosureTests.test_product_report_requires_signed_packaged_ide_evidence",
+    ],
+    "ide_preview_cancel_contract": [
+        "clawos.tests.test_product_maturity_p0_p2.ProductMaturityClosureTests.test_product_report_requires_signed_packaged_ide_evidence",
+    ],
+    "modular_product_readiness": [
+        "clawos.tests.test_product_maturity_p0_p2.ProductMaturityClosureTests.test_modular_router_exposes_read_only_product_report",
+    ],
     "trajectory_ranker": [
         "clawos.tests.test_coding_agent_excellence.CodingAgentExcellenceTests.test_trajectory_ranker_and_offline_sandbox_respect_data_gates",
     ],
@@ -98,6 +111,9 @@ CAPABILITY_TESTS = {
     ],
     "unknown_propensity_exclusion": [
         "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_agentic_actions_enter_learning_trace_without_fake_propensity",
+    ],
+    "advanced_learning_fail_closed": [
+        "clawos.tests.test_product_maturity_p0_p2.ProductMaturityClosureTests.test_product_report_closes_software_but_not_missing_real_evidence",
     ],
 }
 

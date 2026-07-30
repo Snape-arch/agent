@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clawos.local/schemas/coding-outcome-case-v1.json",
+  "title": "ClawOS paired real-repository coding outcome case",
+  "type": "object",
+  "required": [
+    "id",
+    "origin",
+    "repository_id",
+    "issue_digest",
+    "blinded",
+    "hidden_test_digest",
+    "baseline",
+    "candidate"
+  ],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "origin": {"enum": ["repository", "user_trajectory"]},
+    "repository_id": {"type": "string", "minLength": 1},
+    "issue_digest": {"type": "string", "minLength": 1},
+    "blinded": {"const": true},
+    "hidden_test_digest": {"type": "string", "minLength": 1},
+    "baseline": {"$ref": "#/$defs/run"},
+    "candidate": {"$ref": "#/$defs/run"}
+  },
+  "$defs": {
+    "run": {
+      "type": "object",
+      "required": [
+        "completed",
+        "hidden_tests_passed",
+        "hidden_tests_total",
+        "patch_digest",
+        "test_evidence_digest",
+        "policy_id",
+        "duration_ms",
+        "regression_count",
+        "rollback_occurred",
+        "human_intervention"
+      ],
+      "properties": {
+        "completed": {"const": true},
+        "hidden_tests_passed": {"type": "integer", "minimum": 0},
+        "hidden_tests_total": {"type": "integer", "minimum": 1},
+        "patch_digest": {"type": "string", "minLength": 1},
+        "test_evidence_digest": {"type": "string", "minLength": 1},
+        "policy_id": {"type": "string", "minLength": 1},
+        "duration_ms": {"type": "number", "minimum": 0},
+        "regression_count": {"type": "integer", "minimum": 0},
+        "rollback_occurred": {"type": "boolean"},
+        "human_intervention": {"type": "boolean"},
+        "safety_violation": {"type": "boolean"},
+        "normalized_cost": {"type": "number", "minimum": 0}
+      }
+    }
+  }
+}

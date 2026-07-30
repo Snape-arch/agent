@@ -3,6 +3,9 @@
   "displayName": "ClawOS Coding",
   "description": "Send trusted VS Code context to the local ClawOS coding agent.",
   "version": "0.1.0",
+  "scripts": {
+    "check": "node --check extension.js"
+  },
   "engines": {"vscode": "^1.85.0"},
   "main": "./extension.js",
   "activationEvents": [
@@ -20,6 +23,12 @@
         "clawos.baseUrl": {
           "type": "string",
           "default": "http://127.0.0.1:18790"
+        },
+        "clawos.requestTimeoutSeconds": {
+          "type": "number",
+          "default": 180,
+          "minimum": 10,
+          "maximum": 1800
         }
       }
     }

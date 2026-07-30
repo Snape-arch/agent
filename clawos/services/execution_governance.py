@@ -246,6 +246,7 @@ class CodingAgentReadiness:
             "production_trace_wiring",
             "signed_review_evidence",
             "evaluator_feedback_provenance",
+            "real_repository_benchmark_contract",
         ),
         "p1": (
             "structured_patch_loop",
@@ -258,6 +259,9 @@ class CodingAgentReadiness:
             "headless_ide_entry",
             "path_scoped_context",
             "recoverable_model_patch_errors",
+            "hosted_ci_reproducibility",
+            "ide_preview_cancel_contract",
+            "modular_product_readiness",
         ),
         "p2": (
             "trajectory_ranker",
@@ -268,6 +272,7 @@ class CodingAgentReadiness:
             "group_disjoint_policy_evaluation",
             "paired_canary_control",
             "unknown_propensity_exclusion",
+            "advanced_learning_fail_closed",
         ),
     }
 

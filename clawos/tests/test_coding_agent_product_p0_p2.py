@@ -270,18 +270,30 @@ class ProductClosureTests(unittest.TestCase):
             "hidden_tests_total": 10,
             "patch_digest": "patch",
             "test_evidence_digest": "tests",
+            "duration_ms": 100,
+            "regression_count": 0,
+            "rollback_occurred": False,
+            "human_intervention": False,
         }
         cases = [{
             "id": str(index),
             "origin": "repository",
             "blinded": True,
             "hidden_test_digest": f"h{index}",
+            "issue_digest": f"issue-{index}",
             "repository_id": f"r{index % 5}",
-            "baseline": {**run, "hidden_tests_passed": 8},
-            "candidate": run,
+            "baseline": {
+                **run,
+                "policy_id": "baseline-v1",
+                "hidden_tests_passed": 8,
+            },
+            "candidate": {**run, "policy_id": "candidate-v2"},
         } for index in range(30)]
         benchmark = CodingOutcomeBenchmark()
-        self.assertTrue(benchmark.evaluate(cases)["passed"])
+        result = benchmark.evaluate(cases)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["candidate_metrics"]["patch_success_rate"], 1.0)
+        self.assertEqual(result["repository_count"], 5)
         self.assertFalse(benchmark.evaluate(cases[:29])["passed"])
         cases[0]["origin"] = "synthetic"
         self.assertFalse(benchmark.evaluate(cases)["passed"])

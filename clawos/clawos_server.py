@@ -3186,6 +3186,23 @@ def _competition_hardware_evidence() -> dict[str, Any]:
         return {}
 
 
+def _product_learning_readiness() -> dict[str, Any]:
+    if not g_memory_store:
+        return {}
+    from agent_learning import AdvancedLearningReadiness
+    return AdvancedLearningReadiness(g_memory_store).report()
+
+
+from api.product_readiness import create_product_readiness_router
+
+app.include_router(create_product_readiness_router(
+    BASE_DIR.parent,
+    OUTPUT_ROOT,
+    learning_provider=_product_learning_readiness,
+    hardware_provider=_competition_hardware_evidence,
+))
+
+
 def _competition_readiness_snapshot() -> dict[str, Any]:
     from competition_readiness import CompetitionReadinessService
     from scripts.validate_competition_architecture import validate
@@ -7387,11 +7404,24 @@ async def api_coding_outcome_benchmark(request: Request):
     from services.coding_quality_service import CodingOutcomeBenchmark
 
     data = await request.json()
-    return JSONResponse(CodingOutcomeBenchmark().evaluate(
+    result = CodingOutcomeBenchmark().evaluate(
         data.get("cases") or [],
         minimum_cases=data.get("minimum_cases", 30),
         bootstrap_samples=data.get("bootstrap_samples", 1000),
-    ))
+    )
+    if data.get("persist") is True:
+        if data.get("confirmed") is not True:
+            raise HTTPException(
+                409, "confirmed=true is required to persist benchmark evidence"
+            )
+        target = OUTPUT_ROOT / "coding-benchmark" / "latest.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        result["persisted_report"] = str(target)
+    return JSONResponse(result)
 
 
 @app.post("/api/workspace/coding/review-gate")
