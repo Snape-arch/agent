@@ -3071,7 +3071,17 @@ class MemoryStore:
                     json.dumps(reward_components or {}, ensure_ascii=False),
                     float(step_reward) if step_reward is not None else None,
                     int(policy_selection_id) if policy_selection_id else None,
-                    max(0.000001, min(float(behavior_propensity or 1), 1.0)),
+                    max(
+                        0.0,
+                        min(
+                            float(
+                                1.0
+                                if behavior_propensity is None
+                                else behavior_propensity
+                            ),
+                            1.0,
+                        ),
+                    ),
                     1 if safety_violation else 0,
                 ),
             )
@@ -3491,8 +3501,45 @@ class MemoryStore:
                 """
                 SELECT COUNT(*) FROM agent_trajectory_steps
                 WHERE behavior_propensity>0 AND behavior_propensity<=1
+                  AND json_extract(
+                      action_payload, '$._policy_trace.complete'
+                  ) = 1
                 """
             ).fetchone()[0])
+            feedback_rows = c.execute(
+                """
+                SELECT owner_id, metadata FROM agent_feedback
+                WHERE explicit=1 AND score IS NOT NULL
+                """
+            ).fetchall()
+            origin_counts = {
+                "human_user": 0,
+                "codex_evaluator": 0,
+                "automated_test": 0,
+            }
+            human_owners = set()
+            evaluator_owners = set()
+            grounded_feedback_count = 0
+            for row in feedback_rows:
+                metadata = self._json_loads(row["metadata"], {})
+                origin = str(
+                    metadata.get("evaluator_origin") or "human_user"
+                )
+                if origin not in origin_counts:
+                    origin = "automated_test"
+                origin_counts[origin] += 1
+                if origin == "human_user":
+                    human_owners.add(str(row["owner_id"] or "default"))
+                    grounded_feedback_count += 1
+                elif (
+                    origin == "codex_evaluator"
+                    and metadata.get("evidence_digest")
+                    and metadata.get("evaluation_method")
+                ):
+                    evaluator_owners.add(
+                        str(row["owner_id"] or "codex-evaluator")
+                    )
+                    grounded_feedback_count += 1
             scenarios = {
                 str(row["scenario"]): int(row["count"])
                 for row in c.execute(
@@ -3531,6 +3578,10 @@ class MemoryStore:
                 "decision_step_count": step_count,
                 "preference_pair_count": preference_count,
                 "explicit_feedback_count": explicit_feedback_count,
+                "grounded_feedback_count": grounded_feedback_count,
+                "feedback_origin_counts": origin_counts,
+                "independent_human_owner_count": len(human_owners),
+                "evaluator_owner_count": len(evaluator_owners),
                 "feedback_task_count": feedback_task_count,
                 "feedback_coverage": round(
                     feedback_task_count / trajectory_count, 6
@@ -3932,7 +3983,9 @@ class MemoryStore:
         ):
             item[key] = self._json_loads(item.get(key), {})
         item["behavior_propensity"] = float(
-            item.get("behavior_propensity") or 0.000001
+            0.0
+            if item.get("behavior_propensity") is None
+            else item["behavior_propensity"]
         )
         item["safety_violation"] = bool(item.get("safety_violation"))
         for key in ("step_reward", "discounted_return"):

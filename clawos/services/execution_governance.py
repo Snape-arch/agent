@@ -245,6 +245,7 @@ class CodingAgentReadiness:
             "network_egress_policy",
             "production_trace_wiring",
             "signed_review_evidence",
+            "evaluator_feedback_provenance",
         ),
         "p1": (
             "structured_patch_loop",
@@ -256,6 +257,7 @@ class CodingAgentReadiness:
             "persistent_lsp",
             "headless_ide_entry",
             "path_scoped_context",
+            "recoverable_model_patch_errors",
         ),
         "p2": (
             "trajectory_ranker",
@@ -265,6 +267,7 @@ class CodingAgentReadiness:
             "lifecycle_hooks",
             "group_disjoint_policy_evaluation",
             "paired_canary_control",
+            "unknown_propensity_exclusion",
         ),
     }
 

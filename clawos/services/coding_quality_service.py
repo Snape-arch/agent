@@ -134,6 +134,69 @@ class CodingOutcomeBenchmark:
         }
 
 
+class CodingEvaluatorSummary:
+    """Aggregate labelled evaluator samples without inflating real-user claims."""
+
+    REAL_ORIGINS = {"repository", "user_trajectory"}
+
+    @classmethod
+    def summarize(
+        cls, reports: list[dict[str, Any]], *, minimum_real_cases: int = 30
+    ) -> dict[str, Any]:
+        valid = [
+            item for item in reports
+            if item.get("model_execution_real") is True
+            and item.get("evidence_digest")
+            and item.get("evaluator_origin")
+        ]
+        real = [
+            item for item in valid
+            if item.get("repository_origin") in cls.REAL_ORIGINS
+        ]
+        controlled = [
+            item for item in valid
+            if item.get("repository_origin") == "controlled_repository_fixture"
+        ]
+        passed = sum(bool(item.get("sample_passed")) for item in valid)
+        durations = [
+            float(item.get("duration_ms") or 0) for item in valid
+        ]
+        evaluator_origins: dict[str, int] = defaultdict(int)
+        for item in valid:
+            evaluator_origins[str(item.get("evaluator_origin"))] += 1
+        required = max(30, int(minimum_real_cases or 30))
+        return {
+            "schema": "clawos.coding-evaluator-summary.v1",
+            "sample_count": len(valid),
+            "passed_count": passed,
+            "pass_rate": round(passed / len(valid), 6) if valid else 0.0,
+            "mean_duration_ms": round(_mean(durations), 3),
+            "controlled_fixture_count": len(controlled),
+            "real_repository_case_count": len(real),
+            "required_real_repository_cases": required,
+            "evaluator_origin_counts": dict(evaluator_origins),
+            "independent_human_user_count": len({
+                str(item.get("evaluator_id"))
+                for item in valid
+                if item.get("evaluator_origin") == "human_user"
+                and item.get("evaluator_id")
+            }),
+            "ope_eligible_count": sum(
+                bool(item.get("eligible_for_ope")) for item in valid
+            ),
+            "real_benchmark_ready": len(real) >= required,
+            "online_rl_claimed": False,
+            "report_digest": _digest([
+                str(item.get("evidence_digest")) for item in valid
+            ]),
+            "truth_boundary": (
+                "Controlled fixtures and Codex evaluator feedback are real "
+                "model executions but do not count as independent human users "
+                "or real-repository benchmark cases."
+            ),
+        }
+
+
 class IDEContextContract:
     """Normalize IDE state without treating editor text as system policy."""
 

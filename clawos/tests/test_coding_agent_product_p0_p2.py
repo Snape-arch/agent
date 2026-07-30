@@ -22,6 +22,7 @@ from services.coding_trace_service import CodingTraceService
 from services.coding_context_service import CodingContextService
 from services.coding_quality_service import (
     CodingOutcomeBenchmark,
+    CodingEvaluatorSummary,
     CodingReviewGate,
     IDEContextContract,
 )
@@ -284,6 +285,35 @@ class ProductClosureTests(unittest.TestCase):
         self.assertFalse(benchmark.evaluate(cases[:29])["passed"])
         cases[0]["origin"] = "synthetic"
         self.assertFalse(benchmark.evaluate(cases)["passed"])
+
+    def test_evaluator_summary_separates_controlled_and_real_user_evidence(self):
+        base = {
+            "model_execution_real": True,
+            "evaluator_origin": "codex_evaluator",
+            "evidence_digest": "digest-a",
+            "sample_passed": True,
+            "duration_ms": 100,
+            "eligible_for_ope": False,
+        }
+        report = CodingEvaluatorSummary.summarize([
+            {
+                **base,
+                "repository_origin": "controlled_repository_fixture",
+            },
+            {
+                **base,
+                "evidence_digest": "digest-b",
+                "repository_origin": "repository",
+                "sample_passed": False,
+            },
+        ])
+
+        self.assertEqual(report["sample_count"], 2)
+        self.assertEqual(report["controlled_fixture_count"], 1)
+        self.assertEqual(report["real_repository_case_count"], 1)
+        self.assertEqual(report["independent_human_user_count"], 0)
+        self.assertFalse(report["real_benchmark_ready"])
+        self.assertFalse(report["online_rl_claimed"])
 
     def test_ide_ci_review_and_adaptation_gates(self):
         with tempfile.TemporaryDirectory() as tmp:

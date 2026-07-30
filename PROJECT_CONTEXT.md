@@ -1,5 +1,27 @@
 # Project Context
 
+## Coding evaluator data P0-P2 closure (2026-07-30)
+
+- Codex feedback is now an explicit `codex_evaluator` provenance class. It
+  requires an evidence digest and evaluation method, contributes to grounded
+  task-quality feedback, and never inflates independent-human counts.
+- Unknown model action probabilities are persisted as zero and excluded from
+  propensity-complete OPE evidence. Production Agentic Coding actions now enter
+  the task-bound learning trajectory when a real task ID is available.
+- Invalid patch planning and execution are recoverable observations inside the
+  same trajectory instead of escaping the loop and leaving a running trace.
+- Added a reproducible local coding evaluator with hidden tests and aggregate
+  truth-boundary reporting.
+- Real Ollama `qwen3.5:0.8b` collection: **3 executions, 0 passed**, mean about
+  **12.0 seconds**; 3 completed trajectories, 10 decision steps, 3 grounded
+  Codex feedback records, 0 independent humans, and 0 OPE-eligible decisions.
+  These negative results are retained rather than rewritten as successes.
+- Reward Calibration, Preference Ranker, deep Router, Trajectory RL, and
+  behavior LoRA remain blocked by data gates; `online_rl_claimed=false`.
+  See `clawos/CODING_AGENT_EVALUATOR_DATA_P0_P2.md`.
+- Validation: 32 focused learning/coding tests passed; full repository
+  regression passed **385 tests** with 1 environment-dependent skip.
+
 ## Coding Agent Competitive P0-P2 closure (2026-07-30)
 
 - Production autonomous coding now uses a bounded multi-turn

@@ -709,6 +709,9 @@ class FeedbackLearningService:
     ALLOWED_TYPES = {
         "binary", "rating", "score", "correction", "reason", "pairwise"
     }
+    EVALUATOR_ORIGINS = {
+        "human_user", "codex_evaluator", "automated_test",
+    }
 
     def __init__(self, store):
         self.store = store
@@ -731,6 +734,26 @@ class FeedbackLearningService:
                 f"signal_type must be one of {sorted(self.ALLOWED_TYPES)}"
             )
         score = self._normalize_score(signal_type, value)
+        normalized_metadata = TrajectoryLearningService._sanitize(
+            metadata or {}
+        )
+        evaluator_origin = str(
+            normalized_metadata.get("evaluator_origin") or "human_user"
+        ).strip().lower()
+        if evaluator_origin not in self.EVALUATOR_ORIGINS:
+            raise ValueError(
+                "evaluator_origin must be human_user, codex_evaluator, "
+                "or automated_test"
+            )
+        if evaluator_origin == "codex_evaluator" and (
+            not normalized_metadata.get("evidence_digest")
+            or not normalized_metadata.get("evaluation_method")
+        ):
+            raise ValueError(
+                "codex_evaluator feedback requires evidence_digest and "
+                "evaluation_method"
+            )
+        normalized_metadata["evaluator_origin"] = evaluator_origin
         feedback = self.store.create_agent_feedback(
             task_id,
             signal_type,
@@ -738,7 +761,7 @@ class FeedbackLearningService:
             owner_id=owner_id,
             reason_category=reason_category,
             correction=TrajectoryLearningService._sanitize(correction or {}),
-            metadata=TrajectoryLearningService._sanitize(metadata or {}),
+            metadata=normalized_metadata,
             explicit=True,
             idempotency_key=idempotency_key,
         )
@@ -773,13 +796,20 @@ class FeedbackLearningService:
             "feedback": feedback,
             "trajectory": trajectory,
             "revised_policy_rewards": revised_rewards,
+            "provenance": {
+                "evaluator_origin": evaluator_origin,
+                "counts_as_independent_human": evaluator_origin == "human_user",
+                "counts_as_grounded_reward": evaluator_origin in {
+                    "human_user", "codex_evaluator",
+                },
+            },
         }
 
     def quality_report(self) -> dict[str, Any]:
         quality = self.store.agent_learning_data_quality()
         quality["reward_calibration_ready"] = bool(
             quality["trajectory_count"] >= 50
-            and quality["explicit_feedback_count"] >= 20
+            and quality["grounded_feedback_count"] >= 20
             and (
                 not quality["arm_exposures"]
                 or min(quality["arm_exposures"].values()) >= 10
@@ -886,8 +916,8 @@ class RewardCalibrator:
         failures = []
         if quality["trajectory_count"] < thresholds["min_trajectories"]:
             failures.append("trajectory_count")
-        if quality["explicit_feedback_count"] < thresholds["min_explicit_feedback"]:
-            failures.append("explicit_feedback_count")
+        if quality["grounded_feedback_count"] < thresholds["min_explicit_feedback"]:
+            failures.append("grounded_feedback_count")
         if quality["arm_exposures"] and min(
             quality["arm_exposures"].values()
         ) < thresholds["min_arm_exposure"]:
@@ -1378,7 +1408,7 @@ class AdvancedLearningReadiness:
         deep_checks = {
             "trajectory_count": quality["trajectory_count"] >= deep["trajectory_count"],
             "preference_pair_count": quality["preference_pair_count"] >= deep["preference_pair_count"],
-            "explicit_feedback_count": quality["explicit_feedback_count"] >= deep["explicit_feedback_count"],
+            "explicit_feedback_count": quality["grounded_feedback_count"] >= deep["explicit_feedback_count"],
             "min_arm_exposure": min_arm >= deep["min_arm_exposure"],
         }
         rl = self.THRESHOLDS["trajectory_rl"]

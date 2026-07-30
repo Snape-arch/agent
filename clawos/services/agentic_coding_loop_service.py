@@ -25,11 +25,13 @@ class AgenticCodingLoopService:
         workflow: CodingWorkflowService | None = None,
         context: CodingContextService | None = None,
         trace: CodingTraceService | None = None,
+        learning_store: Any | None = None,
     ):
         self.provider = provider
         self.workflow = workflow or CodingWorkflowService()
         self.context = context or CodingContextService()
         self.trace = trace or CodingTraceService()
+        self.learning_store = learning_store
 
     async def run(
         self,
@@ -86,11 +88,21 @@ class AgenticCodingLoopService:
                 "role": "system",
                 "content": (
                     "You are an iterative coding agent. Return exactly one JSON "
-                    "action per turn. Allowed actions: search {query,glob}, read "
-                    "{path,start_line,end_line}, symbols {path}, propose_patch "
-                    "{changes,test_commands,explanation}, finish {summary}. "
-                    "Use repository-relative paths. Observe before editing. Never "
-                    "claim tests passed unless tool evidence says so."
+                    "object and no prose. The action field must be exactly one "
+                    "of search, read, symbols, propose_patch, finish. Put every "
+                    "parameter in a separate field; never put parameters inside "
+                    "the action string. Read example: "
+                    '{"action":"read","path":"maths.py","start_line":1,'
+                    '"end_line":200}. Search example: '
+                    '{"action":"search","query":"add","glob":"*.py"}. '
+                    "Patch example: "
+                    '{"action":"propose_patch","changes":[{"path":"maths.py",'
+                    '"operation":"replace","old_text":"old","new_text":"new"}],'
+                    '"test_commands":[["python","-m","unittest","-q"]],'
+                    '"explanation":"reason"}. Use repository-relative paths. '
+                    "Each changed path may appear only once in a proposal. "
+                    "Observe before editing. Never claim tests passed unless "
+                    "tool evidence says so."
                 ),
             },
             {
@@ -102,11 +114,16 @@ class AgenticCodingLoopService:
             },
         ]
         attempts: list[dict[str, Any]] = []
+        learning_decision_count = 0
         for turn in range(1, max(2, min(int(max_turns), 20)) + 1):
             governed.budget.consume(model_calls=1)
             governed.gate("before_model", {"task_id": task_id, "turn": turn})
             response = await self.provider.complete(
-                messages, {"temperature": 0.0, "max_tokens": 4000}
+                messages, {
+                    "temperature": 0.0,
+                    "max_tokens": 2000,
+                    "response_format": {"type": "json_object"},
+                }
             )
             if not response.get("ok"):
                 return self._fail(
@@ -143,13 +160,20 @@ class AgenticCodingLoopService:
                 run["id"], "model", status="selected_action",
                 input_value={"turn": turn, "observation_count": len(observations)},
                 output_value=action,
-                behavior_propensity=1.0,
+                behavior_propensity=None,
                 metadata={
                     "turn": turn, "action": action_name,
                     "policy": "deterministic-model-action",
                     "learned_propensity": False,
                 },
             )
+            learning_decision_count += int(self._record_learning_decision(
+                task_id,
+                turn=turn,
+                action=action,
+                observations=observations,
+                context_digest=manifest["context_digest"],
+            ))
             if action_name in {"search", "read", "symbols"}:
                 governed.budget.consume(tool_calls=1)
                 governed.gate("before_tool", {
@@ -207,15 +231,40 @@ class AgenticCodingLoopService:
                     "human_review_required": True,
                     "commit_created": False,
                     "online_rl_claimed": False,
+                    "learning_decision_count": learning_decision_count,
                 }
             proposal = {
                 "changes": action.get("changes") or [],
                 "test_commands": action.get("test_commands") or [],
                 "explanation": str(action.get("explanation") or ""),
             }
-            plan = self.workflow.plan(
-                repo, objective, proposal["changes"], proposal["test_commands"]
-            )
+            try:
+                plan = self.workflow.plan(
+                    repo, objective, proposal["changes"],
+                    proposal["test_commands"],
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                observation = {
+                    "type": "proposal_error", "turn": turn,
+                    "error": str(exc),
+                    "instruction": (
+                        "Repair the proposal structure and return a new "
+                        "propose_patch action."
+                    ),
+                }
+                observations.append(observation)
+                self.trace.step(
+                    run["id"], "failure", status="recoverable",
+                    input_value=proposal, output_value=observation,
+                    metadata={"turn": turn, "phase": "plan_patch"},
+                )
+                messages.extend([
+                    {"role": "assistant", "content": content},
+                    {"role": "user", "content": json.dumps(
+                        {"observation": observation}, ensure_ascii=False
+                    )},
+                ])
+                continue
             if not confirmed:
                 self.trace.finish(run["id"], "waiting_confirmation")
                 return {
@@ -226,6 +275,7 @@ class AgenticCodingLoopService:
                     "proposal": proposal,
                     "observations": observations,
                     "requires_confirmation": True,
+                    "learning_decision_count": learning_decision_count,
                 }
             governed.gate("before_write", {
                 "task_id": task_id, "turn": turn,
@@ -234,11 +284,35 @@ class AgenticCodingLoopService:
             governed.budget.consume(
                 tool_calls=1 + len(proposal["test_commands"])
             )
-            result = self.workflow.execute(
-                repo, objective, proposal["changes"], proposal["test_commands"],
-                confirmed=True, max_rounds=1, timeout_seconds=timeout_seconds,
-                actor=actor_id,
-            )
+            try:
+                result = self.workflow.execute(
+                    repo, objective, proposal["changes"],
+                    proposal["test_commands"],
+                    confirmed=True, max_rounds=1,
+                    timeout_seconds=timeout_seconds, actor=actor_id,
+                )
+            except (OSError, PermissionError, RuntimeError, ValueError) as exc:
+                observation = {
+                    "type": "patch_execution_error", "turn": turn,
+                    "error": str(exc),
+                    "instruction": (
+                        "Repair the patch or test command and return a new "
+                        "propose_patch action."
+                    ),
+                }
+                observations.append(observation)
+                self.trace.step(
+                    run["id"], "failure", status="recoverable",
+                    input_value=proposal, output_value=observation,
+                    metadata={"turn": turn, "phase": "execute_patch"},
+                )
+                messages.extend([
+                    {"role": "assistant", "content": content},
+                    {"role": "user", "content": json.dumps(
+                        {"observation": observation}, ensure_ascii=False
+                    )},
+                ])
+                continue
             governed.gate("after_write", {
                 "task_id": task_id, "turn": turn, "status": result["status"],
             })
@@ -279,6 +353,43 @@ class AgenticCodingLoopService:
             run["id"], attempts, observations, "agentic turn budget exhausted",
             governed,
         )
+
+    def _record_learning_decision(
+        self, task_id: str, *, turn: int, action: dict[str, Any],
+        observations: list[dict[str, Any]], context_digest: str,
+    ) -> bool:
+        if self.learning_store is None:
+            return False
+        try:
+            numeric_task_id = int(task_id)
+            if not self.learning_store.get_task(numeric_task_id):
+                return False
+            from agent_learning import TrajectoryLearningService
+
+            TrajectoryLearningService(self.learning_store).record_decision(
+                numeric_task_id,
+                state={
+                    "turn": int(turn),
+                    "observation_types": [
+                        str(item.get("type") or "") for item in observations
+                    ],
+                },
+                action_type="agentic_coding_action",
+                action_name=str(action.get("action") or ""),
+                action_payload={
+                    key: value for key, value in action.items()
+                    if key not in {"changes"}
+                },
+                behavior_propensity=0.0,
+                candidate_set=sorted(self.ACTIONS),
+                candidate_scores={},
+                policy_version="agentic-coding-loop-v1",
+                exploration_source="model_action_without_logged_distribution",
+                context_digest=context_digest,
+            )
+            return True
+        except (KeyError, TypeError, ValueError):
+            return False
 
     def _observe(
         self, repo: Path, manifest: dict[str, Any], action: dict[str, Any]

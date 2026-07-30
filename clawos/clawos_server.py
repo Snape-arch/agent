@@ -7286,6 +7286,7 @@ async def api_autonomous_coding(request: Request):
         workflow=get_coding_workflow_service(),
         context=getattr(g_context_builder, "_coding_context", None),
         trace=CodingTraceService(OUTPUT_ROOT / "traces" / "coding.json"),
+        learning_store=g_memory_store,
     )
     try:
         result = await service.run(

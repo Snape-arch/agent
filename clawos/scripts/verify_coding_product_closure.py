@@ -42,6 +42,9 @@ CAPABILITY_TESTS = {
         "clawos.tests.test_coding_agent_product_p0_p2.ProductClosureTests.test_ide_ci_review_and_adaptation_gates",
         "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_production_entrypoints_enforce_trace_identity_and_signatures",
     ],
+    "evaluator_feedback_provenance": [
+        "clawos.tests.test_feedback_preference_learning.FeedbackPreferenceLearningTests.test_codex_evaluator_feedback_is_grounded_but_not_a_human_user",
+    ],
     "structured_patch_loop": [
         "clawos.tests.test_coding_agent_product_p0_p2.ProductClosureTests.test_autonomous_loop_is_model_driven_confirmed_and_checkpointed",
     ],
@@ -69,6 +72,9 @@ CAPABILITY_TESTS = {
     "path_scoped_context": [
         "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_context_auto_compacts_and_applies_only_matching_rules",
     ],
+    "recoverable_model_patch_errors": [
+        "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_agentic_loop_repairs_invalid_proposal_inside_same_trajectory",
+    ],
     "trajectory_ranker": [
         "clawos.tests.test_coding_agent_excellence.CodingAgentExcellenceTests.test_trajectory_ranker_and_offline_sandbox_respect_data_gates",
     ],
@@ -89,6 +95,9 @@ CAPABILITY_TESTS = {
     ],
     "paired_canary_control": [
         "clawos.tests.test_self_evolution.SelfEvolutionTests.test_run_moves_through_shadow_canary_before_activation",
+    ],
+    "unknown_propensity_exclusion": [
+        "clawos.tests.test_coding_agent_competitive_p0_p2.CompetitiveClosureTests.test_agentic_actions_enter_learning_trace_without_fake_propensity",
     ],
 }
 
