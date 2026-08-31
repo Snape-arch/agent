@@ -7,6 +7,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import smtplib
 import socket
 import ssl
@@ -24,6 +25,7 @@ from typing import Any, Callable
 from office_artifacts import create_docx, create_pdf, create_pptx, create_xlsx, edit_xlsx, replace_docx_text, replace_pptx_text
 from .runtime_records import RunRecord, now_iso
 from .office_visual_quality_service import OfficeVisualQualityService
+from .office_roundtrip_service import OfficeRoundtripService
 
 
 SUPPORTED_FORMATS = {"docx", "xlsx", "pptx", "pdf", "md", "txt", "json", "csv", "eml", "ics"}
@@ -32,12 +34,15 @@ SUPPORTED_FORMATS = {"docx", "xlsx", "pptx", "pdf", "md", "txt", "json", "csv", 
 class OfficeProductivityService:
     """Unified office artifact pipeline: create/edit/inspect/validate/package/dispatch."""
 
-    def __init__(self, store: Any | None = None, allowed_roots: list[str | Path] | None = None, smtp_sender: Callable | None = None, calendar_sender: Callable | None = None):
+    def __init__(self, store: Any | None = None, allowed_roots: list[str | Path] | None = None, smtp_sender: Callable | None = None, calendar_sender: Callable | None = None, preview_root: str | Path | None = None):
         self.store = store
         self.allowed_roots = tuple(Path(item).expanduser().resolve() for item in (allowed_roots or [Path.cwd(), Path.home() / "Desktop", Path.home() / "Documents"]))
         self.smtp_sender = smtp_sender
         self.calendar_sender = calendar_sender
         self.visual_quality = OfficeVisualQualityService()
+        self.roundtrip = OfficeRoundtripService()
+        configured_preview = preview_root or os.environ.get("CLAWOS_OUTPUT_DIR", "")
+        self.preview_root = (Path(configured_preview).expanduser().resolve() / "office_previews") if configured_preview else None
 
     def quality_audit(self, file_path: str | Path, *, template_path: str | Path = "", strict_visual: bool = False) -> dict[str, Any]:
         path = self._path(file_path)
@@ -62,11 +67,21 @@ class OfficeProductivityService:
         if fmt not in SUPPORTED_FORMATS - {"eml", "ics"}:
             raise ValueError(f"unsupported office format: {fmt}")
         path.parent.mkdir(parents=True, exist_ok=True)
-        sections = sections or []
+        sections = self._expand_semantic_tables(sections or [])
+        metadata = dict(metadata or {})
+        metadata["semantic_requirements"] = self._semantic_requirements(sections, metadata, fmt)
         engine = "stdlib"
         if fmt == "docx":
             create_docx(path, title, sections, metadata)
             engine = self._module_engine("docx", "python-docx", "stdlib-openxml")
+            if metadata.get("comments") or metadata.get("revisions"):
+                reviewed = path.with_name(f".{path.stem}.reviewed{path.suffix}")
+                self.roundtrip.edit_docx(
+                    path, reviewed, comments=list(metadata.get("comments") or []),
+                    revisions=list(metadata.get("revisions") or []),
+                )
+                os.replace(reviewed, path)
+                engine += "+review-ooxml"
         elif fmt == "xlsx":
             sheets = data if isinstance(data, list) else (metadata or {}).get("sheets") or [{"name": "Sheet1", "rows": []}]
             create_xlsx(path, sheets)
@@ -86,9 +101,45 @@ class OfficeProductivityService:
         else:
             text = str(data if data is not None else self._sections_markdown(title, sections))
             path.write_text(text, encoding="utf-8")
-        return self._finalize("create", path, engine, {"title": title, "format": fmt, **(metadata or {})})
+        return self._finalize("create", path, engine, {"title": title, "format": fmt, **metadata})
 
-    def edit(self, file_path: str | Path, output_path: str | Path, *, replacements: dict[str, Any] | None = None, updates: list[dict[str, Any]] | None = None, confirmed: bool = False) -> dict[str, Any]:
+    @staticmethod
+    def _expand_semantic_tables(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Keep experimental groups and continuation-row parents in generated reports."""
+        expanded = []
+        for section in sections:
+            table = section.get("table")
+            from .document_evidence_policy import table_pending
+            if section.get("review_required") or isinstance(table, dict) and table_pending(table):
+                raise ValueError("Document evidence requires source review before export")
+            if not isinstance(table, dict) or table.get("representation") not in {"ruled_region_glyph_grid", "raster_header_grid"}:
+                expanded.append(section)
+                continue
+            groups: dict[str, list[list[str]]] = {}
+            for r, values in enumerate(table["rows"][1:], 1):
+                first = next(c for c in table["cells"] if c["row"] == r and c["column"] == 0)
+                group = first.get("group_context", "")
+                row = list(values)
+                if first.get("row_context"):
+                    row[0] = first["row_context"] + " / " + row[0]
+                groups.setdefault(group, []).append(row)
+            for index, (group, rows) in enumerate(groups.items()):
+                result = dict(section) if index == 0 else {"heading": section.get("heading", "Results")}
+                paragraphs = list(result.get("paragraphs") or [])
+                source_label = f"Source: {table.get('source_filename') or 'original document'}, page {table.get('page', '?')}"
+                paragraphs.extend(value for value in (table.get("caption"), group, source_label) if value)
+                if any(c.get("annotations") for c in table["cells"]):
+                    paragraphs.append("Small-type values are preserved as annotations; their statistical meaning has not been inferred.")
+                result["paragraphs"] = paragraphs
+                result["table"] = {"rows": [list(table["headers"]), *rows], "header_rows": 1,
+                                   "source_table_id": table["id"], "source_group": group,
+                                   "source_locator": table.get("locator", "")}
+                if table.get("column_widths"):
+                    result["table"]["column_widths"] = list(table["column_widths"])
+                expanded.append(result)
+        return expanded
+
+    def edit(self, file_path: str | Path, output_path: str | Path, *, replacements: dict[str, Any] | None = None, updates: list[dict[str, Any]] | None = None, comments: list[dict[str, Any]] | None = None, revisions: list[dict[str, Any]] | None = None, recalculate: bool = False, confirmed: bool = False) -> dict[str, Any]:
         if confirmed is not True:
             raise PermissionError("confirmed=true is required for office artifact edits")
         source, output = self._path(file_path), self._path(output_path)
@@ -96,15 +147,24 @@ class OfficeProductivityService:
             raise ValueError("source must exist and output must use the same format")
         fmt = source.suffix.lower().lstrip(".")
         output.parent.mkdir(parents=True, exist_ok=True)
+        evidence: dict[str, Any] = {}
         if fmt == "docx":
-            replace_docx_text(source, replacements or {}, output)
-            engine = self._module_engine("docx", "python-docx", "stdlib-openxml")
+            evidence["roundtrip"] = self.roundtrip.edit_docx(
+                source, output, replacements=replacements or {},
+                comments=comments or [], revisions=revisions or [],
+            )
+            engine = "part-scoped-openxml"
         elif fmt == "xlsx":
-            edit_xlsx(source, updates or [], output)
-            engine = self._module_engine("openpyxl", "openpyxl", "stdlib-openxml")
+            evidence["roundtrip"] = self.roundtrip.edit_xlsx(source, output, updates or [])
+            engine = "part-scoped-openxml"
+            if recalculate:
+                recalculated = output.with_name(f".{output.stem}.recalculated{output.suffix}")
+                evidence["recalculation"] = self.roundtrip.recalculate_xlsx(output, recalculated)
+                os.replace(recalculated, output)
+                engine += "+libreoffice-calc"
         elif fmt == "pptx":
-            replace_pptx_text(source, replacements or {}, output)
-            engine = self._module_engine("pptx", "python-pptx", "stdlib-openxml")
+            evidence["roundtrip"] = self.roundtrip.edit_pptx(source, output, replacements or {})
+            engine = "part-scoped-openxml"
         elif fmt in {"md", "txt", "json", "csv"}:
             text = source.read_text(encoding="utf-8-sig")
             for old, new in (replacements or {}).items():
@@ -113,7 +173,7 @@ class OfficeProductivityService:
             engine = "stdlib"
         else:
             raise ValueError(f"editing is not supported for {fmt}")
-        return self._finalize("edit", output, engine, {"source_sha256": self._sha(source)})
+        return self._finalize("edit", output, engine, {"source_sha256": self._sha(source), **evidence})
 
     def inspect(self, file_path: str | Path) -> dict[str, Any]:
         path = self._path(file_path)
@@ -285,9 +345,88 @@ class OfficeProductivityService:
 
     def _finalize(self, operation: str, path: Path, engine: str, metadata: dict[str, Any]) -> dict[str, Any]:
         inspection = self.inspect(path)
-        inspection.update({"operation": operation, "engine": engine, "metadata": metadata, "quality_gate": "pass" if inspection["valid"] and inspection["bytes"] > 0 else "revision_required"})
+        visual_quality: dict[str, Any] = {}
+        semantic_quality: dict[str, Any] = {}
+        if path.suffix.lower().lstrip(".") in {"docx", "xlsx", "pptx", "pdf"}:
+            try:
+                visual_quality = self.visual_quality.audit(path, strict_visual=False)
+                visual_quality["render"] = self._persist_previews(path, visual_quality.get("render") or {})
+            except Exception as exc:
+                visual_quality = {
+                    "schema": "clawos.office-visual-quality.v1",
+                    "path": str(path),
+                    "quality_gate": "revision_required",
+                    "visual_status": "audit_failed",
+                    "hard_failures": ["visual_audit_error"],
+                    "warnings": [],
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "render": {"available": False, "pages": 0, "images": []},
+                }
+        if path.suffix.lower() in {".docx", ".pdf"}:
+            semantic_quality = self._semantic_generation_audit(path, metadata.get("semantic_requirements") or {})
+        quality_passed = (
+            inspection["valid"] and inspection["bytes"] > 0
+            and visual_quality.get("quality_gate", "pass") == "pass"
+            and semantic_quality.get("gate", "pass") == "pass"
+        )
+        inspection.update({"operation": operation, "engine": engine, "metadata": metadata,
+                           "visual_quality": visual_quality, "semantic_quality": semantic_quality,
+                           "quality_gate": "pass" if quality_passed else "revision_required"})
         self._save_run("office_artifact", f"{operation}: {path.name}", inspection)
         return inspection
+
+    @staticmethod
+    def _semantic_requirements(sections: list[dict[str, Any]], metadata: dict[str, Any], fmt: str) -> dict[str, int]:
+        if fmt not in {"docx", "pdf"}:
+            return {}
+        return {
+            "headings": sum(bool(item.get("heading")) for item in sections),
+            "tables": sum(bool(item.get("table")) for item in sections),
+            "figures": sum(len(item.get("figures") or []) for item in sections),
+            "formulas": sum(len(item.get("formulas") or []) for item in sections),
+            "footnotes": len(metadata.get("footnotes") or []),
+            "comments": len(metadata.get("comments") or []) if fmt == "docx" else 0,
+            "revisions": len(metadata.get("revisions") or []) if fmt == "docx" else 0,
+        }
+
+    @staticmethod
+    def _semantic_generation_audit(path: Path, requirements: dict[str, int]) -> dict[str, Any]:
+        try:
+            from .document_semantic_graph_service import DocumentSemanticGraphService
+
+            graph = DocumentSemanticGraphService().parse(path)
+            actual = {
+                "headings": len(graph.get("sections") or []), "tables": len(graph.get("tables") or []),
+                "figures": len(graph.get("figures") or []), "formulas": len(graph.get("formulas") or []),
+                "footnotes": len(graph.get("footnotes") or []), "comments": len(graph.get("comments") or []),
+                "revisions": len(graph.get("revisions") or []),
+            }
+            checks = {key: actual.get(key, 0) >= int(value or 0) for key, value in requirements.items()}
+            return {
+                "schema": "clawos.office-semantic-generation-audit.v1", "requirements": requirements,
+                "actual": actual, "checks": checks, "gate": "pass" if all(checks.values()) else "revision_required",
+                "parser_quality": graph.get("quality") or {},
+            }
+        except Exception as exc:
+            return {"schema": "clawos.office-semantic-generation-audit.v1", "requirements": requirements,
+                    "actual": {}, "checks": {}, "gate": "revision_required",
+                    "error": f"{type(exc).__name__}: {exc}"}
+
+    def _persist_previews(self, source: Path, render: dict[str, Any]) -> dict[str, Any]:
+        if not self.preview_root or not render.get("available"):
+            return render
+        images = [Path(item) for item in render.get("images") or [] if Path(item).is_file()]
+        if not images:
+            return render
+        digest = self._sha(source)[:16]
+        target_root = self.preview_root / digest
+        target_root.mkdir(parents=True, exist_ok=True)
+        persisted = []
+        for index, image in enumerate(images[:20], 1):
+            target = target_root / f"page-{index:03d}{image.suffix.lower()}"
+            shutil.copyfile(image, target)
+            persisted.append(str(target))
+        return {**render, "images": persisted, "persisted": True}
 
     def _save_run(self, run_type: str, title: str, result: dict[str, Any]) -> None:
         if not self.store:
@@ -352,7 +491,14 @@ class OfficeProductivityService:
             lines.extend([f"- {value}" for value in item.get("bullets") or []])
             if item.get("table"):
                 table = item["table"]
-                lines.extend([" | ".join(str(value) for value in row) for row in table])
+                rows = table.get("rows", []) if isinstance(table, dict) else table
+                if rows:
+                    width = max(len(row) for row in rows)
+                    def render_row(row):
+                        cells = [str(value).replace("|", "\\|").replace("\r", "").replace("\n", "<br>") for value in row]
+                        return "| " + " | ".join(cells + [""] * (width-len(cells))) + " |"
+                    lines.extend(["", render_row(rows[0]), "| " + " | ".join(["---"]*width) + " |"])
+                    lines.extend(render_row(row) for row in rows[1:])
             lines.append("")
         return "\n".join(lines).strip() + "\n"
 

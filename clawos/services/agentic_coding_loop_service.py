@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from .coding_context_service import CodingContextService
+from .coding_diagnostics_service import CodingEvidenceGate
 from .coding_trace_service import CodingTraceService
+from .lsp_semantic_graph_service import LSPSemanticGraphService
 from .coding_workflow_service import CodingWorkflowService
 from .execution_governance import GovernedExecutionContext
 
@@ -16,7 +18,7 @@ from .execution_governance import GovernedExecutionContext
 class AgenticCodingLoopService:
     """A bounded tool-using loop; the model proposes one action per turn."""
 
-    ACTIONS = {"search", "read", "symbols", "propose_patch", "finish"}
+    ACTIONS = {"search", "read", "symbols", "semantic", "propose_patch", "finish"}
 
     def __init__(
         self,
@@ -44,6 +46,7 @@ class AgenticCodingLoopService:
         actor_id: str = "local-user",
         focus_paths: list[str] | None = None,
         diagnostics: list[dict[str, Any]] | None = None,
+        enable_lsp: bool = False,
         max_turns: int = 8,
         timeout_seconds: int = 180,
         governance: GovernedExecutionContext | None = None,
@@ -63,8 +66,20 @@ class AgenticCodingLoopService:
         governed.gate("before_context", {
             "task_id": task_id, "session_id": session_id, "repo": str(repo),
         })
+        semantic_workspace: dict[str, Any] = {}
+        if enable_lsp:
+            try:
+                semantic_workspace = LSPSemanticGraphService(
+                    cache_root=self.workflow.artifact_root / "semantic-index"
+                ).build_available(
+                    repo, files=focus_paths, max_languages=3,
+                    max_files=40, max_symbols=120, include_calls=True,
+                )
+            except (OSError, RuntimeError, TimeoutError, ValueError):
+                semantic_workspace = {}
         manifest = self.context.build(
-            repo, objective, focus_paths=focus_paths, diagnostics=diagnostics
+            repo, objective, focus_paths=focus_paths, diagnostics=diagnostics,
+            semantic_graph=semantic_workspace,
         )
         governed.gate("after_context", {
             "task_id": task_id, "context_digest": manifest["context_digest"],
@@ -82,19 +97,36 @@ class AgenticCodingLoopService:
                 item.get("path") for item in (manifest.get("code_evidence") or [])[:30]
             ],
             "diagnostics": manifest.get("diagnostics") or [],
+            "semantic_graph": {
+                "available": bool((manifest.get("semantic_graph") or {}).get("available")),
+                "metrics": (manifest.get("semantic_graph") or {}).get("metrics") or {},
+            },
+            "repository_intelligence": manifest.get("repository_intelligence") or {},
+            "task_context": {
+                "digest": (manifest.get("task_context") or {}).get("digest"),
+                "selected_files": (manifest.get("task_context") or {}).get("selected_files") or [],
+                "nodes": (manifest.get("task_context") or {}).get("nodes") or [],
+                "edges": (manifest.get("task_context") or {}).get("edges") or [],
+            },
+            "impact_analysis": manifest.get("impact_analysis") or {},
         }]
+        evidence_gate = CodingEvidenceGate(manifest)
+        hypothesis_history: list[dict[str, Any]] = []
         messages = [
             {
                 "role": "system",
                 "content": (
                     "You are an iterative coding agent. Return exactly one JSON "
                     "object and no prose. The action field must be exactly one "
-                    "of search, read, symbols, propose_patch, finish. Put every "
+                    "of search, read, symbols, semantic, propose_patch, finish. Put every "
                     "parameter in a separate field; never put parameters inside "
                     "the action string. Read example: "
                     '{"action":"read","path":"maths.py","start_line":1,'
                     '"end_line":200}. Search example: '
                     '{"action":"search","query":"add","glob":"*.py"}. '
+                    "Semantic graph example: "
+                    '{"action":"semantic","path":"maths.py","symbol":"add",'
+                    '"depth":2}. '
                     "Patch example: "
                     '{"action":"propose_patch","changes":[{"path":"maths.py",'
                     '"operation":"replace","old_text":"old","new_text":"new"}],'
@@ -102,7 +134,12 @@ class AgenticCodingLoopService:
                     '"explanation":"reason"}. Use repository-relative paths. '
                     "Each changed path may appear only once in a proposal. "
                     "Observe before editing. Never claim tests passed unless "
-                    "tool evidence says so."
+                    "tool evidence says so. Every propose_patch must include a "
+                    "hypothesis object with claim, evidence_paths and predicted_outcome, "
+                    "plus acceptance_criteria. After every failed patch, reassess the "
+                    "hypothesis from structured diagnostics before deciding whether to "
+                    "retrieve more evidence or propose a different patch. Do not finish "
+                    "until the acceptance gate explicitly passes."
                 ),
             },
             {
@@ -175,6 +212,18 @@ class AgenticCodingLoopService:
                 context_digest=manifest["context_digest"],
             ))
             if action_name in {"search", "read", "symbols"}:
+                if evidence_gate.retrieval_complete():
+                    observation = {
+                        "type": "retrieval_stopped", "tool": action_name,
+                        "reason": "relevant evidence is sufficient; propose a hypothesis and patch instead of reading more files",
+                        "observed_paths": sorted(evidence_gate.observed_paths),
+                    }
+                    observations.append(observation)
+                    messages.extend([
+                        {"role": "assistant", "content": content},
+                        {"role": "user", "content": json.dumps({"observation": observation}, ensure_ascii=False)},
+                    ])
+                    continue
                 governed.budget.consume(tool_calls=1)
                 governed.gate("before_tool", {
                     "task_id": task_id, "tool": action_name, "turn": turn,
@@ -199,6 +248,8 @@ class AgenticCodingLoopService:
                     metadata={"turn": turn, "tool": action_name},
                 )
                 observations.append(observation)
+                evidence = evidence_gate.register(action, observation)
+                observation["evidence_gate"] = evidence
                 messages.extend([
                     {"role": "assistant", "content": content},
                     {"role": "user", "content": json.dumps(
@@ -207,11 +258,22 @@ class AgenticCodingLoopService:
                 ])
                 continue
             if action_name == "finish":
-                if not attempts or attempts[-1].get("status") != "passed":
+                final_acceptance = (
+                    ((attempts[-1].get("workflow") or {}).get("acceptance") or {})
+                    if attempts else {}
+                )
+                final_hypothesis = hypothesis_history[-1] if hypothesis_history else {}
+                if (
+                    not attempts or attempts[-1].get("status") != "passed"
+                    or not final_acceptance.get("passed")
+                    or final_hypothesis.get("status") != "confirmed"
+                ):
                     messages.extend([
                         {"role": "assistant", "content": content},
                         {"role": "user", "content": json.dumps({
-                            "error": "finish requires a passed patch and test evidence"
+                            "error": "finish requires confirmed hypothesis and a passed acceptance gate",
+                            "acceptance": final_acceptance,
+                            "hypothesis": final_hypothesis,
                         })},
                     ])
                     continue
@@ -232,11 +294,32 @@ class AgenticCodingLoopService:
                     "commit_created": False,
                     "online_rl_claimed": False,
                     "learning_decision_count": learning_decision_count,
+                    "hypothesis_history": hypothesis_history,
+                    "acceptance": final_acceptance,
                 }
+            if not evidence_gate.patch_ready():
+                target = evidence_gate.automatic_target()
+                observation = {
+                    "type": "evidence_required", "turn": turn,
+                    "reason": "patch blocked until relevant repository evidence is retrieved",
+                    "suggested_action": {"action": "read", "path": target, "start_line": 1, "end_line": 240} if target else {"action": "search", "query": objective, "glob": "*"},
+                }
+                observations.append(observation)
+                messages.extend([
+                    {"role": "assistant", "content": content},
+                    {"role": "user", "content": json.dumps({"observation": observation}, ensure_ascii=False)},
+                ])
+                continue
             proposal = {
                 "changes": action.get("changes") or [],
                 "test_commands": action.get("test_commands") or [],
                 "explanation": str(action.get("explanation") or ""),
+                "hypothesis": action.get("hypothesis") or {
+                    "claim": str(action.get("explanation") or "proposed change addresses the objective"),
+                    "evidence_paths": sorted(evidence_gate.observed_paths or evidence_gate.initial_paths),
+                    "predicted_outcome": "configured tests and acceptance criteria pass",
+                },
+                "acceptance_criteria": action.get("acceptance_criteria") or [],
             }
             try:
                 plan = self.workflow.plan(
@@ -290,6 +373,7 @@ class AgenticCodingLoopService:
                     proposal["test_commands"],
                     confirmed=True, max_rounds=1,
                     timeout_seconds=timeout_seconds, actor=actor_id,
+                    acceptance_criteria=proposal["acceptance_criteria"],
                 )
             except (OSError, PermissionError, RuntimeError, ValueError) as exc:
                 observation = {
@@ -322,6 +406,11 @@ class AgenticCodingLoopService:
                 "workflow": result,
             }
             attempts.append(attempt)
+            assessment = self._assess_hypothesis(proposal["hypothesis"], result)
+            hypothesis_history.append(assessment)
+            attempt["hypothesis_assessment"] = assessment
+            if assessment["status"] != "confirmed":
+                evidence_gate.reopen_after_failure()
             self.trace.step(
                 run["id"], "edit", status=result["status"],
                 input_value=proposal["changes"], output_value=result.get("rounds"),
@@ -341,6 +430,16 @@ class AgenticCodingLoopService:
                 "type": "patch_result", "turn": turn,
                 "status": result["status"], "failure": result.get("failure"),
                 "rounds": result.get("rounds") or [],
+                "diagnostics": [
+                    item.get("diagnostics") for item in result.get("rounds") or []
+                ],
+                "failure_category": next((
+                    item.get("diagnostics", {}).get("failure_category")
+                    for item in reversed(result.get("rounds") or [])
+                    if item.get("diagnostics")
+                ), "none"),
+                "hypothesis_assessment": assessment,
+                "acceptance": result.get("acceptance") or {},
             }
             observations.append(observation)
             messages.extend([
@@ -353,6 +452,36 @@ class AgenticCodingLoopService:
             run["id"], attempts, observations, "agentic turn budget exhausted",
             governed,
         )
+
+    @staticmethod
+    def _assess_hypothesis(
+        hypothesis: dict[str, Any], workflow: dict[str, Any]
+    ) -> dict[str, Any]:
+        rounds = workflow.get("rounds") or []
+        diagnostic = (rounds[-1].get("diagnostics") or {}) if rounds else {}
+        acceptance = workflow.get("acceptance") or {}
+        category = str(diagnostic.get("failure_category") or "none")
+        if workflow.get("status") == "passed" and acceptance.get("passed"):
+            status, decision = "confirmed", "finish_when_requested"
+        elif category == "environment_failure":
+            status, decision = "inconclusive", "repair_environment_without_changing_implementation"
+        elif category == "requirements_failure":
+            status, decision = "invalidated", "clarify_or_retrieve_requirement_evidence"
+        elif category == "test_failure":
+            status, decision = "invalidated", "inspect_assertion_and_related_symbols_then_revise"
+        else:
+            status, decision = "invalidated", "inspect_diagnostics_and_revise_implementation"
+        return {
+            "schema": "clawos.coding-hypothesis-assessment.v1",
+            "claim": str(hypothesis.get("claim") or ""),
+            "predicted_outcome": str(hypothesis.get("predicted_outcome") or ""),
+            "evidence_paths": list(hypothesis.get("evidence_paths") or []),
+            "status": status, "failure_category": category,
+            "next_decision": decision,
+            "diagnostic_count": len(diagnostic.get("diagnostics") or []),
+            "related_symbols": diagnostic.get("related_symbols") or [],
+            "acceptance_passed": bool(acceptance.get("passed")),
+        }
 
     def _record_learning_decision(
         self, task_id: str, *, turn: int, action: dict[str, Any],
@@ -419,6 +548,26 @@ class AgenticCodingLoopService:
                 if len(matches) >= 100:
                     break
             return {"type": "search", "query": query, "matches": matches}
+        if name == "semantic":
+            workspace = manifest.get("semantic_graph") or {}
+            requested_path = str(action.get("path") or "").replace("\\", "/").strip("/")
+            requested_symbol = str(action.get("symbol") or "")
+            depth = max(0, min(int(action.get("depth") or 2), 5))
+            merged_nodes, merged_edges, seeds = [], [], []
+            for graph in workspace.get("graphs") or []:
+                queried = LSPSemanticGraphService().query(
+                    graph, path=requested_path, symbol=requested_symbol,
+                    depth=depth, limit=100,
+                )
+                merged_nodes.extend(queried["nodes"])
+                merged_edges.extend(queried["edges"])
+                seeds.extend(queried["seed_ids"])
+            return {
+                "type": "semantic", "path": requested_path,
+                "symbol": requested_symbol, "seed_ids": sorted(set(seeds)),
+                "nodes": merged_nodes[:100], "edges": merged_edges[:300],
+                "available": bool((workspace.get("graphs") or [])),
+            }
         rel = str(action.get("path") or "").replace("\\", "/").strip("/")
         path = (repo / rel).resolve()
         try:

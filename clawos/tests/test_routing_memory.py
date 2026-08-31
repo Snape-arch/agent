@@ -3,6 +3,7 @@ import contextlib
 import importlib
 import io
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -36,6 +37,176 @@ class FakeUploadFile:
 
 
 class MemoryAndRoutingTests(unittest.TestCase):
+    def test_project_chat_exposes_iterative_coding_agent(self):
+        import clawos_server as server
+
+        strategy = server.build_routing_strategy("修改这个项目的代码并运行测试")
+        self.assertEqual(strategy["scenario"], "project")
+        self.assertIn("coding_agent", strategy["allowed_tools"])
+        self.assertIn("coding_agent", strategy["requires_confirmation"])
+
+    def test_web_search_policy_filters_stable_requests_but_allows_freshness(self):
+        import clawos_server as server
+
+        base = {
+            "scenario": "research",
+            "allowed_tools": ["knowledge_search", "web_search", "web_fetch"],
+            "requires_confirmation": ["web_fetch"],
+        }
+        stable = server.apply_web_search_policy(base, "分析这篇论文的核心方法", mode="auto", has_attachments=True)
+        latest = server.apply_web_search_policy(base, "查一下最新论文并给出来源", mode="off")
+
+        self.assertNotIn("web_search", stable["allowed_tools"])
+        self.assertNotIn("web_fetch", stable["allowed_tools"])
+        self.assertFalse(stable["web_search_decision"]["should_search"])
+        self.assertIn("web_search", latest["allowed_tools"])
+        self.assertTrue(latest["web_search_decision"]["should_search"])
+
+    def test_web_search_policy_adds_tools_for_high_stakes_and_prefers_local_repo(self):
+        import clawos_server as server
+
+        base = {
+            "scenario": "general", "allowed_tools": ["calc"],
+            "requires_confirmation": [],
+        }
+        high_risk = server.apply_web_search_policy(
+            base, "这份合同是否合规，有什么法律风险", mode="auto"
+        )
+        local_repo = server.apply_web_search_policy(
+            {**base, "allowed_tools": ["calc", "web_search", "web_fetch"]},
+            "分析仓库里的调用关系", mode="auto", local_context_sufficient=True,
+        )
+
+        self.assertIn("web_search", high_risk["allowed_tools"])
+        self.assertIn("web_fetch", high_risk["allowed_tools"])
+        self.assertTrue(high_risk["web_search_decision"]["high_stakes"])
+        self.assertNotIn("web_search", local_repo["allowed_tools"])
+        self.assertEqual(
+            local_repo["web_search_decision"]["reason"],
+            "local_evidence_is_sufficient",
+        )
+
+    def test_web_search_tool_result_is_compacted_for_answer_synthesis(self):
+        import clawos_server as server
+
+        result = server.tool_result_for_model("web_search", {
+            "ok": True,
+            "data": {
+                "query": "test",
+                "results": [{
+                    "title": "Useful source",
+                    "url": "https://example.com/source",
+                    "snippet": "Evidence",
+                    "domain": "example.com",
+                    "source_type": "other",
+                    "credibility": "medium",
+                    "scores": {"source_score": 0.6},
+                }],
+                "attempts": [{"provider": "mock", "latency_ms": 999}],
+                "provider_health": {"debug": True},
+            },
+        })
+
+        self.assertIn("evidence", result)
+
+    def test_web_fetch_result_is_compacted_to_claim_evidence(self):
+        import clawos_server as server
+
+        result = server.tool_result_for_model("web_fetch", {
+            "ok": True,
+            "arguments": {"url": "https://example.com/article"},
+            "data": {
+                "title": "Useful article", "final_url": "https://example.com/article",
+                "text": "Supported evidence.", "cache_hit": True,
+                "attempts": [{"provider": "fetch"}],
+            },
+        })
+
+        self.assertEqual(result["evidence"]["text"], "Supported evidence.")
+        self.assertNotIn("attempts", result)
+        self.assertNotIn("cache_hit", result)
+        self.assertIn("next_step", result)
+        self.assertNotIn("attempts", json.dumps(result))
+        self.assertNotIn("provider_health", json.dumps(result))
+
+    def test_tool_loop_stops_repeated_search_after_evidence_is_sufficient(self):
+        import clawos_server as server
+
+        class Budget:
+            def consume(self, **_kwargs):
+                return None
+
+        class Governance:
+            budget = Budget()
+
+            def gate(self, *_args, **_kwargs):
+                return None
+
+            def authorize_egress(self, *_args, **_kwargs):
+                return None
+
+        responses = iter([
+            {"choices": [{"message": {"content": "", "tool_calls": [{
+                "id": "search-1", "function": {
+                    "name": "web_search", "arguments": json.dumps({"query": "latest release"}),
+                },
+            }]}}]},
+            {"choices": [{"message": {"content": "", "tool_calls": [{
+                "id": "search-2", "function": {
+                    "name": "web_search", "arguments": json.dumps({"query": "latest release again"}),
+                },
+            }]}}]},
+            {"choices": [{"message": {"content": "Supported answer", "tool_calls": []}}]},
+        ])
+
+        async def fake_routing_llm(_messages, _tools):
+            return next(responses)
+
+        executed = []
+
+        def fake_execute(name, arguments, *_args, **_kwargs):
+            executed.append((name, json.loads(arguments)))
+            return {
+                "ok": True, "tool": name, "data": {
+                    "query": "latest release", "results": [],
+                    "evidence_sufficiency": {"enough_to_stop_search": True},
+                },
+            }
+
+        old_api_key = server.has_api_key
+        old_call = server.call_routing_llm
+        old_execute = server.execute_tool_call
+        old_context = server.g_context_builder
+        old_logger = server.logger
+        server.has_api_key = lambda *_args: True
+        server.call_routing_llm = fake_routing_llm
+        server.execute_tool_call = fake_execute
+        server.g_context_builder = None
+        server.logger = logging.getLogger("clawos-search-policy-test")
+        strategy = {
+            "scenario": "web", "allowed_tools": ["web_search", "web_fetch"],
+            "requires_confirmation": [],
+            "web_search_decision": {
+                "should_search": True, "breadth": "focused", "max_source_reads": 2,
+            },
+        }
+        try:
+            result = asyncio.run(server.run_tool_loop(
+                "Find the latest release", "s1", routing_strategy_override=strategy,
+                governance=Governance(),
+            ))
+        finally:
+            server.has_api_key = old_api_key
+            server.call_routing_llm = old_call
+            server.execute_tool_call = old_execute
+            server.g_context_builder = old_context
+            server.logger = old_logger
+
+        self.assertEqual([name for name, _args in executed], ["web_search"])
+        self.assertEqual(result["final_text"], "Supported answer")
+        self.assertEqual(result["tool_calls"][1]["result"]["status"], "denied")
+        self.assertTrue(result["tool_calls"][1]["result"]["data"]["stop_search"])
+
     def test_chinese_memory_ingestion_extracts_profile_and_preference(self):
         from memoryos.context_builder import ContextBuilder
         from memoryos.memory_store import MemoryStore

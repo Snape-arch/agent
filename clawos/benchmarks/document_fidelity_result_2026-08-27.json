@@ -1,0 +1,1359 @@
+{
+  "validation_status": "superseded_inferred_relations_were_not_verified_recovery",
+  "superseded_by": "output/document-fidelity-20260830/semantic.json",
+  "schema": "clawos.document-fidelity-evaluation.v1",
+  "corpus": "ClawOS real PDF and DOCX semantic fidelity corpus",
+  "version": "1.0.0",
+  "manifest_digest": "9f3c78807ec513578cf11d078d477f16345b5a9e00e286a0e15d70a2bd7b1fa2",
+  "rows": [
+    {
+      "id": "generative-agents-2304.03442v2",
+      "status": "evaluated",
+      "path": "C:\\Users\\34712\\Desktop\\agentwork\\参考文献\\2304.03442v2.pdf",
+      "sha256": "1b31e77fb24d25d7598f2c49e955d12a28b95a6dabad34acdac40f44bfb7a139",
+      "format": "pdf",
+      "assertions": [
+        {
+          "text": "Generative Agents: Interactive Simulacra of Human Behavior",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:1"
+        },
+        {
+          "text": "Figure 1: Generative agents are believable simulacra",
+          "expected_types": [
+            "figure_caption"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "figure_caption",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "figure_caption:p1:9"
+        },
+        {
+          "text": "ABSTRACT",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:10"
+        },
+        {
+          "text": "Permission to make digital or hard copies",
+          "expected_types": [
+            "page_notice"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "page_notice",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "page_notice:p1:13"
+        },
+        {
+          "text": "1 INTRODUCTION",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 2,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 2,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p2:8"
+        },
+        {
+          "text": "When referring to generative agents engaging in actions",
+          "expected_types": [
+            "footnote"
+          ],
+          "expected_page": 2,
+          "found": true,
+          "found_type": "footnote",
+          "found_page": 2,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "footnote:p2:13"
+        },
+        {
+          "text": "2 RELATED WORK",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 3,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 3,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p3:4"
+        }
+      ],
+      "relations": [
+        {
+          "source_text": "Figure 1: Generative agents",
+          "type": "caption_of",
+          "target_type": "figure",
+          "correct": true,
+          "matches": [
+            {
+              "type": "caption_of",
+              "source": "figure_caption:p1:9",
+              "target": "figure:p1:1",
+              "confidence": 0.9
+            }
+          ]
+        }
+      ],
+      "counts": [
+        {
+          "name": "pages",
+          "actual": 22,
+          "constraint": {
+            "exact": 22
+          },
+          "correct": true
+        },
+        {
+          "name": "figures",
+          "actual": 13,
+          "constraint": {
+            "min": 10
+          },
+          "correct": true
+        },
+        {
+          "name": "footnotes",
+          "actual": 4,
+          "constraint": {
+            "min": 4,
+            "max": 8
+          },
+          "correct": true
+        },
+        {
+          "name": "references",
+          "actual": 112,
+          "constraint": {
+            "min": 15,
+            "max": 45
+          },
+          "correct": false
+        }
+      ],
+      "parser_quality": {
+        "checks": {
+          "reading_order": false,
+          "coordinates": true,
+          "heading_hierarchy": true,
+          "table_headers": true,
+          "figure_relations_ready": true,
+          "formula_fidelity": true,
+          "footnote_links": true,
+          "references_identified": true,
+          "ocr_coordinates": true
+        },
+        "score": 88.89,
+        "gate": "revision_required",
+        "ocr_truth_boundary": "OCR coordinates require a configured Tesseract engine; unavailable pages remain explicitly blocked."
+      },
+      "layout_recovery": null
+    },
+    {
+      "id": "voyager-2305.16291v2",
+      "status": "evaluated",
+      "path": "C:\\Users\\34712\\Desktop\\agentwork\\参考文献\\2305.16291v2.pdf",
+      "sha256": "769a4e33ddeeb73870849232eece49afe882c2d146362e33917ccb432ba0efb8",
+      "format": "pdf",
+      "assertions": [
+        {
+          "text": "VOYAGER: An Open-Ended Embodied Agent",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:1"
+        },
+        {
+          "text": "Abstract",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:5"
+        },
+        {
+          "text": "Figure 1: VOYAGER discovers new Minecraft items",
+          "expected_types": [
+            "figure_caption"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "figure_caption",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "figure_caption:p1:7"
+        },
+        {
+          "text": "1 Introduction",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 2,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 2,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p2:2"
+        },
+        {
+          "text": "2 Method",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 3,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 3,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p3:5"
+        },
+        {
+          "text": "3.1 Experimental Setup",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 6,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 6,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p6:4"
+        },
+        {
+          "text": "Table 1: Tech tree mastery",
+          "expected_types": [
+            "table_caption"
+          ],
+          "expected_page": 7,
+          "found": true,
+          "found_type": "table_caption",
+          "found_page": 7,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "table_caption:p7:1"
+        },
+        {
+          "text": "4 Limitations and Future Work",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 10,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 10,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p10:1"
+        }
+      ],
+      "relations": [
+        {
+          "source_text": "Figure 1: VOYAGER discovers",
+          "type": "caption_of",
+          "target_type": "figure",
+          "correct": true,
+          "matches": [
+            {
+              "type": "caption_of",
+              "source": "figure_caption:p1:7",
+              "target": "figure:p1:1",
+              "confidence": 0.9
+            }
+          ]
+        },
+        {
+          "source_text": "Table 1: Tech tree mastery",
+          "type": "caption_of",
+          "target_type": "table",
+          "correct": true,
+          "matches": [
+            {
+              "type": "caption_of",
+              "source": "table_caption:p7:1",
+              "target": "inferred_table:p7:80",
+              "confidence": 0.65
+            }
+          ]
+        }
+      ],
+      "counts": [
+        {
+          "name": "pages",
+          "actual": 42,
+          "constraint": {
+            "exact": 42
+          },
+          "correct": true
+        },
+        {
+          "name": "figures",
+          "actual": 51,
+          "constraint": {
+            "min": 20
+          },
+          "correct": true
+        },
+        {
+          "name": "tables",
+          "actual": 30,
+          "constraint": {
+            "min": 8
+          },
+          "correct": true
+        },
+        {
+          "name": "references",
+          "actual": 92,
+          "constraint": {
+            "min": 30,
+            "max": 140
+          },
+          "correct": true
+        }
+      ],
+      "parser_quality": {
+        "checks": {
+          "reading_order": false,
+          "coordinates": true,
+          "heading_hierarchy": true,
+          "table_headers": false,
+          "figure_relations_ready": true,
+          "formula_fidelity": true,
+          "footnote_links": true,
+          "references_identified": true,
+          "ocr_coordinates": true
+        },
+        "score": 77.78,
+        "gate": "revision_required",
+        "ocr_truth_boundary": "OCR coordinates require a configured Tesseract engine; unavailable pages remain explicitly blocked."
+      },
+      "layout_recovery": null
+    },
+    {
+      "id": "memgpt-2310.08560v2",
+      "status": "evaluated",
+      "path": "C:\\Users\\34712\\Desktop\\agentwork\\参考文献\\2310.08560v2.pdf",
+      "sha256": "9f674bcff69c86f11c813dcfad613d8841f5f8ed17979e3c4df06a91df7762e0",
+      "format": "pdf",
+      "assertions": [
+        {
+          "text": "MemGPT: Towards LLMs as Operating Systems",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:1"
+        },
+        {
+          "text": "Abstract",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:4"
+        },
+        {
+          "text": "1. Introduction",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:10"
+        },
+        {
+          "text": "Figure 1. MemGPT",
+          "expected_types": [
+            "figure_caption"
+          ],
+          "expected_page": 2,
+          "found": true,
+          "found_type": "figure_caption",
+          "found_page": 2,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "figure_caption:p2:15"
+        },
+        {
+          "text": "2.1. Main context",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 2,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 2,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p2:19"
+        },
+        {
+          "text": "3. Experiments",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 4,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 4,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p4:17"
+        },
+        {
+          "text": "Table 2. Deep memory retrieval",
+          "expected_types": [
+            "table_caption"
+          ],
+          "expected_page": 5,
+          "found": true,
+          "found_type": "table_caption",
+          "found_page": 5,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "table_caption:p5:2"
+        },
+        {
+          "text": "5. Conclusion",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 8,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 8,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p8:5"
+        }
+      ],
+      "relations": [
+        {
+          "source_text": "Figure 1. MemGPT",
+          "type": "caption_of",
+          "target_type": "figure",
+          "correct": true,
+          "matches": [
+            {
+              "type": "caption_of",
+              "source": "figure_caption:p2:15",
+              "target": "figure:p2:1",
+              "confidence": 0.9
+            }
+          ]
+        },
+        {
+          "source_text": "Table 2. Deep memory retrieval",
+          "type": "caption_of",
+          "target_type": "table",
+          "correct": true,
+          "matches": [
+            {
+              "type": "caption_of",
+              "source": "table_caption:p5:2",
+              "target": "inferred_table:p5:25",
+              "confidence": 0.65
+            }
+          ]
+        }
+      ],
+      "counts": [
+        {
+          "name": "pages",
+          "actual": 13,
+          "constraint": {
+            "exact": 13
+          },
+          "correct": true
+        },
+        {
+          "name": "figures",
+          "actual": 12,
+          "constraint": {
+            "min": 7
+          },
+          "correct": true
+        },
+        {
+          "name": "tables",
+          "actual": 15,
+          "constraint": {
+            "min": 5
+          },
+          "correct": true
+        },
+        {
+          "name": "references",
+          "actual": 37,
+          "constraint": {
+            "min": 25,
+            "max": 100
+          },
+          "correct": true
+        }
+      ],
+      "parser_quality": {
+        "checks": {
+          "reading_order": false,
+          "coordinates": true,
+          "heading_hierarchy": true,
+          "table_headers": false,
+          "figure_relations_ready": true,
+          "formula_fidelity": true,
+          "footnote_links": true,
+          "references_identified": true,
+          "ocr_coordinates": true
+        },
+        "score": 77.78,
+        "gate": "revision_required",
+        "ocr_truth_boundary": "OCR coordinates require a configured Tesseract engine; unavailable pages remain explicitly blocked."
+      },
+      "layout_recovery": null
+    },
+    {
+      "id": "skillos-2605.06614v1",
+      "status": "evaluated",
+      "path": "C:\\Users\\34712\\Desktop\\agentwork\\参考文献\\2605.06614v1.pdf",
+      "sha256": "e55b880b9564c63f5f791c02f423d41bd356eecc07002f85c6babfce72ee39c6",
+      "format": "pdf",
+      "assertions": [
+        {
+          "text": "SkillOS: Learning Skill Curation",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:1"
+        },
+        {
+          "text": "1. Introduction",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:6"
+        },
+        {
+          "text": "2. Related Work",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 2,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 2,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p2:35"
+        },
+        {
+          "text": "3. Methodology",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 3,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 3,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p3:4"
+        },
+        {
+          "text": "4. Experiments",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 6,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 6,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p6:16"
+        },
+        {
+          "text": "Table 1 | Experiment results on ALFWorld",
+          "expected_types": [
+            "table_caption"
+          ],
+          "expected_page": 7,
+          "found": true,
+          "found_type": "table_caption",
+          "found_page": 7,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "table_caption:p7:2"
+        },
+        {
+          "text": "Figure 3 | Cross-task generalization",
+          "expected_types": [
+            "figure_caption"
+          ],
+          "expected_page": 9,
+          "found": true,
+          "found_type": "figure_caption",
+          "found_page": 9,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "figure_caption:p9:39"
+        },
+        {
+          "text": "6. Conclusion",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 11,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 11,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p11:4"
+        }
+      ],
+      "relations": [
+        {
+          "source_text": "Table 1 | Experiment results",
+          "type": "caption_of",
+          "target_type": "table",
+          "correct": true,
+          "matches": [
+            {
+              "type": "caption_of",
+              "source": "table_caption:p7:2",
+              "target": "inferred_table:p7:166",
+              "confidence": 0.65
+            }
+          ]
+        },
+        {
+          "source_text": "Figure 3 | Cross-task",
+          "type": "caption_of",
+          "target_type": "figure",
+          "correct": true,
+          "matches": [
+            {
+              "type": "caption_of",
+              "source": "figure_caption:p9:39",
+              "target": "figure:p9:1",
+              "confidence": 0.9
+            }
+          ]
+        }
+      ],
+      "counts": [
+        {
+          "name": "pages",
+          "actual": 33,
+          "constraint": {
+            "exact": 33
+          },
+          "correct": true
+        },
+        {
+          "name": "figures",
+          "actual": 148,
+          "constraint": {
+            "min": 30
+          },
+          "correct": true
+        },
+        {
+          "name": "tables",
+          "actual": 28,
+          "constraint": {
+            "min": 10
+          },
+          "correct": true
+        },
+        {
+          "name": "footnotes",
+          "actual": 4,
+          "constraint": {
+            "max": 12
+          },
+          "correct": true
+        },
+        {
+          "name": "references",
+          "actual": 45,
+          "constraint": {
+            "min": 35,
+            "max": 180
+          },
+          "correct": true
+        }
+      ],
+      "parser_quality": {
+        "checks": {
+          "reading_order": false,
+          "coordinates": true,
+          "heading_hierarchy": true,
+          "table_headers": false,
+          "figure_relations_ready": true,
+          "formula_fidelity": true,
+          "footnote_links": true,
+          "references_identified": true,
+          "ocr_coordinates": true
+        },
+        "score": 77.78,
+        "gate": "revision_required",
+        "ocr_truth_boundary": "OCR coordinates require a configured Tesseract engine; unavailable pages remain explicitly blocked."
+      },
+      "layout_recovery": null
+    },
+    {
+      "id": "skillevolver-2605.10500v1",
+      "status": "evaluated",
+      "path": "C:\\Users\\34712\\Desktop\\agentwork\\参考文献\\2605.10500v1.pdf",
+      "sha256": "4cdf2a8f80f1b49951952e6678a9b11b314171c597757670bd0111f20c3f3185",
+      "format": "pdf",
+      "assertions": [
+        {
+          "text": "SKILLEVOLVER: SKILL LEARNING",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:2"
+        },
+        {
+          "text": "ABSTRACT",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:5"
+        },
+        {
+          "text": "1 INTRODUCTION",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:8"
+        },
+        {
+          "text": "On 83 SkillsBench tasks spanning",
+          "expected_types": [
+            "paragraph"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "paragraph",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "paragraph:p1:6"
+        }
+      ],
+      "relations": [],
+      "counts": [
+        {
+          "name": "pages",
+          "actual": 20,
+          "constraint": {
+            "exact": 20
+          },
+          "correct": true
+        },
+        {
+          "name": "figures",
+          "actual": 5,
+          "constraint": {
+            "min": 2
+          },
+          "correct": true
+        },
+        {
+          "name": "tables",
+          "actual": 7,
+          "constraint": {
+            "min": 2
+          },
+          "correct": true
+        },
+        {
+          "name": "footnotes",
+          "actual": 1,
+          "constraint": {
+            "max": 5
+          },
+          "correct": true
+        },
+        {
+          "name": "references",
+          "actual": 27,
+          "constraint": {
+            "min": 35,
+            "max": 150
+          },
+          "correct": false
+        }
+      ],
+      "parser_quality": {
+        "checks": {
+          "reading_order": false,
+          "coordinates": true,
+          "heading_hierarchy": true,
+          "table_headers": false,
+          "figure_relations_ready": true,
+          "formula_fidelity": true,
+          "footnote_links": true,
+          "references_identified": true,
+          "ocr_coordinates": true
+        },
+        "score": 77.78,
+        "gate": "revision_required",
+        "ocr_truth_boundary": "OCR coordinates require a configured Tesseract engine; unavailable pages remain explicitly blocked."
+      },
+      "layout_recovery": null
+    },
+    {
+      "id": "clawos-plan-final",
+      "status": "evaluated",
+      "path": "C:\\Users\\34712\\Desktop\\agentwork\\计划书和题目要求\\ClawOS 项目计划书与技术说明书-最终版本.docx",
+      "sha256": "5bcb873d051887a7830da1eab16a9935ddde74e87a429e92af07fe91192a85a4",
+      "format": "docx",
+      "assertions": [
+        {
+          "text": "ClawOS 项目计划书与技术说明书",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:1"
+        },
+        {
+          "text": "一、项目背景",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:4"
+        },
+        {
+          "text": "1.1 AI Agent的发展现状",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:5"
+        },
+        {
+          "text": "3.2 四大应用场景",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 2,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 2,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:19"
+        },
+        {
+          "text": "五、核心模块详解",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 3,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 3,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:72"
+        },
+        {
+          "text": "5.2 Reflection Engine",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 4,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 4,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:77"
+        },
+        {
+          "text": "八、开发计划",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 5,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 5,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:114"
+        },
+        {
+          "text": "九、预期成果",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 6,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 6,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:122"
+        }
+      ],
+      "relations": [],
+      "counts": [
+        {
+          "name": "pages",
+          "actual": 7,
+          "constraint": {
+            "exact": 7
+          },
+          "correct": true
+        },
+        {
+          "name": "headings",
+          "actual": 22,
+          "constraint": {
+            "exact": 22
+          },
+          "correct": true
+        },
+        {
+          "name": "tables",
+          "actual": 13,
+          "constraint": {
+            "exact": 13
+          },
+          "correct": true
+        }
+      ],
+      "parser_quality": {
+        "checks": {
+          "reading_order": true,
+          "coordinates": true,
+          "heading_hierarchy": true,
+          "table_headers": true,
+          "figure_relations_ready": true,
+          "formula_fidelity": true,
+          "footnote_links": true,
+          "references_identified": true,
+          "ocr_coordinates": true
+        },
+        "score": 100.0,
+        "gate": "pass",
+        "ocr_truth_boundary": "OCR coordinates require a configured Tesseract engine; unavailable pages remain explicitly blocked."
+      },
+      "layout_recovery": {
+        "status": "completed",
+        "engine": "libreoffice",
+        "page_count": 7,
+        "mapped_nodes": 108,
+        "total_text_nodes": 142,
+        "mapped_ratio": 0.7606
+      }
+    },
+    {
+      "id": "clawos-plan-original",
+      "status": "evaluated",
+      "path": "C:\\Users\\34712\\Desktop\\agentwork\\计划书和题目要求\\ClawOS 项目计划书与技术说明书.docx",
+      "sha256": "a687b6e3d6bca12b4c6d8d6f732675bb1b7f32f85d7e990a1cf1b34b8ae42f8a",
+      "format": "docx",
+      "assertions": [
+        {
+          "text": "ClawOS 项目计划书与技术说明书",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:1"
+        },
+        {
+          "text": "项目名称：ClawOS",
+          "expected_types": [
+            "paragraph"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "paragraph",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "paragraph:p1:2"
+        },
+        {
+          "text": "英文：ClawOS: A Self-Evolving Personal Agent",
+          "expected_types": [
+            "paragraph"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "paragraph",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "paragraph:p1:3"
+        },
+        {
+          "text": "一、项目背景",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 1,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 1,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:5"
+        },
+        {
+          "text": "二、项目目标",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 2,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 2,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:43"
+        },
+        {
+          "text": "五、需求分析",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 3,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 3,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:82"
+        },
+        {
+          "text": "七、MTClaw框架定位",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 4,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 4,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:123"
+        },
+        {
+          "text": "十、自进化系统",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 5,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 5,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:184"
+        },
+        {
+          "text": "十二、RAG系统",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 6,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 6,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:203"
+        },
+        {
+          "text": "十五、开发计划",
+          "expected_types": [
+            "heading"
+          ],
+          "expected_page": 7,
+          "found": true,
+          "found_type": "heading",
+          "found_page": 7,
+          "correct": true,
+          "page_evaluated": true,
+          "page_correct": true,
+          "node_id": "heading:p1:254"
+        }
+      ],
+      "relations": [],
+      "counts": [
+        {
+          "name": "pages",
+          "actual": 7,
+          "constraint": {
+            "exact": 7
+          },
+          "correct": true
+        },
+        {
+          "name": "headings",
+          "actual": 20,
+          "constraint": {
+            "exact": 20
+          },
+          "correct": true
+        },
+        {
+          "name": "tables",
+          "actual": 0,
+          "constraint": {
+            "exact": 0
+          },
+          "correct": true
+        }
+      ],
+      "parser_quality": {
+        "checks": {
+          "reading_order": true,
+          "coordinates": true,
+          "heading_hierarchy": true,
+          "table_headers": true,
+          "figure_relations_ready": true,
+          "formula_fidelity": true,
+          "footnote_links": true,
+          "references_identified": true,
+          "ocr_coordinates": true
+        },
+        "score": 100.0,
+        "gate": "pass",
+        "ocr_truth_boundary": "OCR coordinates require a configured Tesseract engine; unavailable pages remain explicitly blocked."
+      },
+      "layout_recovery": {
+        "status": "completed",
+        "engine": "libreoffice",
+        "page_count": 7,
+        "mapped_nodes": 156,
+        "total_text_nodes": 222,
+        "mapped_ratio": 0.7027
+      }
+    }
+  ],
+  "metrics": {
+    "documents": {
+      "expected": 7,
+      "evaluated": 7
+    },
+    "classification_accuracy": {
+      "successes": 53,
+      "n": 53,
+      "rate": 1.0,
+      "wilson_95": [
+        0.932418,
+        1.0
+      ]
+    },
+    "rendered_page_accuracy": {
+      "successes": 53,
+      "n": 53,
+      "rate": 1.0,
+      "wilson_95": [
+        0.932418,
+        1.0
+      ]
+    },
+    "relation_recall": {
+      "successes": 7,
+      "n": 7,
+      "rate": 1.0,
+      "wilson_95": [
+        0.64567,
+        1.0
+      ]
+    },
+    "count_constraint_accuracy": {
+      "successes": 26,
+      "n": 28,
+      "rate": 0.928571,
+      "wilson_95": [
+        0.773546,
+        0.980188
+      ]
+    }
+  },
+  "acceptance": {
+    "passed": true,
+    "checks": {
+      "all_documents_identity_verified": true,
+      "minimum_labelled_assertions": true,
+      "classification_accuracy": true,
+      "rendered_page_accuracy": true,
+      "relation_recall": true,
+      "count_constraint_accuracy": true
+    }
+  },
+  "review_status": "codex_assisted_visual_review_maintainer_pending",
+  "maintainer_signoff": false,
+  "release_claim_allowed": false,
+  "duration_ms": 38995.81,
+  "truth_boundary": "Fixed local files with SHA-256 identity. Labels were produced by direct text and rendered-page inspection in Codex and are not production telemetry or an independent human panel. Technical acceptance may pass, but release parity claims remain disabled until maintainer sign-off and cross-application evidence pass."
+}

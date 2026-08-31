@@ -249,13 +249,135 @@ function toggleSidebar() {
   else document.body.classList.toggle("sidebar-collapsed");
 }
 
+function safeMarkdownUrl(value) {
+  const url = String(value || "").trim();
+  return /^(https?:\/\/|mailto:)/i.test(url) ? url : "";
+}
+
+function renderMarkdownInline(value) {
+  const codeSpans = [];
+  let text = String(value || "").replace(/`([^`]+)`/g, (_, code) => {
+    codeSpans.push(`<code>${esc(code)}</code>`);
+    return `\uE000CODE${codeSpans.length - 1}\uE001`;
+  });
+  text = esc(text);
+  text = text.replace(/\[([^\]]+)\]\(([^\s)]+)\)/g, (_, label, url) => {
+    const safe = safeMarkdownUrl(url);
+    return safe ? `<a href="${esc(safe)}" target="_blank" rel="noopener noreferrer">${label}</a>` : label;
+  });
+  text = text.replace(/(^|[\s(>])(https?:\/\/[^\s<]+[^\s<.,:;!?\])}])/g, (_, prefix, url) => `${prefix}<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`);
+  text = text
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+    .replace(/\uE000CODE(\d+)\uE001/g, (_, index) => codeSpans[Number(index)] || "");
+  return text;
+}
+
+function markdownTable(lines, start) {
+  if (start + 1 >= lines.length || !lines[start].includes("|")) return null;
+  const separator = lines[start + 1].trim();
+  if (!/^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(separator)) return null;
+  const split = line => line.trim().replace(/^\||\|$/g, "").split("|").map(cell => cell.trim());
+  const head = split(lines[start]);
+  const rows = [];
+  let index = start + 2;
+  while (index < lines.length && lines[index].includes("|") && lines[index].trim()) {
+    rows.push(split(lines[index]));
+    index += 1;
+  }
+  const header = `<thead><tr>${head.map(cell => `<th>${renderMarkdownInline(cell)}</th>`).join("")}</tr></thead>`;
+  const body = `<tbody>${rows.map(row => `<tr>${head.map((_, column) => `<td>${renderMarkdownInline(row[column] || "")}</td>`).join("")}</tr>`).join("")}</tbody>`;
+  return { html: `<div class="md-table-wrap"><table>${header}${body}</table></div>`, next: index };
+}
+
 function md(text) {
-  return esc(text || "")
-    .replace(/```([\s\S]*?)```/g, "<pre>$1</pre>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
-    .replace(/(https?:\/\/[^\s<>"'）)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/\n/g, "<br>");
+  const source = String(text || "").replace(/\r\n?/g, "\n");
+  const codeBlocks = [];
+  const withoutCode = source.replace(/```([^\n`]*)\n?([\s\S]*?)(?:```|$)/g, (_, language, code) => {
+    const safeLanguage = String(language || "").trim().replace(/[^a-z0-9_+.#-]/gi, "").slice(0, 30);
+    codeBlocks.push(`<figure class="md-code"><figcaption><span>${esc(safeLanguage || "代码")}</span><button type="button" class="md-copy" aria-label="复制代码">复制</button></figcaption><pre><code${safeLanguage ? ` class="language-${esc(safeLanguage)}"` : ""}>${esc(code.replace(/\n$/, ""))}</code></pre></figure>`);
+    return `\n\uE000BLOCK${codeBlocks.length - 1}\uE001\n`;
+  });
+  const lines = withoutCode.split("\n");
+  const html = [];
+  let paragraph = [];
+  let listType = "";
+  const flushParagraph = () => {
+    if (paragraph.length) html.push(`<p>${paragraph.map(renderMarkdownInline).join("<br>")}</p>`);
+    paragraph = [];
+  };
+  const closeList = () => {
+    if (listType) html.push(`</${listType}>`);
+    listType = "";
+  };
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    const table = markdownTable(lines, index);
+    if (table) {
+      flushParagraph(); closeList(); html.push(table.html); index = table.next; continue;
+    }
+    const block = trimmed.match(/^\uE000BLOCK(\d+)\uE001$/);
+    if (block) {
+      flushParagraph(); closeList(); html.push(codeBlocks[Number(block[1])] || ""); index += 1; continue;
+    }
+    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      flushParagraph(); closeList(); const level = heading[1].length + 1; html.push(`<h${level}>${renderMarkdownInline(heading[2])}</h${level}>`); index += 1; continue;
+    }
+    const item = trimmed.match(/^([-*+]|\d+[.)])\s+(.+)$/);
+    if (item) {
+      flushParagraph(); const wanted = /^\d/.test(item[1]) ? "ol" : "ul"; if (listType !== wanted) { closeList(); listType = wanted; html.push(`<${wanted}>`); } html.push(`<li>${renderMarkdownInline(item[2])}</li>`); index += 1; continue;
+    }
+    if (/^>\s?/.test(trimmed)) {
+      flushParagraph(); closeList(); html.push(`<blockquote>${renderMarkdownInline(trimmed.replace(/^>\s?/, ""))}</blockquote>`); index += 1; continue;
+    }
+    if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
+      flushParagraph(); closeList(); html.push("<hr>"); index += 1; continue;
+    }
+    if (!trimmed) {
+      flushParagraph(); closeList(); index += 1; continue;
+    }
+    closeList(); paragraph.push(line); index += 1;
+  }
+  flushParagraph(); closeList();
+  return html.join("");
+}
+
+function enhanceMarkdown(container) {
+  container?.querySelectorAll(".md-copy").forEach(button => {
+    button.onclick = async () => {
+      const code = button.closest(".md-code")?.querySelector("code")?.textContent || "";
+      try {
+        let copied = false;
+        if (navigator.clipboard?.writeText) {
+          try {
+            await navigator.clipboard.writeText(code);
+            copied = true;
+          } catch (_) {
+            copied = false;
+          }
+        }
+        if (!copied) {
+          const fallback = document.createElement("textarea");
+          fallback.value = code;
+          fallback.setAttribute("readonly", "");
+          fallback.style.position = "fixed";
+          fallback.style.opacity = "0";
+          document.body.appendChild(fallback);
+          fallback.select();
+          const succeeded = document.execCommand("copy");
+          fallback.remove();
+          if (!succeeded) throw new Error("copy unavailable");
+        }
+        button.textContent = "已复制";
+        window.setTimeout(() => { button.textContent = "复制"; }, 1400);
+      } catch (_) {
+        button.textContent = "复制失败";
+      }
+    };
+  });
 }
 
 function addMessage(role, text, tools) {
@@ -268,6 +390,7 @@ function addMessage(role, text, tools) {
   const chips = (tools || []).map(t => `<span class="tool ${String(JSON.stringify(t.result || {})).includes("error") ? "err" : ""}">${esc(t.name)}</span>`).join("");
   div.innerHTML = `<div class="message-body">${chips ? `<div class="tool-row">${chips}</div>` : ""}<div class="mc">${md(text)}</div></div>`;
   inner.appendChild(div);
+  enhanceMarkdown(div);
   $("chat").scrollTop = $("chat").scrollHeight;
 }
 
@@ -281,8 +404,68 @@ function addAssistantStream() {
   const target = div.querySelector(".mc");
   return text => {
     target.innerHTML = md(text);
+    enhanceMarkdown(target);
     $("chat").scrollTop = $("chat").scrollHeight;
   };
+}
+
+function formatArtifactBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function appendArtifactsToLastAssistant(artifacts) {
+  const rows = Array.isArray(artifacts) ? artifacts : [];
+  if (!rows.length) return;
+  const messages = document.querySelectorAll("#chatInner .msg.agent");
+  const message = messages[messages.length - 1];
+  const body = message?.querySelector(".message-body");
+  if (!body) return;
+  body.querySelector(".chat-artifacts")?.remove();
+  const panel = document.createElement("section");
+  panel.className = "chat-artifacts";
+  panel.setAttribute("aria-label", "生成的文件");
+  panel.innerHTML = `<div class="chat-artifacts-head"><b>已生成文件</b><span>${rows.length} 个可交付产物</span></div><div class="chat-artifact-list">${rows.map(item => `
+    <article class="chat-artifact-card">
+      <div class="chat-artifact-icon" aria-hidden="true">${esc(String(item.format || "FILE").slice(0, 4).toUpperCase())}</div>
+      <div class="chat-artifact-meta"><b>${esc(item.name || "未命名文件")}</b><span>${esc(formatArtifactBytes(item.bytes))} · ${esc(item.source_tool || "ClawOS")}</span></div>
+      <div class="chat-artifact-actions">${["docx","xlsx","pptx"].includes(String(item.format || "").toLowerCase()) ? `<button type="button" onclick="openEmbeddedOfficeEditor('${esc(item.id)}')">编辑</button>` : ""}${item.preview_url ? `<a href="${esc(item.preview_url)}" target="_blank" rel="noopener noreferrer">预览</a>` : ""}<a class="primary" href="${esc(item.download_url)}" download>下载</a></div>
+    </article>`).join("")}</div>`;
+  body.appendChild(panel);
+}
+
+function appendCodingEvidenceToLastAssistant(toolCalls) {
+  const calls = Array.isArray(toolCalls) ? toolCalls : [];
+  const call = [...calls].reverse().find(item => item?.name === "coding_agent" && item?.result?.data?.workspace);
+  if (!call) return;
+  const data = call.result.data;
+  const workspace = data.workspace || {};
+  const changes = data.workspace_changes || {};
+  const source = data.source_verification || {};
+  const attempts = Array.isArray(data.attempts) ? data.attempts : [];
+  const rounds = attempts.flatMap(item => item?.workflow?.rounds || []);
+  const tests = rounds.flatMap(item => item?.tests || []);
+  const sandbox = tests.find(item => item?.sandbox)?.sandbox || {};
+  const egress = sandbox.egress || {};
+  const messages = document.querySelectorAll("#chatInner .msg.agent");
+  const body = messages[messages.length - 1]?.querySelector(".message-body");
+  if (!body) return;
+  body.querySelector(".chat-coding-evidence")?.remove();
+  const panel = document.createElement("section");
+  panel.className = "chat-coding-evidence";
+  panel.setAttribute("aria-label", "编码执行证据");
+  const sourceSafe = source.head_unchanged === true && source.working_tree_unchanged === true;
+  panel.innerHTML = `<div class="chat-coding-evidence-head"><b>编码执行证据</b><span>${data.status === "passed" ? "验证通过" : esc(data.status || "已执行")}</span></div>
+    <div class="chat-coding-evidence-grid">
+      <div><span>隔离工作区</span><b>${workspace.isolated ? "已启用" : "未启用"}</b></div>
+      <div><span>原项目目录</span><b>${sourceSafe ? "未改动" : "需要检查"}</b></div>
+      <div><span>测试沙箱</span><b>${esc(sandbox.backend || "无测试证据")}</b></div>
+      <div><span>外网策略</span><b>${egress.default_deny_external ? "默认拒绝" : "未验证"}</b></div>
+    </div>
+    <div class="chat-coding-evidence-files"><span>变更文件</span><code>${esc((changes.changed_files || []).join(", ") || "无")}</code></div>`;
+  body.appendChild(panel);
 }
 
 function attachFeedbackControls(taskId) {
@@ -305,6 +488,7 @@ function attachFeedbackControls(taskId) {
       <option value="2">2 · 不满意</option>
       <option value="1">1 · 很不满意</option>
     </select>
+    <label><input type="checkbox" data-quality-consent> 允许将本次问答匿名加入固定质量评测</label>
     <span class="feedback-status" role="status"></span>`;
   message.querySelector(".message-body")?.appendChild(toolbar);
   toolbar.querySelectorAll("[data-feedback-binary]").forEach(button => {
@@ -334,6 +518,8 @@ async function submitTaskFeedback(taskId, feedback, toolbar) {
       body: JSON.stringify({
         task_id: Number(taskId),
         ...feedback,
+        quality_consent: Boolean(toolbar.querySelector("[data-quality-consent]")?.checked),
+        quality_answer: toolbar.closest(".msg.agent")?.querySelector(".mc")?.innerText || "",
         idempotency_key: `console:${taskId}:${feedback.signal_type}:${String(feedback.value)}`
       })
     });
@@ -351,9 +537,6 @@ function sendMessage() {
   if ((!text && !ready.length) || busy) return;
   prompt.value = "";
   const wantsWebSearch = Boolean($("webSearchToggle")?.checked);
-  if (wantsWebSearch) {
-    text = `${text || "请阅读附件并联网检索相关资料。"}\n\n请先联网搜索可验证来源，回答中保留可点击网页链接，并标出哪些结论来自搜索结果。`;
-  }
   const attachments = ready.map(item => ({
     name: item.name,
     type: item.type,
@@ -363,7 +546,7 @@ function sendMessage() {
   }));
   chatAttachments = chatAttachments.filter(item => item.status === "uploading");
   renderAttachmentTray();
-  submitMessage(text || "请阅读附件并给出分析。", wantsWebSearch ? ["web_search"] : [], attachments);
+  submitMessage(text || "请阅读附件并给出分析。", wantsWebSearch ? ["web_search", "web_fetch"] : [], attachments, wantsWebSearch ? "auto" : "off");
 }
 
 async function readChatStream(response, onText, onMeta) {
@@ -399,14 +582,13 @@ async function readChatStream(response, onText, onMeta) {
   return { text, meta };
 }
 
-async function submitMessage(text, confirmedTools, attachments) {
+async function submitMessage(text, confirmedTools, attachments, webSearchMode = "off") {
   busy = true;
   window.activeChatController = new AbortController();
   $("send").disabled = true;
   if ($("stop")) $("stop").disabled = false;
   const names = (attachments || []).map(item => item.name).filter(Boolean);
-  const webHint = (confirmedTools || []).includes("web_search") ? "\n\n已开启联网搜索，回答会尽量保留来源链接。" : "";
-  addMessage("user", text + webHint + (names.length ? `\n\n附件：${names.join("、")}` : ""));
+  addMessage("user", text + (names.length ? `\n\n附件：${names.join("、")}` : ""));
   const update = addAssistantStream();
   try {
     const response = await fetch(API + "/v1/chat/completions", {
@@ -417,6 +599,7 @@ async function submitMessage(text, confirmedTools, attachments) {
         session_id: currentSession,
         stream: true,
         clawos_confirmed_tools: confirmedTools || [],
+        clawos_web_search_mode: webSearchMode,
         clawos_attachments: attachments || [],
         messages: [{ role: "user", content: text }]
       })
@@ -441,15 +624,20 @@ async function submitMessage(text, confirmedTools, attachments) {
     lastTaskId = data.clawos?.task_id || lastTaskId;
     if (lastTaskId) attachFeedbackControls(lastTaskId);
     if (data.clawos?.needs_confirmation) {
-      const toolNames = tools.map(t => t.name).filter(Boolean);
+      const toolNames = [...new Set((data.clawos?.confirmation_tools || tools.map(t => t.name)).filter(Boolean))];
       const risks = [...new Set(tools.map(t => t.result?.risk_level).filter(Boolean))];
-      pendingConfirmation = { text, tools: toolNames, attachments: attachments || [] };
-      $("confirmText").textContent = `需要确认：${toolNames.join("、")}${risks.length ? ` · 风险 ${risks.join("/")}` : ""}`;
+      pendingConfirmation = { text, tools: toolNames, attachments: attachments || [], webSearchMode };
+      const webOnly = toolNames.length && toolNames.every(name => ["web_search", "web_fetch", "scholarly_search", "scholarly_download"].includes(name));
+      $("confirmText").textContent = webOnly
+        ? `允许联网读取 ${toolNames.length} 类公开来源？确认后会自动继续。${risks.length ? ` 风险级别：${risks.join("/")}` : ""}`
+        : `允许执行 ${toolNames.join("、") || "本地变更"}？确认后将写入文件、运行测试或生成产物。${risks.length ? ` 风险级别：${risks.join("/")}` : ""}`;
       $("confirmBar").classList.add("on");
     } else {
       pendingConfirmation = null;
       $("confirmBar").classList.remove("on");
     }
+    appendArtifactsToLastAssistant(data.clawos?.artifacts || []);
+    appendCodingEvidenceToLastAssistant(data.clawos?.tool_calls || []);
     renderLastTools();
     if (data.clawos?.reflection) renderLastReflection(data.clawos.reflection);
     await loadSessions();
@@ -483,7 +671,7 @@ function confirmPending() {
   const pending = pendingConfirmation;
   pendingConfirmation = null;
   $("confirmBar").classList.remove("on");
-  submitMessage(pending.text, pending.tools, pending.attachments || []);
+  submitMessage(pending.text, pending.tools, pending.attachments || [], pending.webSearchMode || "off");
 }
 
 function cancelPending() {
@@ -767,12 +955,134 @@ async function loadKnowledge() {
       { html: `<button class="secondary" onclick="loadKnowledgeItem(${Number(item.id)})">打开</button> <button class="secondary" onclick="appendKnowledgeToPrompt(${Number(item.id)})">提问</button>` }
     ]));
     renderKnowledgeMap(knowledgeItems);
+    loadKnowledgeGovernance();
     if ($("knowledgeStatus")) $("knowledgeStatus").textContent = `${knowledgeCategoryLabel(knowledgeCategory)} · ${knowledgeItems.length} 条资料`;
   } catch (err) {
     target.innerHTML = table(["标题", "知识库", "操作"], []);
     renderKnowledgeMap([]);
     if ($("knowledgeStatus")) $("knowledgeStatus").textContent = "知识库加载失败：" + err.message;
   }
+}
+
+async function loadKnowledgeGovernance() {
+  if (!$("knowledgeHealthSummary")) return;
+  try {
+    const [stats, conflicts, quality, benchmark, candidates] = await Promise.all([
+      api("/api/knowledge/v2/stats"),
+      api("/api/knowledge/v2/conflicts?status=pending&limit=100"),
+      api("/api/knowledge/v2/answer-quality/feedback?limit=1"),
+      api("/api/knowledge/v2/answer-quality/latest"),
+      api("/api/memory/candidates?limit=100")
+    ]);
+    const projection = stats.vector_projection || {};
+    const indexState = projection.consistent ? "索引一致" : "索引待同步";
+    $("knowledgeHealthSummary").textContent = `${stats.active || 0} 条有效 · ${stats.sources || 0} 个来源 · ${stats.pending_conflicts || 0} 个待审冲突 · ${indexState}`;
+    if ($("knowledgeHealthGrid")) {
+      $("knowledgeHealthGrid").innerHTML = [
+        ["有效知识", stats.active || 0], ["来源证据", stats.sources || 0],
+        ["待审冲突", stats.pending_conflicts || 0], ["过期版本", stats.expired || 0],
+        ["实体关系", `${stats.entities || 0} / ${stats.relations || 0}`], ["利用事件", stats.usage_events || 0],
+        ["向量投影", `${projection.knowledge_v2 || 0} / ${projection.expected_knowledge_v2 || stats.active || 0}`],
+        ["索引状态", projection.consistent ? "一致" : `${projection.outbox_pending || 0} 条待同步`]
+      ].map(([label, value]) => `<div><span>${esc(label)}</span><b>${esc(String(value))}</b></div>`).join("");
+    }
+    if ($("knowledgeConflictTable")) {
+      $("knowledgeConflictTable").innerHTML = table(["知识", "冲突", "候选", "决策"], (conflicts.items || []).map(item => [
+        item.title || `#${item.knowledge_id}`, item.conflict_type,
+        String(item.candidate_statement || "").slice(0, 120),
+        { html: `<button class="secondary" onclick="resolveKnowledgeConflict(${Number(item.id)},'keep_existing')">保留现有</button> <button class="primary" onclick="resolveKnowledgeConflict(${Number(item.id)},'accept_candidate')">接受候选</button>` }
+      ]));
+    }
+    const qstats = quality.stats || {};
+    const proxyCount = benchmark.case_count || qstats.proxy_count || 0;
+    if ($("answerQualitySummary")) {
+      $("answerQualitySummary").textContent = `${qstats.consented_user_count || 0} 条经同意的真实反馈 · ${proxyCount} 条固定代理评测；两者永不混算。`;
+    }
+    if ($("answerQualityGrid")) {
+      const interval = (benchmark.confidence_intervals || {}).classification_accuracy || {};
+      $("answerQualityGrid").innerHTML = [
+        ["真实用户", qstats.consented_user_count || 0], ["代理评测", proxyCount],
+        ["固定测试集", `${benchmark.fixed_test_count || 0} 条`], ["分类准确率 95% CI", `${Math.round((interval.lower || 0) * 1000) / 10}%–${Math.round((interval.upper || 0) * 1000) / 10}%`]
+      ].map(([label, value]) => `<div><span>${esc(label)}</span><b>${esc(String(value))}</b></div>`).join("");
+    }
+    const memoryStats = candidates.stats || {};
+    if ($("memoryCandidateSummary")) {
+      $("memoryCandidateSummary").textContent = `${memoryStats.pending_review || 0} 条待审核 · ${memoryStats.blocked_sensitive || 0} 条敏感阻断 · ${memoryStats.promoted || 0} 条已晋升。`;
+    }
+    if ($("memoryCandidateTable")) {
+      $("memoryCandidateTable").innerHTML = table(["类型", "候选", "状态", "操作"], (candidates.items || []).map(item => [
+        item.candidate_type, String(item.content || "").slice(0, 120), item.status,
+        { html: item.status === "pending_review"
+          ? `<button class="secondary" onclick="reviewMemoryCandidate(${Number(item.id)},'reject')">拒绝</button> <button class="primary" onclick="reviewMemoryCandidate(${Number(item.id)},'approve')">批准</button>`
+          : item.status === "approved" ? `<button class="primary" onclick="promoteMemoryCandidate(${Number(item.id)})">晋升</button>` : "—" }
+      ]));
+    }
+  } catch (err) {
+    $("knowledgeHealthSummary").textContent = "知识健康读取失败：" + err.message;
+  }
+}
+
+async function reviewMemoryCandidate(id, decision) {
+  if (!window.confirm(decision === "approve" ? "确认批准该长期记忆候选？批准后仍需单独晋升。" : "确认拒绝该长期记忆候选？")) return;
+  await api(`/api/memory/candidates/${id}/review`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, reviewer: "console-user", confirmed: true })
+  });
+  await loadKnowledgeGovernance();
+}
+
+async function promoteMemoryCandidate(id) {
+  if (!window.confirm("确认把已批准候选写入长期记忆？该操作会保留来源与审核记录。")) return;
+  await api(`/api/memory/candidates/${id}/promote`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor_id: "console-user", confirmed: true })
+  });
+  await loadKnowledgeGovernance();
+}
+
+function openKnowledgeGovernance() {
+  const panel = $("knowledgeGovernance");
+  if (!panel) return;
+  panel.classList.add("on");
+  panel.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  loadKnowledgeGovernance();
+}
+
+function closeKnowledgeGovernance() {
+  const panel = $("knowledgeGovernance");
+  if (!panel) return;
+  panel.classList.remove("on");
+  panel.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+}
+
+async function resolveKnowledgeConflict(id, decision) {
+  await api(`/api/knowledge/v2/conflicts/${id}/resolve`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, reviewer: "console-user", reason: "Reviewed in knowledge governance" })
+  });
+  if ($("knowledgeGovernanceStatus")) $("knowledgeGovernanceStatus").textContent = "冲突已审核，检索状态已更新。";
+  await loadKnowledgeGovernance();
+}
+
+async function backfillKnowledgeV2() {
+  if ($("knowledgeGovernanceStatus")) $("knowledgeGovernanceStatus").textContent = "正在增量迁移历史知识…";
+  const result = await api("/api/knowledge/v2/backfill", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ limit: 10000 })
+  });
+  if ($("knowledgeGovernanceStatus")) $("knowledgeGovernanceStatus").textContent = `迁移 ${result.migrated || 0} 条，失败 ${result.failed || 0} 条。`;
+  await loadKnowledgeGovernance();
+}
+
+async function rebuildKnowledgeIndex() {
+  if (!window.confirm("确认重建知识向量索引？知识原文不会删除，但重建期间语义检索可能短暂不可用。")) return;
+  if ($("knowledgeGovernanceStatus")) $("knowledgeGovernanceStatus").textContent = "正在重建向量索引…";
+  const result = await api("/api/knowledge/v2/index/rebuild", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true })
+  });
+  if ($("knowledgeGovernanceStatus")) $("knowledgeGovernanceStatus").textContent = result.consistent ? "索引重建完成且一致。" : "索引重建完成，但仍有待同步项目。";
+  await loadKnowledgeGovernance();
 }
 
 function renderKnowledgeMap(items) {
@@ -2716,14 +3026,79 @@ async function loadOcrQueue() {
   try {
     const query = knowledgeCategory ? "?category=" + encodeURIComponent(knowledgeCategory) : "";
     const data = await api("/api/documents/ocr-queue" + query);
-    target.innerHTML = table(["文档", "库", "页码", "原因", "操作"], (data.documents || []).map(item => [item.title || item.filename || "", knowledgeCategoryLabel(item.category), Array.isArray(item.ocr_pages) ? item.ocr_pages.join(", ") : "", item.ocr_reason || "low_extractable_text", { html: `<button class="secondary" onclick="runDocumentOcr(${Number(item.id)})">运行 OCR</button>` }]));
+    target.innerHTML = table(["文档", "库", "页码", "原因", "操作"], (data.documents || []).map(item => [item.title || item.filename || "", knowledgeCategoryLabel(item.category), Array.isArray(item.ocr_pages) ? item.ocr_pages.join(", ") : "", item.ocr_reason || "low_extractable_text", { html: `<button class="secondary" onclick="openDocumentReview(${Number(item.id)})">对照原图复核</button> <button class="secondary" onclick="runDocumentOcr(${Number(item.id)})">重新 OCR</button>` }]));
   } catch (err) {
     target.innerHTML = table(["文档", "库", "页码", "原因", "操作"], []);
   }
 }
 
+async function openDocumentReview(id) {
+  const dialog = document.createElement("dialog");
+  dialog.style.cssText = "width:min(1000px,92vw);max-height:88vh;overflow:auto;padding:24px;border-radius:12px";
+  document.body.appendChild(dialog);
+  const close = document.createElement("button"); close.textContent = "关闭";
+  close.onclick = () => dialog.close(); dialog.appendChild(close);
+  const body = document.createElement("div"); dialog.appendChild(body);
+  dialog.addEventListener("close", () => dialog.remove()); dialog.showModal();
+  async function render() {
+    body.replaceChildren();
+    const status = document.createElement("p"); body.appendChild(status); status.textContent = "正在加载复核证据…";
+    try {
+      const data = await api(`/api/documents/${Number(id)}/review`);
+      status.textContent = `${data.items.filter(item => item.state !== "rejected").length} 条待复核 · ${data.items.filter(item => item.state === "rejected").length} 条已拒绝 · ${data.history.length} 条历史记录。请核对整行和表头，尤其是数字、单位和否定词。`;
+      const publish = document.createElement("button"); publish.textContent = "将已确认内容写入知识库";
+      publish.onclick = async () => {
+        if (!window.confirm("只发布已对照原图确认的内容；待复核或拒绝的内容不会发布。继续？")) return;
+        publish.disabled = true;
+        try {
+          const result = await api(`/api/documents/${Number(id)}/review/publish`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({confirmed:true})});
+          status.textContent = `已发布 ${result.count} 条已确认内容（重复操作不会重复入库）。`;
+          await Promise.allSettled([loadKnowledge(), searchKnowledge()]);
+        } catch (err) { status.textContent = err.message; }
+        finally { publish.disabled = false; }
+      };
+      body.appendChild(publish);
+      for (const item of data.items) {
+        const section = document.createElement("section"); section.style.cssText = "border-top:1px solid #8885;margin-top:20px;padding-top:12px";
+        const title = document.createElement("h3"); title.textContent = `第 ${item.cells[0]?.page || "?"} 页 · 证据 ${item.chunk_id} · ${item.state === "rejected" ? "已拒绝，可重新核对" : "待确认"}`;
+        section.appendChild(title); const inputs = new Map(); let loaded = 0;
+        for (const cell of item.cells) {
+          const row = document.createElement("div"); row.style.cssText = "display:grid;grid-template-columns:minmax(160px,1fr) minmax(180px,1fr);gap:12px;margin:12px 0";
+          const source = document.createElement("div");
+          const label = document.createElement("p"); label.textContent = `第 ${cell.page} 页 · ${cell.is_header ? "表头" : cell.header || "正文"}`; source.appendChild(label);
+          const img = document.createElement("img"); img.src = cell.crop_url; img.alt = "原始 PDF 单元格裁剪"; img.style.cssText = "max-width:100%;border:1px solid #8885";
+          img.onload = () => { loaded += 1; }; img.onerror = () => { status.textContent = "原图加载失败，不能确认。请检查源文件后重试。"; };
+          source.appendChild(img); row.appendChild(source);
+          const editor = document.createElement("div");
+          const input = document.createElement("textarea"); input.value = cell.text; input.rows = 3; input.style.width = "100%";
+          input.setAttribute("aria-label", `确认值 ${cell.header || cell.id}`); inputs.set(cell.id, input); editor.appendChild(input);
+          const candidates = document.createElement("p"); candidates.style.fontSize = "12px";
+          candidates.textContent = (cell.verification?.candidates || []).map((v, index) => `识别视图 ${index + 1}：${v.status === "completed" ? v.text : "识别未完成"}`).join("；") || "没有第二识别视图；仍需对照原图。";
+          editor.appendChild(candidates); row.appendChild(editor); section.appendChild(row);
+        }
+        const label = document.createElement("label"); const checked = document.createElement("input"); checked.type = "checkbox";
+        label.append(checked, document.createTextNode(" 我已对照原图核对整行、表头、数字、单位和条件")); section.appendChild(label);
+        for (const action of ["approve", "reject"]) {
+          const button = document.createElement("button"); button.textContent = action === "approve" ? "保存确认值" : "拒绝使用此行";
+          button.onclick = async () => {
+            if (!checked.checked || loaded !== item.cells.length) { status.textContent = "请等待原图加载完成，并勾选核对确认。"; return; }
+            button.disabled = true;
+            try {
+              await api(`/api/documents/${Number(id)}/review`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({chunk_id:item.chunk_id,revision:data.revision,values:Object.fromEntries([...inputs].map(([key,input])=>[key,input.value])),confirmed:true,action})});
+              await render(); await loadOcrQueue();
+            } catch (err) { status.textContent = `${err.message}；请关闭后重新加载复核窗口。`; button.disabled = false; }
+          }; section.appendChild(button);
+        }
+        body.appendChild(section);
+      }
+    } catch (err) { status.textContent = err.message; }
+  }
+  await render();
+}
+
 async function runDocumentOcr(id) {
-  const sidecar = window.prompt("可选：粘贴 OCR 文本；留空则尝试本地 sidecar 或 tesseract 引擎。", "") || "";
+  const sidecar = window.prompt("重新 OCR 会重建提取结果，并使旧的复核确认失效。留空使用本地 OCR；仅无待复核证据时可粘贴替换文本。取消则不执行。", "");
+  if (sidecar === null) return;
   if ($("knowledgeStatus")) $("knowledgeStatus").textContent = "OCR 正在处理并重建索引";
   try {
     const data = await api(`/api/documents/${Number(id)}/ocr`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sidecar_text: sidecar, force: true }) });
@@ -3069,6 +3444,40 @@ async function refreshView(viewName) {
   if (["chat", "tasks"].includes(viewName) && window.loadRuntimeRecords) window.loadRuntimeRecords();
 }
 
+let embeddedOfficeInstance = null;
+function loadOfficeEditorScript(url) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script"); script.src = url; script.onload = resolve; script.onerror = reject; document.head.appendChild(script);
+  });
+}
+async function openEmbeddedOfficeEditor(artifactId) {
+  const modal = $("officeEditorModal"), mount = $("office-editor-mount"), status = $("officeEditorStatus");
+  modal?.classList.add("on"); modal?.setAttribute("aria-hidden", "false");
+  if (mount) mount.innerHTML = ""; if (status) status.textContent = "正在建立安全编辑会话…";
+  try {
+    const caps = await fetch("/api/office/editor/capabilities").then(r => r.json());
+    const provider = ["onlyoffice", "wps", "collabora"].find(name => caps.configured?.includes(name));
+    if (!provider) throw new Error("尚未配置 WPS、ONLYOFFICE 或 Collabora 编辑服务");
+    const response = await fetch("/api/office/editor/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({artifact_id:artifactId,provider,mode:"edit"})});
+    const session = await response.json(); if (!response.ok) throw new Error(session.detail || "编辑会话创建失败");
+    const config = session.mount; if (status) status.textContent = `${provider} · 会话将在 15 分钟后过期`;
+    if (config.type === "onlyoffice-docsapi") {
+      if (!window.DocsAPI) await loadOfficeEditorScript(config.script_url);
+      embeddedOfficeInstance = new window.DocsAPI.DocEditor("office-editor-mount", config.config);
+    } else if (config.type === "wps-jssdk") {
+      if (!window.WebOfficeSDK) await loadOfficeEditorScript(config.sdk_url);
+      embeddedOfficeInstance = window.WebOfficeSDK.init(config.config);
+    } else {
+      mount.innerHTML = `<iframe title="Office editor" src="${esc(config.iframe_url)}" allow="clipboard-read; clipboard-write"></iframe>`;
+    }
+  } catch (error) { if (status) status.textContent = error.message || String(error); }
+}
+function closeEmbeddedOfficeEditor() {
+  try { embeddedOfficeInstance?.destroy?.(); } catch (_) {}
+  embeddedOfficeInstance = null; $("office-editor-mount")?.replaceChildren();
+  $("officeEditorModal")?.classList.remove("on"); $("officeEditorModal")?.setAttribute("aria-hidden", "true");
+}
+
 if ($("cfgProvider")) $("cfgProvider").addEventListener("change", () => applyProviderPreset(true));
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
@@ -3077,6 +3486,7 @@ document.addEventListener("keydown", (event) => {
   else if ($("chatProgressPanel")?.classList.contains("on")) toggleChatProgress(false);
   else if ($("modelSettings")?.classList.contains("on")) closeModelSettings();
   else if ($("commandDrawer")?.classList.contains("on")) closeCommandDrawer();
+  else if ($("officeEditorModal")?.classList.contains("on")) closeEmbeddedOfficeEditor();
 });
 applyReportPreset();
 renderKnowledgeWorkspaceShell();

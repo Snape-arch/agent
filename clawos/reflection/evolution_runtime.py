@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -195,6 +196,8 @@ class ExecutedEvolutionBenchmarkRunner:
             cwd=str(ROOT.parent),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             timeout=120,
         )
         if completed.returncode not in {0, 1}:

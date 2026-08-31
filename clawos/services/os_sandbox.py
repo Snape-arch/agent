@@ -191,6 +191,91 @@ class WindowsJobSandbox:
                 process.wait(timeout=5)
             kernel32.CloseHandle(job)
 
+    def run(
+        self,
+        command: list[str],
+        workspace: str | Path,
+        *,
+        input_text: str = "",
+        environment: dict[str, str] | None = None,
+        timeout_seconds: float = 30,
+    ) -> dict[str, Any]:
+        """Run a real worker inside a resource-constrained Windows Job Object."""
+        if not self.available():
+            raise RuntimeError("Windows Job Object backend is unavailable")
+        workspace_path = Path(workspace).expanduser().resolve()
+        if not workspace_path.is_dir():
+            raise ValueError("workspace must be an existing directory")
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+        structures = self._structures()
+        kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        kernel32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        kernel32.SetInformationJobObject.restype = wintypes.BOOL
+        kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+        kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        ntdll.NtResumeProcess.argtypes = [wintypes.HANDLE]
+        ntdll.NtResumeProcess.restype = ctypes.c_long
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            raise OSError(ctypes.get_last_error(), "CreateJobObjectW failed")
+        process = None
+        started = time.perf_counter()
+        try:
+            info = structures["extended"]()
+            info.BasicLimitInformation.LimitFlags = self.KILL_ON_JOB_CLOSE | self.ACTIVE_PROCESS | self.PROCESS_MEMORY
+            info.BasicLimitInformation.ActiveProcessLimit = self.max_processes
+            info.ProcessMemoryLimit = self.process_memory_mb * 1024 * 1024
+            if not kernel32.SetInformationJobObject(job, self.EXTENDED_LIMIT_INFORMATION, ctypes.byref(info), ctypes.sizeof(info)):
+                raise OSError(ctypes.get_last_error(), "SetInformationJobObject failed")
+            process = subprocess.Popen(
+                command,
+                cwd=workspace_path,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=environment,
+                creationflags=subprocess.CREATE_NO_WINDOW | 0x00000004,
+            )
+            if not kernel32.AssignProcessToJobObject(job, wintypes.HANDLE(int(process._handle))):
+                raise OSError(ctypes.get_last_error(), "AssignProcessToJobObject failed")
+            resume_status = ntdll.NtResumeProcess(wintypes.HANDLE(int(process._handle)))
+            if resume_status != 0:
+                raise OSError(int(resume_status), "NtResumeProcess failed")
+            try:
+                stdout, stderr = process.communicate(input_text, timeout=max(1, float(timeout_seconds)))
+                timed_out = False
+            except subprocess.TimeoutExpired:
+                kernel32.TerminateJobObject(job, 124)
+                stdout, stderr = process.communicate(timeout=5)
+                timed_out = True
+            return {
+                "exit_code": 124 if timed_out else int(process.returncode or 0),
+                "stdout": stdout,
+                "stderr": stderr,
+                "timed_out": timed_out,
+                "sandbox": {
+                    "backend": "windows-job-object",
+                    "os_enforced": True,
+                    "max_processes": self.max_processes,
+                    "process_memory_mb": self.process_memory_mb,
+                    "filesystem_isolated": False,
+                    "network_isolated": False,
+                },
+                "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+            }
+        finally:
+            if process and process.poll() is None:
+                kernel32.TerminateJobObject(job, 125)
+                process.wait(timeout=5)
+            kernel32.CloseHandle(job)
+
     @staticmethod
     def _structures() -> dict[str, Any]:
         ulong_ptr = ctypes.c_size_t
@@ -350,6 +435,88 @@ class WindowsRestrictedTokenSandbox:
             ),
         }
 
+    def run_command(
+        self,
+        command: list[str],
+        workspace: str | Path,
+        *,
+        environment: dict[str, str] | None = None,
+        timeout_seconds: float = 180,
+    ) -> dict[str, Any]:
+        """Execute an allowlisted command under a low-integrity token.
+
+        The caller must provide a disposable task workspace.  The integrity
+        label is intentionally applied to that worktree only so the restricted
+        child can create caches and test outputs without gaining write access
+        to the source repository.
+        """
+
+        if not self.available():
+            raise RuntimeError("Windows restricted-token backend is unavailable")
+        cwd = Path(workspace).expanduser().resolve()
+        if not cwd.is_dir():
+            raise ValueError("workspace must be an existing directory")
+        if not command or any("\x00" in str(item) for item in command):
+            raise ValueError("command must contain safe non-empty arguments")
+        label = subprocess.run(
+            ["icacls", str(cwd), "/setintegritylevel", "(OI)(CI)L"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=30,
+        )
+        if label.returncode != 0:
+            raise RuntimeError("failed to label task workspace low integrity")
+        report_dir = cwd / ".clawos-sandbox"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["icacls", str(report_dir), "/setintegritylevel", "(OI)(CI)L"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=15,
+        )
+        report_path = report_dir / f"command-{int(time.time() * 1000)}-{os.getpid()}.json"
+        bounded_timeout = max(1, min(float(timeout_seconds or 180), 900.0))
+        child = (
+            "import json,pathlib,subprocess,time;"
+            f"cmd={list(map(str, command))!r};"
+            f"cwd={str(cwd)!r};report=pathlib.Path({str(report_path)!r});"
+            f"limit={bounded_timeout!r};started=time.perf_counter();"
+            "payload={};"
+            "\ntry:\n"
+            " r=subprocess.run(cmd,cwd=cwd,capture_output=True,text=True,"
+            "encoding='utf-8',errors='replace',timeout=limit);"
+            " payload={'exit_code':r.returncode,'stdout':r.stdout[-8000:],"
+            "'stderr':r.stderr[-4000:],'timed_out':False}\n"
+            "except subprocess.TimeoutExpired as exc:\n"
+            " payload={'exit_code':124,'stdout':str(exc.stdout or '')[-8000:],"
+            "'stderr':str(exc.stderr or '')[-4000:],'timed_out':True}\n"
+            "payload['duration_ms']=round((time.perf_counter()-started)*1000,2);"
+            "report.write_text(json.dumps(payload),encoding='utf-8')"
+        )
+        process = self._create_low_process(
+            child, cwd, timeout_seconds=bounded_timeout + 10,
+            environment=environment,
+        )
+        if not report_path.is_file():
+            raise RuntimeError("restricted command did not produce a result")
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        report_path.unlink(missing_ok=True)
+        try:
+            report_dir.rmdir()
+        except OSError:
+            pass
+        return {
+            "command": list(map(str, command)),
+            **payload,
+            "sandbox": {
+                "backend": "windows-restricted-token-low-integrity",
+                "os_enforced": True,
+                "restricted_token": bool(process.get("restricted_token_created")),
+                "filesystem_write_boundary": "isolated-task-worktree-low-integrity",
+                "network_proxy_required": True,
+                "network_non_bypass_enforced": False,
+                "production_sandbox_ready": False,
+            },
+        }
+
     @staticmethod
     def appcontainer_capability() -> dict[str, Any]:
         if platform.system().lower() != "windows":
@@ -370,7 +537,8 @@ class WindowsRestrictedTokenSandbox:
         }
 
     def _create_low_process(
-        self, script: str, cwd: Path, *, timeout_seconds: float
+        self, script: str, cwd: Path, *, timeout_seconds: float,
+        environment: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         advapi = ctypes.WinDLL("advapi32", use_last_error=True)
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -422,6 +590,13 @@ class WindowsRestrictedTokenSandbox:
             ctypes.POINTER(wintypes.HANDLE),
         ]
         advapi.CreateRestrictedToken.restype = wintypes.BOOL
+        advapi.IsTokenRestricted.argtypes = [wintypes.HANDLE]
+        advapi.IsTokenRestricted.restype = wintypes.BOOL
+        advapi.DuplicateTokenEx.argtypes = [
+            wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p,
+            ctypes.c_int, ctypes.c_int, ctypes.POINTER(wintypes.HANDLE),
+        ]
+        advapi.DuplicateTokenEx.restype = wintypes.BOOL
         advapi.ConvertStringSidToSidW.argtypes = [
             wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p),
         ]
@@ -442,13 +617,33 @@ class WindowsRestrictedTokenSandbox:
             raise OSError(ctypes.get_last_error(), "OpenProcessToken failed")
         process_info = PROCESS_INFORMATION()
         try:
-            if not advapi.CreateRestrictedToken(
-                token, self.DISABLE_MAX_PRIVILEGE | self.LUA_TOKEN,
-                0, None, 0, None, 0, None, ctypes.byref(restricted),
-            ):
-                raise OSError(
-                    ctypes.get_last_error(), "CreateRestrictedToken failed"
-                )
+            source_token_already_restricted = bool(advapi.IsTokenRestricted(token))
+            restriction_flags = 0
+            if source_token_already_restricted:
+                if not advapi.DuplicateTokenEx(
+                    token, self.TOKEN_ALL_ACCESS, None,
+                    2, 1, ctypes.byref(restricted),
+                ):
+                    raise OSError(
+                        ctypes.get_last_error(), "DuplicateTokenEx failed"
+                    )
+            else:
+                restriction_flags = self.DISABLE_MAX_PRIVILEGE | self.LUA_TOKEN
+                if not advapi.CreateRestrictedToken(
+                    token, restriction_flags,
+                    0, None, 0, None, 0, None, ctypes.byref(restricted),
+                ):
+                    first_error = ctypes.get_last_error()
+                    restricted = wintypes.HANDLE()
+                    restriction_flags = self.DISABLE_MAX_PRIVILEGE
+                    if not advapi.CreateRestrictedToken(
+                        token, restriction_flags,
+                        0, None, 0, None, 0, None, ctypes.byref(restricted),
+                    ):
+                        raise OSError(
+                            ctypes.get_last_error() or first_error,
+                            "CreateRestrictedToken failed",
+                        )
             if not advapi.ConvertStringSidToSidW(
                 "S-1-16-4096", ctypes.byref(sid)
             ):
@@ -472,12 +667,20 @@ class WindowsRestrictedTokenSandbox:
             command = ctypes.create_unicode_buffer(
                 subprocess.list2cmdline([interpreter, "-c", script])
             )
-            environment = (
-                f"SYSTEMROOT={os.environ.get('SYSTEMROOT', '')}\0"
-                f"PATH={os.environ.get('PATH', '')}\0"
-                f"TEMP={cwd}\0TMP={cwd}\0PYTHONIOENCODING=utf-8\0\0"
-            )
-            environment_buffer = ctypes.create_unicode_buffer(environment)
+            child_environment = {
+                "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+                "PATH": os.environ.get("PATH", ""),
+                "TEMP": str(cwd), "TMP": str(cwd),
+                "PYTHONIOENCODING": "utf-8",
+            }
+            for key, value in (environment or {}).items():
+                normalized = str(key or "").strip()
+                if normalized and "\0" not in normalized and "=" not in normalized:
+                    child_environment[normalized] = str(value).replace("\0", "")
+            environment_text = "".join(
+                f"{key}={value}\0" for key, value in sorted(child_environment.items())
+            ) + "\0"
+            environment_buffer = ctypes.create_unicode_buffer(environment_text)
             startup = STARTUPINFO()
             startup.cb = ctypes.sizeof(startup)
             created = advapi.CreateProcessAsUserW(
@@ -511,6 +714,8 @@ class WindowsRestrictedTokenSandbox:
             return {
                 "process_creation_backend": backend,
                 "restricted_token_created": True,
+                "restriction_flags": restriction_flags,
+                "source_token_already_restricted": source_token_already_restricted,
                 "low_integrity_sid": "S-1-16-4096",
                 "exit_code": int(exit_code.value),
             }

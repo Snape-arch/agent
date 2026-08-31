@@ -26,11 +26,11 @@ class KnowledgeService:
         for doc in docs:
             meta = doc.get("metadata") or {}
             status = str(doc.get("status") or "").lower()
-            if meta.get("ocr_required") or status in {"ocr_required", "needs_ocr"}:
+            if meta.get("ocr_required") or status in {"ocr_required", "needs_ocr", "needs_review", "ready_with_exclusions"}:
                 pending.append({
                     **doc,
-                    "ocr_pages": meta.get("ocr_pages", []),
-                    "ocr_reason": meta.get("ocr_reason") or "low_extractable_text",
+                    "ocr_pages": meta.get("ocr_pages") or meta.get("ocr_review_pages", []),
+                    "ocr_reason": meta.get("ocr_reason") or ("部分证据已拒绝使用，可对照原图重新复核" if status == "ready_with_exclusions" else "识别置信度或跨栏结构需复核" if status == "needs_review" else "low_extractable_text"),
                 })
         return pending
 
@@ -53,6 +53,8 @@ class KnowledgeService:
         citations = []
         lines = []
         for index, chunk in enumerate(chunks, 1):
+            if (chunk.get("metadata") or {}).get("review_required"):
+                continue
             content = str(chunk.get("content") or "").strip()
             citation = chunk.get("citation") or f"doc:{chunk.get('document_id')}#chunk={chunk.get('chunk_index')}"
             citations.append({
@@ -209,14 +211,30 @@ class KnowledgeService:
         return report
 
     def run_ocr(self, document_id: int, *, sidecar_text: str = "", force: bool = False) -> dict[str, Any]:
-        document = self.store.get_document(document_id)
+        document = self.store.get_document(document_id, include_review=True)
         if not document:
             raise ValueError("Document not found")
+        if sidecar_text.strip() and str(document.get("status")) in {"needs_review", "ready_with_exclusions"}:
+            raise ValueError("Use source-linked document review; plain-text replacement cannot bypass pending review")
         meta = dict(document.get("metadata") or {})
-        if not force and not (meta.get("ocr_required") or str(document.get("status") or "").lower() in {"ocr_required", "needs_ocr"}):
+        if not force and not (meta.get("ocr_required") or str(document.get("status") or "").lower() in {"ocr_required", "needs_ocr", "needs_review"}):
             return {"ok": True, "status": "skipped", "reason": "document does not require OCR", "document": document, "chunk_count": document.get("chunk_count", 0)}
 
-        text, engine, reason = self._load_ocr_text(document, sidecar_text=sidecar_text)
+        graph = {}
+        file_path = Path(str(document.get("file_path") or ""))
+        has_sidecar = bool(sidecar_text.strip()) or any(p.is_file() for p in self._sidecar_candidates(file_path))
+        if not has_sidecar and file_path.is_file() and file_path.suffix.lower() == ".pdf":
+            from memoryos.document_ingestion import extract_pdf_text_enhanced
+            text, parsed_meta = extract_pdf_text_enhanced(file_path)
+            graph = parsed_meta.get("semantic_graph") or {}
+            if graph:
+                meta.update(parsed_meta)
+                engine = "document-semantic-graph+tesseract-tsv"
+                reason = "; ".join(f"page {p['page']}: {p['status']}" for p in graph.get("ocr_pages", []))
+        if not graph:
+            if str(document.get("status")) in {"needs_review", "ready_with_exclusions"}:
+                raise ValueError("Use source-linked document review; sidecar fallback cannot bypass pending review")
+            text, engine, reason = self._load_ocr_text(document, sidecar_text=sidecar_text)
         if not text.strip():
             meta.update({"ocr_attempted": True, "ocr_engine": engine, "ocr_error": reason})
             updated = self.store.add_document(
@@ -232,12 +250,20 @@ class KnowledgeService:
             )
             return {"ok": False, "status": "ocr_unavailable", "reason": reason, "document": updated, "chunk_count": 0}
 
-        chunks = chunk_text(text)
+        if graph:
+            from services.document_semantic_graph_service import DocumentSemanticGraphService
+            chunks = DocumentSemanticGraphService().semantic_chunks(graph)
+        else:
+            chunks = [{"content": value} for value in chunk_text(text)]
+            # Replacement plain text has no alignment to the earlier OCR graph.
+            for key in ("semantic_graph", "semantic_quality", "structure", "layout_aware", "ocr_review_pages", "ocr_pages"):
+                meta.pop(key, None)
+            meta["ocr_coordinate_status"] = "unavailable_for_plain_text_replacement"
         if not chunks:
             raise ValueError("OCR produced no indexable text")
         meta.update({
-            "ocr_required": False,
-            "ocr_completed": True,
+            "ocr_required": bool(meta.get("ocr_required")) if graph else False,
+            "ocr_completed": not meta.get("ocr_required") if graph else True,
             "ocr_attempted": True,
             "ocr_engine": engine,
             "ocr_text_chars": len(text),
@@ -250,15 +276,20 @@ class KnowledgeService:
             mime_type=document.get("mime_type") or "",
             category=document.get("category") or "domain",
             extractor=f"{document.get('extractor') or 'document'}+ocr",
-            status="ready",
+            status="needs_ocr" if graph and meta.get("ocr_required") else ("needs_review" if graph and meta.get("ocr_review_pages") else "ready"),
             metadata=meta,
         )
         if hasattr(self.store, "delete_knowledge_by_source_prefix"):
             self.store.delete_knowledge_by_source_prefix(f"doc:{updated['id']}#")
         knowledge_ids = []
-        for index, chunk in enumerate(chunks, 1):
-            citation = f"doc:{updated['id']}#chunk={index}"
-            self.store.add_document_chunk(updated["id"], index, chunk, citation)
+        for index, chunk_info in enumerate(chunks, 1):
+            chunk = chunk_info["content"]
+            page = int(chunk_info.get("page_number") or 0)
+            citation = f"doc:{updated['id']}#page={page}&chunk={index}" if page else f"doc:{updated['id']}#chunk={index}"
+            chunk_metadata = {key: value for key, value in chunk_info.items() if key != "content"}
+            self.store.add_document_chunk(updated["id"], index, chunk, citation, metadata=chunk_metadata)
+            if chunk_metadata.get("review_required"):
+                continue
             item = self.store.add_knowledge(
                 title=f"{updated['title']} #{index}",
                 content=f"{chunk}\n\nSource: {citation}",
@@ -272,7 +303,8 @@ class KnowledgeService:
             self.vector_refresh()
         updated["chunk_count"] = len(chunks)
         updated["knowledge_ids"] = knowledge_ids
-        return {"ok": True, "status": "ready", "reason": "ocr indexed", "document": updated, "chunk_count": len(chunks), "engine": engine}
+        return {"ok": updated["status"] == "ready", "status": updated["status"], "reason": "ocr indexed" if updated["status"] == "ready" else reason,
+                "document": updated, "chunk_count": len(chunks), "engine": engine}
 
     def _load_ocr_text(self, document: dict[str, Any], *, sidecar_text: str = "") -> tuple[str, str, str]:
         if sidecar_text.strip():

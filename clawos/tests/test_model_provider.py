@@ -244,7 +244,7 @@ class ModelProviderTests(unittest.TestCase):
 
         self.assertEqual(vector["provider"], "${VECTOR_PROVIDER:-chroma}")
         self.assertEqual(vector["chroma_dir"], "${CHROMA_DIR:-./data/chroma}")
-        self.assertEqual(vector["embedding_provider"], "${EMBEDDING_PROVIDER:-hash}")
+        self.assertEqual(vector["embedding_provider"], "${EMBEDDING_PROVIDER:-qwen3}")
         self.assertEqual(vector["embedding_model_path"], "${EMBEDDING_MODEL_PATH:-../tools/models/qwen3-embedding-0.6b}")
         self.assertEqual(vector["embedding_dim"], "${EMBEDDING_DIM:-1024}")
         self.assertEqual(vector["reranker_provider"], "${RERANKER_PROVIDER:-none}")

@@ -29,9 +29,12 @@ class LanguageServerBridge:
         self._messages: queue.Queue[dict[str, Any]] = queue.Queue()
         self._request_id = 0
         self._reader: threading.Thread | None = None
+        self._stderr_reader: threading.Thread | None = None
+        self._stderr_lines: list[str] = []
         self._root = ""
         self._server_capabilities: dict[str, Any] = {}
         self._documents: dict[str, tuple[int, str]] = {}
+        self._send_lock = threading.RLock()
 
     def start(self, repo_path: str | Path) -> dict[str, Any]:
         repo = Path(repo_path).expanduser().resolve()
@@ -58,14 +61,19 @@ class LanguageServerBridge:
         self._root = repo.as_uri()
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
+        self._stderr_reader = threading.Thread(target=self._read_stderr_loop, daemon=True)
+        self._stderr_reader.start()
         try:
             response = self.request("initialize", {
                 "processId": None,
                 "rootUri": self._root,
                 "capabilities": {
+                    "workspace": {"symbol": {}},
                     "textDocument": {
                         "documentSymbol": {},
                         "publishDiagnostics": {},
+                        "definition": {}, "references": {},
+                        "callHierarchy": {},
                     }
                 },
                 "workspaceFolders": [{"uri": self._root, "name": repo.name}],
@@ -93,6 +101,7 @@ class LanguageServerBridge:
             "root_uri": self._root,
             "capabilities": self._server_capabilities,
             "transport": "stdio-jsonrpc",
+            "stderr_tail": self._stderr_lines[-20:],
         }
 
     def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -139,6 +148,10 @@ class LanguageServerBridge:
         )
         return list(result.get("result") or [])
 
+    def workspace_symbols(self, query: str = "") -> list[dict[str, Any]]:
+        result = self.request("workspace/symbol", {"query": str(query)})
+        return list(result.get("result") or [])
+
     def definition(
         self, path: str | Path, line: int, character: int,
         *, language_id: str = "",
@@ -164,6 +177,22 @@ class LanguageServerBridge:
             "context": {"includeDeclaration": bool(include_declaration)},
         }).get("result")
         return list(result or [])
+
+    def prepare_call_hierarchy(
+        self, path: str | Path, line: int, character: int, *, language_id: str = ""
+    ) -> list[dict[str, Any]]:
+        uri = self._open_document(path, language_id)
+        result = self.request("textDocument/prepareCallHierarchy", {
+            "textDocument": {"uri": uri},
+            "position": {"line": max(0, int(line)), "character": max(0, int(character))},
+        }).get("result")
+        return list(result or [])
+
+    def incoming_calls(self, item: dict[str, Any]) -> list[dict[str, Any]]:
+        return list(self.request("callHierarchy/incomingCalls", {"item": item}).get("result") or [])
+
+    def outgoing_calls(self, item: dict[str, Any]) -> list[dict[str, Any]]:
+        return list(self.request("callHierarchy/outgoingCalls", {"item": item}).get("result") or [])
 
     def hover(
         self, path: str | Path, line: int, character: int,
@@ -202,23 +231,26 @@ class LanguageServerBridge:
                 "textDocument": {"uri": uri},
             }).get("result") or {}
             return list(result.get("items") or [])
+        found = []
         deferred = []
-        while True:
+        deadline = time.monotonic() + min(self.timeout_seconds, 2.0)
+        while time.monotonic() < deadline:
             try:
-                message = self._messages.get_nowait()
+                message = self._messages.get(timeout=max(0.01, deadline - time.monotonic()))
             except queue.Empty:
                 break
             if (
                 message.get("method") == "textDocument/publishDiagnostics"
                 and (message.get("params") or {}).get("uri") == uri
             ):
-                deferred.extend(
+                found.extend(
                     (message.get("params") or {}).get("diagnostics") or []
                 )
             else:
-                self._messages.put(message)
-                break
-        return deferred
+                deferred.append(message)
+        for message in deferred:
+            self._messages.put(message)
+        return found
 
     def _open_document(
         self, path: str | Path, language_id: str = ""
@@ -282,10 +314,11 @@ class LanguageServerBridge:
         if not self._process or not self._process.stdin:
             raise RuntimeError("language server is not running")
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        self._process.stdin.write(
-            f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
-        )
-        self._process.stdin.flush()
+        with self._send_lock:
+            self._process.stdin.write(
+                f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
+            )
+            self._process.stdin.flush()
 
     def _read_loop(self) -> None:
         stream = self._process.stdout if self._process else None
@@ -307,13 +340,56 @@ class LanguageServerBridge:
             except (ValueError, json.JSONDecodeError):
                 continue
             if isinstance(payload, dict):
+                # Language servers may issue requests to the client while a
+                # document request is pending. A stdio bridge must answer these
+                # or servers such as pylsp block indefinitely waiting for
+                # workspace configuration/registration acknowledgement.
+                if payload.get("method") and "id" in payload:
+                    self._answer_server_request(payload)
+                    continue
                 self._messages.put(payload)
 
+    def _answer_server_request(self, payload: dict[str, Any]) -> None:
+        method = str(payload.get("method") or "")
+        params = payload.get("params") or {}
+        if method == "workspace/configuration":
+            result: Any = [{} for _ in (params.get("items") or [])]
+        elif method in {"client/registerCapability", "client/unregisterCapability"}:
+            result = None
+        elif method == "workspace/workspaceFolders":
+            result = [{"uri": self._root, "name": Path(unquote_uri(self._root)).name}]
+        elif method in {"window/workDoneProgress/create", "workspace/applyEdit"}:
+            result = None if method.endswith("create") else {"applied": False}
+        else:
+            self._send({
+                "jsonrpc": "2.0", "id": payload.get("id"),
+                "error": {"code": -32601, "message": f"client method not supported: {method}"},
+            })
+            return
+        self._send({"jsonrpc": "2.0", "id": payload.get("id"), "result": result})
+
+    def _read_stderr_loop(self) -> None:
+        stream = self._process.stderr if self._process else None
+        if stream is None:
+            return
+        while self._process and self._process.poll() is None:
+            line = stream.readline()
+            if not line:
+                return
+            self._stderr_lines.append(line.decode("utf-8", errors="replace").rstrip())
+            if len(self._stderr_lines) > 200:
+                del self._stderr_lines[:-100]
     def __enter__(self):
         return self
 
     def __exit__(self, *_):
         self.stop()
+
+
+def unquote_uri(uri: str) -> str:
+    """Return a display path without adding a dependency to graph code."""
+    from urllib.parse import unquote, urlparse
+    return unquote(urlparse(uri).path).lstrip("/")
 
 
 class LanguageServerManager:

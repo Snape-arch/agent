@@ -1,5 +1,180 @@
 # Project Context
 
+## Local commit checkpoint (2026-08-31)
+
+- User requested committing the accumulated validated implementation, explicitly excluding `tools/`. This checkpoint includes the pending coding/LSP/repository, search, knowledge/answer-quality, Office/document parsing and source-review work recorded below, plus their tests and acceptance notes.
+- Only source/tests/frozen benchmark definitions and tracked acceptance documentation are included. `tools/`, local models/runtimes, `.env`, databases, logs, uploads and generated output directories are excluded. No production data migration or mass re-ingestion was performed.
+- Latest implementation validation remains **535/535 tests in 275.542 s** plus **14/14** review workflow checks and isolated browser QA; no implementation changes in the commit-only turn. Commit preparation verifies staged paths, whitespace and credential signatures.
+- Fetched `origin` successfully. Before this checkpoint the current branch matches its upstream (**0/0**) and differs from `origin/master` by **6 ahead / 2 behind**. No merge, rebase or push is part of this request. Earlier notes describing uncommitted work are historical baselines now captured by this checkpoint.
+
+## Critical-cell verification and source review loop (2026-08-31, third block)
+
+- Added `services/document_review_service.py` and `document_evidence_policy.py`: source-crop review, all-cell/header confirmation, SHA-256 + optimistic revision checks, atomic graph/row/chunk correction and append-only before/after audit. Rejects remain quarantined (`ready_with_exclusions` when settled); publication is explicit, content/state-rechecked and idempotent. Retired derived legacy knowledge is preserved in review events, v2 records expire and vector deletion is queued. Raw originals stay inspection-only.
+- Numeric/condition cells now get two bounded cell-crop OCR views; all reconstructed scanned cells/headers require source confirmation, including high-confidence words. No majority-vote auto-correction. Fresh unchanged corpus remains **53/60 exact cells, 3/5 critical anchors**; strict raw CLI still exits **1**. Both erroneous anchors cause disagreements (**2/2**); only **1/2** has a correct candidate (7倍; 95%+ still needs a human correction).
+- Default chunk reads/search, document/semantic-graph views, paper analysis/alignment, legacy/v2 knowledge, hybrid/rerank and public vector search enforce review state; cached vectors are checked against active record/version. Structured Office tables cannot export until reviewed. Fixed Markdown export interpreting structured table dictionaries as iterable keys. Background OCR jobs no longer overwrite reviewed/pending-review documents; sidecar fallback cannot bypass review.
+- Console now offers original crops, editable values, alternative views, checkbox-gated approve/reject and separate publication. Browser QA used the actual function and HTTP handlers in a loopback-only temporary-DB harness: corrected 7信/959%+, shared-header update, unchecked-submit rejection, 2 -> 1 -> 0 pending, two published rows. Both source crops visually checked. This was not full dashboard navigation or a production DB test; helper processes and temporary browser tab were stopped/closed.
+- `scripts/document_review_benchmark.py` replays real captured OCR through the actual console ingestion service with an isolated DB. **14/14 workflow checks pass**: simulated frozen-label corrections preserve **60/60 cells/coordinates, 48/48 header links, 5/5 critical anchors**, **16 approved/published rows and 16 audit events**; repeated publication has no duplicates; actual Markdown cell contents checked. **4/15 non-table review chunks** remain on the two pages. These edits simulate user review and do NOT count as independent human truth, real feedback or autonomous accuracy. Artifacts: `clawos/output/review-20260831/{raw,closed-loop}/`; detailed scope/repro: `benchmarks/DOCUMENT_REVIEW_ACCEPTANCE.md`.
+- Final validation: full suite **535/535 in 275.542 s**; review loop **14/14** (including HTTP routes, source changes, stale versions, rejection, cache bypass and export), knowledge-core **15/15**, routing/memory **34/34**, frontend **45/45**. Fixed Windows SQLite connection-close regression and a gate false positive against legacy ready documents with manual citations but no parsed chunks, then reran the complete suite successfully. Python compilation, bundled Node syntax and diff whitespace checks pass. Existing SWIG, FastAPI/openpyxl and CRLF warnings remain non-blocking. Cached upstream **0 ahead / 0 behind**, no project fetch.
+- No production documents or databases were mass-reprocessed; old captures obtain extra recognition views only on explicit re-OCR. Independent held-out OCR accuracy, truly complex layouts, reviewer identity/permission hardening and provenance for arbitrary pasted text remain open. Branch/HEAD unchanged (`codex/coding-agent-competitive-p0-p2` / `8086ce1`); cumulative dirty changes preserved, nothing staged/committed/reset. Next: independently verify critical values on document-disjoint scans; do not use post-gold-review scores as automatic OCR quality.
+
+## Raster region and scanned-table recovery (2026-08-31, second block)
+
+- Added `services/raster_document_layout.py`: bitmap long-rule/header-grid detection, whitespace body-row grouping and regular full-grid extension. Rejects observed merged headers, unframed/borderless candidates, sparse/incomplete recognition; this is a bounded clean-raster detector, not general layout understanding. Column-isolated OCR with temporary rule removal reduces repeated recognizer launches. Limits: 160 cells / 90 seconds per regional stage.
+- Integrated into `DocumentOCRService`: default local CJK-heavy regions use the already-installed best Chinese model when available; explicit language/data directory configuration wins, no automatic downloads. Keeps original whole-page OCR outside recovered tables, unclassified text-block regions, transformed word/cell bounds, reading text and rejected-candidate diagnostics. Default global recognition remains fast Chinese/English. Numeric-bearing scanned cells always require review (including model-name digits).
+- The existing semantic graph and console OCR path receive real `table`, `table_cell`, contextual `table_row` evidence, `cell_of`, `conditioned_by`, `word_in_cell` and `row_of` links. Superseded OCR lines are excluded; page reading order and header-bearing evidence are retained. Review state propagates from headers/cells into chunks, preventing automatic knowledge promotion. OCR scoring uses raw recognition text rather than semantically expanded/repeated headers.
+- Frozen `benchmarks/scanned_table_regions_v1.json` binds four tables / two rasterized real project-plan pages to the prior rendered PDF SHA-256, with 60 cell texts, five critical anchors and prose/flowchart negatives. Geometry/shape **4/4**, cell coordinates **60/60**, header links **48/48**, negatives **2/2**, numeric review flags **3/3** pass. Text exact **53/60 (88.33%)**, critical exact **3/5** fail; strict CLI returns **1**, intentionally. Remaining examples include AI/Al, spelling/proper names, 7倍/7信, 95%+/959%+. Labels are agent visual transcription, not independent human/held-out truth; release claims remain disabled.
+- Page-level Chinese OCR now passes **2/2**: p1 CER **2.30%** (previous **17.11%**), p2 **5.28%**, CJK recall **98.79% / 99.61%**, text-position hit **96.61% / 93.06%**. Do not equate these with critical-cell accuracy. Both final colored boundary/word overlays were visually checked. Real temporary-DB console-service ingestion of p1 recovered **3 tables / 12 data rows / 12 chunks**, kept `needs_review`, and did **not** promote the corrupted `959%` into knowledge.
+- New benchmark service/CLI: `services/scanned_table_benchmark.py`, `scripts/scanned_table_benchmark.py`; run `python clawos/scripts/scanned_table_benchmark.py --out clawos/output/regions-20260831/final`. Source PDF is the prior ignored DOCX export; source/manifest identities and reproduction limits are in `benchmarks/SCANNED_TABLE_ACCEPTANCE.md`. Artifacts: `clawos/output/regions-20260831/`. Native seven-document semantic, old English recall-only OCR and 239-cell native-table regression CLI still exits **0**.
+- Validation: OCR/native-semantic/table regression **24/24** in **27.241 s**; final regional/OCR tests **19/19** in **0.992 s**; final full repository suite **521/521** in **273.212 s**. Six new tests cover header/full grids, merged/borderless/prose/frame negatives, column call count, failures/denominators and actual memory ingestion of review-bearing table evidence. Compilation and diff checks pass; existing font descriptor, SWIG, FastAPI/openpyxl and CRLF warnings remain non-blocking. No new Office-generation/round-trip claim.
+- Next: independently verify critical text/numerics rather than adjusting truth labels; broaden by document/layout before generalization claims. Truly borderless/merged/multi-page tables, physical-scan skew/perspective/noise, chart semantics and universal review controls remain open. Mixed native-header/image pages can still bypass the low-text OCR trigger. Branch/HEAD remain `codex/coding-agent-competitive-p0-p2` / `8086ce1`, cached upstream **0 ahead / 0 behind** with no project fetch. Cumulative dirty changes preserved; nothing staged, committed, reset or deleted.
+
+## Chinese OCR, line evidence and actual console entry (2026-08-31)
+
+- Added `services/document_ocr_service.py`: explicit model-language capability checks, differentiated failure/empty/timeout states, validated positioned TSV words, unrotated PDF coordinates and line assembly with word links. Local default auto uses installed simplified Chinese + English. Large horizontal gaps are preserved and flagged as ambiguous rather than treated as confident prose/table semantics.
+- `document_semantic_graph_service.py` now carries OCR page states and line-level evidence instead of word-per-line knowledge; chunks preserve recognition confidence and review metadata. `memoryos/document_ingestion.py` retains failed-page metadata and marks partial OCR `needs_ocr`; uncertain/ambiguous chunks remain inspectable but are not automatically promoted to knowledge. Confidence is an OCR engine score, not factual probability.
+- Fixed the actual console/API `KnowledgeService.run_ocr` path, which still used old text-only OCR: PDFs without sidecar overrides now use the same semantic path, retaining page/line locators, review states and knowledge-promotion guard. Review documents appear in the queue, its citation-draft endpoint withholds review chunks, and manual plain-text correction removes stale coordinate/graph metadata. Other raw-chunk consumers still need a universal review gate; do not overclaim full evidence quarantine.
+- Added opt-in `scripts/install_ocr_models.py` with pinned revisions/SHA-256, overwrite refusal, fast/best profiles. Verified official fast Chinese/English under ignored `tools/ocr/tessdata` and optional best Chinese under `tools/ocr/tessdata-best`; system installation and `.env` were not modified; no source documents uploaded. Default remains fast. CLI `scripts/document_ocr_benchmark.py` reports CJK recall, precision, CER/order, actual text-position overlap and bbox validity, retains failures and writes QA overlays.
+- Real 216-DPI rasterized Chinese project-plan pages: default CJK recall **95.52% / 97.68%**, text-position hit **91.52% / 92.09%**, CER **17.11% / 6.83%**; only **1/2** passes all gates. Optional best Chinese gives p2 recall **99.61%**, but p1 CER remains **17.11%**. Strict English Voyager p1 v2 also fails precision/position/CER; native diagram/order reference limitations remain visible. These are development proxies, not physical scans, independent human truth or WPS parity. Thresholds were not loosened; punctuation-only tokens were correctly excluded only from the textual position denominator, with regression coverage.
+- Existing fixed semantic/table CLI still exits **0** (53/53 type/page, 7/7 relations, 239/239 values); old English recall gate passes with **0.959677** word recall / **0.900747** mean confidence. Real temporary-DB service-entry ingestion of Chinese p1 produced **16 chunks**, **8 review chunks**, **8 knowledge items**, all page locators retained and one review-queue document. Source pages plus three default-profile overlays were visually checked. Artifacts: `clawos/output/ocr-20260831/`; detailed truth boundaries/reproduction: `clawos/benchmarks/DOCUMENT_OCR_ACCEPTANCE.md`.
+- Validation: semantic/OCR/table **23/23** in **28.109 s**; full pre-console-integration **514/514** in **264.214 s**; final OCR/API/memory integration **47/47** in **5.469 s**; fresh post-integration full suite **515/515** in **271.150 s**. Compilation and diff checks pass; existing font descriptor, SWIG, FastAPI/openpyxl and CRLF warnings remain non-blocking. Cached upstream comparison is **0 ahead / 0 behind**; no project remote fetch was performed.
+- Next: region-aware scanned table/layout recognition and critical numeric/condition truth, independent region/order labels, then physical scanner/rotation/skew cases. Mixed pages with a nonempty native header may still bypass the low-text OCR trigger. Borderless/merged/multi-page tables, editable formulas and broad Office round-trip coverage remain open. No new Office generation/round-trip claim this block. Branch/HEAD remain `codex/coding-agent-competitive-p0-p2` / `8086ce1` with cumulative dirty changes preserved; no staging, commit, reset or cleanup.
+
+## Complex paper table recovery and evidence-preserving export (2026-08-30, second block)
+
+- Recovered the previously failing Voyager p7 / MemGPT p5 / SkillOS p7 tables, plus MemGPT's adjacent table, using caption-local ruled regions and glyph-level row/column reconstruction. New `services/pdf_table_structure.py` preserves fractional counts, small-type numeric annotations, executor row groups, continuation-row parent models, original coordinates and stable glyph order. Same-width successive tables split at captions; unlabelled/prose/sparse ambiguous candidates fail closed. This is not a generic borderless-table model.
+- Added explicit table-cell/header/group graph links and row evidence containing caption, group, parent, column headers and values. Superseded flat fragments are not sent as competing knowledge evidence. Actual ingestion into a temporary MemoryStore is tested. Office generation expands semantic tables into group-aware sections with parent-qualified rows and source filename/page; precise locators remain in metadata, not exposed as raw debug strings in prose.
+- Added frozen, SHA-256-bound `benchmarks/document_table_cells_v1.json` and evaluator: **239/239 values**, **126/126 annotations**, **22/22 headers**, **33/33 row contexts**, **33/33 evidence-condition rows**, **239/239 cell-coordinate checks**, **239/239 graph-link checks**, **8/8 geometry/shape checks**. Descriptive cell-value Wilson 95% CI **0.984181–1**, annotations **0.970414–1**. Four tables across three PDFs are agent-transcribed development examples, not independent human/held-out evidence; release claims remain disabled.
+- The unchanged seven-document corpus now passes: **53/53** type/page anchors and **7/7** actual-object relations (up from 4/7); count constraints remain **26/28** with the prior reference annotation-unit discrepancies retained. English OCR still passes. New CLI `--table-cells --cross-office` also generates a recovered MemGPT table DOCX and checks Word/WPS/LibreOffice, alongside the existing stress fixture.
+- Main new files: `services/pdf_table_structure.py`, `services/document_table_benchmark.py`, `benchmarks/document_table_cells_v1.json`, `tests/test_pdf_table_structure.py`; integrations in semantic graph, Office productivity and document benchmark CLI. Current artifacts: `clawos/output/document-tables-20260830-final/`. Detailed scope/limits: `clawos/benchmarks/DOCUMENT_FIDELITY_ACCEPTANCE.md`.
+- Validation: focused semantic/table suite **18/18** passed in **27.360 s**; full suite **502/502** passed in **264.110 s**; after the final source-label presentation change, table/Office regression **12/12** passed in **51.739 s**. Final CLI exits **0**, with all five acceptance groups passing. Recovered-table DOCX renders to one page in Word/WPS/LibreOffice with token recall **1.0**; raster similarity vs Word **0.994193** / **0.998222**. The final recovered page and four-page stress fixture were rendered with the document skill renderer and visually inspected (five pages total). Compilation and diff checks pass; existing font-descriptor/SWIG/FastAPI/openpyxl warnings remain non-blocking. No unrelated dirty changes were discarded, staged or committed. Current branch and HEAD remain `codex/coding-agent-competitive-p0-p2` / `8086ce1`.
+- Next: independently review and freeze a document-disjoint test corpus; handle borderless tables, merged/multi-page cells and group headers, source-linked statistical meaning, Chinese/scanned OCR and editable equation structure; broaden real Office round-trip/editor coverage. Passing these four table cases is a concrete improvement, **not a WPS-level completion claim**.
+
+## Document semantics and cross-Office fidelity — partial acceptance (2026-08-30)
+
+- Added layout-aware PDF/DOCX semantic graphs and integration into paper ingestion/evidence: positioned text and reading order, heading paths, table/header relationships, figure captions/references, formula representations, OCR coordinates, DOCX comments/revisions/footnotes and multi-page claim/condition alignment. PDF equations retain positioned text/visual regions; this does not imply exact editable mathematical reconstruction.
+- Fixed reference expansion dropping ordinary nodes from page reading order; canonicalized Fig./Figure and Chinese labels and prevented figure/table cross-kind matching. Caption-only inferred objects are excluded from benchmark recovery/counts. Parser quality explicitly reports `structural_integrity_only`, not semantic accuracy.
+- Generation now supports true footnotes, review anchors, cross-reference bookmarks, formulas and explicit pagination, with fixed DXA table geometry. Fixed Office compatibility for content-type/relationship namespaces and stale mc:Ignorable prefixes, plus preview persistence. Live LibreOffice testing exposed missing footnote separator types: fixed these, superscript markers and preserved note spacing. Visual QA now fails if rendered footnote/endnote text is missing, even when global raster similarity is high.
+- Added real Word/WPS/LibreOffice export comparison with unique per-run output paths, timeout/environment-failure reporting and a regression test for unavailable engines. The generated stress fixture renders to four pages across all three engines with critical note content preserved. Cross-application parity remains a one-fixture test, not full editor/OOXML parity.
+- Fixed corpus: five actual PDFs plus two actual DOCX files, SHA-256 identities, 53 node/page assertions, seven relation assertions and 28 count constraints. Current type/page assertions are **53/53** each (descriptive Wilson 95% **0.932418–1**), actual-object relation recall **4/7** (**0.250458–0.841780**), count constraints **26/28**. **Semantic acceptance fails**: Voyager p7, MemGPT p5 and SkillOS p7 tables remain unrecovered. Two reference count constraints also require annotation-unit review; bounds were not relaxed.
+- Real English image-only OCR sample: word recall **0.943548**, bbox validity **1.0**, mean confidence **0.871951**. Tesseract is installed, with English/osd only; Chinese/handwriting/scanner robustness is not evaluated. Corpus labels are agent-assisted development regression, not independently signed-off human truth or a held-out test. `release_claim_allowed=false`; old 2026-08-27 reports are marked superseded rather than silently reused.
+- Reproduce with `clawos/scripts/document_fidelity_benchmark.py --out clawos/output/document-fidelity-20260830 --cross-office` using the project venv. Exit 1 currently denotes the retained semantic acceptance failure; OCR and cross-Office checks pass. Detailed limits and next acceptance block: `clawos/benchmarks/DOCUMENT_FIDELITY_ACCEPTANCE.md`. Full table fallback trials were rejected because global text grids merged values and mistook prose for cells.
+- Final validation: full suite **495/495** passed in **260.656 s**; earlier focused suite **22/22** passed in **48.834 s**. Final four-page DOCX render was visually inspected page by page; repeated table headers, note text, figure/caption, formula and tracked edit are visible with no clipping. Final three-engine token recall is **0.992767**; raster similarity versus Word is **0.989996** (LibreOffice) / **0.972558** (WPS). Python compilation and `git diff --check` passed. Existing SWIG/FastAPI/Chroma/openpyxl warnings are non-blocking.
+- Next: bounded table-region and cell reconstruction with row/column/grouped-header/numeric truth labels, followed by document-disjoint held-out tests, Chinese OCR, vector figures and complex real-document round-trip coverage. WPS-level completion is **not** claimed. Cumulative dirty changes are preserved; no staging, commit or cleanup was performed. Current branch is `codex/coding-agent-competitive-p0-p2`, HEAD `8086ce1`; local versus the cached upstream ref is **0 ahead / 0 behind** (no remote fetch performed).
+
+## Answer-quality and selective-memory closure (2026-08-17)
+
+- Added a frozen **240-case** common-task proxy corpus spanning coding, research, Office, memory, search, security, learning and operations. It contains 40 engineered seeds × 6 answer variants, explicit expected answers, refusal conditions, evidence and claim-support relations, with **144 train / 48 dev / 48 fixed test** rows and a SHA-256 corpus tamper gate. Proxy rows are explicitly excluded from real-user counts.
+- Added a claim-evidence-answer validator that evaluates each atomic claim and detects unsupported expansion, unresolved/mismatched citations, missing citations, lost conditions, numeric/polarity conflict and incorrect refusal. Citation resolution is one-to-many so multiple claims from one page do not overwrite each other's evidence. `KnowledgeCoreService.grounded_answer` now fails closed when this validation fails.
+- The frozen proxy benchmark passes **240/240**: classification accuracy, valid-answer recall, invalid-answer rejection and issue detection are all **1.00**. Wilson 95% lower bounds are **0.9842 / 0.9542 / 0.9766 / 0.9842**. This is deterministic engineered evidence, not production human preference or unrestricted semantic entailment.
+- Added consented production feedback capture. The existing chat rating toolbar offers an unchecked opt-in; only opted-in query/answer pairs enter `consented_user`, while benchmark/evaluator/automated rows cannot claim consent. The knowledge-governance UI shows real-user and proxy counts separately plus the benchmark confidence interval.
+- Added typed long-term memory candidates for fact knowledge, project rules, explicit user preferences and resolved failure experience. Successful task evidence is required; sensitive values are redacted and blocked, exact/near duplicates are quarantined, implicit preferences are rejected, and user review plus a separate confirmed promotion are required before writing to knowledge or MemoryOS. Candidate review is available through API, tools and the governance UI.
+- Main files: `clawos/services/answer_quality_service.py`, `clawos/services/answer_quality_benchmark.py`, `clawos/services/selective_memory_service.py`, `clawos/benchmarks/answer_quality_common_tasks_v1.json`, `clawos/scripts/answer_quality_benchmark.py`, task/server/tool/UI integrations, and `clawos/tests/test_answer_quality_memory_loop.py`.
+- Validation: answer-quality benchmark **240/240** passed; focused knowledge/memory/frontend regression **104/104** passed; full repository suite **484/484** passed in **442.603 s**. Python compilation passed. Existing SWIG, FastAPI lifespan, Chroma telemetry and openpyxl warnings are non-blocking.
+- Remaining risk/next step: the validator is deliberately deterministic rather than a general NLI judge. Accumulate independently reviewed, consented production examples until the fixed human test split is statistically useful; then measure calibration and semantic entailment errors without tuning on that test split. The worktree remains intentionally dirty on `codex/coding-agent-competitive-p0-p2` (ahead 6); nothing was staged, committed, reset or discarded.
+
+## Evidence knowledge system P0-P2 closure (2026-08-14)
+
+- P0 vector truth: v2 active knowledge is now projected directly into a versioned, model-fingerprinted Chroma collection with stable `kv2_*` IDs, owner/workspace/status filters, an idempotent SQLite outbox, index state, incremental upsert/delete, consistency statistics and an explicit confirmed rebuild endpoint. Refresh no longer clears the collection. Production defaults use local Qwen3 embedding; reranking remains configurable/off by default because the measured CPU full-chain latency is unsuitable for every request.
+- P0 retrieval: evidence-v2, legacy keyword, BM25 and vector lanes are combined with weighted reciprocal-rank fusion rather than sorting incompatible raw scores. Stable knowledge IDs suppress legacy/vector duplicates; the optional cross-encoder reranks the fused candidate set. Weak vector-only context is rejected unless its semantic score is sufficient, while cited direct evidence and multi-lane agreement can stop retrieval.
+- P1 absorption/use: ingestion stores atomic claim type, locator/page, automatically derived source authority and inferred-entity provenance. High-similarity paraphrases merge only when numbers and polarity agree; numeric/polarity/value disagreements remain quarantined for review. Search ranks lexical fit, confidence, authority, freshness and observed utility; scoped, cited, token-bounded context packs expose evidence sufficiency and feedback is recorded through the usage API.
+- Operations/UI: knowledge health includes expected/indexed v2 counts, outbox/error consistency and a confirmed rebuild action. The real library was migrated side-by-side without deleting the old hash collection: **177/177** active v2 records are in `clawos_knowledge_v2_qwen3_1024_5670e7f4a3`; outbox pending/failed are **0/0**, with 4 experience and 2 memory vectors. Initial CPU full rebuild took about **270 s**; later mutations use the incremental outbox.
+- P2 benchmark: `output/knowledge_quality/knowledge_quality_report.json` passed over real temporary SQLite + Chroma with 32 reviewed queries plus 32 adversarial distractor variants. Completeness, duplicate accuracy, Recall@10, citation hit, conflict F1, scope isolation, lifecycle sync and unsupported-query abstention are **1.00**; task-answer success is **0.9219** (threshold 0.80); hash infrastructure retrieval p50/p95 is **248.69/311.52 ms**. Five task-composition failures remain listed in the artifact rather than hidden. This corpus is maintainer-reviewed/generated test evidence, not production telemetry or model preference scoring.
+- Validation: knowledge/model/frontend focused regression **106/106** passed in 46.953 s. The first full run classified its only failure as an environment failure (Tree-sitter packages declared in requirements but absent from the venv); after installing the fixed parser ranges, the targeted graph suite passed **4/4** and the fresh full repository suite passed **474/474** in 516.762 s. Existing Chroma telemetry, SWIG, FastAPI lifespan and openpyxl warnings are non-blocking.
+- Remaining risk/next step: batch Qwen embedding to reduce 270 s first-build time; replace generated distractors with independently human-labelled, consented production queries and measure answer preference/calibration; curate the dense legacy entity graph before using entity-heavy ranking. The worktree remains intentionally dirty with cumulative prior changes on `codex/coding-agent-competitive-p0-p2` (ahead 6); nothing was staged, committed, reset or discarded.
+
+## Real search-provider evaluation closure (2026-08-12)
+
+- Added reviewed frozen corpus `clawos/benchmarks/search_evidence_policy_v1.json` with 20 cases: 6 no-search/local/stable negatives and 14 explicit, fresh, official, high-risk, research, product and community positives. The same cases remain fixed when provider quality is compared.
+- Added `SearchProviderBenchmarkService`, CLI `scripts/search_provider_benchmark.py`, and `web_search_policy_benchmark`. Reports separate search-trigger confusion metrics, provider health, retrieval success, citation hit, community-source coverage, evidence-ready extractive answer quality and configured live-model generated-answer quality. Every rate includes its numerator/denominator and Wilson 95% interval.
+- Truth gates are fail-closed: mock mode is `simulation_only`; merely attempting a real provider does not make a report eligible; at least one real result plus a configured real answer model is required for product acceptance. Extractive evidence readiness is explicitly not presented as final generated-answer quality.
+- Frozen policy result: 18/20 trigger decisions correct, accuracy 0.90 (Wilson 95% 0.6990-0.9721), with two retained false positives: DQN “experience replay” was mistaken for experiential/community intent, and “current repository” freshness overrode sufficient local context. No search rules were changed to improve the score.
+- Real DuckDuckGo run: 14/14 search requests returned an explicit anomaly/challenge page, now classified as `bot_challenge`; provider success 0/14, so the report is ineligible and citation hit, community coverage and evidence-ready quality are all 0. Generated-answer quality is `not_evaluated` because no dedicated answer-model configuration was available. Evidence: ignored `output/search-evidence-live-20260812-final/live_search_policy_report.json`.
+- Main files: frozen corpus, `clawos/services/search_provider_benchmark_service.py`, `clawos/scripts/search_provider_benchmark.py`, provider classification in `tool_runner.py`, community source classification, function schema and search tests.
+- Validation: focused search/routing suite **46/46** passed; full repository suite **458/458** passed with 1 conditional skip in 201.264 seconds; Python compilation and `git diff --check` passed. Existing Chroma/OpenTelemetry and FastAPI lifecycle deprecation warnings remain non-blocking.
+- Next step: configure one stable keyed provider (`TAVILY_API_KEY`, `SERPAPI_API_KEY`, or `BING_SEARCH_API_KEY`) and optional `CLAWOS_SEARCH_ANSWER_BASE_URL`, `CLAWOS_SEARCH_ANSWER_MODEL`, `CLAWOS_SEARCH_ANSWER_API_KEY`, then rerun the same frozen corpus. Diagnose the two trigger false positives structurally rather than adding more substring rules.
+- Worktree remains intentionally dirty with cumulative prior changes on `codex/coding-agent-competitive-p0-p2` (ahead 6); nothing was staged, committed, reset or discarded.
+
+## Search-as-evidence policy closure (2026-08-12)
+
+- Replaced the former scenario/toggle-driven search behavior with one claim-aware decision matrix: stable knowledge and sufficient local/repository evidence stay offline; explicit source requests, freshness-sensitive facts and high-stakes claims search; experiential/open-ended questions expand into community sources. A user opt-out still disables implicit search, while an explicit search request remains explicit intent.
+- Each decision now carries a source policy, breadth, minimum source/domain coverage, authority/community/freshness requirements, source-read budget and an auditable stop condition. High-stakes lanes prioritize authoritative sources; experience lanes require community evidence instead of treating it as the factual backbone.
+- The search engine evaluates evidence sufficiency after the primary query and skips expansion when coverage is already met. The model tool loop also denies repeated search after sufficiency and caps page reads, so “stop when enough” is enforced during execution rather than existing only in a prompt.
+- Search/fetch results returned to the model are compact evidence objects without provider/debug noise. Final synthesis instructions require claim-adjacent descriptive Markdown links and prohibit narrating the search process. The console control is now labelled “证据策略”; it no longer injects a visible search instruction into the user's message.
+- Main files: `clawos/services/search_evidence.py`, `clawos/scripts/tool_runner.py`, `clawos/clawos_server.py`, `clawos/static/console.html`, `clawos/static/assets/console.js`, and focused tests.
+- Validation: policy/routing/frontend regression **88/88** passed; full repository suite **456/456** passed with 1 conditional skip in 184.916 seconds; Python compilation, bundled-Node JavaScript syntax and `git diff --check` passed. Existing Chroma/OpenTelemetry and FastAPI lifespan deprecation warnings remain non-blocking.
+- Truth boundary: real provider breadth still depends on configured search backends and their indexing/anti-crawl limits. The deterministic policy and stop gates are covered; answer-quality/citation-recall comparison against live providers remains the next evaluation step.
+- Working tree remains intentionally dirty with cumulative prior changes on `codex/coding-agent-competitive-p0-p2` (ahead 6); nothing was staged, committed, reset or discarded.
+
+## Diagnostic-driven autonomous coding loop P1 (2026-08-12)
+
+- Added `CodingDiagnosticsService` to normalize Python/pytest, TypeScript, ESLint, Rust, Go and generic compiler-style output into trusted diagnostics. Stack frames are repository-scoped and linked to explicit or nearest parsed symbols; raw command evidence remains attached.
+- Every failed execution is classified as `environment_failure`, `test_failure`, `implementation_failure`, or `requirements_failure`, with confidence and the matched reason. Timeout, missing runtime/dependency, denied sandbox/network and assertion/compiler signals are handled separately so implementation changes are not recommended for clear environment failures.
+- The default `coding_agent` now maintains explicit hypothesis assessments. Every proposal carries a claim, evidence paths, predicted outcome and acceptance criteria; after each attempt it records `confirmed`, `invalidated`, or `inconclusive`, related symbols and a category-specific next decision. A failed attempt reopens one targeted evidence cycle before a revised proposal.
+- Added `CodingEvidenceGate`: the agent must observe repository evidence before patching, duplicate/excess retrieval is stopped after sufficient target evidence, and new diagnostics may reopen bounded retrieval. `finish` is rejected unless the latest hypothesis is confirmed and the workflow acceptance gate passed.
+- `CodingWorkflowService` now has a non-bypassable acceptance gate for tests, scoped diff, syntax and `git diff --check`; caller-supplied unknown criteria fail closed and trigger checkpoint restoration. Failed Python attempts also invalidate matching `.pyc` files, fixing same-size/same-second stale-bytecode false failures between dynamic repair attempts.
+- Main files: `clawos/services/coding_diagnostics_service.py`, `clawos/services/agentic_coding_loop_service.py`, `clawos/services/coding_workflow_service.py`, function/API integrations, and `clawos/tests/test_coding_diagnostic_loop.py`.
+- Validation: focused coding suite **21/21** and security/boundary/frontend regression **58/58** passed; full repository suite **439/439** passed with 1 conditional skip in 165.926 seconds. Python compilation and bundled-Node JavaScript syntax passed. Existing Chroma telemetry and FastAPI `on_event` warnings remain non-blocking.
+- Truth boundary: this is deterministic diagnostic normalization and symbol linking, not a replacement for a full language-server semantic graph. Next step is to feed live LSP diagnostics/definitions/references into the same schema and benchmark failure classification and repair success on real multi-language repositories.
+- Worktree remains intentionally uncommitted with cumulative prior P0/P1 changes; no staging, commit, reset, or unrelated overwrite was performed.
+
+## AppContainer, workspace lifecycle, and Office P1 closure (2026-08-12)
+
+- Added a persistent `ClawOS.CodingSandbox` AppContainer backend with zero network capabilities, task-scoped ACL grants, secret-scrubbed child environments, fail-closed runtime selection, status/install/uninstall/probe APIs, and a reversible package-SID firewall-rule adapter. A real local probe confirmed `TokenIsAppContainer=true`, task-workspace write success, adjacent-path write denial (`PermissionError`), direct socket denial, and no outside artifact.
+- The AppContainer profile is installed on this machine. The defense-in-depth Windows Firewall package rule was not installed because `New-NetFirewallRule` returned Windows error 5 without administrator rights. The zero-capability AppContainer boundary remains OS-enforced; WFP/Firewall deployment must not be reported as installed until an administrator runs the existing confirmed install endpoint/script.
+- Task workspaces now carry creation/activity/expiry/retention metadata. Confirmed pruning verifies registered worktrees, archives dirty tracked patches and untracked files before removal, preserves the source repository, and supports dry-run inspection through `POST /api/coding/workspaces/prune`; lifecycle state is returned by the workspace list endpoint.
+- Added part-scoped OOXML editing and SHA-256 round-trip evidence for DOCX/XLSX/PPTX. DOCX supports comments and tracked delete/insert revisions plus `trackRevisions`; style/theme parts must remain unchanged. XLSX stdlib generation/editing now emits real formulas, and LibreOffice Calc recalculation was locally verified with 1 formula and 1 cached result after recalculation.
+- Added provider-neutral embedded editor sessions and console modal mounting for WPS WebOffice, ONLYOFFICE, and Collabora. ONLYOFFICE sessions use HS256 configuration tokens, expiring signed callbacks, same-host callback download restrictions, a 100 MiB limit, immutable versioned saves, and artifact re-registration. Providers fail closed until their server URLs/secrets are configured; no vendor service was configured during this block.
+- Main new modules: `clawos/services/windows_appcontainer_boundary.py`, `clawos/services/office_roundtrip_service.py`, `clawos/services/office_editor_service.py`, and `clawos/scripts/probe_appcontainer_boundary.py`; integrations are in coding/office services, server APIs, function schema, console assets, and focused tests.
+- Validation: focused P1 suite **21/21** passed with 1 conditional skip; installed-AppContainer coding regression and Office regression passed; full repository suite **434/434** passed with 1 conditional skip in 193.867 seconds. Python compilation and bundled-Node JavaScript syntax checks passed. Existing Chroma telemetry/FastAPI deprecation warnings are non-blocking.
+- The existing competition architecture gate remains **75/100** due to pre-existing `upstream_identity`, `function_handler_parity`, and `stream_mtclaw_route` blockers. The worktree remains intentionally uncommitted and contains cumulative P0/P1, paper/search, console, and Office changes; no files were staged or discarded.
+- Next step: have an administrator install and re-probe the package-scoped firewall rule, configure one real editor provider and run an end-to-end save callback, then add golden OOXML fixtures from complex real-world Office files for visual and semantic round-trip regression.
+
+## Isolated coding task workspaces and restricted execution P1 (2026-08-12)
+
+- Confirmed default-chat `coding_agent` runs now materialize a unique `codex/task-*` Git worktree under the coding output root instead of modifying the user's source directory. Dirty tracked changes and safe untracked files are captured into an internal task-baseline commit without changing the source branch, index, or working tree.
+- Each task workspace persists baseline metadata, a binary review patch and SHA-256, changed-file/status evidence, and a source verification proving whether HEAD and working-tree status remained unchanged. `.diff` and `.patch` files are first-class preview/download artifacts.
+- Added recoverable task rollback: tracked changes are saved as a binary patch, untracked files are copied into a recovery bundle, and only the validated registered task worktree is reset/cleaned after explicit confirmation. The source repository is never the rollback target.
+- Coding tests inside task worktrees now run under a Windows Restricted Token with Low Mandatory Integrity. When the parent process is already restricted (as in the Codex development sandbox), its token is safely duplicated before lowering integrity; normal desktop parents create a fresh restricted token. A Windows Job Object fallback remains explicit if restricted-token launch is unavailable.
+- Each sandboxed test starts an authenticated, default-deny loopback egress proxy and injects proxy variables for normal HTTP clients, while allowing loopback test traffic. Truth boundary remains explicit: direct socket non-bypass is false until AppContainer/WFP or equivalent host policy is deployed, so `production_sandbox_ready=false`.
+- Added `GET /api/coding/workspaces` and confirmed `POST /api/coding/workspaces/{id}/rollback`. Chat now renders a compact coding-evidence card for workspace isolation, source preservation, sandbox backend, egress posture, and changed files without exposing local paths.
+- Main P1 files: `clawos/services/coding_workspace_service.py`, `clawos/services/coding_workflow_service.py`, `clawos/services/os_sandbox.py`, `clawos/services/artifact_delivery_service.py`, `clawos/clawos_server.py`, `clawos/static/assets/console.js`, `clawos/static/assets/console.clean.css`, `clawos/static/console.html`, and related tests.
+- Validation: focused P1/security/frontend regression **100/100** passed; full repository suite **427/427** passed with 1 environment-dependent skip in 175.487 seconds. Existing Chroma telemetry and FastAPI `on_event` deprecation warnings remain non-blocking.
+- Current worktree remains intentionally uncommitted and also contains earlier P0, paper-intelligence, search-policy, and console changes; none were discarded or overwritten.
+- Next step: finish the production boundary with an installed AppContainer profile or WFP/Firewall egress enforcement, then add per-workspace lifecycle retention/pruning and proceed to Office P1 (OOXML round-trip fidelity, template/style preservation, formula recalculation, comments/track changes, and embedded editor adapter evaluation).
+
+## Coding sandbox, artifact delivery, and Office render gate P0 (2026-08-12)
+
+- Default chat now exposes a confirmed `coding_agent` path backed by the existing agentic coding loop, while generated-file prompts explicitly require a real write/Office tool, an existence check, and quality evidence. Uploaded Office documents now disclose their local editable source path to the model context.
+- Python execution on Windows now runs inside a real Job Object with process-count, per-process memory, timeout, and kill-on-close enforcement. Evidence remains honest: filesystem and network isolation are still false, so this is not AppContainer-grade or production sandbox parity.
+- `file_write` now uses temporary-file + `os.replace` atomic delivery and optional SHA-256 optimistic concurrency checks. Confirmed high-risk tool calls now propagate `confirmed=true` to services instead of failing again after UI approval.
+- Added an opaque-ID artifact registry plus metadata, preview, and download routes. Chat renders generated files as first-class cards instead of exposing local paths; tampered or out-of-root files fail closed.
+- DOCX/XLSX/PPTX/PDF create/edit flows now automatically run render-and-verify visual QA, persist preview pages, and return explicit quality-gate evidence. This is a P0 artifact pipeline, not a WPS-class embedded editor or full OOXML round-trip fidelity.
+- Main changed modules: `clawos/clawos_server.py`, `clawos/services/os_sandbox.py`, `clawos/services/artifact_delivery_service.py`, `clawos/services/office_productivity_service.py`, `clawos/services/tool_service.py`, `clawos/scripts/tool_runner.py`, `clawos/functions.jsonl`, `clawos/static/assets/console.js`, `clawos/static/assets/console.clean.css`, and related tests.
+- Validation: full repository suite **424/424** passed with 1 environment-dependent skip in 188.257 seconds. Focused checks had previously passed **96/96**. Real Job Object execution probe, Python compilation, frontend JavaScript syntax, and `git diff --check` passed. The existing Chroma telemetry and FastAPI `on_event` deprecation warnings remain non-blocking. In-app browser automation could not re-open the localhost page because its URL policy blocked the action; server routes and static UI behavior remain covered by tests.
+- Current worktree also contains earlier uncommitted console, paper-intelligence, and search-policy work; this block did not discard or overwrite it. No commit or staging was performed.
+- Next step: P1 should add AppContainer/ACL filesystem isolation plus brokered non-bypass egress and per-task worktrees. For WPS-level document UX, add template/style preservation, OOXML round-trip regression fixtures, formula recalculation, comments/track-changes, and an embedded OnlyOffice/Collabora/WPS WebOffice adapter selected after licensing and compatibility evaluation.
+
+## 按需联网、来源多样性与答案融合 P0-P1 闭环（2026-08-11）
+
+- 联网从“勾选即把强制搜索指令拼进用户问题”改为显式策略判定：稳定知识与附件精读默认直接回答；明确搜索/查证/来源请求、最新或当前状态才开放 `web_search`、`web_fetch` 和学术外部检索。路由元数据保留判定原因与置信度，便于审计。
+- 系统提示不再要求匹配工具就立即调用；新增研究融合约束，要求事实主干优先权威/一手来源，高信号社区文章仅补充实践与不同视角，链接贴近结论，禁止搜索结果列表堆砌或无意义叙述搜索过程。
+- 搜索引擎新增来源类型、中文经验型查询扩展（知乎/掘金/CSDN 等）、每域名最多两条的多样性选择、查询计划与来源覆盖摘要；默认结果数由 5 提升为 8。进入模型的搜索结果已去除 provider attempts 等运行噪声，只保留可综合证据和下一步读取提示。
+- 控制台开关改为“按需联网”，不再修改原始输入；开启后一次确认覆盖搜索与网页读取，并通过 `clawos_web_search_mode` 传递策略。浏览器实测控件 97×44 px、可见、可切换，提示为“仅在需要最新信息、外部查证或来源补充时联网”。
+- 变更文件：`clawos/services/search_evidence.py`、`clawos/clawos_server.py`、`clawos/scripts/tool_runner.py`、`clawos/functions.jsonl`、`clawos/static/console.html`、`clawos/static/assets/console.js`、相关测试；另修复 `clawos/reflection/evolution_runtime.py` 在 Windows 子进程用 GBK 输出 Unicode 基准报告导致全量测试中断的问题。
+- 验证：专项测试 **80/80**；全量测试 **417/417**（另 1 项条件跳过）；Python 编译、Node JavaScript 语法、`git diff --check` 通过；本地真实控制台浏览器验收通过。现有 FastAPI `on_event`、Chroma telemetry 弃用告警不阻断。
+- 当前风险：未使用真实搜索 API 与在线模型完成答案质量 A/B；社区站点覆盖仍受具体搜索 provider 的索引与反爬能力影响。工作区同时含此前控制台/论文智能化未提交改动，本轮没有提交或覆盖它们。
+- 下一步：配置可用模型和至少一个真实搜索 provider，用固定题集对比“无需搜索、最新信息、中文经验、学术查证”四类回答，记录搜索触发准确率、来源覆盖、引用命中率与人工答案偏好；通过门槛后再考虑站点级抓取适配。
+
+## 控制台对话优先与 Markdown 渲染 P0-P1 闭环（2026-08-11）
+
+- 控制台默认工作台从仪表盘堆叠改为对话优先：聊天占据桌面主工作区完整剩余高度，快捷任务仅保留在空会话，任务进度和执行审批方式改为按需抽屉；最近交付、协作代理等次要区块不再挤占默认交流界面。
+- 消息渲染从换行替换升级为转义优先的结构化 Markdown：支持标题、段落、粗体/斜体、列表、引用、分隔线、白名单链接、代码块和表格；流式消息复用同一渲染路径，代码块提供复制与失败回退。
+- P1 视觉与可用性覆盖桌面和移动断点、表格横向滚动、代码保真、外链安全属性、可见焦点、固定输入区和静态资源版本刷新。390×844 初测发现旧 `order` 规则把输入框挤入附件列，已修复并复测为 342px 全宽、无横向溢出。
+- 变更文件：`clawos/static/console.html`、`clawos/static/assets/console.js`、`clawos/static/assets/console.clean.css`、`clawos/tests/test_frontend_static.py`。浏览器证据位于 ignored 的 `output/product-audit-console/`，不得提交。
+- 验证：Node JavaScript 语法检查通过；`tests.test_frontend_static tests.test_paper_intelligence tests.test_routing_memory` **80/80** 通过；`git diff --check` 通过，仅有既存 CRLF 转换提示。内置浏览器完成 1440×1000 空会话、历史 Markdown 长对话、代码复制、任务进度抽屉及 390×844 移动端验收。
+- 当前风险：真实 DeepSeek/Qwen provider 仍不可用时，聊天会明确显示模型错误；这不影响本轮布局与 Markdown 渲染验收，但在线模型质量仍需有效凭据或可用本地端点后单独复测。
+- 下一步：用可用模型执行一组固定 Markdown 流式样例（长代码、宽表格、未闭合代码围栏、来源链接）并建立浏览器视觉回归基线；随后再评估侧栏信息密度，而不是重新向默认聊天页添加运营卡片。
+
 ## Learning and Agent Product P0-P2 software closure (2026-07-31)
 
 - Academy mastery is now backend-only: browser clicks, knowledge queue actions,
@@ -459,3 +634,138 @@ git diff --check
 - 变更文件：`clawos/static/academy-paper.html`、`clawos/static/assets/academy.js`、`clawos/static/assets/site.css`、`clawos/tests/test_frontend_static.py`。
 - 验证：Node JavaScript 语法检查通过；`python -m unittest tests.test_frontend_static` 为 42/42 通过；内置浏览器已验证遮挡、缩放、笔记保存/删除、画笔与目录折叠。
 - 非阻断项：本地历史论文源接口在当前输出目录策略下返回 403，未修改该安全边界；上传任意本地 PDF 仍可在阅读器直接预览。
+
+## 论文精读、证据报告与知识沉淀整改（2026-08-11）
+
+- 根因确认：Academy 的“完整报告”此前调用确定性问答模板，`academic_deep_read` 会静默退回 journal；聊天附件最多只给模型 6 个检索片段；知识库仅保存 1200 字预览和截断引用。问题不只是 PDF 丢字。
+- 新增 `services/grounded_paper_report.py`：按摘要/方法/实验/发现/局限构建证据包，模型输出必须使用白名单引用；模型不可用或 JSON 不合格时明确回退到结构化证据版，不再伪装成模型精读。
+- Academy 报告区改为结构化阅读卡片，区分“原文支持 / 分析推断 / 待核查”，引用可继续检索；知识沉淀改为关联保存完整报告、结论证据和待验证问题，并返回条目/结论/问题计数。
+- PDF 原生解析增加常见双栏阅读顺序和自然边界分块，并保留版面块坐标；历史研究文件预览安全边界扩展到已配置的本地数据/输出根目录，响应改为 inline，修复已入库论文 403/下载响应问题。
+- 联网确认工具名去重，前端改为一次确认后自动继续；模型 HTTP 错误保留安全状态码，聊天模型失败不再返回空白内容。
+- 变更文件：`clawos_server.py`、`memoryos/document_ingestion.py`、`providers/openai_compatible.py`、`services/paper_intelligence_service.py`、`services/grounded_paper_report.py`、`static/assets/academy.js`、`static/assets/console.js`、`static/assets/site.css`、`tests/test_paper_intelligence.py`。
+- 验证：`python -m unittest tests.test_paper_intelligence tests.test_frontend_static tests.test_routing_memory` 为 **79/79 通过**；Python 编译与 `git diff --check` 通过；内置浏览器完成“历史论文 → 生成报告 → 3 条关联知识入库”验收；报告 PDF 4 页已渲染检查前两页。
+- 当前风险：本机 DeepSeek 与 Qwen provider 探针仍失败，报告正确显示证据回退；需要有效 API 凭据或启动本地 OpenAI-compatible 端点后复测模型辅助分支。旧 `pypdf` 文档需重新入库才会获得新的双栏版面元数据。
+- 下一步：用真实 DQN/Nature 双栏 PDF 建立结构、公式、表格、引用定位基准；根据资源和许可证选择 Docling/MinerU/Marker 适配器，学术元数据继续使用现有可选 GROBID；补一组模型在线/离线两分支的端到端质量评分。
+## LSP semantic graph and multi-language diagnostics closure (2026-08-12)
+
+- Added a persistent incremental LSP semantic graph joining files, symbols,
+  definitions, references, call hierarchy and diagnostics. Diagnostics share
+  `clawos.coding-diagnostics.v1`, link to the nearest symbol, enter repository
+  context, and are queryable by the coding agent through the `semantic` action.
+- The stdio client now handles server-to-client configuration/registration
+  requests, serializes writes, captures stderr, waits for push diagnostics and
+  supports SymbolInformation as well as DocumentSymbol responses.
+- Confirmed coding-agent runs enable bounded discovery/indexing (40 files, 120
+  symbols, maximum three installed servers); ordinary unit loops do not launch
+  LSP implicitly. Changed files are content-hash reindexed and removed files
+  are evicted from the cache.
+- Added confirmed APIs for server discovery, graph building and compiler-backed
+  multi-language benchmarks. The benchmark executes isolated temporary Git
+  repositories and reports skips instead of inventing unavailable toolchains.
+- Real local `pylsp` acceptance on
+  `clawos/services/coding_diagnostics_service.py`: 1 file, 40 symbols, 22
+  definition edges, 52 reference edges, 3 diagnostics, 44 nodes and 117 total
+  edges. Evidence: ignored output
+  `clawos/output/coding-benchmark/real-pylsp-acceptance.json`.
+- Multi-language benchmark: 6 executed cases across Python, C and generic
+  environment/requirements categories; classification accuracy 100%, repair
+  success 4/4 (100%). C# was skipped because `dotnet` exists but no SDK is
+  installed. Evidence: ignored output
+  `clawos/output/coding-benchmark/multilanguage-latest.json`.
+- Validation: focused LSP suite 4/4 passed. Root regression 443/443 passed,
+  1 environment-conditioned skip. Existing Chroma/OpenTelemetry and FastAPI
+  deprecation warnings remain non-blocking.
+- Truth boundary: only Python has a real installed LSP on this machine. Other
+  LSP languages are protocol-fixture tested and truthfully reported unavailable
+  until their servers are installed. The benchmark cases are real compiler/test
+  executions in temporary Git fixtures, not a claim over public OSS corpora.
+- Recommended next step: install TypeScript, Go, Rust, C/C++ and C# language
+  servers/SDKs, then run the same schema over a pinned public-repository corpus
+  with reviewed ground-truth labels and confidence intervals.
+## Multi-language LSP toolchains and OSS evaluation gate (2026-08-12)
+
+- Installed and version-probed Node 24.19.0, TypeScript 5.9.3,
+  typescript-language-server 5.1.3, Go 1.26.5, gopls 0.20.0, Rust/rust-analyzer
+  1.97.1, LLVM/clangd 22.1.8, user-local .NET SDK 9.0.317 and 10.0.400, and
+  csharp-ls 0.26.0. C# required .NET 10 because current csharp-ls targets
+  net10; the system-wide .NET 9 Runtime was not overwritten.
+- Language-server discovery now resolves both PATH and audited standard Windows
+  install locations, so the desktop process recognizes new tools without a
+  restart. Real JSON-RPC acceptance initializes TypeScript, Go, Rust, clangd
+  and csharp-ls: 5/5 passed, 0 failed/skipped. Go, C and C# also emitted real
+  diagnostics; TypeScript, Go and C emitted definition/reference edges.
+- Semantic queries now calibrate document-symbol ranges onto identifier text,
+  fixing Go/clangd definition/reference misses caused by declaration-keyword
+  ranges. Evidence is in ignored
+  `clawos/output/coding-benchmark/multilanguage-lsp-acceptance.json`.
+- Expanded the compiler-backed fixture benchmark to TypeScript, Go, Rust, C,
+  C#, Python, environment and requirements cases. Fresh result: 10/10
+  classifications correct and 8/8 source repairs successful across seven
+  reported language/category values. Evidence is in ignored
+  `clawos/output/coding-benchmark/multilanguage-latest.json`.
+- Added `CodingOSSCorpusBenchmark`: exact public HTTPS repository plus full
+  40-character commit pins, reviewed deterministic mutations/repairs and human
+  approval are mandatory. Reports Wilson 95%, deterministic bootstrap 95% and
+  leave-one-repository-out observed results; nonmatching or missing checkouts
+  are excluded and reported, never silently scored. Added confirmed
+  `/api/workspace/coding/oss-corpus-benchmark`.
+- Public OSS corpus execution is intentionally **not claimed complete**. GitHub
+  Git HTTPS timed out, anonymous REST was rate-limited, and attempted public
+  mirror access also timed out. The fail-closed candidate manifest at
+  `clawos/benchmarks/coding_oss_corpus_v1.json` has zero scoreable cases until
+  full SHAs, checkouts, mutation anchors and a second human reviewer exist.
+- Validation: focused new suites 11/11 passed; full repository regression
+  445/445 passed with 1 conditional skip in 183.338 seconds. Existing
+  Chroma/OpenTelemetry and FastAPI deprecation warnings remain non-blocking.
+- Next step: when GitHub connectivity or an authenticated GitHub connector is
+  available, resolve and checkout the five candidate repositories at fixed
+  commits, have a second reviewer approve at least two mutations per repo, then
+  execute the existing benchmark to produce confidence intervals and held-repo
+  results. Do not report corpus generalization before those cases exist.
+
+## Repository Intelligence Graph closure (2026-08-12)
+
+- Added `services/repository_intelligence_service.py`: a repository-wide,
+  persistent graph with repository/layer/module/file/symbol/dependency nodes and
+  import, call, test/coverage, build, configuration, CI and entrypoint edges.
+  Tree-sitter parses Python, JavaScript/TypeScript/TSX, Go, Rust, C/C++ and C#;
+  metadata parsers layer README, config, CI and dependency manifests on top.
+- Tree-sitter is pinned to `>=0.25.2,<0.26`; 0.26.0 showed a native access
+  violation under Python 3.14 with the current language grammar wheels. The
+  pinned version completed repository-wide and full-suite stress validation.
+- LSP is a corroborating semantic evidence source, connected to repository
+  files/symbols with `semantic_evidence` and `corroborates` edges. The graph is
+  cached per repository and content hash, reuses unchanged file facts across
+  sessions, and reports changed/removed files after Git worktree changes.
+- `CodingContextService` now selects code evidence from a bounded task graph
+  slice instead of continuously ranking/adding repository text. It emits a
+  layered repo map, selected files, compact nodes/edges and reverse downstream
+  impact analysis. Agent observations receive the same graph digest, metrics,
+  task slice and impact evidence.
+- Added `POST /api/workspace/coding/repository-intelligence` for compact repo
+  maps, task slices and changed-file impact; full nodes/edges are opt-in.
+  `POST /api/workspace/coding/autonomous` now forwards `enable_lsp` correctly.
+- Real current-worktree stress sample: 292 files, 3,713 nodes, 10,592 edges,
+  3,278 symbols and 217 Tree-sitter parsed files before the final relationship
+  additions. This is local structural evidence, not an OSS generalization claim.
+- Validation: repository-intelligence acceptance 4/4 passed; coding/LSP focused
+  regression 29/29 passed; full ClawOS regression 449/449 passed with 1
+  environment-conditioned skip in 214.586 seconds. Existing Chroma/OpenTelemetry
+  and FastAPI lifecycle deprecation warnings remain non-blocking.
+- Working tree remains intentionally dirty with cumulative user/previous-agent
+  changes; nothing was staged, committed, reset or deleted in this block.
+- Recommended next step: add reviewed graph-ground-truth cases to the pinned OSS
+  corpus, measure edge precision/recall and task-slice recall, then use those
+  metrics to tune ambiguous import/call resolution without widening context.
+
+## PDF/DOCX semantic fidelity and generation closure (2026-08-27)
+
+- Added `services/document_semantic_graph_service.py` with one evidence schema for PDF and DOCX. PDF parsing now retains span/block coordinates, font attributes, column-aware reading order, heading hierarchy, footnotes/references, tables/cells/header references, figures/captions/body references, positioned formulas and OCR word coordinates. DOCX parsing retains styles/outlines, logical page breaks, table merge/header semantics, OMML, drawings/alt text, true footnotes, comments, insertions/deletions and their target relations.
+- Document ingestion now builds section/page-bounded semantic chunks and stores node ids, locators and evidence types in `document_chunks.metadata`; full graph and quality truth are preserved in document metadata. Added a backward-compatible schema migration for existing SQLite stores.
+- Paper intelligence now returns figures, footnotes, comments, revisions and graph relations. Claim alignment can join a result page with up to three distinct condition/evidence pages and marks condition-incomplete claims instead of dropping experimental constraints. Grounded report bundles preserve these citations and conditions.
+- DOCX generation now emits semantic styles, repeated table headers, fixed cell widths, real OMML equation parts, figure alt/title and captions, bookmarks plus `[[REF:name]]` Word REF fields, true `footnotes.xml`, PAGE fields, comments and tracked revisions. PDF generation emits searchable text, repeated table headers, figures/captions, formulas, notes and page footers. Generation is round-trip parsed and fails its semantic gate if requested objects disappear.
+- Added `paper_intelligence.semantic_graph` and `GET /api/documents/{document_id}/semantic-graph` (compact/full) so the semantic structure is usable beyond ingestion internals.
+- New acceptance suite `tests/test_document_semantic_fidelity.py` covers DOCX OOXML round-trip, PDF render/reparse, two-column ordering, OCR TSV bbox conversion, semantic knowledge chunks and multi-page condition evidence. Focused document/Office/paper regression: **23/23 passed**. Full ClawOS regression: **488/488 passed in 284.728s**. Python compile and `functions.jsonl` parse also passed.
+- Truth boundary: the machine has PyMuPDF/pdfplumber/pypdf/ReportLab, Poppler and LibreOffice, but no Tesseract executable. OCR-required pages therefore fail closed with `engine_unavailable`; only the TSV coordinate conversion contract is executable here. Do not claim real scanned-document OCR quality until Tesseract/PaddleOCR or another reviewed provider is installed and evaluated on a fixed scanned corpus.
+- Product-parity boundary: this closes the requested P0 semantic pipeline and generation round-trip at fixture level; it is not evidence of general WPS parity. Remaining P1/P2 validation is a licensed real-world corpus containing complex multi-column papers, nested/merged tables, math-heavy PDFs, scans and externally authored DOCX files, with field recalculation/render comparisons in WPS, Word and LibreOffice and confidence intervals for relation precision/recall.
+- Working tree remains intentionally dirty with cumulative prior/user changes; nothing was staged, committed, reset, deleted or pushed in this block. `skills/skill_registry.jsonl` remains modified in the shared tree and full tests emit existing SWIG/FastAPI/openpyxl warnings.

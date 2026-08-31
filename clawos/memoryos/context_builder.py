@@ -148,8 +148,10 @@ class ContextBuilder:
         system = self.build_system_prompt(session_id, prompt_policy=prompt_policy)
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
 
+        context_retrieval_policy = dict(retrieval_policy or {})
+        context_retrieval_policy.setdefault("session_id", session_id)
         retrieved = self._retrieval.retrieve_for_context(
-            user_text, policy=retrieval_policy or {}
+            user_text, policy=context_retrieval_policy
         )
         if retrieved:
             messages.append({

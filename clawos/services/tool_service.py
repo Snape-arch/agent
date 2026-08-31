@@ -158,6 +158,13 @@ class ToolService:
                 )
             return envelope
 
+        if requires_confirmation and name in confirmed_tools and name in {
+            "office_productivity", "office_artifact", "coding_workflow",
+            "scholarly_download", "meeting_workflow", "autonomous_subagents",
+        }:
+            args_obj["confirmed"] = True
+            args_str = json.dumps(args_obj, ensure_ascii=False)
+
         raw = self.python_executor(name, args_str)
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
         ok = not (isinstance(raw, dict) and raw.get("error"))

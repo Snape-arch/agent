@@ -156,48 +156,142 @@ class RetrievalService:
             )
         self._bm25_populated = True
 
-    def retrieve(self, query, top_k=10, strategy="hybrid"):
-        results = []
+    @staticmethod
+    def _candidate_key(item):
+        metadata = item.get("metadata") or {}
+        knowledge_id = item.get("knowledge_id") or metadata.get("knowledge_id")
+        if knowledge_id:
+            return f"knowledge:{knowledge_id}"
+        return f"{item.get('source')}:{item.get('id')}"
+
+    def retrieve(
+        self, query, top_k=10, strategy="hybrid",
+        owner_id="default", workspace_id="default", recall_k=None,
+    ):
+        recall_k = max(int(recall_k or top_k), int(top_k))
+        lanes = []
+        v2_legacy_ids = set()
+
+        # Evidence-first records are filtered for lifecycle state and carry
+        # source-level citations. Legacy retrieval remains as a compatibility lane.
+        try:
+            evidence_lane = []
+            for item in self._store.search_knowledge_v2(
+                query, limit=recall_k, owner_id=owner_id, workspace_id=workspace_id,
+            ):
+                if item.get("legacy_knowledge_id"):
+                    v2_legacy_ids.add(int(item["legacy_knowledge_id"]))
+                sources = item.get("sources") or []
+                evidence_lane.append({
+                    "source": "knowledge_v2", "id": f"kv2_{item.get('id')}",
+                    "knowledge_id": item.get("id"), "title": item.get("title", ""),
+                    "content": item.get("statement", "")[:1200],
+                    "citation": sources[0].get("citation", "") if sources else "",
+                    "score": item.get("retrieval_score", item.get("confidence", 0.5)),
+                    "strategy": "evidence_knowledge", "metadata": {
+                        "status": item.get("status"), "source_count": item.get("source_count", len(sources)),
+                    },
+                })
+            if evidence_lane:
+                lanes.append(("evidence", 1.0, evidence_lane))
+        except (AttributeError, ImportError, OSError, ValueError):
+            pass
 
         # Keyword search (SQLite)
-        kw = self._store.search_knowledge(query, limit=top_k)
+        kw = self._store.search_knowledge(query, limit=recall_k)
+        keyword_lane = []
         for r in kw:
-            results.append({"source": "knowledge", "id": r.get("id"), "title": r.get("title"),
-                          "content": r.get("content", "")[:300], "score": r.get("confidence", 0.5), "strategy": "keyword"})
+            if int(r.get("id") or 0) in v2_legacy_ids:
+                continue
+            keyword_lane.append({"source": "knowledge", "id": r.get("id"), "title": r.get("title"),
+                                 "content": r.get("content", "")[:300], "score": r.get("confidence", 0.5), "strategy": "keyword"})
+        if keyword_lane:
+            lanes.append(("keyword", 0.55, keyword_lane))
 
         # BM25 search
         self._ensure_bm25()
-        bm = self._bm25.search(query, top_k)
+        bm = self._bm25.search(query, recall_k)
+        bm25_lane = []
         for r in bm:
-            results.append({"source": "bm25", "id": r["doc_id"], "title": "", "content": r["text"],
-                          "score": r["score"], "strategy": "bm25"})
+            try:
+                if int(r["doc_id"]) in v2_legacy_ids:
+                    continue
+            except (TypeError, ValueError):
+                pass
+            bm25_lane.append({"source": "bm25", "id": r["doc_id"], "title": "", "content": r["text"],
+                              "score": r["score"], "strategy": "bm25"})
+        if bm25_lane:
+            lanes.append(("bm25", 0.75, bm25_lane))
 
         # Vector search (semantic)
         if self._vector_store:
-            vs = self._vector_store.search(query, top_k)
+            filters = {"type": "knowledge_v2", "status": "active", "owner_id": owner_id, "workspace_id": workspace_id}
+            try:
+                vs = self._vector_store.search(query, recall_k, filters=filters)
+            except TypeError:  # Backward-compatible test and external adapters.
+                vs = self._vector_store.search(query, recall_k)
+            vector_lane = []
             for r in vs:
-                results.append({"source": "vector", "id": r["id"], "title": r.get("metadata", {}).get("title", ""),
-                              "content": r["text"], "score": r["score"], "strategy": "vector"})
+                metadata = r.get("metadata", {})
+                vector_lane.append({
+                    "source": "vector", "id": r["id"], "knowledge_id": metadata.get("knowledge_id"),
+                    "title": metadata.get("title", ""), "content": r["text"],
+                    "citation": metadata.get("source", ""), "score": r["score"],
+                    "strategy": "vector", "metadata": metadata,
+                })
+            if vector_lane:
+                lanes.append(("vector", 1.0, vector_lane))
 
-        # Re-rank: deduplicate and normalize scores
-        seen = set()
+        # Reciprocal-rank fusion compares ranks instead of incompatible raw
+        # BM25/cosine/confidence scales. Evidence rows win representation when
+        # the same stable knowledge ID appears in multiple lanes.
+        fused = {}
+        for lane_name, weight, lane in lanes:
+            for rank, item in enumerate(lane, 1):
+                citation = item.get("citation") or (item.get("metadata") or {}).get("source", "")
+                if hasattr(self._store, "document_source_usable") and not self._store.document_source_usable(citation, item.get("knowledge_id"), (item.get("metadata") or {}).get("version")):
+                    continue
+                key = self._candidate_key(item)
+                entry = fused.setdefault(key, {
+                    "item": dict(item), "fusion_score": 0.0, "channels": [], "lane_ranks": {},
+                })
+                entry["fusion_score"] += float(weight) / (60.0 + rank)
+                entry["channels"].append(lane_name)
+                entry["lane_ranks"][lane_name] = rank
+                if item.get("source") == "knowledge_v2":
+                    entry["item"] = dict(item)
         ranked = []
-        for r in sorted(results, key=lambda x: x["score"], reverse=True):
-            key = str(r.get("id")) + r.get("title", "")[:50]
-            if key not in seen:
-                seen.add(key)
-                ranked.append(r)
+        for entry in fused.values():
+            item = entry["item"]
+            item["raw_score"] = item.get("score", 0.0)
+            item["score"] = round(entry["fusion_score"], 6)
+            item["fusion_score"] = item["score"]
+            item["channels"] = sorted(set(entry["channels"]))
+            item["lane_ranks"] = entry["lane_ranks"]
+            item["strategy"] = "hybrid_rrf"
+            ranked.append(item)
+        ranked.sort(key=lambda item: item["fusion_score"], reverse=True)
         return ranked[:top_k]
 
-    def semantic_rerank(self, query, recall_k=30, top_k=5, min_score=0.0):
+    def semantic_rerank(
+        self, query, recall_k=30, top_k=5, min_score=0.0,
+        owner_id="default", workspace_id="default",
+    ):
         """Run vector recall first, then local cross-encoder reranking."""
         if not self._vector_store:
             return []
-        vector_hits = self._vector_store.search(query, top_k=max(recall_k, top_k), min_score=min_score)
+        filters = {"type": "knowledge_v2", "status": "active", "owner_id": owner_id, "workspace_id": workspace_id}
+        try:
+            vector_hits = self._vector_store.search(
+                query, top_k=max(recall_k, top_k), min_score=min_score, filters=filters,
+            )
+        except TypeError:
+            vector_hits = self._vector_store.search(query, top_k=max(recall_k, top_k), min_score=min_score)
         candidates = [
             {
                 "source": "vector",
                 "id": item.get("id"),
+                "knowledge_id": item.get("metadata", {}).get("knowledge_id"),
                 "title": item.get("metadata", {}).get("title", ""),
                 "content": item.get("text", ""),
                 "citation": item.get("metadata", {}).get("source", ""),
@@ -206,6 +300,7 @@ class RetrievalService:
                 "metadata": item.get("metadata", {}),
             }
             for item in vector_hits
+            if not hasattr(self._store, "document_source_usable") or self._store.document_source_usable(item.get("metadata", {}).get("source", ""), item.get("metadata", {}).get("knowledge_id"), item.get("metadata", {}).get("version"))
         ]
         if not self._reranker:
             return candidates[:top_k]
@@ -219,18 +314,44 @@ class RetrievalService:
             policy.get("recall_top_k") or policy.get("top_k") or 30
         ), 200))
         rerank_top_k = max(1, min(int(policy.get("rerank_top_k") or top_k), 50))
-        results = (
-            self.semantic_rerank(query, recall_k=recall_k, top_k=rerank_top_k)
-            if self._reranker
-            else self.retrieve(query, top_k=top_k)
+        owner_id = str(policy.get("owner_id") or "default")
+        workspace_id = str(policy.get("workspace_id") or "default")
+        candidates = self.retrieve(
+            query, top_k=recall_k if self._reranker else top_k,
+            owner_id=owner_id, workspace_id=workspace_id, recall_k=recall_k,
         )
+        results = self._reranker.rerank(query, candidates, top_k=rerank_top_k) if self._reranker else candidates
         if not results:
             return ""
+        top = results[0]
+        channels = set(top.get("channels") or [])
+        evidence_sufficient = (
+            len(channels) >= 2
+            or (top.get("source") == "knowledge_v2" and float(top.get("raw_score") or 0) >= 0.55)
+            or (top.get("source") == "vector" and float(top.get("raw_score") or top.get("score") or 0) >= 0.72)
+            or (self._reranker is not None and float(top.get("rerank_score") or top.get("score") or 0) >= 0.6)
+        )
+        if policy.get("require_sufficient_evidence", True) and not evidence_sufficient:
+            return ""
+        knowledge_ids = [int(item["knowledge_id"]) for item in results if item.get("knowledge_id")]
+        if knowledge_ids and hasattr(self._store, "record_knowledge_usage"):
+            self._store.record_knowledge_usage(
+                knowledge_ids,
+                query=query,
+                session_id=str(policy.get("session_id") or ""),
+                task_id=str(policy.get("task_id") or ""),
+                usage_type="context_injected",
+                outcome="pending",
+            )
         parts = ["Relevant knowledge from memory:"]
+        used_chars = len(parts[0])
+        max_chars = max(400, int(max_tokens) * 4)
         for r in results[:top_k]:
             citation = r.get("citation") or (r.get("metadata") or {}).get("source", "")
             prefix = f"[{citation}] " if policy.get("citation_aware") and citation else ""
-            parts.append(
-                f"  [{r['source']}] {prefix}{r.get('title','')} {r.get('content','')[:200]}"
-            )
+            line = f"  [{r['source']}] {prefix}{r.get('title','')} {r.get('content','')[:200]}"
+            if len(parts) > 1 and used_chars + len(line) > max_chars:
+                break
+            parts.append(line)
+            used_chars += len(line)
         return "\n".join(parts)

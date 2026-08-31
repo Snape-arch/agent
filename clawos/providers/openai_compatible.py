@@ -111,8 +111,9 @@ class OpenAICompatibleProvider:
             )
         except (httpx.TimeoutException, asyncio.TimeoutError):
             return model_result(ok=False, provider=self.name, model=self.model, duration_ms=now_ms() - started, error="timeout")
-        except httpx.HTTPStatusError:
-            return model_result(ok=False, provider=self.name, model=self.model, duration_ms=now_ms() - started, error="provider_error")
+        except httpx.HTTPStatusError as exc:
+            status = int(exc.response.status_code) if exc.response is not None else 0
+            return model_result(ok=False, provider=self.name, model=self.model, duration_ms=now_ms() - started, error=f"provider_http_{status or 'error'}")
         except (httpx.NetworkError, httpx.ConnectError, httpx.ReadError):
             return model_result(ok=False, provider=self.name, model=self.model, duration_ms=now_ms() - started, error="network_error")
         except Exception:

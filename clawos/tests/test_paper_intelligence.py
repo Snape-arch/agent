@@ -5,6 +5,8 @@ from pathlib import Path
 
 from memoryos.memory_store import MemoryStore
 from services.paper_intelligence_service import PaperIntelligenceService, ScholarlySearchService
+from services.grounded_paper_report import GroundedPaperReport
+from memoryos.document_ingestion import _order_pdf_text_blocks
 from security.policy import ToolSecurityPolicy
 
 
@@ -118,6 +120,41 @@ class PaperIntelligenceTests(unittest.TestCase):
         self.assertTrue(download["allowed"])
         self.assertEqual(download["decision"], "confirm")
         self.assertEqual(download["risk_level"], "high")
+
+    def test_grounded_report_rejects_unknown_citations_and_renders_sections(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            paper = self._paper(store, "Grounded report", "We find the reranker improves citation accuracy by 20 percent.")
+            intelligence = PaperIntelligenceService(store).analyze_document(paper["id"])
+            bundle = GroundedPaperReport.build_evidence_bundle(intelligence)
+            payload = {
+                "summary": "The paper evaluates citation accuracy.",
+                "research_problem": "Can retrieval improve evidence grounding?",
+                "methodology": [{"text": "Three annotators review 200 claims.", "citations": [f"doc:{paper['id']}#page=2&chunk=1", "doc:999#page=1&chunk=1"], "status": "supported"}],
+                "experiments": [],
+                "findings": [],
+                "limitations": [],
+                "contributions": [],
+                "open_questions": ["Does this generalize beyond English papers?"],
+                "verdict": "Evidence is scoped to the stated evaluation.",
+            }
+            report = GroundedPaperReport.normalize(payload, bundle, mode="model_assisted")
+            self.assertEqual(report["methodology"][0]["citations"], [f"doc:{paper['id']}#page=2&chunk=1"])
+            markdown = GroundedPaperReport.render_markdown(report)
+            self.assertIn("## 方法与机制", markdown)
+            self.assertNotIn("doc:999", markdown)
+
+    def test_two_column_pdf_blocks_follow_left_then_right_reading_order(self):
+        blocks = [
+            (10, 10, 590, 45, "Title", 0, 0),
+            (30, 80, 280, 120, "left one", 0, 0),
+            (30, 130, 280, 170, "left two", 0, 0),
+            (320, 82, 570, 122, "right one", 0, 0),
+            (320, 132, 570, 172, "right two", 0, 0),
+        ]
+        ordered, columns = _order_pdf_text_blocks(blocks, 600)
+        self.assertEqual(columns, 2)
+        self.assertEqual([item[4] for item in ordered], ["Title", "left one", "left two", "right one", "right two"])
 
 
 if __name__ == "__main__":

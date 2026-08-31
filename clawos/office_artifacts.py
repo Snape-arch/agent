@@ -8,6 +8,7 @@ fallback for fresh Python installs.
 from __future__ import annotations
 
 import html
+import os
 import re
 import zipfile
 from copy import deepcopy
@@ -22,12 +23,15 @@ PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 PML_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 AML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 WML_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+OMML_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 
 ET.register_namespace("", MAIN_NS)
 ET.register_namespace("r", REL_NS)
 ET.register_namespace("p", PML_NS)
 ET.register_namespace("a", AML_NS)
 ET.register_namespace("w", WML_NS)
+ET.register_namespace("m", OMML_NS)
 
 
 def create_docx(path, title="", sections=None, metadata=None):
@@ -45,46 +49,118 @@ def create_docx(path, title="", sections=None, metadata=None):
         target.parent.mkdir(parents=True, exist_ok=True)
         document = Document()
         section = document.sections[0]
-        section.top_margin = Inches(0.72); section.bottom_margin = Inches(0.68)
-        section.left_margin = Inches(0.82); section.right_margin = Inches(0.82)
+        # standard_business_brief preset: explicit Letter geometry and furniture.
+        section.page_width = Inches(8.5); section.page_height = Inches(11)
+        section.top_margin = Inches(1); section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1); section.right_margin = Inches(1)
+        section.header_distance = Inches(0.492); section.footer_distance = Inches(0.492)
         styles = document.styles
-        styles["Normal"].font.name = "Aptos"
-        styles["Normal"].font.size = Pt(10.5)
+        styles["Normal"].font.name = "Calibri"
+        styles["Normal"]._element.rPr.rFonts.set(qn("w:ascii"), "Calibri")
+        styles["Normal"]._element.rPr.rFonts.set(qn("w:hAnsi"), "Calibri")
+        styles["Normal"]._element.rPr.rFonts.set(qn("w:eastAsia"), "Microsoft YaHei")
+        styles["Normal"].font.size = Pt(11)
+        styles["Normal"].paragraph_format.line_spacing = 1.10
         styles["Normal"].paragraph_format.space_after = Pt(6)
-        for name, size, color in (("Title", 26, "17365D"), ("Heading 1", 17, "17365D"), ("Heading 2", 13, "2F5597"), ("Heading 3", 11, "404040")):
-            style = styles[name]; style.font.name = "Aptos Display" if name != "Normal" else "Aptos"; style.font.size = Pt(size); style.font.color.rgb = RGBColor.from_string(color); style.font.bold = True
+        style_tokens = {
+            "Title": (24, "17365D", 0, 14),
+            "Heading 1": (16, "2E74B5", 16, 8),
+            "Heading 2": (13, "2E74B5", 12, 6),
+            "Heading 3": (12, "1F4D78", 8, 4),
+        }
+        for name, (size, color, before, after) in style_tokens.items():
+            style = styles[name]; style.font.name = "Calibri"; style.font.size = Pt(size); style.font.color.rgb = RGBColor.from_string(color); style.font.bold = True
+            style._element.rPr.rFonts.set(qn("w:ascii"), "Calibri"); style._element.rPr.rFonts.set(qn("w:hAnsi"), "Calibri"); style._element.rPr.rFonts.set(qn("w:eastAsia"), "Microsoft YaHei")
+            style.paragraph_format.space_before = Pt(before); style.paragraph_format.space_after = Pt(after)
         title_p = document.add_paragraph(style="Title"); title_p.add_run(str(title or target.stem)); title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        title_p.paragraph_format.keep_with_next = True
         subtitle = str((metadata or {}).get("subtitle") or "")
         if subtitle:
             p=document.add_paragraph(subtitle); p.style=styles["Subtitle"]
         for item in sections or []:
+            if item.get("page_break"):
+                document.add_page_break()
             heading = str(item.get("heading") or "").strip()
             if heading:
-                document.add_heading(heading, level=max(1, min(int(item.get("level") or 1), 3)))
+                heading_p = document.add_heading(heading, level=max(1, min(int(item.get("level") or 1), 3)))
+                heading_p.paragraph_format.keep_with_next = True
             for paragraph in item.get("paragraphs") or []:
-                document.add_paragraph(str(paragraph))
+                value = str(paragraph.get("text") or "") if isinstance(paragraph, dict) else str(paragraph)
+                _add_docx_paragraph(document, value)
             bullets = item.get("bullets") or []
             for bullet in bullets:
                 document.add_paragraph(str(bullet), style="List Bullet")
-            table = item.get("table") or []
+            table_spec = item.get("table") or []
+            table = (table_spec.get("rows") or []) if isinstance(table_spec, dict) else table_spec
             if table:
                 width = max(len(row) for row in table)
                 word_table = document.add_table(rows=0, cols=width)
-                word_table.style = "Light Shading Accent 1"; word_table.autofit = False
+                word_table.style = "Table Grid"; word_table.autofit = False
+                usable_inches = 6.5
+                requested_widths = list(table_spec.get("column_widths") or []) if isinstance(table_spec, dict) else []
+                if len(requested_widths) != width or sum(float(value or 0) for value in requested_widths) <= 0:
+                    lengths = [max(3, max((len(str(row[index])) if index < len(row) else 0) for row in table)) for index in range(width)]
+                    total = sum(lengths)
+                    requested_widths = [usable_inches * value / total for value in lengths]
+                else:
+                    requested_widths = [usable_inches * float(value) / sum(float(item) for item in requested_widths) for value in requested_widths]
                 for row_index, row in enumerate(table):
                     cells = word_table.add_row().cells
-                    if row_index == 0:
+                    header_rows = int(table_spec.get("header_rows", 1)) if isinstance(table_spec, dict) else 1
+                    if row_index < header_rows:
                         trPr = cells[0]._tc.getparent().get_or_add_trPr(); marker=OxmlElement("w:tblHeader"); marker.set(qn("w:val"), "true"); trPr.append(marker)
                     for col_index, value in enumerate(row):
                         cells[col_index].text = str(value)
+                        cells[col_index].width = Inches(float(requested_widths[col_index]))
                         cells[col_index].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-                        if row_index == 0:
+                        if row_index < header_rows:
                             for run in cells[col_index].paragraphs[0].runs:
-                                run.bold = True; run.font.color.rgb = RGBColor(255,255,255)
-        footer=section.footer.paragraphs[0]; footer.alignment=WD_ALIGN_PARAGRAPH.CENTER; footer.add_run(str((metadata or {}).get("footer") or "ClawOS • Auditable Office Artifact"))
+                                run.bold = True; run.font.color.rgb = RGBColor.from_string("17365D")
+                            shading = OxmlElement("w:shd"); shading.set(qn("w:fill"), "F2F4F7"); cells[col_index]._tc.get_or_add_tcPr().append(shading)
+                _set_docx_table_geometry(word_table, requested_widths, total_dxa=9360, indent_dxa=120)
+                if isinstance(table_spec, dict) and table_spec.get("caption"):
+                    caption = document.add_paragraph(style="Caption")
+                    caption.add_run(str(table_spec.get("label") or "Table") + " ").bold = True
+                    caption.add_run(str(table_spec["caption"]))
+                    if table_spec.get("bookmark"):
+                        _bookmark_caption_label(caption, str(table_spec["bookmark"]))
+                    caption.paragraph_format.keep_with_next = False
+            for formula_index, formula in enumerate(item.get("formulas") or [], 1):
+                spec = formula if isinstance(formula, dict) else {"text": formula}
+                paragraph = document.add_paragraph()
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                paragraph._p.append(_omml_equation(str(spec.get("text") or spec.get("formula") or "")))
+                if spec.get("label"):
+                    paragraph.add_run(f"  ({spec['label']})")
+            for figure_index, figure in enumerate(item.get("figures") or [], 1):
+                spec = figure if isinstance(figure, dict) else {"path": figure}
+                image_path = Path(str(spec.get("path") or ""))
+                if image_path.is_file():
+                    paragraph = document.add_paragraph()
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = paragraph.add_run()
+                    run.add_picture(str(image_path), width=Inches(float(spec.get("width_inches") or 5.8)))
+                    doc_pr = paragraph._p.find(".//wp:docPr", {"wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"})
+                    if doc_pr is not None:
+                        doc_pr.set("descr", str(spec.get("alt_text") or spec.get("caption") or image_path.name))
+                        doc_pr.set("title", str(spec.get("label") or f"Figure {figure_index}"))
+                    if spec.get("caption"):
+                        caption = document.add_paragraph(style="Caption")
+                        caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        caption.add_run(str(spec.get("label") or f"Figure {figure_index}") + " ").bold = True
+                        caption.add_run(str(spec["caption"]))
+                        if spec.get("bookmark"):
+                            _bookmark_caption_label(caption, str(spec["bookmark"]))
+        header = section.header.paragraphs[0]; header.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        header_run = header.add_run(str((metadata or {}).get("header") or title or target.stem)); header_run.font.name = "Calibri"; header_run.font.size = Pt(8); header_run.font.color.rgb = RGBColor.from_string("64748B")
+        footer=section.footer.paragraphs[0]; footer.alignment=WD_ALIGN_PARAGRAPH.RIGHT
+        footer.add_run(str((metadata or {}).get("footer") or "ClawOS • Auditable Office Artifact") + "  |  ")
+        _append_word_field(footer, "PAGE")
         document.core_properties.title = str(title or target.stem)
         document.core_properties.subject = str((metadata or {}).get("subject") or "ClawOS Office Artifact")
         document.save(target)
+        if (metadata or {}).get("footnotes"):
+            _patch_docx_footnotes(target, list((metadata or {}).get("footnotes") or []))
         return str(target)
     except ImportError:
         return _create_docx_stdlib(path, title, sections)
@@ -138,6 +214,185 @@ def replace_docx_text(path, replacements, output_path=None):
     return str(output)
 
 
+def _append_word_field(paragraph, instruction):
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    run = OxmlElement("w:r")
+    begin = OxmlElement("w:fldChar"); begin.set(qn("w:fldCharType"), "begin")
+    code = OxmlElement("w:instrText"); code.set("{http://www.w3.org/XML/1998/namespace}space", "preserve"); code.text = f" {instruction} "
+    separate = OxmlElement("w:fldChar"); separate.set(qn("w:fldCharType"), "separate")
+    text = OxmlElement("w:t"); text.text = "1"
+    end = OxmlElement("w:fldChar"); end.set(qn("w:fldCharType"), "end")
+    for node in (begin, code, separate, text, end): run.append(node)
+    paragraph._p.append(run)
+
+
+def _add_docx_paragraph(document, value):
+    """Add text while preserving explicit Word REF fields.
+
+    `[[REF:figure_1]]` becomes a real REF field rather than display-only text.
+    """
+    paragraph = document.add_paragraph()
+    cursor = 0
+    for match in re.finditer(r"\[\[REF:([A-Za-z_][A-Za-z0-9_.-]*)\]\]", str(value or "")):
+        if match.start() > cursor:
+            paragraph.add_run(str(value)[cursor:match.start()])
+        _append_word_field(paragraph, f"REF {match.group(1)} \\h")
+        cursor = match.end()
+    if cursor < len(str(value or "")):
+        paragraph.add_run(str(value)[cursor:])
+    return paragraph
+
+
+def _bookmark_paragraph(paragraph, name):
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(name or ""))[:40]
+    if not safe or not re.match(r"[A-Za-z_]", safe):
+        raise ValueError("bookmark must start with a letter or underscore")
+    # Stable per-name ids are sufficient within generated documents and make
+    # deterministic OOXML round-trip tests possible.
+    bookmark_id = str(int.from_bytes(safe.encode("utf-8"), "little") % 2147483647)
+    start = OxmlElement("w:bookmarkStart"); start.set(qn("w:id"), bookmark_id); start.set(qn("w:name"), safe)
+    end = OxmlElement("w:bookmarkEnd"); end.set(qn("w:id"), bookmark_id)
+    paragraph._p.insert(0, start); paragraph._p.append(end)
+
+
+def _bookmark_caption_label(paragraph, name):
+    """Bookmark only the caption label run so REF does not duplicate caption prose."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(name or ""))[:40]
+    if not safe or not re.match(r"[A-Za-z_]", safe):
+        raise ValueError("bookmark must start with a letter or underscore")
+    bookmark_id = str(int.from_bytes(safe.encode("utf-8"), "little") % 2147483647)
+    runs = paragraph._p.findall(qn("w:r"))
+    if not runs:
+        return _bookmark_paragraph(paragraph, safe)
+    label_run = runs[0]; index = list(paragraph._p).index(label_run)
+    start = OxmlElement("w:bookmarkStart"); start.set(qn("w:id"), bookmark_id); start.set(qn("w:name"), safe)
+    end = OxmlElement("w:bookmarkEnd"); end.set(qn("w:id"), bookmark_id)
+    paragraph._p.insert(index, start); paragraph._p.insert(index + 2, end)
+
+
+def _omml_equation(value):
+    from docx.oxml import OxmlElement
+    node = OxmlElement("m:oMathPara")
+    math = OxmlElement("m:oMath")
+    run = OxmlElement("m:r")
+    text = OxmlElement("m:t"); text.text = str(value or "")
+    run.append(text); math.append(run); node.append(math)
+    return node
+
+
+def _set_docx_table_geometry(table, widths_inches, *, total_dxa=9360, indent_dxa=120):
+    """Encode fixed DXA table width, indent, grid, cell widths, and margins."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    raw = [max(1.0, float(value)) for value in widths_inches]
+    scale = total_dxa / sum(raw)
+    widths = [int(round(value * scale)) for value in raw]
+    widths[-1] += total_dxa - sum(widths)
+    tbl_pr = table._tbl.tblPr
+    for tag in ("w:tblW", "w:tblInd", "w:tblLayout", "w:tblCellMar"):
+        existing = tbl_pr.find(qn(tag))
+        if existing is not None:
+            tbl_pr.remove(existing)
+    tbl_w = OxmlElement("w:tblW"); tbl_w.set(qn("w:w"), str(total_dxa)); tbl_w.set(qn("w:type"), "dxa"); tbl_pr.append(tbl_w)
+    tbl_ind = OxmlElement("w:tblInd"); tbl_ind.set(qn("w:w"), str(indent_dxa)); tbl_ind.set(qn("w:type"), "dxa"); tbl_pr.append(tbl_ind)
+    layout = OxmlElement("w:tblLayout"); layout.set(qn("w:type"), "fixed"); tbl_pr.append(layout)
+    margins = OxmlElement("w:tblCellMar")
+    for side, value in (("top", 80), ("start", 120), ("bottom", 80), ("end", 120)):
+        node = OxmlElement(f"w:{side}"); node.set(qn("w:w"), str(value)); node.set(qn("w:type"), "dxa"); margins.append(node)
+    tbl_pr.append(margins)
+    grid = table._tbl.tblGrid
+    for child in list(grid):
+        grid.remove(child)
+    for value in widths:
+        column = OxmlElement("w:gridCol"); column.set(qn("w:w"), str(value)); grid.append(column)
+    for row in table.rows:
+        for index, cell in enumerate(row.cells):
+            tc_pr = cell._tc.get_or_add_tcPr()
+            tc_w = tc_pr.find(qn("w:tcW"))
+            if tc_w is None:
+                tc_w = OxmlElement("w:tcW"); tc_pr.insert(0, tc_w)
+            tc_w.set(qn("w:w"), str(widths[min(index, len(widths) - 1)])); tc_w.set(qn("w:type"), "dxa")
+
+
+def _patch_docx_footnotes(path: Path, footnotes: list[dict]):
+    parts = _read_zip(path)
+    root = ET.fromstring(parts["word/document.xml"])
+    # ElementTree does not retain namespace declarations referenced only from
+    # mc:Ignorable values. Removing this optional hint avoids producing a
+    # Word-rejected package with undeclared w14/wp14 prefixes.
+    root.attrib.pop(f"{{{MC_NS}}}Ignorable", None)
+    notes_root = ET.fromstring(parts.get("word/footnotes.xml", (
+        f'<w:footnotes xmlns:w="{WML_NS}">'
+        '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
+        '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>'
+        '</w:footnotes>'
+    ).encode("utf-8")))
+    next_id = max([int(item.get(f"{{{WML_NS}}}id", "0")) for item in notes_root.findall(f"{{{WML_NS}}}footnote")] + [0]) + 1
+    for item in footnotes:
+        marker = str(item.get("marker") or item.get("key") or "").strip()
+        marker = marker if marker.startswith("[[FN:") else f"[[FN:{marker}]]"
+        matched = False
+        for parent in root.iter():
+            for index, run in enumerate(list(parent)):
+                texts = list(run.iter(f"{{{WML_NS}}}t")) if run.tag == f"{{{WML_NS}}}r" else []
+                if len(texts) != 1 or marker not in str(texts[0].text or ""):
+                    continue
+                before, _, after = str(texts[0].text).partition(marker)
+                texts[0].text = before
+                if before.startswith(" ") or before.endswith(" "):
+                    texts[0].set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                reference_run = ET.Element(f"{{{WML_NS}}}r")
+                reference_properties = ET.SubElement(reference_run, f"{{{WML_NS}}}rPr")
+                ET.SubElement(reference_properties, f"{{{WML_NS}}}vertAlign", {f"{{{WML_NS}}}val": "superscript"})
+                ET.SubElement(reference_run, f"{{{WML_NS}}}footnoteReference", {f"{{{WML_NS}}}id": str(next_id)})
+                parent.insert(index + 1, reference_run)
+                if after:
+                    after_run = ET.Element(f"{{{WML_NS}}}r")
+                    after_text = ET.SubElement(after_run, f"{{{WML_NS}}}t"); after_text.text = after
+                    if after.startswith(" ") or after.endswith(" "):
+                        after_text.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                    parent.insert(index + 2, after_run)
+                matched = True
+                break
+            if matched: break
+        if not matched:
+            raise ValueError(f"footnote marker not found in a single Word run: {marker}")
+        note = ET.SubElement(notes_root, f"{{{WML_NS}}}footnote", {f"{{{WML_NS}}}id": str(next_id)})
+        paragraph = ET.SubElement(note, f"{{{WML_NS}}}p")
+        reference_run = ET.SubElement(paragraph, f"{{{WML_NS}}}r")
+        reference_properties = ET.SubElement(reference_run, f"{{{WML_NS}}}rPr")
+        ET.SubElement(reference_properties, f"{{{WML_NS}}}vertAlign", {f"{{{WML_NS}}}val": "superscript"})
+        ET.SubElement(reference_run, f"{{{WML_NS}}}footnoteRef")
+        text_run = ET.SubElement(paragraph, f"{{{WML_NS}}}r")
+        ET.SubElement(text_run, f"{{{WML_NS}}}t", {"{http://www.w3.org/XML/1998/namespace}space": "preserve"}).text = " " + str(item.get("text") or "")
+        next_id += 1
+    parts["word/document.xml"] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    parts["word/footnotes.xml"] = ET.tostring(notes_root, encoding="utf-8", xml_declaration=True)
+    types = ET.fromstring(parts["[Content_Types].xml"])
+    ct_ns = "http://schemas.openxmlformats.org/package/2006/content-types"
+    if not any(node.get("PartName") == "/word/footnotes.xml" for node in types):
+        ET.SubElement(types, f"{{{ct_ns}}}Override", {"PartName": "/word/footnotes.xml", "ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"})
+    ET.register_namespace("", ct_ns)
+    parts["[Content_Types].xml"] = ET.tostring(types, encoding="utf-8", xml_declaration=True)
+    ET.register_namespace("", MAIN_NS)
+    rel_path = "word/_rels/document.xml.rels"
+    rels = ET.fromstring(parts[rel_path])
+    if not any(node.get("Type", "").endswith("/footnotes") for node in rels):
+        used = {node.get("Id") for node in rels}; index = 1
+        while f"rId{index}" in used: index += 1
+        ET.SubElement(rels, f"{{{PKG_REL_NS}}}Relationship", {"Id": f"rId{index}", "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes", "Target": "footnotes.xml"})
+    ET.register_namespace("", PKG_REL_NS)
+    parts[rel_path] = ET.tostring(rels, encoding="utf-8", xml_declaration=True)
+    ET.register_namespace("", MAIN_NS)
+    _write_zip(path, parts)
+
+
 def create_pdf(path, title="", sections=None, metadata=None):
     """Create a polished, searchable PDF using the installed ReportLab engine."""
     try:
@@ -146,7 +401,7 @@ def create_pdf(path, title="", sections=None, metadata=None):
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import mm
-        from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        from reportlab.platypus import Image, KeepTogether, PageBreak, Paragraph, Preformatted, SimpleDocTemplate, Spacer, Table, TableStyle
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
     except ImportError as exc:
@@ -154,7 +409,18 @@ def create_pdf(path, title="", sections=None, metadata=None):
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     font_name = "Helvetica"
-    for font_path, candidate in ((Path("C:/Windows/Fonts/msyh.ttc"), "MicrosoftYaHei"), (Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"), "NotoSansCJK")):
+    document_text = str(title or "") + " " + " ".join(
+        str(value)
+        for section in (sections or [])
+        for value in ([section.get("heading", "")] + list(section.get("paragraphs") or []) + list(section.get("bullets") or []))
+    )
+    needs_cjk = bool(re.search(r"[\u3400-\u9fff]", document_text))
+    font_candidates = (
+        ((Path("C:/Windows/Fonts/NotoSansSC-VF.ttf"), "NotoSansSC"), (Path("C:/Windows/Fonts/msyh.ttc"), "MicrosoftYaHei"))
+        if needs_cjk else
+        ((Path("C:/Windows/Fonts/arial.ttf"), "ArialEmbedded"), (Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"), "DejaVuSans"))
+    )
+    for font_path, candidate in font_candidates:
         if font_path.is_file():
             try:
                 pdfmetrics.registerFont(TTFont(candidate, str(font_path), subfontIndex=0)); font_name=candidate; break
@@ -165,6 +431,8 @@ def create_pdf(path, title="", sections=None, metadata=None):
     styles.add(ParagraphStyle(name="ArtifactHeading", parent=styles["Heading2"], fontName=font_name, fontSize=15, leading=20, textColor=colors.HexColor("#17365D"), spaceAfter=3 * mm))
     styles.add(ParagraphStyle(name="ArtifactBody", parent=styles["BodyText"], fontName=font_name, fontSize=10.5, leading=16, textColor=colors.HexColor("#243047"), spaceAfter=3 * mm))
     styles.add(ParagraphStyle(name="ArtifactTableHeader", parent=styles["BodyText"], fontName=font_name, fontSize=10.5, leading=16, textColor=colors.white, spaceAfter=0))
+    styles.add(ParagraphStyle(name="ArtifactCaption", parent=styles["BodyText"], fontName=font_name, fontSize=9, leading=13, textColor=colors.HexColor("#475569"), alignment=TA_CENTER, spaceAfter=3 * mm))
+    styles.add(ParagraphStyle(name="ArtifactFormula", parent=styles["Code"], fontName="Courier", fontSize=10, leading=14, alignment=TA_CENTER, spaceBefore=2 * mm, spaceAfter=2 * mm))
     doc = SimpleDocTemplate(str(target), pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm, topMargin=18 * mm, bottomMargin=18 * mm, title=str(title or target.stem), author="ClawOS")
     story = [Paragraph(html.escape(str(title or target.stem)), styles["ArtifactTitle"])]
     for item in sections or []:
@@ -177,10 +445,13 @@ def create_pdf(path, title="", sections=None, metadata=None):
             story.append(Paragraph(html.escape(str(paragraph)).replace("\n", "<br/>"), styles["ArtifactBody"]))
         for bullet in item.get("bullets") or []:
             story.append(Paragraph(f"• {html.escape(str(bullet))}", styles["ArtifactBody"]))
-        table = item.get("table") or []
+        table_spec = item.get("table") or []
+        table = (table_spec.get("rows") or []) if isinstance(table_spec, dict) else table_spec
         if table:
             rows = [[Paragraph(html.escape(str(value)), styles["ArtifactTableHeader"] if row_index == 0 else styles["ArtifactBody"]) for value in row] for row_index, row in enumerate(table)]
-            artifact_table = Table(rows, repeatRows=1, hAlign="LEFT")
+            requested_widths = list(table_spec.get("column_widths") or []) if isinstance(table_spec, dict) else []
+            col_widths = [float(value) * mm for value in requested_widths] if len(requested_widths) == max(len(row) for row in table) else None
+            artifact_table = Table(rows, repeatRows=int(table_spec.get("header_rows", 1)) if isinstance(table_spec, dict) else 1, hAlign="LEFT", colWidths=col_widths)
             artifact_table.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#172033")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -191,7 +462,35 @@ def create_pdf(path, title="", sections=None, metadata=None):
                 ("RIGHTPADDING", (0, 0), (-1, -1), 6),
             ]))
             story.extend([artifact_table, Spacer(1, 4 * mm)])
-    doc.build(story)
+            if isinstance(table_spec, dict) and table_spec.get("caption"):
+                story.append(Paragraph(html.escape(str(table_spec.get("label") or "Table") + " " + str(table_spec["caption"])), styles["ArtifactCaption"]))
+        for formula_index, formula in enumerate(item.get("formulas") or [], 1):
+            spec = formula if isinstance(formula, dict) else {"text": formula}
+            value = str(spec.get("text") or spec.get("formula") or "")
+            label = f"   ({spec['label']})" if spec.get("label") else ""
+            story.append(Preformatted(value + label, styles["ArtifactFormula"]))
+        for figure_index, figure in enumerate(item.get("figures") or [], 1):
+            spec = figure if isinstance(figure, dict) else {"path": figure}
+            image_path = Path(str(spec.get("path") or ""))
+            if image_path.is_file():
+                image = Image(str(image_path))
+                max_width, max_height = 165 * mm, 100 * mm
+                ratio = min(max_width / max(1, image.imageWidth), max_height / max(1, image.imageHeight), 1.0)
+                image.drawWidth = image.imageWidth * ratio; image.drawHeight = image.imageHeight * ratio
+                caption = Paragraph(html.escape(str(spec.get("label") or f"Figure {figure_index}") + " " + str(spec.get("caption") or "")), styles["ArtifactCaption"])
+                story.append(KeepTogether([image, Spacer(1, 1.5 * mm), caption]))
+    footnotes = list((metadata or {}).get("footnotes") or [])
+    if footnotes:
+        story.extend([Spacer(1, 5 * mm), Paragraph("Notes", styles["ArtifactHeading"])])
+        for index, note in enumerate(footnotes, 1):
+            story.append(Paragraph(f"<super>{index}</super> {html.escape(str(note.get('text') or ''))}", styles["ArtifactBody"]))
+
+    def draw_footer(canvas, document):
+        canvas.saveState(); canvas.setFont(font_name, 8); canvas.setFillColor(colors.HexColor("#64748B"))
+        canvas.drawCentredString(A4[0] / 2, 9 * mm, f"{(metadata or {}).get('footer') or 'ClawOS - Auditable Office Artifact'}  |  {canvas.getPageNumber()}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=draw_footer, onLaterPages=draw_footer)
     return str(target)
 
 
@@ -217,6 +516,8 @@ def _cell_kind(value):
         return "b", "1" if value else "0"
     if isinstance(value, (int, float)):
         return "n", str(value)
+    if isinstance(value, str) and value.startswith("="):
+        return "f", value[1:]
     return "inlineStr", str(value)
 
 
@@ -498,6 +799,9 @@ def _update_worksheet(content, cell, value):
         target.attrib["t"] = "inlineStr"
         inline = ET.SubElement(target, f"{{{MAIN_NS}}}is")
         ET.SubElement(inline, f"{{{MAIN_NS}}}t").text = serial
+    elif kind == "f":
+        ET.SubElement(target, f"{{{MAIN_NS}}}f").text = serial
+        ET.SubElement(target, f"{{{MAIN_NS}}}v")
     else:
         if kind == "b":
             target.attrib["t"] = "b"
@@ -603,6 +907,8 @@ def _worksheet_xml(rows):
                 cells.append(f'<c r="{ref}" t="inlineStr"><is><t>{html.escape(serial)}</t></is></c>')
             elif kind == "b":
                 cells.append(f'<c r="{ref}" t="b"><v>{serial}</v></c>')
+            elif kind == "f":
+                cells.append(f'<c r="{ref}"><f>{html.escape(serial)}</f><v/></c>')
             else:
                 cells.append(f'<c r="{ref}"><v>{serial}</v></c>')
         row_xml.append(f'<row r="{row_index}">{"".join(cells)}</row>')

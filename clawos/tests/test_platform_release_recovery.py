@@ -19,6 +19,19 @@ from services.vsix_release import VsixReleaseService
 
 
 class PlatformReleaseRecoveryTests(unittest.TestCase):
+    @unittest.skipUnless(platform.system() == "Windows", "Windows Job Object runtime")
+    def test_windows_job_backend_runs_real_worker_with_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = WindowsJobSandbox(max_processes=2, process_memory_mb=128).run(
+                [sys.executable, "-c", "print('sandbox-ok')"],
+                tmp,
+                timeout_seconds=10,
+            )
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["stdout"].strip(), "sandbox-ok")
+        self.assertTrue(result["sandbox"]["os_enforced"])
+        self.assertFalse(result["sandbox"]["filesystem_isolated"])
+
     @unittest.skipUnless(platform.system() == "Windows", "Windows Job Object probe")
     def test_windows_job_backend_is_really_enforced(self):
         with tempfile.TemporaryDirectory() as tmp:

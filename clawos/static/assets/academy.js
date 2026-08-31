@@ -403,20 +403,46 @@ async function academyRefreshPaperPersistedStatus() {
 }
 function academyRenderPaperReport() {
   const report = academyPaperState.report;
-  const target = document.getElementById("academyPaperReportCard");
+  const target = document.getElementById("paperDeepReadOutput");
+  const operationsCard = document.getElementById("academyPaperReportCard");
   if (!target || !report) return;
   const markdownPath = report.report?.markdown_path || report.markdown_path || "";
   const pdfPath = report.report?.pdf_path || report.pdf_path || "";
-  const preview = report.preview || report.report?.preview || report.summary || "";
+  const analysis = report.analysis || {};
+  const modeLabel = analysis.mode === "model_assisted" ? "模型辅助 · 引用约束" : "证据回退 · 模型不可用";
+  const sections = [
+    ["methodology", "方法与机制"],
+    ["experiments", "实验与结果"],
+    ["findings", "核心发现"],
+    ["limitations", "局限与边界"]
+  ];
+  const renderItems = key => {
+    const rows = analysis[key] || [];
+    if (!rows.length) return `<p class="paper-report-empty">当前证据未稳定定位这一部分。</p>`;
+    return `<ul class="paper-report-points">${rows.slice(0, 4).map(item => `
+      <li>
+        <span class="paper-claim-status ${academyEsc(item.status || "inference")}">${item.status === "supported" ? "原文支持" : item.status === "not_found" ? "待核查" : "分析推断"}</span>
+        <p>${academyEsc(item.text || "")}</p>
+        <div class="paper-citation-row">${(item.citations || []).map(citation => `<button type="button" data-report-citation="${academyEsc(citation)}">${academyEsc(citation)}</button>`).join("")}</div>
+      </li>`).join("")}</ul>`;
+  };
+  target.classList.add("grounded-paper-report");
   target.innerHTML = `
-    <b>报告产物</b>
-    <p id="academyPaperReportStatus">已生成 AI 导读报告。保存到知识库后会形成可追踪 Artifact/Evidence。</p>
-    <div class="report-paths">
-      <span>Markdown: ${academyEsc(markdownPath || "未返回")}</span>
-      <span>PDF: ${academyEsc(pdfPath || "未返回")}</span>
+    <div class="paper-report-heading">
+      <div><span class="paper-report-kicker">Grounded review</span><h3>${academyEsc(analysis.title || academyPaperState.document?.title || "论文精读报告")}</h3></div>
+      <span class="paper-report-mode">${modeLabel}</span>
     </div>
-    <p>${academyEsc(String(preview).slice(0, 520))}</p>
+    <p class="paper-report-summary">${academyEsc(analysis.summary || report.preview || "报告已生成。")}</p>
+    <section class="paper-report-problem"><b>研究问题</b><p>${academyEsc(analysis.research_problem || "当前证据未稳定定位研究问题。")}</p></section>
+    <div class="paper-report-sections">${sections.map(([key, label]) => `<details ${key === "methodology" || key === "experiments" ? "open" : ""}><summary>${label}<span>${(analysis[key] || []).length}</span></summary>${renderItems(key)}</details>`).join("")}</div>
+    <div class="paper-report-verdict"><b>综合判断</b><p>${academyEsc(analysis.verdict || "请结合原文引用核查结论。")}</p></div>
+    <details class="paper-report-files"><summary>报告文件与解析质量</summary><div class="report-paths"><span>Markdown: ${academyEsc(markdownPath || "未返回")}</span><span>PDF: ${academyEsc(pdfPath || "未返回")}</span><span>证据片段: ${Number(analysis.evidence_count || 0)}</span></div></details>
   `;
+  target.querySelectorAll("[data-report-citation]").forEach(button => button.addEventListener("click", () => {
+    academySwitchReaderTab("evidence");
+    academyAskPaperCitation(button.dataset.reportCitation || "");
+  }));
+  if (operationsCard) operationsCard.innerHTML = `<b>报告产物</b><p id="academyPaperReportStatus">${academyEsc(modeLabel)}，已生成 Markdown/PDF 和结构化证据报告。</p><div class="report-paths"><span>${academyEsc(markdownPath || "Markdown 未返回")}</span><span>${academyEsc(pdfPath || "PDF 未返回")}</span></div>`;
   academyRenderPaperRuntimeStatus();
 }
 
@@ -792,14 +818,15 @@ async function academyRunPaperWorkflow() {
   try {
     if (!academyPaperState.document?.id) await academyUploadPaper();
     if (!academyPaperState.document?.id) return;
-    academySetText("academyPaperReportStatus", "正在生成 Markdown/PDF 深度导读报告...");
+    academySetText("academyPaperReportStatus", "正在按方法、实验、发现和局限组织证据，并生成引用约束报告…");
     const body = {
       library_document_id: Number(academyPaperState.document.id),
       report_style: "academic_deep_read",
       depth: 5,
       question_count: 40,
       output_dir: "output/academy",
-      formats: ["markdown", "pdf"]
+      formats: ["markdown", "pdf"],
+      model_assisted: true
     };
     academyPaperState.report = await academyApi("/api/workspace/research/learning-analysis", {
       method: "POST",
@@ -820,39 +847,24 @@ async function academySavePaperKnowledge() {
   try {
     if (!academyPaperState.report) await academyRunPaperWorkflow();
     if (!academyPaperState.report) return;
-    academySetText("academyPaperStatus", "正在保存论文导读到知识库...");
-    const title = document.getElementById("paperTitle")?.value || academyPaperState.document?.title || "Academy paper deep read";
-    const markdownPath = academyPaperState.report.report?.markdown_path || academyPaperState.report.markdown_path || "";
-    const pdfPath = academyPaperState.report.report?.pdf_path || academyPaperState.report.pdf_path || "";
-    const citationText = JSON.stringify(academyPaperState.citation || {}, null, 2).slice(0, 3000);
-    const content = [
-      `# ${title}`,
-      "",
-      "## AI 导读报告",
-      academyPaperState.report.preview || academyPaperState.report.summary || "报告已生成。",
-      "",
-      `Markdown: ${markdownPath}`,
-      `PDF: ${pdfPath}`,
-      "",
-      "## Citation Evidence",
-      citationText
-    ].join("\n");
-    const saved = await academyApi("/api/knowledge", {
+    academySetText("academyPaperStatus", "正在把完整报告、结论证据和待验证问题分别沉淀到知识库…");
+    const saved = await academyApi("/api/academy/paper/knowledge-capture", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: `${title} - Academy Deep Read`, content, category: "research", source: `academy-paper doc:${academyPaperState.document?.id || ""}`, tags: ["academy", "paper", "deep-read", "citation-evidence"] })
+      body: JSON.stringify({ document_id: Number(academyPaperState.document?.id || 0) })
     });
-    academyPaperState.savedKnowledgeId = saved.id || saved.item?.id || saved.knowledge_id;
+    academyPaperState.savedKnowledgeId = saved.primary_knowledge_id;
     await academyRefreshPaperPersistedStatus().catch(() => null);
     academyLightPaperGraph("saved");
-    academySetText("academyPaperStatus", `已保存到知识库：${academyPaperState.savedKnowledgeId || "完成"}。`);
+    const counts = saved.counts || {};
+    academySetText("academyPaperStatus", `知识包已保存：${counts.knowledge_items || 0} 个条目、${counts.claims || 0} 条结论、${counts.open_questions || 0} 个待验证问题。`);
     const graph = await academyApi("/api/knowledge/graph?category=research&limit=20").catch(() => null);
     if (graph) {
       const nodeCount = (graph.nodes || graph.items || []).length;
       academyRenderPaperRuntimeStatus();
     academyLoadPaperCheckpoints(Number(academyPaperState.document.id)).catch(() => null);
       academyLoadPaperTimeline(Number(academyPaperState.document.id)).catch(() => null);
-      academySetText("academyPaperGraphStatus", `知识库已更新：research graph ${nodeCount} 个节点；学习图谱已点亮论文相关能力。`);
+      academySetText("academyPaperGraphStatus", `知识库已更新：research graph ${nodeCount} 个节点；本次保存保留了报告、结论证据与开放问题之间的关联。`);
     }
   } catch (error) {
     academySetText("academyPaperStatus", `保存失败：${error.message}`);

@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#315cf5"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/favicon-32.png"><link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="/assets/site.css">
   <link rel="stylesheet" href="/assets/console.css">
-  <link rel="stylesheet" href="/assets/console.clean.css">
+  <link rel="stylesheet" href="/assets/console.clean.css?v=20260811-chat2">
 </head>
 <body class="console-page aether-console">
   <aside class="side">
@@ -133,23 +133,41 @@
       <div class="workspace workbench-shell">
         <section class="workbench-intro" aria-labelledby="workbenchHeading">
           <div>
-            <h2 id="workbenchHeading">上午好，今天要完成什么？</h2>
-            <p>描述目标或交付物，ClawOS 会拆解任务、分配能力，并在关键动作前等待你确认。</p>
+            <h2 id="workbenchHeading">今天想完成什么？</h2>
+            <p>直接描述目标，也可以附上项目、文档、表格、会议材料或论文。</p>
           </div>
-          <button class="secondary workbench-new" type="button" onclick="newChat()">新建任务</button>
+          <div class="conversation-actions">
+            <button class="secondary chat-progress-toggle" type="button" aria-controls="chatProgressPanel" aria-expanded="false" onclick="toggleChatProgress()">任务进度</button>
+            <button class="secondary workbench-new" type="button" onclick="newChat()">新对话</button>
+          </div>
         </section>
 
         <section class="intent-panel" aria-label="任务输入">
-          <button class="chat-progress-toggle" type="button" aria-controls="chatProgressPanel" aria-expanded="false" onclick="toggleChatProgress()">任务进度</button>
           <aside class="chat-progress-panel" id="chatProgressPanel" aria-hidden="true">
             <div class="section-heading"><h3>任务进度</h3><button class="close-button" type="button" aria-label="关闭任务进度" onclick="toggleChatProgress(false)"><span class="fluent-icon" aria-hidden="true">&#xE711;</span></button></div>
             <div id="chatTaskSidebarList"><div class="truthful-empty compact"><b>暂无运行中的任务</b><span>任务启动后，这里会显示真实状态与验证证据。</span></div></div>
+            <details class="execution-settings">
+              <summary>执行与审批方式</summary>
+              <div class="autonomy-options" role="group" aria-label="自主执行级别">
+                <button type="button" data-autonomy="suggest" onclick="setAutonomyMode('suggest')"><b>建议</b><span>只提供方案</span></button>
+                <button class="on" type="button" data-autonomy="approve" onclick="setAutonomyMode('approve')"><b>需批准</b><span>关键步骤确认</span></button>
+                <button type="button" data-autonomy="auto" onclick="setAutonomyMode('auto')"><b>自动执行</b><span>按规则完成</span></button>
+              </div>
+              <p id="autonomyHint">文件发布、外部沟通、数据写入等关键动作将请求批准。</p>
+              <button class="text-action" type="button" onclick="openDrawerView('security')">管理规则与权限</button>
+            </details>
           </aside>
           <div class="chat workbench-chat" id="chat">
             <div class="chat-inner" id="chatInner">
               <div class="empty workbench-empty">
-                <b>从目标开始，而不是从工具开始</b>
-                <span>可以附上项目、文档、表格、会议材料或论文，系统会自动选择合适的执行路径。</span>
+                <b>从目标开始</b>
+                <span>ClawOS 会在后台选择合适的能力，关键动作仍会等待你的确认。</span>
+                <div class="workbench-quick" aria-label="常用任务">
+                  <button type="button" onclick="useWorkbenchPrompt('编写与开发')"><b>编写与开发</b><span>代码、重构与测试闭环</span></button>
+                  <button type="button" onclick="useWorkbenchPrompt('会议纪要')"><b>会议纪要</b><span>转写、决策与行动项</span></button>
+                  <button type="button" onclick="useWorkbenchPrompt('数据分析')"><b>数据分析</b><span>清洗、图表与洞察</span></button>
+                  <button type="button" onclick="useWorkbenchPrompt('论文精读')"><b>论文精读</b><span>证据、对比与知识沉淀</span></button>
+                </div>
               </div>
             </div>
           </div>
@@ -163,55 +181,14 @@
             <div class="compose-inner">
               <button class="attach-button" onclick="chooseLocalFile()" title="添加本地文件" aria-label="添加本地文件">+</button>
               <textarea id="prompt" placeholder="描述目标、交付物或需要处理的文件…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
-              <label class="web-search-toggle" title="优先调用联网搜索并保留来源链接"><input id="webSearchToggle" type="checkbox"><span>联网搜索</span></label>
+                <label class="web-search-toggle" title="稳定问题使用现有知识；时效、高风险或需来源的问题按证据需要联网"><input id="webSearchToggle" type="checkbox" checked><span>证据策略</span></label>
               <button class="primary" id="send" onclick="sendMessage()">发送</button>
               <button class="secondary" id="stop" onclick="stopGeneration()" disabled>停止</button>
               <input id="filePicker" type="file" multiple hidden onchange="handlePickedFiles(event)">
             </div>
-            <span class="composer-help">添加文件后，Agent 会作为上下文自动读取；外部动作仍遵循当前审批级别。</span>
+            <span class="composer-help">Enter 发送，Shift + Enter 换行。Agent 会作为上下文自动读取附件；外部动作仍遵循当前审批级别。</span>
           </div>
         </section>
-
-        <div class="workbench-quick" aria-label="常用任务">
-          <button type="button" onclick="useWorkbenchPrompt('编写与开发')"><b>编写与开发</b><span>代码、重构与测试闭环</span></button>
-          <button type="button" onclick="useWorkbenchPrompt('会议纪要')"><b>会议纪要</b><span>转写、决策与行动项</span></button>
-          <button type="button" onclick="useWorkbenchPrompt('数据分析')"><b>数据分析</b><span>清洗、公式、图表与洞察</span></button>
-          <button type="button" onclick="useWorkbenchPrompt('论文精读')"><b>论文精读</b><span>证据、对比与知识沉淀</span></button>
-        </div>
-
-        <div class="workbench-columns">
-          <section class="workbench-section active-work" aria-labelledby="activeWorkHeading">
-            <div class="section-heading"><h3 id="activeWorkHeading">正在进行</h3><button class="text-action" type="button" onclick="setView('tasks')">查看全部任务</button></div>
-            <div id="workbenchTaskList" class="active-task-list" aria-live="polite">
-              <div class="workbench-empty-state"><b>暂无运行中的任务</b><span>输入目标后，这里会显示真实状态与执行证据。</span></div>
-            </div>
-          </section>
-
-          <aside class="workbench-section autonomy-panel" aria-labelledby="autonomyHeading">
-            <div class="section-heading"><h3 id="autonomyHeading">自主执行控制</h3><span class="status-live" id="workbenchRuntimeState">正在检查</span></div>
-            <div class="autonomy-options" role="group" aria-label="自主执行级别">
-              <button type="button" data-autonomy="suggest" onclick="setAutonomyMode('suggest')"><b>建议</b><span>只提供方案</span></button>
-              <button class="on" type="button" data-autonomy="approve" onclick="setAutonomyMode('approve')"><b>需批准</b><span>关键步骤确认</span></button>
-              <button type="button" data-autonomy="auto" onclick="setAutonomyMode('auto')"><b>自动执行</b><span>按规则完成</span></button>
-            </div>
-            <p id="autonomyHint">文件发布、外部沟通、数据写入等关键动作将请求批准。</p>
-            <button class="text-action" type="button" onclick="openDrawerView('security')">管理规则与权限</button>
-          </aside>
-        </div>
-
-        <section class="workbench-section delivery-center delivery-table" aria-labelledby="deliveryHeading">
-          <div class="section-heading"><h3 id="deliveryHeading">最近交付</h3><button class="text-action" type="button" onclick="setView('tasks')">查看任务记录</button></div>
-          <div class="truthful-empty" id="workbenchDeliveries">
-            <b>还没有可交付文件</b>
-            <span>任务生成并通过质量检查后，文件、证据和状态会出现在这里。</span>
-          </div>
-        </section>
-
-        <section class="workbench-section agent-roster" aria-labelledby="agentRosterHeading">
-          <div class="section-heading"><h3 id="agentRosterHeading">协作代理</h3><button class="text-action" type="button" onclick="openDrawerView('skills')">管理能力</button></div>
-          <div class="truthful-empty compact"><b>当前没有协作代理运行</b><span>需要研究、数据或质量复核时，角色与交接状态会按真实任务显示。</span></div>
-        </section>
-
       </div>
     </section>
 
@@ -252,10 +229,26 @@
             <span id="knowledgeGraphSummary">等待加载真实节点和语义关系。</span>
             <div class="knowledge-graph-actions"><button class="secondary" type="button" onclick="loadKnowledgeGraph()">刷新图谱</button><button class="primary" type="button" onclick="openKnowledgeGraphExplorer()">展开图谱</button></div>
           </section>
+          <section class="knowledge-health-card">
+            <b>知识健康</b>
+            <span id="knowledgeHealthSummary">正在读取来源、冲突、过期和利用状态。</span>
+            <div class="knowledge-health-actions"><button class="secondary" type="button" onclick="loadKnowledgeGovernance()">刷新</button><button class="primary" type="button" onclick="openKnowledgeGovernance()">治理知识</button></div>
+          </section>
           <section class="knowledge-admin-entry">
             <span>后台管理</span>
             <b id="knowledgeAdminState">已收起</b>
             <button class="secondary knowledge-admin-toggle" id="knowledgeAdminToggle" type="button" onclick="openKnowledgeBackstage()">打开后台中心</button>
+          </section>
+        </div>
+        <div class="knowledge-governance" id="knowledgeGovernance" aria-hidden="true">
+          <button class="knowledge-organizer-backdrop" type="button" aria-label="关闭知识治理" onclick="closeKnowledgeGovernance()"></button>
+          <section class="knowledge-governance-sheet" role="dialog" aria-modal="true" aria-labelledby="knowledgeGovernanceTitle">
+            <div class="settings-head"><div><h2 id="knowledgeGovernanceTitle">知识治理</h2><p>审核冲突、迁移历史资料，并检查知识是否真的被检索和采用。</p></div><button class="close-button" type="button" aria-label="关闭" onclick="closeKnowledgeGovernance()"><span class="fluent-icon" aria-hidden="true">&#xE711;</span></button></div>
+            <div class="knowledge-health-grid" id="knowledgeHealthGrid"></div>
+            <div class="action-row"><button class="secondary" onclick="backfillKnowledgeV2()">迁移历史知识</button><button class="secondary" onclick="rebuildKnowledgeIndex()">重建向量索引</button><span class="hint" id="knowledgeGovernanceStatus">迁移为幂等增量操作，不删除旧记录。</span></div>
+            <div class="section-block"><h2>答案质量闭环</h2><p class="hint" id="answerQualitySummary">正在区分固定代理题集与经同意的真实用户反馈。</p><div class="knowledge-health-grid" id="answerQualityGrid"></div></div>
+            <div class="section-block"><h2>长期记忆候选</h2><p class="hint" id="memoryCandidateSummary">只有具备成功证据、通过敏感检查且经用户审核的候选才会晋升。</p><table class="table" id="memoryCandidateTable"></table></div>
+            <div class="section-block"><h2>待审核冲突</h2><table class="table" id="knowledgeConflictTable"></table></div>
           </section>
         </div>
         <div class="knowledge-frontstage-metrics" id="knowledgeFrontstageMetrics">
@@ -459,7 +452,15 @@
     </section>
   </div>
 
-  <script src="/assets/console.js"></script>
+  <div class="office-editor-modal" id="officeEditorModal" aria-hidden="true">
+    <div class="office-editor-backdrop" onclick="closeEmbeddedOfficeEditor()"></div>
+    <section class="office-editor-sheet" role="dialog" aria-modal="true" aria-label="Office 在线编辑器">
+      <header><div><b>Office 在线编辑</b><span id="officeEditorStatus">正在建立安全编辑会话…</span></div><button class="icon-button" onclick="closeEmbeddedOfficeEditor()" aria-label="关闭">×</button></header>
+      <div id="office-editor-mount"></div>
+    </section>
+  </div>
+
+<script src="/assets/console.js?v=20260812-office-p1"></script>
   <script src="/assets/console.modules.js?v=20260713-brand2"></script>
   <script src="/assets/evidence-chains.js?v=20260714-truth1"></script>
 </body>

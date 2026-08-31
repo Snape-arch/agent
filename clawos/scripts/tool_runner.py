@@ -1,4 +1,4 @@
-import json, sys, os
+import json, sys, os, hashlib, uuid
 from datetime import datetime, timezone, timedelta
 import re
 try:
@@ -330,6 +330,8 @@ def _search_duckduckgo(query, limit):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ClawOS/1.0"})
     with urllib.request.urlopen(req, timeout=15) as resp:
         page = resp.read().decode("utf-8", errors="replace")
+    if "anomaly.js" in page or 'id="challenge-form"' in page:
+        return [], "bot_challenge"
     blocks = re.findall(r'<div class="result[^"]*"[\s\S]*?</div>\s*</div>', page)
     rows = []
     for rank, block in enumerate(blocks[:limit], 1):
@@ -355,11 +357,16 @@ def _search_duckduckgo(query, limit):
 
 
 def tool_web_search():
+    from services.search_evidence import decide_search_need
     query = str(input_data.get("query", "")).strip()
     if not query: print(json.dumps({"error": "missing query"})); sys.exit(1)
-    limit = max(1, min(int(input_data.get("limit", 5) or 5), 10))
+    limit = max(1, min(int(input_data.get("limit", 8) or 8), 10))
     providers = input_data.get("providers") or ["tavily", "serpapi", "bing", "duckduckgo"]
     engine = _search_engine()
+    decision = input_data.get("evidence_policy")
+    if not isinstance(decision, dict):
+        decision = decide_search_need(query, mode="force")
+    requested_breadth = str(input_data.get("breadth", "") or "").strip()
     payload = engine.search(
         query,
         limit,
@@ -372,6 +379,8 @@ def tool_web_search():
         },
         retries=max(1, min(int(input_data.get("retries", 2) or 2), 4)),
         use_cache=bool(input_data.get("use_cache", True)),
+        breadth=requested_breadth or str(decision.get("breadth") or "balanced"),
+        decision=decision,
     )
     payload["run_record"] = _save_web_run("web_search", query, payload)
     print(json.dumps(payload, ensure_ascii=False))
@@ -572,6 +581,99 @@ def tool_web_search_live_benchmark():
     )
     report["run_record"] = _save_web_run("web_search_live_benchmark", report["name"], report)
     print(json.dumps(report, ensure_ascii=False))
+
+
+def tool_web_search_policy_benchmark():
+    from scripts.search_provider_benchmark import answer_generator_from_env
+    from scripts.search_live_acceptance import _provider_funcs
+    from services.search_provider_benchmark_service import DEFAULT_CORPUS, run_provider_benchmark
+    raw_providers = input_data.get("providers") or ["tavily", "serpapi", "bing", "duckduckgo"]
+    providers = (
+        [item.strip().lower() for item in raw_providers.split(",") if item.strip()]
+        if isinstance(raw_providers, str)
+        else [str(item).strip().lower() for item in raw_providers if str(item).strip()]
+    )
+    offline_mock = bool(input_data.get("offline_mock", False))
+    report = run_provider_benchmark(
+        input_data.get("out") or os.path.join(BASE_DIR, "..", "output", "search_evidence"),
+        providers=providers,
+        provider_funcs={} if offline_mock else _provider_funcs(),
+        corpus_path=input_data.get("corpus") or DEFAULT_CORPUS,
+        limit_cases=int(input_data.get("limit_cases") or 0) or None,
+        offline_mock=offline_mock,
+        retries=max(1, min(int(input_data.get("retries", 1) or 1), 4)),
+        use_cache=bool(input_data.get("use_cache", False)),
+        answer_generator=answer_generator_from_env(),
+    )
+    report["run_record"] = _save_web_run("web_search_policy_benchmark", report["name"], report)
+    print(json.dumps(report, ensure_ascii=False))
+
+
+def tool_knowledge_quality_benchmark():
+    from services.artifact_storage import ArtifactStorage
+    from services.knowledge_quality_benchmark import DEFAULT_CORPUS, run_knowledge_quality_benchmark
+    report = run_knowledge_quality_benchmark(input_data.get("corpus") or DEFAULT_CORPUS)
+    artifact = ArtifactStorage(
+        input_data.get("out") or os.path.join(BASE_DIR, "..", "output", "knowledge_quality")
+    ).write_json("knowledge_quality_report.json", report)
+    report["artifact"] = artifact
+    report["run_record"] = _save_web_run("knowledge_quality_benchmark", report["name"], report)
+    print(json.dumps(report, ensure_ascii=False))
+
+
+def tool_answer_quality_benchmark():
+    from services.answer_quality_benchmark import DEFAULT_CORPUS, run_answer_quality_benchmark
+    from services.artifact_storage import ArtifactStorage
+
+    report = run_answer_quality_benchmark(input_data.get("corpus") or DEFAULT_CORPUS)
+    report["artifact"] = ArtifactStorage(
+        input_data.get("out") or os.path.join(BASE_DIR, "..", "output", "answer_quality")
+    ).write_json("answer_quality_report.json", report)
+    print(json.dumps(report, ensure_ascii=False))
+
+
+def tool_answer_quality_validate():
+    from services.answer_quality_service import ClaimEvidenceAnswerValidator
+
+    result = ClaimEvidenceAnswerValidator.validate(
+        query=str(input_data.get("query") or ""), answer=str(input_data.get("answer") or ""),
+        evidence=input_data.get("evidence") or [], expected_answer=str(input_data.get("expected_answer") or ""),
+        must_refuse=bool(input_data.get("must_refuse")), claims=input_data.get("claims"),
+    )
+    print(json.dumps(result, ensure_ascii=False))
+
+
+def tool_selective_memory():
+    from memory_store import MemoryStore
+    from services.selective_memory_service import SelectiveMemoryService
+
+    service = SelectiveMemoryService(MemoryStore(_memory_db_path()))
+    action = str(input_data.get("action") or "list")
+    if action == "propose":
+        result = service.propose_from_task(
+            task_id=input_data.get("task_id") or "manual", outcome=str(input_data.get("outcome") or ""),
+            candidates=input_data.get("candidates") or [], success_evidence=input_data.get("success_evidence") or [],
+            session_id=str(input_data.get("session_id") or ""), owner_id=str(input_data.get("owner_id") or "default"),
+            workspace_id=str(input_data.get("workspace_id") or "default"),
+        )
+    elif action == "review":
+        result = service.review(
+            int(input_data.get("candidate_id") or 0), str(input_data.get("decision") or ""),
+            reviewer=str(input_data.get("actor_id") or "user"), confirmed=bool(input_data.get("confirmed")),
+        )
+    elif action == "promote":
+        result = service.promote(
+            int(input_data.get("candidate_id") or 0), actor_id=str(input_data.get("actor_id") or "user"),
+            confirmed=bool(input_data.get("confirmed")),
+        )
+    elif action == "stats":
+        result = service.stats()
+    else:
+        result = {"items": service.list(
+            status=str(input_data.get("status") or ""), owner_id=str(input_data.get("owner_id") or ""),
+            limit=int(input_data.get("limit") or 200),
+        )}
+    print(json.dumps(result, ensure_ascii=False))
 
 
 
@@ -1152,11 +1254,17 @@ def tool_knowledge_search():
     try:
         from memoryos.memory_store import MemoryStore
         store = MemoryStore(_memory_db_path())
-        rows = store.search_knowledge(query, category, limit)
+        rows = store.search_knowledge_v2(query, category, limit)
+        if not rows:
+            rows = store.search_knowledge(query, category, limit)
+        pack = store.knowledge_context_pack(query, category, min(limit, 8), 1800)
         compact = []
         for row in rows:
             item = dict(row)
-            item["content"] = str(item.get("content") or "")[:1200]
+            item["content"] = str(item.get("statement") or item.get("content") or "")[:1200]
+            if item.get("sources"):
+                item["citations"] = [source.get("citation") for source in item["sources"] if source.get("citation")]
+                item["source"] = item["citations"][0] if item["citations"] else ""
             compact.append(item)
         print(json.dumps({
             "query": query,
@@ -1164,6 +1272,10 @@ def tool_knowledge_search():
             "results": compact,
             "count": len(compact),
             "evidence_required": True,
+            "context_pack": pack,
+            "citation_coverage": round(pack.get("citation_count", 0) / max(1, len(pack.get("items") or [])), 4),
+            "stop_retrieval": bool(pack.get("stop_retrieval") and pack.get("citation_count")),
+            "instruction": "Use only supported items, place each citation next to its claim, and stop retrieving when stop_retrieval is true.",
         }, ensure_ascii=False))
     except Exception as e:
         print(json.dumps({"error": str(e)})); sys.exit(1)
@@ -1205,21 +1317,36 @@ def tool_reflection_list():
 
 
 def tool_file_write():
-    """Write content to a file on disk. Creates parent directories if needed."""
+    """Atomically write content with optional optimistic concurrency control."""
     path = input_data.get("path", "")
     content = input_data.get("content", "")
     append = input_data.get("append", False)
+    expected_sha256 = str(input_data.get("expected_sha256") or "")
     if not path:
         print(json.dumps({"error": "path required"})); sys.exit(1)
     try:
-        dirname = os.path.dirname(path)
+        target = os.path.abspath(path)
+        dirname = os.path.dirname(target)
         if dirname:
             os.makedirs(dirname, exist_ok=True)
-        mode = "a" if append else "w"
-        with open(path, mode, encoding="utf-8") as f:
-            f.write(content)
-        size = os.path.getsize(path)
-        print(json.dumps({"written": True, "path": path, "size_bytes": size, "append": append}, ensure_ascii=False))
+        if os.path.isfile(target):
+            with open(target, "rb") as handle:
+                before = handle.read()
+        else:
+            before = b""
+        before_sha256 = hashlib.sha256(before).hexdigest()
+        if expected_sha256 and expected_sha256 != before_sha256:
+            print(json.dumps({"error": "write conflict: expected_sha256 does not match current file", "path": target, "current_sha256": before_sha256}, ensure_ascii=False)); sys.exit(1)
+        prefix = before.decode("utf-8") if append and before else ""
+        payload = (prefix + str(content)).encode("utf-8")
+        temporary = os.path.join(dirname or os.getcwd(), f".{os.path.basename(target)}.{uuid.uuid4().hex}.tmp")
+        with open(temporary, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+        size = os.path.getsize(target)
+        print(json.dumps({"written": True, "path": target, "exists": True, "size_bytes": size, "append": append, "before_sha256": before_sha256, "sha256": hashlib.sha256(payload).hexdigest(), "atomic": True}, ensure_ascii=False))
     except Exception as e:
         print(json.dumps({"error": f"Write failed: {str(e)}"}))
         sys.exit(1)
@@ -1264,6 +1391,11 @@ handlers = {
     "web_search": tool_web_search, "web_fetch": tool_web_fetch,
     "web_citation_check": tool_web_citation_check, "web_search_benchmark": tool_web_search_benchmark,
     "web_search_live_benchmark": tool_web_search_live_benchmark,
+    "web_search_policy_benchmark": tool_web_search_policy_benchmark,
+    "knowledge_quality_benchmark": tool_knowledge_quality_benchmark,
+    "answer_quality_benchmark": tool_answer_quality_benchmark,
+    "answer_quality_validate": tool_answer_quality_validate,
+    "selective_memory": tool_selective_memory,
     "tools_list": tool_tools_list,
     "skill_register": tool_skill_register, "skill_list": tool_skill_list,
     "skill_execute": tool_skill_execute, "skill_delete": tool_skill_delete,

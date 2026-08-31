@@ -1736,6 +1736,8 @@ def paper_intelligence(payload):
     action = payload.get("action", "readiness")
     if action == "structure":
         return service.analyze_document(int(payload.get("document_id")))
+    if action == "semantic_graph":
+        return service.semantic_graph(int(payload.get("document_id")), bool(payload.get("compact", False)))
     if action == "align_claims":
         return service.align_claims(payload.get("claims") or [], payload.get("document_ids") or [], float(payload.get("threshold", 0.34)))
     if action == "compare":
@@ -1815,12 +1817,13 @@ def office_productivity(payload):
     from services.office_productivity_service import OfficeProductivityService
     from security.policy import ToolSecurityPolicy
     store = MemoryStore(_memory_db_path())
-    service = OfficeProductivityService(store, list(ToolSecurityPolicy().allowed_roots))
+    output_root = Path(os.environ.get("CLAWOS_OUTPUT_DIR") or (Path(BASE_DIR).parent / "output"))
+    service = OfficeProductivityService(store, list(ToolSecurityPolicy().allowed_roots), preview_root=output_root)
     action = payload.get("action", "inspect")
     if action == "create":
         return service.create(payload.get("output_path", ""), title=payload.get("title", ""), sections=payload.get("sections") or [], data=payload.get("data"), metadata=payload.get("metadata") or {}, confirmed=bool(payload.get("confirmed")))
     if action == "edit":
-        return service.edit(payload.get("file_path", ""), payload.get("output_path", ""), replacements=payload.get("replacements") or {}, updates=payload.get("updates") or [], confirmed=bool(payload.get("confirmed")))
+        return service.edit(payload.get("file_path", ""), payload.get("output_path", ""), replacements=payload.get("replacements") or {}, updates=payload.get("updates") or [], comments=payload.get("comments") or [], revisions=payload.get("revisions") or [], recalculate=bool(payload.get("recalculate")), confirmed=bool(payload.get("confirmed")))
     if action == "inspect":
         return service.inspect(payload.get("file_path", ""))
     if action == "quality_audit":
@@ -1850,7 +1853,7 @@ def coding_workflow(payload):
     if action == "plan":
         return service.plan(payload.get("repo_path", ""), payload.get("objective", ""), payload.get("changes") or [], payload.get("test_commands") or [])
     if action == "execute":
-        return service.execute(payload.get("repo_path", ""), payload.get("objective", ""), payload.get("changes") or [], payload.get("test_commands") or [], confirmed=bool(payload.get("confirmed")), repair_rounds=payload.get("repair_rounds") or [], max_rounds=payload.get("max_rounds", 2), timeout_seconds=payload.get("timeout_seconds", 180), actor=payload.get("actor", "coding-agent"))
+        return service.execute(payload.get("repo_path", ""), payload.get("objective", ""), payload.get("changes") or [], payload.get("test_commands") or [], confirmed=bool(payload.get("confirmed")), repair_rounds=payload.get("repair_rounds") or [], max_rounds=payload.get("max_rounds", 2), timeout_seconds=payload.get("timeout_seconds", 180), actor=payload.get("actor", "coding-agent"), acceptance_criteria=payload.get("acceptance_criteria") or [])
     if action == "rollback":
         return service.rollback(payload.get("repo_path", ""), payload.get("checkpoint", ""), confirmed=bool(payload.get("confirmed")), actor=payload.get("actor", "user"))
     return {"error": f"unknown action: {action}"}

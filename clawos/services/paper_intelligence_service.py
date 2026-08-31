@@ -47,7 +47,7 @@ def _tokens(text: str) -> set[str]:
 
 
 def _sentences(text: str, min_chars: int = 18) -> list[str]:
-    rows = re.split(r"(?<=[.!?。！？；;])\s+|[\r\n]+", str(text or ""))
+    rows = re.split(r"(?<=[.!?。！？；;])\s*|[\r\n]+", str(text or ""))
     return [re.sub(r"\s+", " ", row).strip() for row in rows if len(re.sub(r"\s+", " ", row).strip()) >= min_chars]
 
 
@@ -75,13 +75,15 @@ class PaperIntelligenceService:
         if not document:
             raise ValueError("Document not found")
         chunks = self.store.get_document_chunks(document_id, 10000)
-        structure = dict((document.get("metadata") or {}).get("structure") or {})
+        metadata = document.get("metadata") or {}
+        structure = dict(metadata.get("structure") or {})
+        semantic_graph = dict(metadata.get("semantic_graph") or {})
         section_rows = self._section_rows(chunks, structure)
         categorized = {name: [] for name in SECTION_ALIASES}
         for row in section_rows:
             categorized[row["section"]].append(row)
         tables = self._tables(chunks, structure)
-        formulas = self._formulas(chunks)
+        formulas = self._formulas(chunks, structure, int(document_id))
         references = self._references(chunks, structure)
         claims = self._claims(chunks, section_rows)
         aligned = self.align_claims([item["claim"] for item in claims], [int(document_id)])
@@ -90,7 +92,7 @@ class PaperIntelligenceService:
             item["alignment"] = evidence_by_claim.get(item["claim"], {})
         sections = {
             name: [
-                {"citation": item["citation"], "heading": item.get("heading", ""), "excerpt": item["excerpt"][:800]}
+                {"citation": item["citation"], "heading": item.get("heading", ""), "excerpt": item["excerpt"][:1800]}
                 for item in rows[:12]
             ]
             for name, rows in categorized.items()
@@ -106,6 +108,16 @@ class PaperIntelligenceService:
                 "#page=" in str(chunk.get("citation") or "") and "&chunk=" in str(chunk.get("citation") or "")
                 for chunk in chunks
             ) if chunks else False,
+            # Legacy documents remain analyzable. Advanced semantic fidelity is
+            # reported separately instead of lowering their established content score.
+            "semantic_graph": not semantic_graph or semantic_graph.get("schema") == "clawos.document-semantic-graph.v1",
+            "table_header_relations": not semantic_graph or not tables or all(
+                "header_rows" in item and ("cells" in item or item.get("source") == "text-caption") for item in tables
+            ),
+            "formula_fidelity": not formulas or all(item.get("representation") for item in formulas),
+            "review_semantics": document.get("filename", "").lower().endswith(".pdf") or (
+                "comments" in structure and "revisions" in structure
+            ),
         }
         score = round(sum(1 for value in checks.values() if value) / len(checks) * 100, 2)
         return {
@@ -115,15 +127,46 @@ class PaperIntelligenceService:
             "claims": claims,
             "tables": tables,
             "formulas": formulas,
+            "figures": list(structure.get("figures") or [])[:200],
+            "footnotes": list(structure.get("footnotes") or [])[:300],
+            "comments": list(structure.get("comments") or [])[:300],
+            "revisions": list(structure.get("revisions") or [])[:300],
+            "semantic_relations": list(structure.get("relations") or [])[:1000],
             "references": references,
             "quality": {
                 "score": score,
                 "checks": checks,
+                "semantic_fidelity": {
+                    "available": semantic_graph.get("schema") == "clawos.document-semantic-graph.v1",
+                    "quality_gate": (semantic_graph.get("quality") or {}).get("quality_gate", "legacy_text_only"),
+                },
                 "claim_count": len(claims),
                 "table_count": len(tables),
                 "formula_count": len(formulas),
                 "reference_count": len(references),
             },
+        }
+
+    def semantic_graph(self, document_id: int, compact: bool = False) -> dict[str, Any]:
+        """Return the persisted graph, or rebuild it from the governed source file."""
+        document = self.store.get_document(int(document_id))
+        if not document:
+            raise ValueError("Document not found")
+        graph = dict((document.get("metadata") or {}).get("semantic_graph") or {})
+        if not graph:
+            source = Path(str(document.get("file_path") or "")).expanduser()
+            if not source.is_file() or source.suffix.lower() not in {".pdf", ".docx"}:
+                raise ValueError("Document has no PDF/DOCX source for semantic parsing")
+            from .document_semantic_graph_service import DocumentSemanticGraphService
+            graph = DocumentSemanticGraphService().parse(source)
+        from .document_evidence_policy import safe_graph
+        graph = safe_graph(graph)
+        if not compact:
+            return graph
+        return {
+            key: graph.get(key)
+            for key in ("schema", "format", "source", "pages", "sections", "tables", "figures", "formulas",
+                        "footnotes", "references", "comments", "revisions", "relations", "quality")
         }
 
     def align_claims(self, claims: list[Any], document_ids: list[int] | None = None, threshold: float = 0.34) -> dict[str, Any]:
@@ -143,22 +186,75 @@ class PaperIntelligenceService:
         alignments = []
         for raw in claims or []:
             claim = str(raw.get("claim") if isinstance(raw, dict) else raw).strip()
-            best = None
+            required_conditions = list(raw.get("conditions") or []) if isinstance(raw, dict) else []
+            ranked = []
             for chunk in candidates:
                 score, signals = self._support_score(claim, str(chunk.get("content") or ""))
-                if best is None or score > best["support_score"]:
-                    best = {
+                condition_hits = [
+                    condition for condition in required_conditions
+                    if self._support_score(condition, str(chunk.get("content") or ""))[0] >= 0.30
+                ]
+                ranked.append({
                         "citation": chunk["citation"],
                         "document_id": chunk["document_id"],
                         "chunk_id": chunk.get("id"),
                         "title": chunk.get("title", ""),
                         "snippet": str(chunk.get("content") or "")[:520],
                         "support_score": score,
-                        "signals": signals,
-                    }
+                        "signals": {**signals, "condition_hits": len(condition_hits),
+                                    "condition_matches": condition_hits,
+                                    "condition_total": len(required_conditions)},
+                        "page": self._citation_page(chunk["citation"]),
+                    })
+            ranked.sort(key=lambda item: (-item["support_score"], item["document_id"], item["page"], item.get("chunk_id") or 0))
+            best = ranked[0] if ranked else None
             score = float((best or {}).get("support_score") or 0)
             status = "supported" if score >= threshold else ("weak" if score >= threshold * 0.65 else "unsupported")
-            alignments.append({"claim": claim, "status": status, **(best or {"support_score": 0.0, "signals": {}})})
+            evidence = []
+            seen_pages = set()
+            for item in ranked:
+                if item["support_score"] < max(threshold, score * 0.72):
+                    continue
+                page_key = (item["document_id"], item["page"] or item["citation"])
+                if page_key in seen_pages:
+                    continue
+                seen_pages.add(page_key)
+                evidence.append(item)
+                if len(evidence) >= 4:
+                    break
+            # Experimental conditions often live in methods pages rather than
+            # the result sentence. Add the strongest page for each missing
+            # condition instead of requiring it to resemble the claim itself.
+            for condition in required_conditions:
+                if any(condition in (item.get("signals", {}).get("condition_matches") or []) for item in evidence):
+                    continue
+                condition_ranked = sorted(
+                    ranked,
+                    key=lambda item: -self._support_score(condition, item.get("snippet", ""))[0],
+                )
+                for item in condition_ranked:
+                    condition_score = self._support_score(condition, item.get("snippet", ""))[0]
+                    page_key = (item["document_id"], item["page"] or item["citation"])
+                    if condition_score >= 0.30 and page_key not in seen_pages:
+                        evidence.append(item); seen_pages.add(page_key)
+                        break
+                if len(evidence) >= 4:
+                    break
+            condition_coverage = 1.0
+            if required_conditions:
+                covered = {
+                    condition for item in evidence
+                    for condition in (item.get("signals", {}).get("condition_matches") or [])
+                }
+                condition_coverage = len(covered) / len(required_conditions)
+                if condition_coverage < 1.0 and status == "supported":
+                    status = "condition_incomplete"
+            alignments.append({
+                "claim": claim, "status": status, "conditions": required_conditions,
+                "condition_coverage": round(condition_coverage, 4), "evidence": evidence,
+                "citations": [item["citation"] for item in evidence],
+                **(best or {"support_score": 0.0, "signals": {}}),
+            })
         supported = sum(1 for item in alignments if item["status"] == "supported")
         return {
             "alignments": alignments,
@@ -167,6 +263,8 @@ class PaperIntelligenceService:
                 "supported_count": supported,
                 "weak_count": sum(1 for item in alignments if item["status"] == "weak"),
                 "unsupported_count": sum(1 for item in alignments if item["status"] == "unsupported"),
+                "condition_incomplete_count": sum(1 for item in alignments if item["status"] == "condition_incomplete"),
+                "multi_page_evidence_count": sum(1 for item in alignments if len(item.get("evidence") or []) > 1),
                 "supported_rate": round(supported / max(1, len(alignments)), 4),
                 "threshold": threshold,
             },
@@ -266,6 +364,13 @@ class PaperIntelligenceService:
         section_by_id = {item.get("chunk_id"): item["section"] for item in section_rows}
         claims = []
         seen = set()
+        context_candidates = []
+        for chunk in chunks:
+            section = section_by_id.get(chunk.get("id"), "")
+            if section in {"methodology", "experiments"}:
+                for sentence in _sentences(chunk.get("content", "")):
+                    if self._condition_sentence(sentence) or re.search(r"(?i)dataset|sample|baseline|metric|parameter|epoch|batch|数据集|样本|基线|指标|参数", sentence):
+                        context_candidates.append({"text": sentence, "citation": chunk.get("citation") or ""})
         for chunk in chunks:
             section = section_by_id.get(chunk.get("id"), "")
             for sentence in _sentences(chunk.get("content", "")):
@@ -275,10 +380,19 @@ class PaperIntelligenceService:
                 if sentence.lower() in seen:
                     continue
                 seen.add(sentence.lower())
+                topic = _tokens(sentence)
+                ranked_context = sorted(
+                    context_candidates,
+                    key=lambda item: len(topic & _tokens(item["text"])) / max(1, len(topic)),
+                    reverse=True,
+                )
+                conditions = [item for item in ranked_context if self._condition_sentence(item["text"]) or len(topic & _tokens(item["text"])) >= 2][:4]
                 claims.append({
                     "claim": sentence[:1200],
                     "section": section,
                     "citation": chunk.get("citation") or "",
+                    "evidence_citations": list(dict.fromkeys([chunk.get("citation") or ""] + [item["citation"] for item in conditions if item["citation"]])),
+                    "conditions": [item["text"] for item in conditions],
                     "claim_type": "limitation" if any(cue in low for cue in LIMITATION_CUES) else "finding",
                 })
         return claims[:80]
@@ -291,19 +405,39 @@ class PaperIntelligenceService:
                 tables.append({"label": f"{match.group(1)} {match.group(2)}", "caption": match.group(3).strip(), "citation": chunk.get("citation") or "", "source": "text-caption"})
         return tables[:200]
 
-    def _formulas(self, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        rows = []
+    def _formulas(self, chunks: list[dict[str, Any]], structure: dict[str, Any] | None = None, document_id: int = 0) -> list[dict[str, Any]]:
+        rows = [dict(item) for item in ((structure or {}).get("formulas") or []) if isinstance(item, dict)]
         pattern = re.compile(r"(?m)^\s*((?:\$\$|\\\[).+?(?:\$\$|\\\])|(?:[A-Za-z][A-Za-z0-9_]*(?:\([^)]*\))?\s*=\s*[^\n]{3,160})(?:\s*\(\d+\))?)\s*$")
         for chunk in chunks:
             for match in pattern.finditer(str(chunk.get("content") or "")):
                 formula = re.sub(r"\s+", " ", match.group(1)).strip()
                 if formula and len(formula) <= 240:
-                    rows.append({"formula": formula, "citation": chunk.get("citation") or ""})
-        unique = {(item["formula"], item["citation"]): item for item in rows}
+                    rows.append({"formula": formula, "formula_text": formula, "citation": chunk.get("citation") or "",
+                                 "representation": "plain_text_pattern"})
+        for item in rows:
+            if "formula" not in item:
+                item["formula"] = item.get("formula_text") or item.get("text") or ""
+            page = int(item.get("page") or 0)
+            if not item.get("citation"):
+                item["citation"] = f"doc:{document_id}#page={page}&chunk=1" if document_id and page else ""
+            item.setdefault("representation", "positioned_text")
+        unique = {(item.get("formula", ""), item.get("citation", ""), item.get("locator", "")): item for item in rows if item.get("formula")}
         return list(unique.values())[:200]
 
+    @staticmethod
+    def _condition_sentence(value: str) -> bool:
+        return bool(re.search(
+            r"(?i)(?:\b(?:if|when|under|using|given|provided|unless|dataset|sample size|baseline|metric)\b|"
+            r"(?:当|若|如果|仅在|基于|使用|数据集|样本量|基线|指标|条件下))",
+            str(value or ""),
+        ))
+
     def _references(self, chunks: list[dict[str, Any]], structure: dict[str, Any]) -> list[dict[str, Any]]:
-        raw_refs = [str(item) for item in (structure.get("references") or []) if str(item).strip()]
+        raw_refs = []
+        for item in structure.get("references") or []:
+            value = str(item.get("text") or item.get("raw") or "") if isinstance(item, dict) else str(item)
+            if value.strip():
+                raw_refs.append(value)
         in_references = False
         for chunk in chunks:
             text = str(chunk.get("content") or "")
