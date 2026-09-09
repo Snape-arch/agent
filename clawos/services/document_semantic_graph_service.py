@@ -112,6 +112,8 @@ class DocumentSemanticGraphService:
                     "columns": columns, "blocks": ordered, "page_object": page,
                 })
                 image_info = page.get_image_info(xrefs=True) if hasattr(page, "get_image_info") else []
+                raw_pages[-1]["images"] = image_info or []
+                raw_pages[-1]["unrotated_size"] = [page.cropbox.width, page.cropbox.height]
                 for image_index, image in enumerate(image_info or [], 1):
                     node = {
                         "id": _node_id("figure", page_number, image_index), "type": "figure", "page": page_number,
@@ -184,9 +186,11 @@ class DocumentSemanticGraphService:
                     footnotes.append(node)
                 elif block_type == "reference":
                     references.append(node)
-            ocr = {"page": page_number, "required": text_length < 20, "status": "not_required", "words": []}
+            reason = self._pdf_ocr_reason(raw_page, text_length)
+            ocr = {"page": page_number, "required": bool(reason), "status": "not_required", "words": []}
             if ocr["required"]:
                 ocr = self._ocr_pdf_page(path, page_number)
+                ocr.update(required=True, trigger=reason)
                 ocr_pages.append(ocr)
                 for index, word in enumerate(ocr.get("words") or [], 1):
                     node = {
@@ -197,6 +201,8 @@ class DocumentSemanticGraphService:
                     }
                     nodes.append(node)
                 for index, line in enumerate(ocr.get("lines") or [], 1):
+                    if any(self._same_positioned_text(line, block) for block in raw_page["blocks"]):
+                        continue
                     node = {**line, "id": _node_id("ocr_line", page_number, index), "type": "ocr_line",
                             "page": page_number, "locator": f"page={page_number}&ocr_line={index}",
                             "word_ids": [_node_id("ocr_word", page_number, i) for i in line["word_indices"]],
@@ -220,7 +226,7 @@ class DocumentSemanticGraphService:
         for page in pages:
             if not page["ocr"].get("required"):
                 continue
-            visible = [n for n in nodes if n.get("page") == page["page"] and n["type"] in {"ocr_line", "table_row"} and not n.get("superseded_by_table")]
+            visible = [n for n in nodes if n.get("page") == page["page"] and n.get("text") and n["type"] not in {"ocr_word", "table_cell", "table", "table_row_group"} and not n.get("superseded_by_table")]
             visible.sort(key=lambda n: (n["bbox"][1], n["bbox"][0]))
             page["reading_order"] = [n["id"] for n in visible]
         order = {key: i for page in pages for i,key in enumerate(page["reading_order"])}
@@ -241,6 +247,45 @@ class DocumentSemanticGraphService:
             "quality": self._quality("pdf", pages, nodes, tables, figures, formulas, footnotes, references, ocr_pages),
         }
         return graph
+
+    @staticmethod
+    def _pdf_ocr_reason(page: dict, text_length: int) -> str:
+        if text_length < 20:
+            return "insufficient_native_text"
+        width, height = page["unrotated_size"]
+        area = max(1.0, width * height)
+        for image in page.get("images", []):
+            box = image.get("bbox", [])
+            if len(box) != 4:
+                continue
+            x0, y0, x1, y1 = max(0, box[0]), max(0, box[1]), min(width, box[2]), min(height, box[3])
+            if max(0, x1-x0) * max(0, y1-y0) < area * 0.20:
+                continue
+            # A substantial raster region with no native body text must be inspected,
+            # even when a digital page header exceeds the legacy character threshold.
+            inside = sum(len(span.get("text", "").strip())
+                         for block in page["blocks"] for span in block["spans"]
+                         if len(span.get("bbox", [])) == 4
+                         and x0 <= (span["bbox"][0]+span["bbox"][2])/2 <= x1
+                         and y0 + (y1-y0)*0.15 <= (span["bbox"][1]+span["bbox"][3])/2 <= y1 - (y1-y0)*0.15)
+            if inside < 20:
+                return "uncovered_raster_region"
+        return ""
+
+    @staticmethod
+    def _same_positioned_text(line: dict, block: dict) -> bool:
+        box = line.get("bbox", [])
+        if len(box) != 4:
+            return False
+        for native in block.get("lines", []):
+            other = native.get("bbox", [])
+            if len(other) != 4:
+                continue
+            overlap = max(0, min(box[2], other[2])-max(box[0], other[0])) * max(0, min(box[3], other[3])-max(box[1], other[1]))
+            area = max(1, (box[2]-box[0]) * (box[3]-box[1]))
+            if overlap / area >= 0.5 and _compact(line.get("text")).casefold() == _compact(native.get("text")).casefold():
+                return True
+        return False
 
     def parse_docx(self, path: str | Path, *, recover_rendered_pages: bool = False) -> dict[str, Any]:
         path = Path(path)

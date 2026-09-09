@@ -22,6 +22,53 @@ def tsv(text="实验", confidence=92, left=20, level=5, number=1, line=1):
 
 
 class DocumentOCRTests(unittest.TestCase):
+    def test_mixed_pdf_header_does_not_hide_scanned_body(self):
+        with tempfile.TemporaryDirectory() as td:
+            source = Path(td) / "mixed.pdf"
+            with fitz.open() as raster:
+                page = raster.new_page(width=300, height=300)
+                page.insert_text((20, 60), "Scanned lesson body with evidence")
+                png = page.get_pixmap().tobytes("png")
+            with fitz.open() as pdf:
+                page = pdf.new_page(width=400, height=500)
+                header = "Native header longer than twenty characters"
+                page.insert_text((20, 30), header)
+                header_box = list(page.get_text("blocks")[0][:4])
+                page.insert_image(fitz.Rect(20, 100, 380, 460), stream=png)
+                pdf.save(source)
+            words = [{"text": header, "bbox": header_box, "confidence": .99},
+                     {"text": "Scanned lesson body with evidence", "bbox": [44, 150, 310, 170], "confidence": .99}]
+            result = {"page": 1, "status": "completed", "required": True, "words": words,
+                      "lines": [{**word, "word_indices": [i]} for i, word in enumerate(words, 1)],
+                      "tables": [], "reading_text": header + "\nScanned lesson body with evidence"}
+            with patch.object(DocumentSemanticGraphService, "_ocr_pdf_page", return_value=result) as recognize:
+                graph = DocumentSemanticGraphService().parse(source)
+            recognize.assert_called_once()
+            self.assertEqual(graph["ocr_pages"][0]["trigger"], "uncovered_raster_region")
+            self.assertEqual(graph["plain_text"].count(header), 1)
+            self.assertIn("Scanned lesson body", graph["plain_text"])
+            ordered = graph["pages"][0]["reading_order"]
+            self.assertTrue(ordered[0].startswith(("paragraph:", "heading:")))
+            with patch.object(DocumentSemanticGraphService, "_ocr_pdf_page", return_value={"page": 1, "status": "engine_unavailable", "words": []}):
+                text, metadata = extract_pdf_text_enhanced(source)
+            self.assertTrue(metadata["ocr_required"])
+            self.assertIn(header, text)
+
+    def test_native_body_and_small_logo_do_not_force_ocr(self):
+        with tempfile.TemporaryDirectory() as td:
+            source = Path(td) / "native.pdf"
+            with fitz.open() as pdf:
+                page = pdf.new_page(width=400, height=500)
+                page.insert_text((20, 80), "Native lesson body contains enough searchable text.")
+                pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 10, 10))
+                pix.clear_with(255)
+                page.insert_image(fitz.Rect(20, 10, 40, 30), pixmap=pix)
+                pdf.save(source)
+            with patch.object(DocumentSemanticGraphService, "_ocr_pdf_page") as recognize:
+                graph = DocumentSemanticGraphService().parse(source)
+            recognize.assert_not_called()
+            self.assertFalse(graph["ocr_pages"])
+
     def test_tsv_rejects_malformed_confidence_geometry_and_nonwords(self):
         rows = HEADER + tsv() + tsv(confidence=-1) + tsv(confidence=101) + tsv(left="nan") + tsv(left=-1) + tsv(level=4)
         words = DocumentOCRService.parse_tsv(rows, .5)

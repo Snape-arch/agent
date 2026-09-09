@@ -230,7 +230,42 @@ async function academyLoadLearningDashboard() {
     "academyMasterySummary",
     `已掌握 ${dashboard.mastered_count || 0}/${dashboard.topics?.length || 0}；证据模型 ${dashboard.topics?.[0]?.algorithm_version || "未初始化"}`
   );
+  await academyRenderLearningQueue(dashboard);
   return dashboard;
+}
+
+async function academyRenderLearningQueue(dashboard) {
+  const grid = document.getElementById("academyQuizGrid");
+  if (!grid) return;
+  let panel = document.getElementById("academyLearningQueue");
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.id = "academyLearningQueue";
+    grid.before(panel);
+  }
+  const [catalog, queue] = await Promise.all([
+    academyApi("/api/academy/learning/courses"),
+    academyApi("/api/academy/learning/mistakes")
+  ]);
+  panel.innerHTML = `<label>当前课程 <select id="academyCourseSelect">${(catalog.courses || []).map(course =>
+    `<option value="${Number(course.id)}" ${course.id === dashboard.course.id ? "selected" : ""}>${academyEsc(course.title)}</option>`).join("")}</select></label>
+    <p>待复习 ${Number(dashboard.due_count)} 个知识点 · 待订正 ${Number(queue.count)} 道错题</p>
+    ${(dashboard.topics || []).map(item => `<p>${academyEsc(item.topic)}：${item.mastered ? "已掌握" : item.unlocked ? "可练习" : "等待前置知识"} · ${Number(item.evidence_count)} 份证据</p>`).join("")}
+    ${(queue.mistakes || []).map(item => `<details><summary>${academyEsc(item.prompt)}</summary><p>原答案：${academyEsc(item.wrong_answer)}</p><p>${academyEsc(item.correct_answer)}</p><small>请根据反馈重新练习；订正记录本身不会提高掌握度。</small></details>`).join("")}`;
+  panel.querySelector("select").addEventListener("change", async event => {
+    event.target.disabled = true;
+    try {
+      await academyApi("/api/academy/learning/enroll", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ course_id: Number(event.target.value) })
+      });
+      await academyLoadLearningDashboard();
+      await academyGenerateQuiz();
+    } catch (error) {
+      academySetText("academyMasterySummary", error.message);
+      event.target.disabled = false;
+    }
+  });
 }
 
 function academyCompleteNode(key) {
@@ -1399,9 +1434,10 @@ async function academyAnswerQuiz(button, questionId) {
     article?.classList.add("answered");
     const missing = result.rubric?.missing_concepts || [];
     article?.insertAdjacentHTML("beforeend", `<div class="academy-quiz-result">
-      <b>得分 ${Math.round(Number(result.score || 0) * 100)}%</b>
+      <b>概念覆盖评分 ${Math.round(Number(result.score || 0) * 100)}%${result.accepted === false ? " · 重复答案未累计证据" : ""}</b>
       <p>${missing.length ? `仍需补充：${academyEsc(missing.join(" / "))}` : "本轮概念覆盖通过。"}</p>
-      <small>下次复习：${Number(result.next_review_days || 1)} 天后；算法 ${academyEsc(result.model_after?.algorithm_version || "")}</small>
+      <small>下次复习：${Number(result.next_review_days || 1)} 天后。概念覆盖不等同于语义正确。</small>
+      <button type="button" onclick="academyGenerateQuiz()">继续练习</button>
     </div>`);
     await academyLoadLearningDashboard();
   } catch (error) {

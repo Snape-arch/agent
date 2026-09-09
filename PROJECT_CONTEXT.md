@@ -1,5 +1,14 @@
 # Project Context
 
+## Education workflow and mixed PDF repair (2026-09-09)
+
+- Academy now persists the selected published course across reloads; dashboard, quiz and mistakes follow that enrollment. Questions rotate by learner attempt history. Prerequisites use each topic's configured mastery threshold and minimum evidence count. Cross-course answers and cross-learner project evidence are rejected.
+- Identical answers before the next scheduled review do not add evidence; due reviews remain possible. Assessment writes serialize model updates. Chinese reasoning/example markers are recognized. Passing reassessment closes matching open mistakes with an assessment digest. UI adds course selection, review/topic status, mistake feedback and continued practice, and labels the deterministic coverage score honestly.
+- Mixed PDFs now trigger OCR for substantial raster regions without native body text, even with long native headers. Native content is retained, positioned duplicate OCR lines are suppressed, reading order includes native and OCR evidence, and OCR failure remains visible through ingestion. The 20% region heuristic can inspect large illustrations and does not prove general layout or OCR accuracy.
+- Validation: full current-worktree unittest suite **551/551 in 321.774 s**; focused education **10/10**, OCR **15/15**, Node syntax and whitespace checks pass. Real local Tesseract mixed-header fixture recovered both body lines with a single header. Browser QA against actual Academy HTTP handlers and isolated temporary DB passed course switching, low-score mistake creation, Chinese reassessment (1 -> 0 open mistakes), continued practice and reload persistence; desktop layout visually inspected. Reproduce UI with `python clawos/scripts/learning_preview.py` on loopback port 18897.
+- Evidence limits: these are local implementation/fixture checks, not independent learning-effectiveness, semantic grading or industry-leading document accuracy. Complex merged/borderless tables and held-out real教材/scans remain evaluation gaps. Production documents and learner databases were not migrated or reprocessed. Existing FastAPI/openpyxl/SWIG warnings remain non-blocking.
+- Commit scope is this block's education/parser source, regression tests, QA harness, model-weight ignore rules and this section only. Earlier uncommitted answer/repository/OCR work is preserved separately. `tools/`, weights, runtime output and skill-registry side effects are excluded. Remote fetched successfully; pre-commit branch is 1 ahead of its upstream and 7 ahead / 2 behind origin/master; no merge or push.
+
 ## Local commit checkpoint (2026-08-31)
 
 - User requested committing the accumulated validated implementation, explicitly excluding `tools/`. This checkpoint includes the pending coding/LSP/repository, search, knowledge/answer-quality, Office/document parsing and source-review work recorded below, plus their tests and acceptance notes.

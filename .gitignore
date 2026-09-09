@@ -1,5 +1,13 @@
 # Local CLI/tooling artifacts
 tools/
+# Model weights remain local even when stored outside tools/.
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.traineddata
 .workbuddy/
 gh-install.log
 gh_*.msi

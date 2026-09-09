@@ -290,6 +290,10 @@ class LearningProductService:
             ).fetchone()
             if not course:
                 raise ValueError("published course not found")
+            connection.execute(
+                "UPDATE learning_enrollments SET status='paused' WHERE learner_id=?",
+                (learner,),
+            )
             existing = connection.execute(
                 """
                 SELECT * FROM learning_enrollments
@@ -298,7 +302,8 @@ class LearningProductService:
                 (learner, int(course_id)),
             ).fetchone()
             if existing:
-                return dict(existing)
+                connection.execute("UPDATE learning_enrollments SET status='active' WHERE id=?", (existing["id"],))
+                return {**dict(existing), "status": "active"}
             cursor = connection.execute(
                 """
                 INSERT INTO learning_goals (title, description)
@@ -351,6 +356,14 @@ class LearningProductService:
     def ensure_enrollment(
         self, *, learner_id: str = DEFAULT_LEARNER
     ) -> dict:
+        with self.store._conn() as connection:
+            active = connection.execute(
+                "SELECT e.* FROM learning_enrollments e JOIN learning_courses c ON c.id=e.course_id "
+                "WHERE e.learner_id=? AND e.status='active' AND c.status='published' ORDER BY e.id DESC LIMIT 1",
+                (str(learner_id),),
+            ).fetchone()
+            if active:
+                return dict(active)
         courses = self.list_courses()
         if not courses:
             raise ValueError("no published course is available")
@@ -396,11 +409,11 @@ class LearningProductService:
                     >= float(item["mastery_threshold"])
                     and int(item["evidence_count"]) >= 2
                 )
-                mastery_by_key[item["topic_key"]] = float(item["p_known"])
+                mastery_by_key[item["topic_key"]] = item["mastered"]
                 topics.append(item)
             for item in topics:
                 item["unlocked"] = all(
-                    mastery_by_key.get(key, 0) >= 0.72
+                    mastery_by_key.get(key, False)
                     for key in item["prerequisites"]
                 )
             return {
@@ -440,13 +453,17 @@ class LearningProductService:
         with self.store._conn() as connection:
             question = connection.execute(
                 """
-                SELECT id, topic_key, prompt, cognitive_level, difficulty,
-                       source_ref
-                FROM learning_questions
-                WHERE course_id=? AND topic_key=? AND status='active'
-                ORDER BY id LIMIT 1
+                SELECT q.id, q.topic_key, q.prompt, q.cognitive_level, q.difficulty,
+                       q.source_ref
+                FROM learning_questions q
+                LEFT JOIN learning_assessment_attempts a
+                  ON a.question_id=q.id AND a.learner_id=?
+                WHERE q.course_id=? AND q.topic_key=? AND q.status='active'
+                GROUP BY q.id
+                ORDER BY COUNT(a.id), MAX(a.id), q.id LIMIT 1
                 """,
                 (
+                    str(learner_id),
                     int(dashboard["enrollment"]["course_id"]),
                     item["topic_key"],
                 ),
@@ -469,12 +486,15 @@ class LearningProductService:
             raise ValueError("answer must contain at least 24 characters")
         dashboard = self.dashboard(learner_id=learner_id)
         with self.store._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             question = connection.execute(
                 "SELECT * FROM learning_questions WHERE id=? AND status='active'",
                 (int(question_id),),
             ).fetchone()
             if not question:
                 raise ValueError("active question not found")
+            if int(question["course_id"]) != int(dashboard["course"]["id"]):
+                raise ValueError("question does not belong to the active course")
             item = next(
                 (
                     row for row in dashboard["topics"]
@@ -484,6 +504,27 @@ class LearningProductService:
             )
             if not item or not item["unlocked"]:
                 raise ValueError("question topic is not unlocked")
+            # Read model state under the write lock, rather than the earlier dashboard snapshot.
+            fresh = connection.execute(
+                "SELECT li.*, lm.* FROM learning_items li JOIN learning_item_models lm ON lm.item_id=li.id WHERE li.id=?",
+                (item["id"],),
+            ).fetchone()
+            item.update(dict(fresh))
+            item["due"] = bool(item.get("next_review_at") and item["next_review_at"] <= datetime.now(timezone.utc).isoformat())
+            previous = connection.execute(
+                "SELECT * FROM learning_assessment_attempts WHERE learner_id=? AND question_id=? AND answer=? ORDER BY id DESC LIMIT 1",
+                (str(learner_id), int(question_id), response),
+            ).fetchone()
+            if previous and not item["due"]:
+                return {
+                    "schema": "clawos.learning-assessment-result.v1", "accepted": False,
+                    "score": previous["score"], "rubric": json.loads(previous["rubric_result"]),
+                    "model_before": json.loads(previous["model_before"]),
+                    "model_after": self._model_from_row(item),
+                    "next_review_days": item["interval_days"], "evidence_digest": previous["evidence_digest"],
+                    "mastered": item["mastered"],
+                    "truth_boundary": "Repeated answers before the next review do not add mastery evidence.",
+                }
             concepts = [
                 str(value).lower()
                 for value in json.loads(question["expected_concepts"])
@@ -496,8 +537,8 @@ class LearningProductService:
             reasoning_markers = sum(
                 bool(re.search(pattern, normalized))
                 for pattern in (
-                    r"\b(because|therefore|however|failure|risk)\b",
-                    r"\b(example|such as|for instance)\b",
+                    r"\b(because|therefore|however|failure|risk)\b|因为|因此|但是|风险|失败",
+                    r"\b(example|such as|for instance)\b|例如|比如|举例",
                 )
             )
             reasoning = min(1.0, reasoning_markers / 2)
@@ -592,8 +633,15 @@ class LearningProductService:
                         f"assessment:{evidence_digest}",
                     ),
                 )
+            else:
+                connection.execute(
+                    "UPDATE learning_mistakes SET status='resolved', evidence=evidence || ? "
+                    "WHERE item_id=? AND prompt=? AND status='open'",
+                    ("\nreassessment:" + evidence_digest, int(item["id"]), question["prompt"]),
+                )
         return {
             "schema": "clawos.learning-assessment-result.v1",
+            "accepted": True,
             "score": score,
             "rubric": rubric,
             "model_before": before,
@@ -601,7 +649,7 @@ class LearningProductService:
             "next_review_days": self._interval_days(after, score),
             "evidence_digest": evidence_digest,
             "mastered": (
-                after["p_known"] >= 0.72
+                after["p_known"] >= float(item["mastery_threshold"])
                 and int(item["evidence_count"]) + 1 >= 2
             ),
             "truth_boundary": (
@@ -631,15 +679,19 @@ class LearningProductService:
                 "artifact_digest is not present in the TaskRun evidence"
             )
         bounded = max(0.0, min(float(score), 1.0))
+        if not math.isfinite(float(score)):
+            raise ValueError("score must be finite")
         with self.store._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             item = connection.execute(
                 """
                 SELECT li.*, lm.*
                 FROM learning_items li
                 JOIN learning_item_models lm ON lm.item_id=li.id
-                WHERE li.id=?
+                JOIN learning_enrollments le ON le.goal_id=li.goal_id
+                WHERE li.id=? AND le.learner_id=?
                 """,
-                (int(item_id),),
+                (int(item_id), str(learner_id)),
             ).fetchone()
             if not item:
                 raise ValueError("learning item not found")
