@@ -12,6 +12,7 @@ import smtplib
 import socket
 import ssl
 import time
+import tempfile
 import urllib.parse
 import urllib.request
 import uuid
@@ -33,6 +34,18 @@ SUPPORTED_FORMATS = {"docx", "xlsx", "pptx", "pdf", "md", "txt", "json", "csv", 
 
 class OfficeProductivityService:
     """Unified office artifact pipeline: create/edit/inspect/validate/package/dispatch."""
+
+    @staticmethod
+    def capabilities() -> dict[str, Any]:
+        return {
+            "schema": "clawos.office-capabilities.v1",
+            "docx": ["create", "paragraph_run_replacement", "headers_footers", "comments", "tracked_revisions", "reopen", "render"],
+            "xlsx": ["create", "named_sheet_cell_updates", "preserve_cell_styles", "invalidate_formula_caches", "optional_libreoffice_recalculation", "reopen", "render"],
+            "pptx": ["create", "paragraph_run_replacement", "slide_notes_replacement", "reopen", "render"],
+            "pdf": ["create", "extract", "reorder", "delete", "rotate", "merge", "annotate", "reopen"],
+            "write_contract": "Temporary candidate, validation before replacement, source change detection; existing outputs survive validation failures.",
+            "limitations": ["No claim of WPS parity", "Shared/array formula edits require an Office engine", "No arbitrary page-layout or animation editing", "PDF page selection may alter document-level links/forms/bookmarks"],
+        }
 
     def __init__(self, store: Any | None = None, allowed_roots: list[str | Path] | None = None, smtp_sender: Callable | None = None, calendar_sender: Callable | None = None, preview_root: str | Path | None = None):
         self.store = store
@@ -145,6 +158,25 @@ class OfficeProductivityService:
         source, output = self._path(file_path), self._path(output_path)
         if not source.is_file() or source.suffix.lower() != output.suffix.lower():
             raise ValueError("source must exist and output must use the same format")
+        source_hash = self._sha(source)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".office-operation-", dir=output.parent) as td:
+            candidate = Path(td) / output.name
+            engine, evidence = self._edit_candidate(source, candidate, replacements=replacements,
+                updates=updates, comments=comments, revisions=revisions, recalculate=recalculate, confirmed=True)
+            if not self.inspect(candidate)["valid"]:
+                raise ValueError("edited Office file failed reopening validation")
+            if self._sha(source) != source_hash:
+                raise ValueError("source changed during editing; retry on its current version")
+            os.replace(candidate, output)
+        return self._finalize("edit", output, engine, {"source_sha256": source_hash, **evidence})
+
+    def _edit_candidate(self, file_path: str | Path, output_path: str | Path, *, replacements: dict[str, Any] | None = None, updates: list[dict[str, Any]] | None = None, comments: list[dict[str, Any]] | None = None, revisions: list[dict[str, Any]] | None = None, recalculate: bool = False, confirmed: bool = False) -> dict[str, Any]:
+        if confirmed is not True:
+            raise PermissionError("confirmed=true is required for office artifact edits")
+        source, output = self._path(file_path), self._path(output_path)
+        if not source.is_file() or source.suffix.lower() != output.suffix.lower():
+            raise ValueError("source must exist and output must use the same format")
         fmt = source.suffix.lower().lstrip(".")
         output.parent.mkdir(parents=True, exist_ok=True)
         evidence: dict[str, Any] = {}
@@ -165,6 +197,10 @@ class OfficeProductivityService:
         elif fmt == "pptx":
             evidence["roundtrip"] = self.roundtrip.edit_pptx(source, output, replacements or {})
             engine = "part-scoped-openxml"
+        elif fmt == "pdf":
+            from .office_pdf_editing import edit_pdf
+            evidence["pdf_edit"] = edit_pdf(source, output, updates or [], self._path)
+            engine = "pymupdf-page-operations"
         elif fmt in {"md", "txt", "json", "csv"}:
             text = source.read_text(encoding="utf-8-sig")
             for old, new in (replacements or {}).items():
@@ -173,7 +209,7 @@ class OfficeProductivityService:
             engine = "stdlib"
         else:
             raise ValueError(f"editing is not supported for {fmt}")
-        return self._finalize("edit", output, engine, {"source_sha256": self._sha(source), **evidence})
+        return engine, evidence
 
     def inspect(self, file_path: str | Path) -> dict[str, Any]:
         path = self._path(file_path)
@@ -368,6 +404,8 @@ class OfficeProductivityService:
             inspection["valid"] and inspection["bytes"] > 0
             and visual_quality.get("quality_gate", "pass") == "pass"
             and semantic_quality.get("gate", "pass") == "pass"
+            and metadata.get("roundtrip", {}).get("roundtrip_passed", True)
+            and metadata.get("recalculation", {}).get("recalculated", True)
         )
         inspection.update({"operation": operation, "engine": engine, "metadata": metadata,
                            "visual_quality": visual_quality, "semantic_quality": semantic_quality,

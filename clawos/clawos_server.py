@@ -4077,10 +4077,12 @@ async def api_office_productivity(request: Request):
     action = str(data.get("action") or "inspect")
     service = get_office_productivity_service()
     try:
-        if action == "create":
+        if action == "capabilities":
+            result = service.capabilities()
+        elif action == "create":
             result = service.create(data.get("output_path", ""), title=data.get("title", ""), sections=data.get("sections") or [], data=data.get("data"), metadata=data.get("metadata") or {}, confirmed=bool(data.get("confirmed")))
         elif action == "edit":
-            result = service.edit(data.get("file_path", ""), data.get("output_path", ""), replacements=data.get("replacements") or {}, updates=data.get("updates") or [], confirmed=bool(data.get("confirmed")))
+            result = service.edit(data.get("file_path", ""), data.get("output_path", ""), replacements=data.get("replacements") or {}, updates=data.get("updates") or [], comments=data.get("comments") or [], revisions=data.get("revisions") or [], recalculate=bool(data.get("recalculate")), confirmed=bool(data.get("confirmed")))
         elif action == "inspect":
             result = service.inspect(data.get("file_path", ""))
         elif action == "quality_audit":

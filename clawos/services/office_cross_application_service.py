@@ -26,19 +26,29 @@ class OfficeCrossApplicationService:
         output = Path(output_dir).resolve()
         if not source.is_file() or source.suffix.lower() != ".docx":
             raise ValueError("source_docx must be an existing DOCX")
+        source_bytes = source.read_bytes()
+        source_sha256 = hashlib.sha256(source_bytes).hexdigest()
         output.mkdir(parents=True, exist_ok=True)
         # Every run has fresh targets: an old successful PDF must never mask a
         # failed COM export that returned zero without producing a new file.
         output = output / f"run-{uuid.uuid4().hex}"
         output.mkdir()
+        evidence_source = output / "evidence-source.docx"
+        evidence_source.write_bytes(source_bytes)
+        inputs = {}
+        for engine in ("libreoffice", "microsoft_word", "wps_writer"):
+            engine_dir = output / engine
+            engine_dir.mkdir()
+            inputs[engine] = engine_dir / "source.docx"
+            inputs[engine].write_bytes(source_bytes)
         engines = {
-            "libreoffice": self._safe_render("libreoffice", self._libreoffice, source, output / "libreoffice.pdf"),
-            "microsoft_word": self._safe_render("microsoft_word", self._com_export, source, output / "microsoft-word.pdf", "word"),
-            "wps_writer": self._safe_render("wps_writer", self._com_export, source, output / "wps-writer.pdf", "wps"),
+            "libreoffice": self._safe_render("libreoffice", self._libreoffice, inputs["libreoffice"], output / "libreoffice.pdf"),
+            "microsoft_word": self._safe_render("microsoft_word", self._com_export, inputs["microsoft_word"], output / "microsoft-word.pdf", "word"),
+            "wps_writer": self._safe_render("wps_writer", self._com_export, inputs["wps_writer"], output / "wps-writer.pdf", "wps"),
         }
         completed = {name: row for name, row in engines.items() if row.get("status") == "completed"}
         for row in completed.values():
-            row["critical_evidence"] = OfficeVisualQualityService.rendered_note_checks(source, row["pdf"])
+            row["critical_evidence"] = OfficeVisualQualityService.rendered_note_checks(evidence_source, row["pdf"])
         comparisons = []
         baseline = completed.get("microsoft_word") or completed.get("libreoffice") or next(iter(completed.values()), None)
         if baseline:
@@ -58,7 +68,7 @@ class OfficeCrossApplicationService:
         }
 
         return {
-            "schema": self.SCHEMA, "source": str(source), "source_sha256": self._sha(source),
+            "schema": self.SCHEMA, "source": str(source), "source_sha256": source_sha256,
             "engines": engines, "comparisons": comparisons,
             "acceptance": {"passed": all(checks.values()), "checks": checks},
             "truth_boundary": "Renderer parity checks page count, extracted-token retention and normalized raster similarity. It does not prove every interactive editing behavior is identical.",

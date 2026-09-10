@@ -1820,6 +1820,8 @@ def office_productivity(payload):
     output_root = Path(os.environ.get("CLAWOS_OUTPUT_DIR") or (Path(BASE_DIR).parent / "output"))
     service = OfficeProductivityService(store, list(ToolSecurityPolicy().allowed_roots), preview_root=output_root)
     action = payload.get("action", "inspect")
+    if action == "capabilities":
+        return service.capabilities()
     if action == "create":
         return service.create(payload.get("output_path", ""), title=payload.get("title", ""), sections=payload.get("sections") or [], data=payload.get("data"), metadata=payload.get("metadata") or {}, confirmed=bool(payload.get("confirmed")))
     if action == "edit":

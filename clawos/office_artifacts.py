@@ -200,17 +200,10 @@ def _create_docx_stdlib(path, title, sections):
 
 
 def replace_docx_text(path, replacements, output_path=None):
+    from services.office_roundtrip_service import OfficeRoundtripService
     source = Path(path)
     output = Path(output_path) if output_path else source
-    files = _read_zip(source)
-    for name, content in list(files.items()):
-        if not name.startswith("word/") or not name.endswith(".xml"):
-            continue
-        text = content.decode("utf-8")
-        for old, new in (replacements or {}).items():
-            text = text.replace(html.escape(str(old)), html.escape(str(new)))
-        files[name] = text.encode("utf-8")
-    _write_zip(output, files)
+    OfficeRoundtripService().edit_docx(source, output, replacements=replacements or {})
     return str(output)
 
 
@@ -597,10 +590,11 @@ def _create_xlsx_stdlib(path, sheets):
 
 
 def edit_xlsx(path, updates, output_path=None):
-    professional = _edit_xlsx_openpyxl(path, updates, output_path)
-    if professional:
-        return professional
-    return _edit_xlsx_stdlib(path, updates, output_path)
+    from services.office_roundtrip_service import OfficeRoundtripService
+    source = Path(path)
+    output = Path(output_path) if output_path else source
+    OfficeRoundtripService().edit_xlsx(source, output, updates or [])
+    return str(output)
 
 
 def _edit_xlsx_openpyxl(path, updates, output_path=None):
@@ -702,10 +696,11 @@ def _create_pptx_stdlib(path, title="", slides=None):
 
 
 def replace_pptx_text(path, replacements, output_path=None):
-    professional = _replace_pptx_text_python_pptx(path, replacements, output_path)
-    if professional:
-        return professional
-    return _replace_pptx_text_stdlib(path, replacements, output_path)
+    from services.office_roundtrip_service import OfficeRoundtripService
+    source = Path(path)
+    output = Path(output_path) if output_path else source
+    OfficeRoundtripService().edit_pptx(source, output, replacements or {})
+    return str(output)
 
 
 def _replace_pptx_text_python_pptx(path, replacements, output_path=None):
