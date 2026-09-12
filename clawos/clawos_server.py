@@ -1902,11 +1902,11 @@ async def product_page():
 
 @app.get("/academy")
 async def academy_page():
-    return FileResponse(STATIC_DIR / "academy.html")
+    return FileResponse(STATIC_DIR / "academy-studio.html")
 
 @app.get("/academy/path")
 async def academy_path_page():
-    return FileResponse(STATIC_DIR / "academy-path.html")
+    return FileResponse(STATIC_DIR / "academy-studio.html")
 
 @app.get("/academy/paper")
 async def academy_paper_page():
@@ -4801,12 +4801,40 @@ async def api_academy_learning_dashboard(learner_id: str = "local-user"):
 
 
 @app.get("/api/academy/learning/quiz")
-async def api_academy_learning_quiz(learner_id: str = "local-user"):
+async def api_academy_learning_quiz(learner_id: str = "local-user", topic_key: str = ""):
     try:
         return JSONResponse(
-            _learning_product().next_quiz(learner_id=learner_id)
+            _learning_product().next_quiz(learner_id=learner_id, topic_key=topic_key)
         )
     except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+def _academy_studio():
+    from services.academy_studio_service import AcademyStudioService
+    return AcademyStudioService(_learning_product())
+
+
+@app.get("/api/academy/learning/studio")
+async def api_academy_studio(learner_id: str = "local-user"):
+    return JSONResponse(_academy_studio().state(learner_id))
+
+
+@app.post("/api/academy/learning/studio/start")
+async def api_academy_studio_start(request: Request):
+    data = await request.json()
+    try:
+        return JSONResponse(_academy_studio().start(data.get("track"), data.get("minutes", 40), str(data.get("learner_id") or "local-user")))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.put("/api/academy/learning/studio/records/{key}")
+async def api_academy_studio_save(key: str, request: Request):
+    data = await request.json()
+    try:
+        return JSONResponse(_academy_studio().save(key, data.get("record"), str(data.get("learner_id") or "local-user")))
+    except (TypeError, ValueError) as exc:
         raise HTTPException(400, str(exc))
 
 

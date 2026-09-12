@@ -401,7 +401,8 @@ class LearningProductService:
                 prerequisites = json.loads(item.pop("prerequisite_keys"))
                 item["prerequisites"] = prerequisites
                 item["due"] = bool(
-                    item.get("next_review_at")
+                    int(item["evidence_count"]) > 0
+                    and item.get("next_review_at")
                     and item["next_review_at"] <= now
                 )
                 item["mastered"] = (
@@ -431,7 +432,7 @@ class LearningProductService:
             }
 
     def next_quiz(
-        self, *, learner_id: str = DEFAULT_LEARNER
+        self, *, learner_id: str = DEFAULT_LEARNER, topic_key: str = ""
     ) -> dict[str, Any]:
         dashboard = self.dashboard(learner_id=learner_id)
         candidates = [
@@ -442,6 +443,9 @@ class LearningProductService:
             candidates = [
                 item for item in dashboard["topics"] if item["unlocked"]
             ]
+        if topic_key:
+            candidates = [item for item in dashboard["topics"]
+                          if item["topic_key"] == topic_key and item["unlocked"]]
         if not candidates:
             raise ValueError("no unlocked learning topic is available")
         item = sorted(

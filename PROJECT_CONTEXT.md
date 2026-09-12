@@ -1,5 +1,15 @@
 # Project Context
 
+## Academy learning studio and connected curriculum (2026-09-12)
+
+- Replaced live `/academy` and `/academy/path` entrypoints with a coherent learning studio: goal tracks, curriculum graph, study rooms, guided papers, resource library, projects and review. Existing reader, notes and code workspaces remain linked. Catalog supplies 15 lessons, 3 tracks, 6 official/open resources, 4 authored paper guides, 3 projects and 30 topic-specific assessment prompts; 9 lesson deep links were verified.
+- Native WebGL graph uses perspective, shaded sphere impostors, orbit/zoom, prerequisite highlighting, search/domain/track filtering, expand and accessible list views. Three local interactive labs cover cosine similarity, causal attention and LoRA parameter counts; no weights/CDNs are required.
+- Studio records persist in the shared SQLite database with learner-scoped validation. Reading/checklist clicks do not change mastery. Starting a track explicitly activates the studio course while preserving old enrollments; changing tracks reuses evidence. Fixed unstudied topics being counted as due reviews and added optional topic-directed quiz selection.
+- Validation: full Python suite **567/567 in 286.356 s**; after chapter/lab/layout/error-handling changes, final focused Python **61/61**, Node lab tests **3/3**, Python compilation and JS syntax pass. In-app browser verified course activation, lesson notes, assessment feedback, same-question mistake closure, paper/project reload persistence, graph search/list, Attention mask, desktop and 390x844 layout. Existing FastAPI/openpyxl/SWIG warnings remain non-blocking.
+- Isolated preview uses `scripts/learning_preview.py` at loopback port 18897, with temporary data under ignored output/learning-preview to survive desktop OS-temp cleanup. No production DB or running production server was changed; restart production to load new route handlers. Scope, reproduction and caveats: `clawos/benchmarks/ACADEMY_STUDIO_ACCEPTANCE.md`.
+- Limits: grading is deterministic concept coverage, projects are self-checklists, guides are curated introductions rather than comprehensive textbooks, and no independent learning effectiveness is claimed. Dense graph labels on narrow screens can be handled through search/list/expand. Next: semantic assessment with evaluation, deeper topical content and real learner testing.
+- Commit only this block's sources/tests/acceptance and this section. Preserve pre-existing OCR/repository/answer changes; exclude tools, weights, runtime DBs/output and skill registry. Remote fetch on 2026-09-12 failed with connection reset; local commit only, no push.
+
 ## Office editing preservation and PDF operations (2026-09-10)
 
 - Unified production and legacy public DOCX/XLSX/PPTX edit entrypoints onto the part-preserving service. DOCX/PPTX replacements span paragraph runs; DOCX headers/footers/notes, contiguous-run comments and revisions are supported. Namespaces/compatibility declarations and unaffected package parts are retained; revision IDs avoid collisions. Replacement counts and package/relationship validation are explicit.

@@ -13,7 +13,11 @@ from services.learning_product_service import LearningProductService
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="clawos-learning-qa-") as td:
+    # Keep temporary QA state in the ignored workspace output directory. Some
+    # desktop sessions clean OS temp storage between turns while uvicorn lives.
+    qa_root = Path(__file__).resolve().parents[1] / "output" / "learning-preview"
+    qa_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="session-", dir=qa_root) as td:
         service = LearningProductService(MemoryStore(str(Path(td) / "learning.db")))
         course = service.create_course(course_key="qa-chinese", title="中文学习验收", description="隔离测试课程",
             topics=[{"topic_key": "reasoning", "title": "证据推理", "source_ref": "fixture:reasoning"}], created_by="qa")
