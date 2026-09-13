@@ -1,5 +1,13 @@
 # Project Context
 
+## Academy RAG workshop and module boundaries (2026-09-13)
+
+- Architecture decision: independent education experience and learning domain, shared model/file/knowledge/code infrastructure, purpose-scoped learning data. See `clawos/benchmarks/ACADEMY_MODULE_ARCHITECTURE.md` for ownership, implemented links and remaining bridges.
+- Added `/academy/rag`: 3-question diagnosis, six synthetic source documents, configurable real character-bigram retrieval and extractive/model answer modes, source-position/citation/fact/refusal checks, failure-specific graded hints, shared-router tutor questions, transfer assessment and persistent run-bound acceptance. Exported stdlib Python project reproduces the extractive baseline. Code workspace receives the run ID, result, download and return link.
+- Validation: full worktree Python suite **574/574 in 301.288 s**; final expanded RAG tests **8/8 in 2.224 s**, including history retention, export execution, tutor ownership and model failure behavior; Node lab tests **3/3**, both new JS files syntax checked. Browser verified diagnosis, default 2/6 -> repaired 6/6, failed and passed transfer assessment, reload persistence and code context. Desktop and 390x844 viewport inspected; no horizontal page overflow; return hash positioning repaired and verified.
+- Boundaries: lexical teaching baseline and fixed fact checks are not production RAG or general semantic grading. Three transfer choices do not certify independent project ability. Real model provider was not exercised (mock routing/failure tests only). No automatic mastery updates, production knowledge ingestion, TaskRun return bridge or scheduled reminders. Preview has isolated temporary DB; production server not restarted. Existing FastAPI/openpyxl/SWIG warnings remain non-blocking.
+- Next: reuse document parser for versioned textbook/paper evidence, connect actual project execution evidence, add independent migration datasets and calibrated semantic assessment. Preserve unrelated dirty work; commit excludes tools, weights, runtime output, databases and skill registry. Remote fetch succeeded; before this commit branch is 4 ahead of upstream and 10 ahead / 2 behind origin/master; no merge or push.
+
 ## Academy learning studio and connected curriculum (2026-09-12)
 
 - Replaced live `/academy` and `/academy/path` entrypoints with a coherent learning studio: goal tracks, curriculum graph, study rooms, guided papers, resource library, projects and review. Existing reader, notes and code workspaces remain linked. Catalog supplies 15 lessons, 3 tracks, 6 official/open resources, 4 authored paper guides, 3 projects and 30 topic-specific assessment prompts; 9 lesson deep links were verified.
