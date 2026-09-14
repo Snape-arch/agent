@@ -4820,6 +4820,24 @@ def _academy_studio():
     return AcademyStudioService(_learning_product())
 
 
+def _academy_materials():
+    from services.academy_materials import AcademyMaterials
+    return AcademyMaterials(_learning_product().store, OUTPUT_ROOT / "academy-materials")
+
+
+async def _academy_material_model(messages, tools):
+    return await call_routing_llm(messages, tools)
+
+
+from services.academy_material_api import materials_router
+app.include_router(materials_router(_academy_materials, _academy_material_model))
+
+
+@app.get("/academy/materials")
+async def academy_materials_page():
+    return FileResponse(STATIC_DIR / "academy-materials.html")
+
+
 def _rag_workshop():
     from services.academy_rag_workshop import RagWorkshop
     return RagWorkshop(_learning_product().store)

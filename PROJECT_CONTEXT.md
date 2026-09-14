@@ -1,5 +1,17 @@
 # Project Context
 
+## Academy material-to-learning workflow (2026-09-14)
+
+- Added `/academy/materials` and learner-scoped versioned material/events storage. Reuses the shared PDF/DOCX/text parser, preserves page/fragment provenance and content revision, exposes OCR warnings and failed-parse retry. Explicit imports stay separate from the production knowledge index.
+- Source-bound model guides, goals/source-literacy diagnosis, explain-in-own-words drafts and contextual tutor feedback now connect in one workspace. URL restores selected material/fragment/step; model output is checked for exact source quotations and structure. Diagnosis is source-literacy, not comprehensive subject assessment.
+- Material RAG project runs fixed Python code through CodingWorkflowService with actual TaskRun/steps and input/script/report digests, test rows, offline ZIP reproduction and code-workspace return links. Export refuses changed artifacts. Learner input is data, not arbitrary executable code; test success does not certify independent coding ability.
+- Semantic formative assessment uses two shared-router calls with different teacher/critic prompts, scores mechanism/conditions/counterexample and validates both source and student quotations. Contradictions, disagreement and invalid output do not pass. Records bind question, rubric and source revision; no automatic mastery inflation.
+- Validation: full Python **585/585 in 299.977 s**, final material regression **10/10 in 9.026 s** after export integrity checks; JS syntax passed. Actual PDF/DOCX parsing, subprocess execution and ZIP rerun tested. Browser verified upload, diagnosis, project 3/3, code round trip, real-provider guide, tutor, semantic acceptance and reload persistence; desktop/390x844 layouts inspected with no horizontal overflow.
+- Live configured-provider synthetic checks: guide validated, correct explanation passed, contradiction/injection need revision, copied answer needs review. Early concatenated quotes and mistyped JSON were rejected and prompt constraints tightened; final real-browser grading passed. These are four development answers, not general semantic accuracy or learning-effectiveness evidence. No private materials sent in QA.
+- Preview: `python clawos/scripts/learning_preview.py --models --port 18898 --session materials-acceptance`; explicit session storage stays under ignored output. Default preview does not connect models. Production server not restarted. Acceptance and limits: `clawos/benchmarks/ACADEMY_MATERIALS_ACCEPTANCE.md`; module ownership updated in `ACADEMY_MODULE_ARCHITECTURE.md`.
+- Remaining product depth: cross-chapter curriculum and formula/table teaching, subject-specific diagnostic tasks, independently edited student code under mature sandbox, larger teacher-labelled semantic evaluation. Current local-user scoping is not multi-tenant authentication.
+- Commit only this block's code/tests/docs and this section. Preserve earlier OCR/repository/answer changes; exclude tools, weights, runtime output/databases and registry side effects. Remote fetch succeeded; no merge or push.
+
 ## Academy RAG workshop and module boundaries (2026-09-13)
 
 - Architecture decision: independent education experience and learning domain, shared model/file/knowledge/code infrastructure, purpose-scoped learning data. See `clawos/benchmarks/ACADEMY_MODULE_ARCHITECTURE.md` for ownership, implemented links and remaining bridges.
