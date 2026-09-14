@@ -4871,6 +4871,32 @@ class MemoryStore:
                 item["metadata"] = self._json_loads(item.get("metadata"), {})
             return items
 
+    def iter_evidence_chunks(self, document_id=0, category=""):
+        """Stream all scoped candidates so late passages cannot be hidden by top-k."""
+        with self._conn() as c:
+            filters, params = [], []
+            if document_id:
+                filters.append("d.id=?")
+                params.append(int(document_id))
+            if category:
+                filters.append("d.category=?")
+                params.append(category)
+            where = " WHERE " + " AND ".join(filters) if filters else ""
+            cursor = c.execute("SELECT dc.*, d.title, d.filename, d.category FROM document_chunks dc JOIN documents d ON d.id=dc.document_id" + where + " ORDER BY d.id,dc.chunk_index", params)
+            while True:
+                rows = cursor.fetchmany(128)
+                if not rows:
+                    break
+                for row in rows:
+                    item = dict(row)
+                    try:
+                        item["metadata"] = json.loads(item.get("metadata") or "{}")
+                        if not isinstance(item["metadata"], dict):
+                            continue
+                    except (TypeError, ValueError):
+                        continue
+                    yield item
+
     def search_document_chunks(self, query, category="", limit=10):
         with self._conn() as c:
             params = [f"%{query}%", f"%{query}%"]

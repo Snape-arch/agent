@@ -57,6 +57,16 @@ def materials_router(service_factory, model):
             learner=str(data.get('learner_id') or 'local-user')
             cid=data.get('citation')
             service.document(mid,learner)
+            if action in ('chapter-response','chapter-draft'):
+                if type(data.get('question_event_id')) is not int:
+                    raise ValueError('请提供当前诊断题版本')
+                if action=='chapter-draft':
+                    return service.chapter_draft(mid,data.get('chapter'),data.get('answers'),data.get('project'),data['question_event_id'],learner)
+                return service.chapter_response(mid,data.get('chapter'),data.get('answers'),data.get('project'),learner,data['question_event_id'])
+            if action=='search':
+                from services.evidence_retrieval import retrieve
+                doc=service.document(mid,learner)
+                return dict(status='partial',answer_verified=False,evidence=retrieve(str(data.get('query') or ''),doc['payload'].get('passages',[]),5,doc['payload'].get('revision','')))
             if action=='retry':
                 return await asyncio.to_thread(service.parse,mid,learner)
             if action=='diagnose':
@@ -68,10 +78,12 @@ def materials_router(service_factory, model):
                 return service.event(mid,'draft',dict(citation=cid,answer=str(data.get('answer') or '')[:6000]))
             if action=='project':
                 return await asyncio.to_thread(service.project,mid,data.get('config'),data.get('cases'),learner)
-            if action not in ('guide','tutor','assess'):
+            if action not in ('guide','tutor','assess','chapter-questions'):
                 raise ValueError('未知学习操作')
             # Build/validate inputs before calling the shared provider.
-            if action=='guide':
+            if action=='chapter-questions':
+                prompts=[service.chapter_prompt(mid,data.get('chapter'),data.get('subject'),learner)]
+            elif action=='guide':
                 prompts=[service.guide_prompt(mid,cid,learner)]
             elif action=='tutor':
                 prompts=[service.teaching_prompt(mid,cid,data.get('question'),learner)]
@@ -83,6 +95,8 @@ def materials_router(service_factory, model):
                     replies.append(await asyncio.wait_for(model(prompt,[]),timeout=75))
             except Exception:
                 raise HTTPException(502,'模型服务暂不可用或超时；原文与已保存草稿不受影响，未计为通过。')
+            if action=='chapter-questions':
+                return service.save_chapter_questions(mid,data.get('chapter'),data.get('subject'),model_json(replies[0]),learner)
             if action=='guide':
                 return service.save_guide(mid,cid,model_json(replies[0]),learner)
             if action=='tutor':

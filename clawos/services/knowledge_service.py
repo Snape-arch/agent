@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from memoryos.document_ingestion import chunk_text
+from services.evidence_retrieval import retrieve
 
 
 class KnowledgeService:
@@ -36,19 +37,9 @@ class KnowledgeService:
 
     def citation_answer(self, q: str = "", category: str = "", document_id: int = 0, limit: int = 5) -> dict[str, Any]:
         top_k = max(1, min(int(limit or 5), 12))
-        if document_id:
-            document = self.store.get_document(document_id)
-            if not document:
-                raise ValueError("Document not found")
-            chunks = self.store.get_document_chunks(document_id, top_k)
-            for chunk in chunks:
-                chunk.setdefault("title", document.get("title", ""))
-                chunk.setdefault("filename", document.get("filename", ""))
-                chunk.setdefault("category", document.get("category", ""))
-        elif q:
-            chunks = self.store.search_document_chunks(q, category, top_k)
-        else:
-            chunks = []
+        if document_id and not self.store.get_document(document_id):
+            raise ValueError("Document not found")
+        chunks = retrieve(q, self.store.iter_evidence_chunks(document_id, category), top_k) if document_id or q.strip() else []
 
         citations = []
         lines = []
@@ -64,13 +55,18 @@ class KnowledgeService:
                 "chunk_id": chunk.get("id"),
                 "title": chunk.get("title") or chunk.get("filename") or "",
                 "snippet": content[:360],
+                "revision": chunk["revision"],
+                "revision_scope": chunk["revision_scope"],
+                "retrieval_score": chunk["retrieval_score"],
             })
             if content:
                 lines.append(f"[{index}] {content[:420]}")
         answer = "No indexed evidence matched the query."
         if lines:
-            answer = "基于已入库资料的可引用答案草稿：\n" + "\n\n".join(lines)
-        return {"answer": answer, "citations": citations, "count": len(citations), "query": q, "category": category}
+            answer = "已检索到以下原文片段（相关性匹配，不代表问题已回答）：\n" + "\n\n".join(lines)
+        return {"answer": answer, "citations": citations, "count": len(citations), "query": q, "category": category,
+                "status": "partial" if citations else "blocked",
+                "answer_verified": False, "mode": "retrieved_excerpts" if q.strip() else "source_browse"}
 
     def knowledge_graph(self, category: str = "", limit: int = 80) -> dict[str, Any]:
         max_nodes = max(12, min(int(limit or 80), 160))

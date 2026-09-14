@@ -47,11 +47,14 @@ def main():
         context = tempfile.TemporaryDirectory(prefix="session-", dir=qa_root)
     with context as td:
         service = LearningProductService(MemoryStore(str(Path(td) / "learning.db")))
-        course = service.create_course(course_key="qa-chinese", title="中文学习验收", description="隔离测试课程",
-            topics=[{"topic_key": "reasoning", "title": "证据推理", "source_ref": "fixture:reasoning"}], created_by="qa")
-        service.add_question(course["id"], topic_key="reasoning", prompt="请解释为什么需要检查答案证据，并用一个具体的例子说明。",
-            expected_concepts=["证据", "检查"], cognitive_level="explain", difficulty=.5, source_ref="fixture:reasoning")
-        service.publish_course(course["id"])
+        with service.store._conn() as connection:
+            existing = connection.execute("SELECT id FROM learning_courses WHERE course_key=?", ('qa-chinese',)).fetchone()
+        if not existing:
+            course = service.create_course(course_key="qa-chinese", title="中文学习验收", description="隔离测试课程",
+                topics=[{"topic_key": "reasoning", "title": "证据推理", "source_ref": "fixture:reasoning"}], created_by="qa")
+            service.add_question(course["id"], topic_key="reasoning", prompt="请解释为什么需要检查答案证据，并用一个具体的例子说明。",
+                expected_concepts=["证据", "检查"], cognitive_level="explain", difficulty=.5, source_ref="fixture:reasoning")
+            service.publish_course(course["id"])
         server._learning_product = lambda: service
         server.OUTPUT_ROOT = Path(td) / "output"
         app = FastAPI(lifespan=preview_lifespan)
