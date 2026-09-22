@@ -120,15 +120,26 @@ class RasterDocumentLayout:
                     crosses = any(w["bbox"][1]*scale < a-3 or w["bbox"][3]*scale > b+3 for w in words)
                     numeric = bool(r and re.search(r"\d",text))
                     critical = numeric or bool(re.search(r"不|未|无|仅|至少|至多|[<>≤≥%]|\b(?:not|no|without|only)\b", text, re.I))
+                    mixed_script_suspect = bool(
+                        re.search(r"[\u3400-\u9fff]", text)
+                        and re.search(r"(?:\b[A-Z][lI1]\b|\b[A-Z]{2,}\d\b|[A-Z][a-z]+[A-Z][a-z]+)", text)
+                    )
+                    uncertain = confidence < .9 or mixed_script_suspect
                     verification = {"status": "not_requested", "candidates": []}
-                    if verify and critical:
+                    if verify and (critical or uncertain):
                         # A separate cell segmentation view, not a corrected truth.
-                        verification = verify(image.crop((left+3,a,right-3,b)), text)
+                        verification = verify(image.crop((left+3,a,right-3,b)), text, confidence)
+                    original_text = text
+                    selection = verification.get("selection") or {}
+                    if selection.get("auto_applied"):
+                        text = str(selection.get("selected_text") or text)
+                    numeric = bool(r and re.search(r"\d",text))
+                    critical = numeric or bool(re.search(r"不|未|无|仅|至少|至多|[<>≤≥%]|\b(?:not|no|without|only)\b", text, re.I))
                     cells.append({"row": r,"column": c,"text": text,"value_text": text,
                                   "bbox": [left/scale,a/scale,right/scale,b/scale],"words": words,
                                   "confidence": confidence, "review_required": True,
-                                  "review_reasons": ["scanned_cell_requires_source_confirmation"] + (["critical_value"] if critical else []) + (["recognizer_disagreement"] if verification["status"] == "disagreement" else []),
-                                  "verification": verification, "original_text": text,
+                                  "review_reasons": ["scanned_cell_requires_source_confirmation"] + (["critical_value"] if critical else []) + (["recognizer_disagreement"] if verification["status"] == "disagreement" else []) + (["ocr_candidate_selected"] if selection.get("auto_applied") else []),
+                                  "verification": verification, "original_text": original_text,
                                   "numeric_verification_required": numeric, "crosses_row_boundary": crosses,
                                   "recognition_status": result["status"], "is_header": r == 0})
                     values.append(text)

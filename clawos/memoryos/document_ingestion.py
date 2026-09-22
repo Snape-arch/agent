@@ -398,95 +398,97 @@ def ingest_file(store, upload_dir: Path, source_path: Path, *, title: str = "", 
             chunks = chunk_text_with_pages(text)
     else:
         chunks = chunk_text_with_pages(text)
-    if not chunks:
-        if metadata.get("ocr_required"):
-            document = store.add_document(
-                title=title or source_path.stem,
-                filename=source_path.name,
-                file_path=str(stored_path),
-                file_hash=digest,
-                mime_type=metadata.get("mime_type", ""),
-                category=category or "domain",
-                extractor=metadata.get("extractor", ""),
-                status="needs_ocr",
-                metadata={**metadata, "ocr_reason": metadata.get("ocr_reason") or "no_extractable_text"},
-            )
-            document["chunk_count"] = 0
-            document["knowledge_ids"] = []
-            return document
-        raise ValueError("No extractable text found; OCR may be required")
-    document = store.add_document(
-        title=title or source_path.stem,
-        filename=source_path.name,
-        file_path=str(stored_path),
-        file_hash=digest,
-        mime_type=metadata.get("mime_type", ""),
-        category=category or "domain",
-        extractor=metadata.get("extractor", ""),
-        status="needs_ocr" if metadata.get("ocr_required") else ("needs_review" if metadata.get("ocr_review_pages") else "ready"),
-        metadata=metadata,
-    )
-    knowledge_ids: list[int] = []
-    for index, chunk_info in enumerate(chunks, 1):
-        chunk = chunk_info["content"]
-        page_number = int(chunk_info.get("page_number") or 0)
-        page_chunk = int(chunk_info.get("page_chunk_index") or index)
-        citation = f"doc:{document['id']}#page={page_number}&chunk={page_chunk}" if page_number else f"doc:{document['id']}#chunk={index}"
-        if index == 1 and hasattr(store, "delete_knowledge_by_source_prefix"):
-            store.delete_knowledge_by_source_prefix(f"doc:{document['id']}#")
-        chunk_metadata = {
-            "page_number": page_number, "page_chunk_index": page_chunk,
-            "node_ids": chunk_info.get("node_ids") or [], "locators": chunk_info.get("locators") or [],
-            "evidence_types": chunk_info.get("evidence_types") or [],
-            "review_required": bool(chunk_info.get("review_required")),
-            "recognition_confidence_min": chunk_info.get("recognition_confidence_min"),
-        }
-        store.add_document_chunk(document["id"], index, chunk, citation, metadata=chunk_metadata)
-        # Keep uncertain OCR available for source inspection, but do not silently
-        # promote its potentially corrupted numbers/conditions into knowledge.
-        if chunk_metadata["review_required"]:
-            continue
-        item = store.add_knowledge(
-            title=f"{document['title']} p.{page_number} #{page_chunk}" if page_number else f"{document['title']} #{index}",
-            content=f"{chunk}\n\nSource: {citation}",
-            category=category or "domain",
-            source=citation,
-            tags=["document", Path(source_path.name).suffix.lower().lstrip(".")],
-            confidence=0.85,
-        )
-        knowledge_ids.append(int(item["id"]))
-        try:
-            from services.knowledge_core_service import KnowledgeCoreService
-            core = KnowledgeCoreService(store)
-            source_chunk_id = int(item.get("knowledge_v2_id") or 0)
-            for claim in core.extract_claims(chunk):
-                claim_title = re.sub(r"\s+", " ", claim).strip()[:120]
-                core.absorb(
-                    title=claim_title,
-                    statement=claim,
+    with store.transaction():
+        if not chunks:
+            if metadata.get("ocr_required"):
+                document = store.add_document(
+                    title=title or source_path.stem,
+                    filename=source_path.name,
+                    file_path=str(stored_path),
+                    file_hash=digest,
+                    mime_type=metadata.get("mime_type", ""),
                     category=category or "domain",
-                    knowledge_type="claim",
-                    source_ref=citation,
-                    source_type="document_claim",
-                    excerpt=claim,
-                    locator=core.source_locator(citation),
-                    confidence=0.82,
-                    entities=core.infer_entities(document["title"], claim, [Path(source_path.name).suffix.lower().lstrip(".")]),
-                    relations=[{"type": "derived_from", "target_kind": "knowledge", "target_id": source_chunk_id, "confidence": 1.0}] if source_chunk_id else [],
-                    metadata={
-                        "document_id": document["id"],
-                        "chunk_index": index,
-                        "page_number": page_number,
-                        "claim_type": core.classify_claim(claim),
-                        "semantic_node_ids": chunk_metadata["node_ids"],
-                        "semantic_locators": chunk_metadata["locators"],
-                        "evidence_types": chunk_metadata["evidence_types"],
-                    },
-                    changed_by="document_ingestion",
+                    extractor=metadata.get("extractor", ""),
+                    status="needs_ocr",
+                    metadata={**metadata, "ocr_reason": metadata.get("ocr_reason") or "no_extractable_text"},
                 )
-        except (ImportError, OSError, ValueError, TypeError):
-            pass
-    document["chunk_count"] = len(chunks)
-    document["knowledge_ids"] = knowledge_ids
-    document["metadata"] = metadata
-    return document
+                store.delete_knowledge_by_source_prefix(f"doc:{document['id']}#")
+                document["chunk_count"] = 0
+                document["knowledge_ids"] = []
+                return document
+            raise ValueError("No extractable text found; OCR may be required")
+        document = store.add_document(
+            title=title or source_path.stem,
+            filename=source_path.name,
+            file_path=str(stored_path),
+            file_hash=digest,
+            mime_type=metadata.get("mime_type", ""),
+            category=category or "domain",
+            extractor=metadata.get("extractor", ""),
+            status="needs_ocr" if metadata.get("ocr_required") else ("needs_review" if metadata.get("ocr_review_pages") else "ready"),
+            metadata=metadata,
+        )
+        knowledge_ids: list[int] = []
+        for index, chunk_info in enumerate(chunks, 1):
+            chunk = chunk_info["content"]
+            page_number = int(chunk_info.get("page_number") or 0)
+            page_chunk = int(chunk_info.get("page_chunk_index") or index)
+            citation = f"doc:{document['id']}#page={page_number}&chunk={page_chunk}" if page_number else f"doc:{document['id']}#chunk={index}"
+            if index == 1 and hasattr(store, "delete_knowledge_by_source_prefix"):
+                store.delete_knowledge_by_source_prefix(f"doc:{document['id']}#")
+            chunk_metadata = {
+                "page_number": page_number, "page_chunk_index": page_chunk,
+                "node_ids": chunk_info.get("node_ids") or [], "locators": chunk_info.get("locators") or [],
+                "evidence_types": chunk_info.get("evidence_types") or [],
+                "review_required": bool(chunk_info.get("review_required")),
+                "recognition_confidence_min": chunk_info.get("recognition_confidence_min"),
+            }
+            store.add_document_chunk(document["id"], index, chunk, citation, metadata=chunk_metadata)
+            # Keep uncertain OCR available for source inspection, but do not silently
+            # promote its potentially corrupted numbers/conditions into knowledge.
+            if chunk_metadata["review_required"]:
+                continue
+            item = store.add_knowledge(
+                title=f"{document['title']} p.{page_number} #{page_chunk}" if page_number else f"{document['title']} #{index}",
+                content=f"{chunk}\n\nSource: {citation}",
+                category=category or "domain",
+                source=citation,
+                tags=["document", Path(source_path.name).suffix.lower().lstrip(".")],
+                confidence=0.85,
+            )
+            knowledge_ids.append(int(item["id"]))
+            try:
+                from services.knowledge_core_service import KnowledgeCoreService
+                core = KnowledgeCoreService(store)
+                source_chunk_id = int(item.get("knowledge_v2_id") or 0)
+                for claim in core.extract_claims(chunk):
+                    claim_title = re.sub(r"\s+", " ", claim).strip()[:120]
+                    core.absorb(
+                        title=claim_title,
+                        statement=claim,
+                        category=category or "domain",
+                        knowledge_type="claim",
+                        source_ref=citation,
+                        source_type="document_claim",
+                        excerpt=claim,
+                        locator=core.source_locator(citation),
+                        confidence=0.82,
+                        entities=core.infer_entities(document["title"], claim, [Path(source_path.name).suffix.lower().lstrip(".")]),
+                        relations=[{"type": "derived_from", "target_kind": "knowledge", "target_id": source_chunk_id, "confidence": 1.0}] if source_chunk_id else [],
+                        metadata={
+                            "document_id": document["id"],
+                            "chunk_index": index,
+                            "page_number": page_number,
+                            "claim_type": core.classify_claim(claim),
+                            "semantic_node_ids": chunk_metadata["node_ids"],
+                            "semantic_locators": chunk_metadata["locators"],
+                            "evidence_types": chunk_metadata["evidence_types"],
+                        },
+                        changed_by="document_ingestion",
+                    )
+            except (ImportError, OSError, ValueError, TypeError):
+                raise
+        document["chunk_count"] = len(chunks)
+        document["knowledge_ids"] = knowledge_ids
+        document["metadata"] = metadata
+        return document

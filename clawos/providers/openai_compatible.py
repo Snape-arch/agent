@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -99,15 +100,31 @@ class OpenAICompatibleProvider:
                     error="invalid_response",
                 )
             msg = choices[0].get("message") or {}
-            content = str(msg.get("content") or msg.get("reasoning_content") or "")
+            value = msg.get("content")
+            if isinstance(value, list):
+                value = "".join(part.get("text", "") for part in value
+                                if isinstance(part, dict) and part.get("type") == "text")
+            content = value if isinstance(value, str) else ""
+            # Some local servers embed reasoning in content instead of its own field.
+            content = re.sub(r"<think>[\s\S]*?(?:</think>|$)", "", content, flags=re.I).strip()
+            msg["content"] = content
+            # Reasoning-only and truncated completions are not successful answers.
+            error = ""
+            if choices[0].get("finish_reason") == "length":
+                error = "incomplete_output"
+            elif choices[0].get("finish_reason") == "content_filter":
+                error = "content_filtered"
+            elif not content and not msg.get("tool_calls"):
+                error = "empty_final_answer"
             return model_result(
-                ok=True,
+                ok=not bool(error),
                 provider=self.name,
                 model=payload["model"],
                 content=content,
                 raw=raw,
                 usage=raw.get("usage") or {},
                 duration_ms=now_ms() - started,
+                error=error,
             )
         except (httpx.TimeoutException, asyncio.TimeoutError):
             return model_result(ok=False, provider=self.name, model=self.model, duration_ms=now_ms() - started, error="timeout")

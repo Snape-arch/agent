@@ -1,4 +1,12 @@
-# ClawOS 当前工作状态（2026-07-17）
+# ClawOS 当前工作状态（2026-09-23）
+
+本轮已修正模型回答重复改写、降级配置、上下文重复、历史截断、失败状态，以及前端 Markdown/SSE 处理。真实 DeepSeek 合成问题和实际浏览器表格、代码块、嵌套列表、重新打开、窄屏验收通过；详细范围与限制见 `clawos/benchmarks/CHAT_QUALITY_ACCEPTANCE.md`。
+
+当前分支为 `codex/coding-agent-competitive-p0-p2`。最新测试、提交范围与后续工作统一以 `PROJECT_CONTEXT.md` 顶部记录为准。用户已授权将应交付源码、测试和文档提交并推送；`tools/`、模型权重、凭据、数据库、日志和运行计数不交。
+
+下一步应积累独立真实任务质量数据，补完整数据恢复与长期运行验收。模型调用修复不代表企业交付、通用答案准确率或 MTT 实机验收已经完成。
+
+## 以下为 2026-07-17 历史交接记录
 
 这是当前开发与 WorkBuddy 接手的第一入口。详细路线见 `PROJECT_ROADMAP.md`，关键事实与护栏见 `PROJECT_CONTEXT.md`。
 

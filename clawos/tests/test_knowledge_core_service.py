@@ -21,10 +21,19 @@ class KnowledgeCoreServiceTests(unittest.TestCase):
         self.store = MemoryStore(str(Path(self.temp.name) / "memory.db"))
         self.core = KnowledgeCoreService(self.store)
 
+    def source_fixture(self, citation, text):
+        import re
+        document_id=int(re.match(r'doc:(\d+)',citation).group(1))
+        for i in range(1,document_id+1):
+            if not self.store.get_document(i):
+                self.store.add_document(f'Source fixture {i}')
+        self.store.add_document_chunk(document_id,1,text,citation)
+
     def tearDown(self):
         self.temp.cleanup()
 
     def test_absorption_merges_sources_entities_and_locators(self):
+        self.source_fixture('doc:1#page=2&chunk=3','The target network stabilizes DQN training.')
         first = self.core.absorb(
             title="DQN target network", statement="The target network stabilizes DQN training.",
             category="research", source_ref="doc:1#page=2&chunk=3", locator="page=2&chunk=3",
@@ -128,6 +137,8 @@ class KnowledgeCoreServiceTests(unittest.TestCase):
         self.assertTrue(all(item["sources"][0]["source_ref"].startswith("doc:") for item in replay[:1] + target[:1]))
 
     def test_conflict_is_recorded_and_excluded_until_review(self):
+        self.source_fixture('doc:1#page=1','The target network updates every 10000 steps.')
+        self.source_fixture('doc:2#page=2','The target network updates every 5000 steps.')
         original = self.core.absorb(
             title="DQN update interval", statement="The target network updates every 10000 steps.",
             category="research", source_ref="doc:1#page=1",
@@ -159,6 +170,8 @@ class KnowledgeCoreServiceTests(unittest.TestCase):
         self.assertEqual(after["items"], [])
 
     def test_legacy_add_update_delete_propagates_lifecycle(self):
+        self.source_fixture('doc:1#page=1','Uploads use endpoint v1.')
+        self.source_fixture('doc:2#page=1','Uploads use endpoint v2.')
         legacy = self.store.add_knowledge(
             "Upload API", "Uploads use endpoint v1.", "product", "doc:1#page=1", ["API"], 0.8,
         )
@@ -178,6 +191,7 @@ class KnowledgeCoreServiceTests(unittest.TestCase):
         self.assertEqual(self.core.search("Upload API", category="product"), [])
 
     def test_retrieval_prefers_evidence_record_without_legacy_duplicate(self):
+        self.source_fixture('doc:7#chunk=2','RAG answers should cite retrieved evidence.')
         legacy = self.store.add_knowledge(
             "RAG citations", "RAG answers should cite retrieved evidence.", "research", "doc:7#chunk=2", ["RAG"], 0.9,
         )
@@ -191,6 +205,7 @@ class KnowledgeCoreServiceTests(unittest.TestCase):
         self.assertEqual(v2[0]["citation"], "doc:7#chunk=2")
 
     def test_api_context_pack_and_stats(self):
+        self.source_fixture('doc:9#page=4','Task context should contain compact cited claims.')
         import clawos_server as server
 
         self.store.add_knowledge(

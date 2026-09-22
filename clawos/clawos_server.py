@@ -38,6 +38,7 @@ from services.feishu import FeishuConnectorService, FeishuClient, load_feishu_co
 from services.grounded_paper_report import GroundedPaperReport
 from services.runtime_records import RUN_SCHEMA_VERSION, RunRecord, now_iso, run_from_task
 from services.search_evidence import decide_search_need
+from services.response_contract import SYSTEM_PROMPT, RESPONSE_STYLE, request_history
 
 # ---- PATHS ----
 BASE_DIR = Path(__file__).parent.resolve()
@@ -109,16 +110,6 @@ g_background_worker_status: dict[str, Any] = {
     "last_error": "",
 }
 
-SYSTEM_PROMPT = (
-    "You are ClawOS, a personal AI assistant. Use the provided tools to "
-    "handle user requests when they materially improve accuracy or complete an "
-    "explicit action. Do not call a tool merely because it is available. "
-    "Answer stable questions directly when existing context is sufficient. "
-    "Always reply in the same language as the user (Chinese or English). "
-    "Be concise and helpful. Do not use emojis. "
-    "When a tool returns data, report it accurately without speculation."
-)
-
 WEB_RESEARCH_SYNTHESIS_PROMPT = (
     "When web research is enabled, use it only when freshness, external verification, "
     "or source coverage materially improves the answer. Prefer primary and authoritative "
@@ -150,6 +141,8 @@ def load_config(cfg_path: Path) -> dict[str, Any]:
             return env_pattern.sub(lambda m: os.environ.get(m.group(1), m.group(2) or m.group(0)), v)
         if isinstance(v, dict):
             return {k: _sub(vv) for k, vv in v.items()}
+        if isinstance(v, list):
+            return [_sub(vv) for vv in v]
         return v
     return normalize_config(_sub(cfg))
 
@@ -487,7 +480,7 @@ def execute_tool_call(
 # ---- LLM ROUTING ----
 def _provider_candidates(section: str) -> list[Any]:
     primary = g_routing_provider if section == "routing" else g_upstream_provider
-    configs = config.get(f"{section}_fallbacks", []) or config.get("model_fallbacks", [])
+    configs = config.get(f"{section}_fallbacks", config.get("model_fallbacks", [])) or []
     candidates = [primary] if primary else []
     for cfg in configs:
         if isinstance(cfg, dict):
@@ -497,10 +490,13 @@ def _provider_candidates(section: str) -> list[Any]:
 
 async def call_model_with_fallback(section: str, messages: list[dict[str, Any]], options: dict[str, Any]) -> dict[str, Any]:
     attempts = []
-    for provider in _provider_candidates(section):
+    for index, provider in enumerate(_provider_candidates(section)):
         if not provider:
             continue
-        result = await provider.complete(messages, options, http_client=http_client)
+        provider_options = dict(options)
+        if index:
+            provider_options.pop("model", None)
+        result = await provider.complete(messages, provider_options, http_client=http_client)
         attempts.append({
             "provider": result.get("provider", getattr(provider, "name", "")),
             "model": result.get("model", getattr(provider, "model", "")),
@@ -539,13 +535,18 @@ async def call_routing_llm(
     )
     if not result["ok"]:
         raise RuntimeError(result["error"])
-    return result["raw"]
+    raw = dict(result["raw"])
+    raw["clawos_model"] = {key: result.get(key) for key in (
+        "provider", "model", "usage", "duration_ms", "fallback_attempts"
+    )}
+    return raw
 
 
 def has_api_key(section: str = "routing") -> bool:
-    provider = g_routing_provider if section == "routing" else g_upstream_provider
-    if provider and hasattr(provider, "is_configured"):
-        return bool(provider.is_configured())
+    candidates = _provider_candidates(section)
+    if candidates:
+        return any(provider.is_configured() for provider in candidates
+                   if hasattr(provider, "is_configured"))
     key = str(config.get(section, {}).get("api_key", "") or "")
     return bool(key and "${" not in key and key != "YOUR_DEEPSEEK_API_KEY")
 
@@ -959,6 +960,7 @@ async def run_tool_loop(
     retrieval_policy: dict[str, Any] | None = None,
     coding_context: dict[str, Any] | None = None,
     governance=None,
+    conversation_messages: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Tool detection + execution loop."""
     if governance is None:
@@ -1056,8 +1058,8 @@ async def run_tool_loop(
 
     if not has_api_key("routing"):
         lang_zh = bool(re.search(r"[\u4e00-\u9fff]", user_text))
-        text = "当前未配置 DEEPSEEK_API_KEY，复杂自然语言路由暂不可用；你仍可在 MemoryOS 页面维护记忆，或配置本地 OpenAI 兼容模型端点。" if lang_zh else "DEEPSEEK_API_KEY is not configured, so complex natural-language routing is unavailable. You can still manage MemoryOS in the UI or configure a local OpenAI-compatible model endpoint."
-        return {"used_tools": False, "tool_calls": [], "final_text": text, "routing_rounds": 0, "routing_strategy": routing_strategy}
+        text = "模型尚未配置，请在设置中选择可用模型。" if lang_zh else "No model is configured. Select an available model in settings."
+        return {"used_tools": False, "tool_calls": [], "final_text": text, "model_error": "not_configured", "routing_rounds": 0, "routing_strategy": routing_strategy}
 
     # Use MemoryOS to build messages with context
     if g_context_builder:
@@ -1071,9 +1073,10 @@ async def run_tool_loop(
             focus_paths=coding.get("focus_paths") or [],
             diagnostics=coding.get("diagnostics") or [],
             coding_token_budget=int(coding.get("token_budget") or 12000),
+            conversation_messages=conversation_messages,
         )
     else:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_text}]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT + "\n" + str((prompt_policy or {}).get("system") or "")}, *(request_history(conversation_messages) or []), {"role": "user", "content": user_text}]
     governance.gate("after_context", {
         "message_count": len(messages), "task_id": task_id,
     })
@@ -1110,7 +1113,10 @@ async def run_tool_loop(
         content = msg.get("content", "")
 
         if not tcs:
-            return {"used_tools": used, "tool_calls": tc_log, "final_text": content, "routing_rounds": ri, "routing_strategy": routing_strategy}
+            if not isinstance(content, str) or not content.strip():
+                last_model_error = "empty_final_answer"
+                break
+            return {"used_tools": used, "tool_calls": tc_log, "final_text": content, "answer_complete": True, "model_result": resp.get("clawos_model", {}), "routing_rounds": ri, "routing_strategy": routing_strategy}
 
         used = True
         tc_msgs = []
@@ -1201,13 +1207,15 @@ async def run_tool_loop(
         assistant_msg["tool_calls"] = tc_msgs
         messages.append(assistant_msg)
         messages.extend(tool_messages)
+        if any(tc["result"].get("status") == "needs_confirmation" for tc in tc_log):
+            return {"used_tools": True, "tool_calls": tc_log, "final_text": "", "routing_rounds": ri, "routing_strategy": routing_strategy}
 
     lang_zh = bool(re.search(r"[\u4e00-\u9fff]", user_text))
     if last_model_error:
         final_text = (
-            f"模型服务暂时不可用（{last_model_error}）。本次没有伪造回答；请检查 API 凭据或本地模型端点后重试。"
+            f"模型未能完成回答（{last_model_error}），请重试或检查模型设置。"
             if lang_zh else
-            f"The model service is unavailable ({last_model_error}). No answer was fabricated; check the API credentials or local model endpoint and retry."
+            f"The model could not complete the answer ({last_model_error}). Retry or check model settings."
         )
     else:
         final_text = "模型没有返回有效内容，请重试。" if lang_zh else "The model returned no usable content. Please retry."
@@ -1675,7 +1683,7 @@ async def store_assistant_response(session_id: str, resp: JSONResponse):
         return
     text = extract_assistant_text(resp)
     if text:
-        g_memory_store.add_message(session_id, "assistant", text[:4000])
+        g_memory_store.add_message(session_id, "assistant", text)
 
 # ---- UPSTREAM MODEL ----
 async def proxy_upstream(req_data: dict, stream: bool, tool_context: str = "") -> JSONResponse:
@@ -1685,17 +1693,21 @@ async def proxy_upstream(req_data: dict, stream: bool, tool_context: str = "") -
         messages,
         {
             "temperature": req_data.get("temperature", 0.7),
-            "model": req_data.get("model") or config.get("upstream", {}).get("model"),
+            **({"model": req_data["model"]} if req_data.get("model") else {}),
+            **({"max_tokens": req_data["max_tokens"]} if req_data.get("max_tokens") is not None else {}),
         }
     )
+    public_result = {key: result.get(key) for key in (
+        "ok", "provider", "model", "usage", "duration_ms", "error", "fallback_attempts"
+    )}
     if not result["ok"]:
         body = build_openai_response(
             f"模型调用失败：{result['error']}",
             model=result.get("model"),
-            extra={"model_result": result},
+            extra={"model_result": public_result, "status": "failed"},
         )
         return sse_from_text(body["choices"][0]["message"]["content"], extra=body.get("clawos")) if stream else JSONResponse(body)
-    body = build_openai_response(result["content"], model=result["model"], extra={"model_result": result})
+    body = build_openai_response(result["content"], model=result["model"], extra={"model_result": public_result})
     body["usage"] = result.get("usage", {})
     if stream:
         return sse_from_text(result["content"], extra=body.get("clawos"))
@@ -2381,6 +2393,7 @@ async def chat_completions(request: Request):
                 focus_paths=coding_context.get("focus_paths") or [],
                 diagnostics=coding_context.get("diagnostics") or [],
                 coding_token_budget=int(coding_context.get("token_budget") or 12000),
+                conversation_messages=messages,
             )
             if g_context_builder
             else [
@@ -2390,6 +2403,7 @@ async def chat_completions(request: Request):
                         SYSTEM_PROMPT, policy_selections.get("prompt") or {}
                     ) if g_runtime_policy_controller else SYSTEM_PROMPT,
                 },
+                *(request_history(messages) or []),
                 {"role": "user", "content": effective_user_text},
             ]
         )
@@ -2413,7 +2427,7 @@ async def chat_completions(request: Request):
             _record_mtclaw_task_steps(task_id, trace)
             text = mtclaw_result.get("content", "")
             if g_memory_store and text:
-                g_memory_store.add_message(session_id, "assistant", text[:4000])
+                g_memory_store.add_message(session_id, "assistant", text)
             raw = mtclaw_result.get("raw") or build_openai_response(text)
             mtclaw_tool_calls = [
                 {
@@ -2450,7 +2464,7 @@ async def chat_completions(request: Request):
         text = "任务已收到取消请求，未继续执行。"
         body = build_openai_response(text, extra={"task_id": task_id, "canceled": True})
         if g_memory_store:
-            g_memory_store.add_message(session_id, "assistant", text[:4000])
+            g_memory_store.add_message(session_id, "assistant", text)
         finish_runtime_task(task_id, "canceled", "Canceled before tool loop", result_payload=body)
         return JSONResponse(body)
 
@@ -2463,6 +2477,7 @@ async def chat_completions(request: Request):
         prompt_policy=prompt_policy,
         retrieval_policy=retrieval_policy,
         coding_context=coding_context,
+        conversation_messages=messages,
     )
     confirmation_calls = [
         tc for tc in tool_result.get("tool_calls", [])
@@ -2488,7 +2503,7 @@ async def chat_completions(request: Request):
             "runtime_policies": policy_trace,
         }
         if g_memory_store:
-            g_memory_store.add_message(session_id, "assistant", text[:4000])
+            g_memory_store.add_message(session_id, "assistant", text)
         finish_runtime_task(task_id, "waiting_confirmation")
         if stream:
             return sse_from_text(text, task_id=task_id, extra=extra)
@@ -2511,47 +2526,6 @@ async def chat_completions(request: Request):
             logger.warning(f"Reflection failed: {e}")
 
     if tool_result["used_tools"]:
-        tc_lines = ""
-        for tc in tool_result["tool_calls"]:
-            compact_result = tool_result_for_model(tc["name"], tc["result"])
-            tc_lines += f"\n[Evidence/action result]\n{json.dumps(compact_result, ensure_ascii=False, separators=(',', ':'))}\n"
-
-        upstream_msgs = (
-            g_context_builder.build_messages(
-                session_id,
-                effective_user_text,
-                prompt_policy=prompt_policy,
-                retrieval_policy=retrieval_policy,
-                repo_path=str(coding_context.get("repo_path") or ""),
-                focus_paths=coding_context.get("focus_paths") or [],
-                diagnostics=coding_context.get("diagnostics") or [],
-                coding_token_budget=int(coding_context.get("token_budget") or 12000),
-            )
-            if g_context_builder
-            else [
-                {
-                    "role": "system",
-                    "content": (
-                        g_runtime_policy_controller.apply_prompt(
-                            SYSTEM_PROMPT, policy_selections.get("prompt") or {}
-                        )
-                        if g_runtime_policy_controller else SYSTEM_PROMPT
-                    ),
-                },
-                {"role": "user", "content": effective_user_text},
-            ]
-        )
-        upstream_msgs.append({
-            "role": "assistant",
-            "content": (
-                f"Use the following evidence and action results:\n{tc_lines}\n\n"
-                "Answer the original request directly. Integrate useful evidence into the "
-                "answer instead of describing the retrieval process. For web evidence, use "
-                "descriptive Markdown links immediately after the claims they support; omit "
-                "irrelevant sources and never output a raw search-result list. Do not say "
-                "that you searched, browsed, fetched, or used tools unless the user asks."
-            ),
-        })
         # Store tool-call context in memory before returning
         if g_memory_store:
             for tc in tool_result["tool_calls"]:
@@ -2568,12 +2542,57 @@ async def chat_completions(request: Request):
             "task_id": task_id,
             "runtime_policies": policy_trace,
         }
+        if tool_result.get("answer_complete"):
+            text = tool_result["final_text"]
+            extra["model_result"] = tool_result.get("model_result", {})
+            body = build_openai_response(text, model=extra["model_result"].get("model"), extra=extra)
+            if g_memory_store:
+                g_memory_store.add_message(session_id, "assistant", text)
+            finish_runtime_task(task_id, "succeeded", result_payload=body)
+            return sse_from_text(text, task_id=task_id, extra=extra) if stream else JSONResponse(body)
+        upstream_msgs = (
+            g_context_builder.build_messages(
+                session_id,
+                effective_user_text,
+                prompt_policy=prompt_policy,
+                retrieval_policy=retrieval_policy,
+                repo_path=str(coding_context.get("repo_path") or ""),
+                focus_paths=coding_context.get("focus_paths") or [],
+                diagnostics=coding_context.get("diagnostics") or [],
+                coding_token_budget=int(coding_context.get("token_budget") or 12000),
+                conversation_messages=messages,
+            )
+            if g_context_builder
+            else [
+                {
+                    "role": "system",
+                    "content": (
+                        g_runtime_policy_controller.apply_prompt(
+                            SYSTEM_PROMPT, policy_selections.get("prompt") or {}
+                        )
+                        if g_runtime_policy_controller else SYSTEM_PROMPT
+                    ),
+                },
+                *(request_history(messages) or []),
+                {"role": "user", "content": effective_user_text},
+            ]
+        )
+        upstream_msgs.append({"role": "assistant", "content": "", "tool_calls": [
+            {"id": f"result_{index}", "type": "function", "function": {
+                "name": tc["name"], "arguments": tc.get("arguments") if isinstance(tc.get("arguments"), str)
+                else json.dumps(tc.get("arguments") or {}, ensure_ascii=False),
+            }} for index, tc in enumerate(tool_result["tool_calls"])
+        ]})
+        upstream_msgs.extend({"role": "tool", "tool_call_id": f"result_{index}",
+                              "content": json.dumps(tool_result_for_model(tc["name"], tc["result"]), ensure_ascii=False)}
+                             for index, tc in enumerate(tool_result["tool_calls"]))
         if not has_api_key("upstream"):
-            text = "已完成本地工具执行，结果如下：\n" + tc_lines.strip()
+            text = "工具步骤已结束，但回答模型尚未配置，无法整理结果。已生成的文件可在下方查看。"
+            extra["status"] = "failed"
             body = build_openai_response(text, extra=extra)
             if g_memory_store:
-                g_memory_store.add_message(session_id, "assistant", text[:4000])
-            finish_runtime_task(task_id, "succeeded", result_payload=body)
+                g_memory_store.add_message(session_id, "assistant", text)
+            finish_runtime_task(task_id, "failed", "answer_model_not_configured", result_payload=body)
             if stream:
                 return sse_from_text(text, task_id=task_id, extra=extra)
             return JSONResponse(body)
@@ -2581,22 +2600,27 @@ async def chat_completions(request: Request):
         if isinstance(resp, JSONResponse):
             text = extract_assistant_text(resp)
             body = json.loads(resp.body)
+            extra = {**body.get("clawos", {}), **extra}
             body["clawos"] = extra
             if g_memory_store and text:
-                g_memory_store.add_message(session_id, "assistant", text[:4000])
-            finish_runtime_task(task_id, "succeeded", result_payload=body)
+                g_memory_store.add_message(session_id, "assistant", text)
+            failed = extra.get("status") == "failed"
+            finish_runtime_task(task_id, "failed" if failed else "succeeded", result_payload=body)
             if stream:
                 return sse_from_text(text, task_id=task_id, extra=extra)
             return JSONResponse(body)
         return resp
 
     final_text = tool_result.get("final_text", "")
+    failed = bool(tool_result.get("model_error"))
     if stream:
         if g_memory_store and final_text:
-            g_memory_store.add_message(session_id, "assistant", final_text[:4000])
-        finish_runtime_task(task_id, "succeeded")
+            g_memory_store.add_message(session_id, "assistant", final_text)
+        finish_runtime_task(task_id, "failed" if failed else "succeeded")
         return sse_from_text(final_text, task_id=task_id, extra={
             "used_tools": False,
+            "status": "failed" if failed else "succeeded",
+            "model_result": tool_result.get("model_result", {}),
             "tool_calls": [],
             "routing_rounds": tool_result.get("routing_rounds", 0),
             "attachments": attachment_meta,
@@ -2605,8 +2629,10 @@ async def chat_completions(request: Request):
             "runtime_policies": policy_trace,
         })
 
-    resp_payload = build_openai_response(final_text, extra={
+    resp_payload = build_openai_response(final_text, model=tool_result.get("model_result", {}).get("model"), extra={
         "used_tools": False,
+        "status": "failed" if failed else "succeeded",
+        "model_result": tool_result.get("model_result", {}),
         "tool_calls": [],
         "routing_rounds": tool_result.get("routing_rounds", 0),
         "attachments": attachment_meta,
@@ -2615,8 +2641,8 @@ async def chat_completions(request: Request):
         "runtime_policies": policy_trace,
     })
     if g_memory_store and final_text:
-        g_memory_store.add_message(session_id, "assistant", final_text[:4000])
-    finish_runtime_task(task_id, "succeeded", result_payload=resp_payload)
+        g_memory_store.add_message(session_id, "assistant", final_text)
+    finish_runtime_task(task_id, "failed" if failed else "succeeded", result_payload=resp_payload)
     return JSONResponse(resp_payload)
 
 # ---- MAIN ----
@@ -7579,7 +7605,8 @@ async def api_document_review_submit(document_id: int, request: Request):
     try:
         result = get_document_review_service().submit(document_id, chunk_id=int(data.get("chunk_id") or 0),
                     revision=str(data.get("revision") or ""), values=data.get("values"),
-                    confirmed=data.get("confirmed"), action=str(data.get("action") or "approve"))
+                    confirmed=data.get("confirmed"), action=str(data.get("action") or "approve"),
+                    active_review_ms=data.get("active_review_ms"))
         return JSONResponse(result)
     except (ValueError, TypeError) as exc:
         raise HTTPException(409, str(exc))
@@ -8737,11 +8764,26 @@ async def api_coding_repository_intelligence(request: Request):
         service = RepositoryIntelligenceService(
             OUTPUT_ROOT / "coding" / "repository-intelligence"
         )
-        graph = await asyncio.to_thread(service.build, data.get("repo_path", ""))
+        execution_coverage = {}
+        if data.get("coverage_py_report"):
+            execution_coverage = await asyncio.to_thread(
+                service.bind_coverage_py_report,
+                data.get("repo_path", ""), data.get("coverage_py_report") or {},
+                run_id=str(data.get("coverage_run_id") or ""),
+                command=data.get("coverage_command") or [],
+                tests_passed=data.get("coverage_tests_passed") is True,
+            )
+        graph = await asyncio.to_thread(
+            service.build, data.get("repo_path", ""),
+            semantic_graph=data.get("semantic_graph") or {},
+            execution_coverage=execution_coverage,
+        )
         result = {
             "schema": graph["schema"], "repo": graph["repo"],
             "digest": graph["digest"], "metrics": graph["metrics"],
             "incremental": graph["incremental"], "repo_map": graph["repo_map"],
+            "evidence_summary": graph.get("evidence_summary") or {},
+            "execution_coverage": graph.get("execution_coverage") or {},
         }
         objective = str(data.get("objective") or "").strip()
         focus_paths = data.get("focus_paths") or []

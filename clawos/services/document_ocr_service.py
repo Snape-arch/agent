@@ -91,15 +91,17 @@ class DocumentOCRService:
                 if self.language == "auto" and not self.explicit_tessdata and Path(self.tessdata_dir) == local_root / "tessdata" and chinese >= 30 and chinese > len(observed)*.3 and (best/"chi_sim.traineddata").is_file():
                     region_language, region_data = "chi_sim", str(best)
 
-                def recognize_crop(crop, psm=6):
+                def recognize_crop(crop, psm=6, *, language=None, data_dir=None):
                     if time.monotonic() >= deadline:
                         return {"status": "budget_exceeded", "words": []}
                     crop_path = Path(td) / "cell.png"
                     crop.save(crop_path)
                     crop_args = [self.executable, str(crop_path), "stdout"]
-                    if region_data:
-                        crop_args += ["--tessdata-dir", region_data]
-                    crop_args += ["-l", region_language, "--oem", "1", "--psm", str(psm), "-c", "tessedit_create_tsv=1"]
+                    selected_data = region_data if data_dir is None else data_dir
+                    selected_language = region_language if language is None else language
+                    if selected_data:
+                        crop_args += ["--tessdata-dir", selected_data]
+                    crop_args += ["-l", selected_language, "--oem", "1", "--psm", str(psm), "-c", "tessedit_create_tsv=1"]
                     try:
                         output = subprocess.run(crop_args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=min(15,max(.1,deadline-time.monotonic())))
                         found = self.parse_tsv(output.stdout)
@@ -107,22 +109,52 @@ class DocumentOCRService:
                     except (OSError, subprocess.TimeoutExpired):
                         return {"status": "failed", "words": []}
 
-                def verify_crop(crop, original):
+                def verify_crop(crop, original, confidence=0.0):
                     import unicodedata
-                    from PIL import ImageOps
+                    from PIL import ImageEnhance, ImageFilter, ImageOps
+                    from services.ocr_candidate_selector import OCRCandidateSelector
+                    started = time.monotonic()
                     candidates = []
-                    # Different segmentation/scale exposes errors correlated with
-                    # the column view. Agreement is NOT independent factual proof.
-                    for mode in (6, 7):
-                        view = ImageOps.expand(crop.resize((crop.width*2, crop.height*2)), border=24, fill="white")
-                        response = recognize_crop(view, mode)
+                    fast_dir = local_root / "tessdata"
+                    fast_has_bilingual = all((fast_dir/f"{name}.traineddata").is_file() for name in ("chi_sim", "eng"))
+                    fast_data = str(fast_dir) if fast_has_bilingual else region_data
+                    fast_language = "chi_sim+eng" if fast_has_bilingual else region_language
+                    large = ImageOps.expand(
+                        crop.resize((crop.width*3, crop.height*3), Image.Resampling.LANCZOS),
+                        border=36, fill="white",
+                    )
+                    views = [
+                        ("cell_3x_best_zh_psm6", large, 6, "chi_sim", str(best) if (best/"chi_sim.traineddata").is_file() else region_data),
+                        ("cell_3x_best_zh_psm11", large, 11, "chi_sim", str(best) if (best/"chi_sim.traineddata").is_file() else region_data),
+                        ("cell_3x_fast_bilingual_psm6", large, 6, fast_language, fast_data),
+                        ("cell_3x_fast_bilingual_psm11", large, 11, fast_language, fast_data),
+                        ("cell_3x_fast_bilingual_psm13", large, 13, fast_language, fast_data),
+                    ]
+                    if confidence < .9:
+                        sharp = ImageEnhance.Contrast(
+                            ImageOps.grayscale(large).filter(
+                                ImageFilter.UnsharpMask(radius=1.2, percent=180, threshold=2)
+                            )
+                        ).enhance(1.35)
+                        views.append(("cell_3x_sharp_fast_bilingual_psm6", sharp, 6, fast_language, fast_data))
+                    # These are correlated views. They can rank a transcription,
+                    # never establish factual truth or bypass source review.
+                    for view_name, view, mode, view_language, view_data in views:
+                        response = recognize_crop(view, mode, language=view_language, data_dir=view_data)
                         text = " ".join(line["text"] for line in self.lines(response["words"]))
-                        candidates.append({"view": f"cell_2x_psm{mode}", "text": text, "status": response["status"]})
+                        candidate_confidence = min((word["confidence"] for word in response["words"]), default=0.0)
+                        candidates.append({"view": view_name, "text": text, "status": response["status"],
+                                           "confidence": round(candidate_confidence, 4)})
                     norm = lambda t: re.sub(r"\s+", "", unicodedata.normalize("NFKC", t))
                     complete = all(c["status"] == "completed" for c in candidates)
                     agreement = complete and all(norm(c["text"]) == norm(original) for c in candidates)
+                    selection = OCRCandidateSelector.select(
+                        original, candidates, context_text=observed,
+                        original_confidence=float(confidence or 0.0),
+                    )
                     return {"status": "agreement_unverified" if agreement else ("disagreement" if complete else "incomplete"),
-                            "candidates": candidates, "auto_accepted": False}
+                            "candidates": candidates, "auto_accepted": False,
+                            "selection": selection, "elapsed_ms": round((time.monotonic()-started)*1000, 2)}
 
                 tables, regions = RasterDocumentLayout().recover(image, scale, recognize_crop, verify_crop)
                 def inside(word, table):

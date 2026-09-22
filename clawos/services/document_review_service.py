@@ -77,8 +77,24 @@ class DocumentReviewService:
                                     for key, node in targets.items()]})
         with self.store._conn() as c:
             history = [dict(row) for row in c.execute("SELECT id,actor,created_at,payload FROM document_review_events WHERE document_id=? ORDER BY id", (document_id,))]
+        timing, corrected, inspected = [], 0, 0
+        for event in history:
+            try:
+                payload = json.loads(event["payload"])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            measured = payload.get("review_effort") or {}
+            if measured.get("active_review_ms") is not None:
+                timing.append(int(measured["active_review_ms"]))
+            corrected += int(measured.get("corrected_cell_count") or 0)
+            inspected += int(measured.get("inspected_cell_count") or 0)
         return {"document_id": document_id, "revision": self._revision(document, digest), "source_sha256": digest,
-                "items": items, "history": history, "inspection_only": True}
+                "items": items, "history": history, "inspection_only": True,
+                "review_effort": {"timed_submissions": len(timing), "active_review_ms": sum(timing),
+                                  "corrected_cell_count": corrected, "inspected_cell_count": inspected,
+                                  "seconds_per_inspected_cell": round(sum(timing) / 1000 / inspected, 3) if inspected else None,
+                                  "seconds_per_corrected_cell": round(sum(timing) / 1000 / corrected, 3) if corrected else None,
+                                  "timing_origin": "client_monotonic_clock_untrusted_telemetry"}}
 
     def crop(self, document_id, node_id):
         import fitz
@@ -99,11 +115,14 @@ class DocumentReviewService:
                 raise ValueError("Evidence crop is outside the page")
             return page.get_pixmap(matrix=fitz.Matrix(3,3), clip=box, alpha=False).tobytes("png")
 
-    def submit(self, document_id, *, chunk_id, revision, values, confirmed=False, action="approve", actor="local-user"):
+    def submit(self, document_id, *, chunk_id, revision, values, confirmed=False, action="approve", actor="local-user",
+               active_review_ms=None):
         if confirmed is not True:
             raise ValueError("Explicit source inspection confirmation is required")
         if action not in {"approve", "reject"} or not isinstance(values, dict):
             raise ValueError("Invalid review action or cell values")
+        if active_review_ms is not None and (isinstance(active_review_ms, bool) or not isinstance(active_review_ms, (int, float)) or not 0 <= active_review_ms <= 14_400_000):
+            raise ValueError("Review timing must be milliseconds between 0 and four hours")
         document = self.store.get_document(document_id, include_review=True)
         if not document:
             raise ValueError("Document not found")
@@ -198,10 +217,17 @@ class DocumentReviewService:
                 c.execute("UPDATE document_chunks SET content=?,metadata=? WHERE id=? AND document_id=?", (row["content"],json.dumps(row["metadata"],ensure_ascii=False),row["id"],document_id))
             c.execute("UPDATE documents SET metadata=?,status=?,updated_at=datetime('now') WHERE id=?", (json.dumps(metadata,ensure_ascii=False),status,document_id))
             c.execute("INSERT INTO document_review_events(document_id,source_sha256,revision,actor,payload) VALUES(?,?,?,?,?)",
-                      (document_id,digest,revision,actor,json.dumps({"action":action,"chunk_id":chunk_id,"changes":changes,"invalidated_knowledge":invalidated},ensure_ascii=False)))
+                      (document_id,digest,revision,actor,json.dumps({"action":action,"chunk_id":chunk_id,"changes":changes,"invalidated_knowledge":invalidated,
+                       "review_effort":{"active_review_ms":round(active_review_ms) if active_review_ms is not None else None,
+                                        "corrected_cell_count":sum(1 for item in changes if item["before"] != item["after"]),
+                                        "inspected_cell_count":len(targets),
+                                        "timing_origin":"client_monotonic_clock_untrusted_telemetry"}},ensure_ascii=False)))
         # Approved chunks are immediately available through the gated retrieval
         # path. Publishing to the long-term knowledge index is explicit/retryable.
         return {"ok": True, "status": status, "remaining": len(pending), "withheld": len(withheld), "action": action,
+                "review_effort":{"active_review_ms":round(active_review_ms) if active_review_ms is not None else None,
+                                 "corrected_cell_count":sum(1 for item in changes if item["before"] != item["after"]),
+                                 "inspected_cell_count":len(targets)},
                 "publication": "ready_for_explicit_publish" if action == "approve" else "withheld"}
 
     def publish(self, document_id, *, confirmed=False):

@@ -92,6 +92,7 @@ class CodingContextService:
         diagnostics: list[dict[str, Any]] | None = None,
         include_git_history: int = 8,
         semantic_graph: dict[str, Any] | None = None,
+        execution_coverage: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         repo = self._repo(repo_path)
         budget = max(1000, min(int(token_budget or 12000), 100_000))
@@ -114,7 +115,8 @@ class CodingContextService:
         before_hits, before_misses = self._cache_hits, self._cache_misses
         repo_map = self._repo_map(repo, ranked[:80])
         repository_graph = self.repository_intelligence.build(
-            repo, semantic_graph=semantic_graph or {}
+            repo, semantic_graph=semantic_graph or {},
+            execution_coverage=execution_coverage or {},
         )
         task_context = self.repository_intelligence.task_slice(
             repository_graph, objective, focus_paths=sorted(focus),
@@ -184,6 +186,8 @@ class CodingContextService:
                 "metrics": repository_graph.get("metrics") or {},
                 "incremental": repository_graph.get("incremental") or {},
                 "repo_map": repository_graph.get("repo_map") or {},
+                "evidence_summary": repository_graph.get("evidence_summary") or {},
+                "execution_coverage": repository_graph.get("execution_coverage") or {},
             },
             "task_context": task_context,
             "impact_analysis": self.repository_intelligence.impact_analysis(

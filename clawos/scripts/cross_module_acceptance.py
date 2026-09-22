@@ -9,6 +9,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tests'))
 
 SUITES = {
+    'knowledge_memory_integrity': 'test_knowledge_transactions',
     'document_questions': 'test_evidence_learning_quality.EvidenceQualityTests',
     'scanned_materials': 'test_document_ocr_service',
     'meeting_transcripts': 'test_workspace_services.WorkspaceServicesTests.test_meeting_audio_sidecar_diarization_and_connector_drafts',

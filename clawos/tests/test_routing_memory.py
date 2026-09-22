@@ -915,6 +915,9 @@ class MemoryAndRoutingTests(unittest.TestCase):
             server.g_memory_store = store
             server.g_knowledge_service = None
             try:
+                store.add_document("RAG Paper", filename="rag.pdf", file_hash="rag-paper", category="research")
+                store.add_document_chunk(1,1,"Use [[Citation Grounding]] to keep generated answers auditable.","doc:1#chunk=1")
+                store.add_document_chunk(1,2,"Backlinks from [[Retrieval Augmented Generation]] should appear in the vault graph.","doc:1#chunk=2")
                 first = store.add_knowledge(
                     "Retrieval Augmented Generation",
                     "Use [[Citation Grounding]] to keep generated answers auditable.",
@@ -931,7 +934,6 @@ class MemoryAndRoutingTests(unittest.TestCase):
                     ["paper", "citation"],
                     0.89,
                 )
-                store.add_document("RAG Paper", filename="rag.pdf", file_hash="rag-paper", category="research")
                 check_payload = json.loads(asyncio.run(server.api_knowledge_obsidian_check(category="research")).body)
                 graph_payload = json.loads(asyncio.run(server.api_knowledge_graph(category="research", limit=80)).body)
                 service = KnowledgeService(store, Path(td) / "uploads")
@@ -1000,6 +1002,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
     def test_chat_completion_creates_finished_runtime_task(self):
         import clawos_server as server
         from memoryos.memory_store import MemoryStore
+        from providers import create_model_provider
 
         with tempfile.TemporaryDirectory() as td:
             old_store = server.g_memory_store
@@ -1007,11 +1010,16 @@ class MemoryAndRoutingTests(unittest.TestCase):
             old_mtclaw = server.g_mtclaw_adapter
             old_reflection = server.g_reflection_engine
             old_config = server.config
+            old_upstream = server.g_upstream_provider
             server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
             server.g_context_builder = None
             server.g_mtclaw_adapter = None
             server.g_reflection_engine = None
-            server.config = {"upstream": {}, "routing": {}}
+            # A successful tool step still needs a configured answer provider.
+            server.config = {"upstream": {"provider": "mock"}, "routing": {}}
+            server.g_upstream_provider = create_model_provider({
+                "provider": "mock", "mock_response": "工具列表已读取。",
+            })
             try:
                 resp = asyncio.run(server.chat_completions(FakeRequest({
                     "session_id": "s-task",
@@ -1027,6 +1035,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 server.g_mtclaw_adapter = old_mtclaw
                 server.g_reflection_engine = old_reflection
                 server.config = old_config
+                server.g_upstream_provider = old_upstream
 
         self.assertEqual(detail["task"]["status"], "succeeded")
         self.assertEqual(detail["steps"][0]["name"], "tools_list")

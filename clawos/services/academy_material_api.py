@@ -78,10 +78,12 @@ def materials_router(service_factory, model):
                 return service.event(mid,'draft',dict(citation=cid,answer=str(data.get('answer') or '')[:6000]))
             if action=='project':
                 return await asyncio.to_thread(service.project,mid,data.get('config'),data.get('cases'),learner)
-            if action not in ('guide','tutor','assess','chapter-questions'):
+            if action not in ('guide','tutor','assess','chapter-questions','chapter-review'):
                 raise ValueError('未知学习操作')
             # Build/validate inputs before calling the shared provider.
-            if action=='chapter-questions':
+            if action=='chapter-review':
+                prompts=[service.chapter_review_prompt(mid,data.get('response_id'),learner,critic=x) for x in (False,True)]
+            elif action=='chapter-questions':
                 prompts=[service.chapter_prompt(mid,data.get('chapter'),data.get('subject'),learner)]
             elif action=='guide':
                 prompts=[service.guide_prompt(mid,cid,learner)]
@@ -95,6 +97,8 @@ def materials_router(service_factory, model):
                     replies.append(await asyncio.wait_for(model(prompt,[]),timeout=75))
             except Exception:
                 raise HTTPException(502,'模型服务暂不可用或超时；原文与已保存草稿不受影响，未计为通过。')
+            if action=='chapter-review':
+                return service.save_chapter_review(mid,data.get('response_id'),[model_json(r) for r in replies],learner)
             if action=='chapter-questions':
                 return service.save_chapter_questions(mid,data.get('chapter'),data.get('subject'),model_json(replies[0]),learner)
             if action=='guide':

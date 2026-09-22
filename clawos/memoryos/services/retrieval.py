@@ -145,6 +145,8 @@ class RetrievalService:
             self._bm25.add(f"exp_{exp.get('id','')}", exp.get("task", "") + " " + exp.get("lesson", ""))
         memories = self._store.list_memories(include_disabled=False, limit=500)
         for memory in memories:
+            if memory.get("owner_id", "default")!="default" or memory.get("workspace_id", "default")!="default":
+                continue
             self._bm25.add(
                 f"mem_{memory.get('id', '')}",
                 " ".join([
@@ -198,7 +200,8 @@ class RetrievalService:
             pass
 
         # Keyword search (SQLite)
-        kw = self._store.search_knowledge(query, limit=recall_k)
+        legacy_scope = owner_id == "default" and workspace_id == "default"
+        kw = self._store.search_knowledge(query, limit=recall_k) if legacy_scope else []
         keyword_lane = []
         for r in kw:
             if int(r.get("id") or 0) in v2_legacy_ids:
@@ -209,8 +212,9 @@ class RetrievalService:
             lanes.append(("keyword", 0.55, keyword_lane))
 
         # BM25 search
-        self._ensure_bm25()
-        bm = self._bm25.search(query, recall_k)
+        if legacy_scope:
+            self._ensure_bm25()
+        bm = self._bm25.search(query, recall_k) if legacy_scope else []
         bm25_lane = []
         for r in bm:
             try:
@@ -233,6 +237,8 @@ class RetrievalService:
             vector_lane = []
             for r in vs:
                 metadata = r.get("metadata", {})
+                if metadata.get("owner_id", "default") != owner_id or metadata.get("workspace_id", "default") != workspace_id:
+                    continue
                 vector_lane.append({
                     "source": "vector", "id": r["id"], "knowledge_id": metadata.get("knowledge_id"),
                     "title": metadata.get("title", ""), "content": r["text"],

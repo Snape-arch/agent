@@ -233,18 +233,11 @@ class KnowledgeService:
             text, engine, reason = self._load_ocr_text(document, sidecar_text=sidecar_text)
         if not text.strip():
             meta.update({"ocr_attempted": True, "ocr_engine": engine, "ocr_error": reason})
-            updated = self.store.add_document(
-                title=document.get("title") or document.get("filename") or f"doc-{document_id}",
-                filename=document.get("filename") or "",
-                file_path=document.get("file_path") or "",
-                file_hash=document.get("file_hash") or f"document-{document_id}",
-                mime_type=document.get("mime_type") or "",
-                category=document.get("category") or "domain",
-                extractor=document.get("extractor") or "",
-                status="ocr_unavailable",
-                metadata=meta,
-            )
-            return {"ok": False, "status": "ocr_unavailable", "reason": reason, "document": updated, "chunk_count": 0}
+            with self.store._conn() as connection:
+                connection.execute("UPDATE documents SET metadata=?,updated_at=datetime('now') WHERE id=?",(json.dumps(meta,ensure_ascii=False),document_id))
+            updated=self.store.get_document(document_id,include_review=True)
+            count=len(self.store.get_document_chunks(document_id,100000,include_review=True))
+            return {"ok": False, "status": "ocr_unavailable", "reason": reason, "document": updated, "chunk_count": count, "preserved_previous_evidence": True}
 
         if graph:
             from services.document_semantic_graph_service import DocumentSemanticGraphService
@@ -264,43 +257,50 @@ class KnowledgeService:
             "ocr_engine": engine,
             "ocr_text_chars": len(text),
         })
-        updated = self.store.add_document(
-            title=document.get("title") or document.get("filename") or f"doc-{document_id}",
-            filename=document.get("filename") or "",
-            file_path=document.get("file_path") or "",
-            file_hash=document.get("file_hash") or f"document-{document_id}",
-            mime_type=document.get("mime_type") or "",
-            category=document.get("category") or "domain",
-            extractor=f"{document.get('extractor') or 'document'}+ocr",
-            status="needs_ocr" if graph and meta.get("ocr_required") else ("needs_review" if graph and meta.get("ocr_review_pages") else "ready"),
-            metadata=meta,
-        )
-        if hasattr(self.store, "delete_knowledge_by_source_prefix"):
-            self.store.delete_knowledge_by_source_prefix(f"doc:{updated['id']}#")
-        knowledge_ids = []
-        for index, chunk_info in enumerate(chunks, 1):
-            chunk = chunk_info["content"]
-            page = int(chunk_info.get("page_number") or 0)
-            citation = f"doc:{updated['id']}#page={page}&chunk={index}" if page else f"doc:{updated['id']}#chunk={index}"
-            chunk_metadata = {key: value for key, value in chunk_info.items() if key != "content"}
-            self.store.add_document_chunk(updated["id"], index, chunk, citation, metadata=chunk_metadata)
-            if chunk_metadata.get("review_required"):
-                continue
-            item = self.store.add_knowledge(
-                title=f"{updated['title']} #{index}",
-                content=f"{chunk}\n\nSource: {citation}",
-                category=updated.get("category") or "domain",
-                source=citation,
-                tags=["document", "ocr"],
-                confidence=0.82,
+        with self.store.transaction():
+            updated = self.store.add_document(
+                document_id=document_id,
+                title=document.get("title") or document.get("filename") or f"doc-{document_id}",
+                filename=document.get("filename") or "",
+                file_path=document.get("file_path") or "",
+                file_hash=document.get("file_hash") or f"document-{document_id}",
+                mime_type=document.get("mime_type") or "",
+                category=document.get("category") or "domain",
+                extractor=f"{document.get('extractor') or 'document'}+ocr",
+                status="needs_ocr" if graph and meta.get("ocr_required") else ("needs_review" if graph and meta.get("ocr_review_pages") else "ready"),
+                metadata=meta,
             )
-            knowledge_ids.append(int(item["id"]))
+            if hasattr(self.store, "delete_knowledge_by_source_prefix"):
+                self.store.delete_knowledge_by_source_prefix(f"doc:{updated['id']}#")
+            knowledge_ids = []
+            for index, chunk_info in enumerate(chunks, 1):
+                chunk = chunk_info["content"]
+                page = int(chunk_info.get("page_number") or 0)
+                citation = f"doc:{updated['id']}#page={page}&chunk={index}" if page else f"doc:{updated['id']}#chunk={index}"
+                chunk_metadata = {key: value for key, value in chunk_info.items() if key != "content"}
+                self.store.add_document_chunk(updated["id"], index, chunk, citation, metadata=chunk_metadata)
+                if chunk_metadata.get("review_required"):
+                    continue
+                item = self.store.add_knowledge(
+                    title=f"{updated['title']} #{index}",
+                    content=f"{chunk}\n\nSource: {citation}",
+                    category=updated.get("category") or "domain",
+                    source=citation,
+                    tags=["document", "ocr"],
+                    confidence=0.82,
+                )
+                knowledge_ids.append(int(item["id"]))
+        vector_status = "not_configured"
         if self.vector_refresh:
-            self.vector_refresh()
+            try:
+                self.vector_refresh()
+                vector_status = "synced"
+            except Exception:
+                vector_status = "pending_retry"
         updated["chunk_count"] = len(chunks)
         updated["knowledge_ids"] = knowledge_ids
         return {"ok": updated["status"] == "ready", "status": updated["status"], "reason": "ocr indexed" if updated["status"] == "ready" else reason,
-                "document": updated, "chunk_count": len(chunks), "engine": engine}
+                "document": updated, "chunk_count": len(chunks), "engine": engine, "vector_status": vector_status}
 
     def _load_ocr_text(self, document: dict[str, Any], *, sidecar_text: str = "") -> tuple[str, str, str]:
         if sidecar_text.strip():
@@ -325,7 +325,7 @@ class KnowledgeService:
 
     @staticmethod
     def _sidecar_candidates(file_path: Path) -> list[Path]:
-        if not str(file_path):
+        if not file_path.name:
             return []
         return [
             Path(str(file_path) + ".ocr.txt"),

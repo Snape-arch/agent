@@ -249,100 +249,8 @@ function toggleSidebar() {
   else document.body.classList.toggle("sidebar-collapsed");
 }
 
-function safeMarkdownUrl(value) {
-  const url = String(value || "").trim();
-  return /^(https?:\/\/|mailto:)/i.test(url) ? url : "";
-}
-
-function renderMarkdownInline(value) {
-  const codeSpans = [];
-  let text = String(value || "").replace(/`([^`]+)`/g, (_, code) => {
-    codeSpans.push(`<code>${esc(code)}</code>`);
-    return `\uE000CODE${codeSpans.length - 1}\uE001`;
-  });
-  text = esc(text);
-  text = text.replace(/\[([^\]]+)\]\(([^\s)]+)\)/g, (_, label, url) => {
-    const safe = safeMarkdownUrl(url);
-    return safe ? `<a href="${esc(safe)}" target="_blank" rel="noopener noreferrer">${label}</a>` : label;
-  });
-  text = text.replace(/(^|[\s(>])(https?:\/\/[^\s<]+[^\s<.,:;!?\])}])/g, (_, prefix, url) => `${prefix}<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`);
-  text = text
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/__([^_]+)__/g, "<strong>$1</strong>")
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
-    .replace(/\uE000CODE(\d+)\uE001/g, (_, index) => codeSpans[Number(index)] || "");
-  return text;
-}
-
-function markdownTable(lines, start) {
-  if (start + 1 >= lines.length || !lines[start].includes("|")) return null;
-  const separator = lines[start + 1].trim();
-  if (!/^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(separator)) return null;
-  const split = line => line.trim().replace(/^\||\|$/g, "").split("|").map(cell => cell.trim());
-  const head = split(lines[start]);
-  const rows = [];
-  let index = start + 2;
-  while (index < lines.length && lines[index].includes("|") && lines[index].trim()) {
-    rows.push(split(lines[index]));
-    index += 1;
-  }
-  const header = `<thead><tr>${head.map(cell => `<th>${renderMarkdownInline(cell)}</th>`).join("")}</tr></thead>`;
-  const body = `<tbody>${rows.map(row => `<tr>${head.map((_, column) => `<td>${renderMarkdownInline(row[column] || "")}</td>`).join("")}</tr>`).join("")}</tbody>`;
-  return { html: `<div class="md-table-wrap"><table>${header}${body}</table></div>`, next: index };
-}
-
 function md(text) {
-  const source = String(text || "").replace(/\r\n?/g, "\n");
-  const codeBlocks = [];
-  const withoutCode = source.replace(/```([^\n`]*)\n?([\s\S]*?)(?:```|$)/g, (_, language, code) => {
-    const safeLanguage = String(language || "").trim().replace(/[^a-z0-9_+.#-]/gi, "").slice(0, 30);
-    codeBlocks.push(`<figure class="md-code"><figcaption><span>${esc(safeLanguage || "代码")}</span><button type="button" class="md-copy" aria-label="复制代码">复制</button></figcaption><pre><code${safeLanguage ? ` class="language-${esc(safeLanguage)}"` : ""}>${esc(code.replace(/\n$/, ""))}</code></pre></figure>`);
-    return `\n\uE000BLOCK${codeBlocks.length - 1}\uE001\n`;
-  });
-  const lines = withoutCode.split("\n");
-  const html = [];
-  let paragraph = [];
-  let listType = "";
-  const flushParagraph = () => {
-    if (paragraph.length) html.push(`<p>${paragraph.map(renderMarkdownInline).join("<br>")}</p>`);
-    paragraph = [];
-  };
-  const closeList = () => {
-    if (listType) html.push(`</${listType}>`);
-    listType = "";
-  };
-  for (let index = 0; index < lines.length;) {
-    const line = lines[index];
-    const trimmed = line.trim();
-    const table = markdownTable(lines, index);
-    if (table) {
-      flushParagraph(); closeList(); html.push(table.html); index = table.next; continue;
-    }
-    const block = trimmed.match(/^\uE000BLOCK(\d+)\uE001$/);
-    if (block) {
-      flushParagraph(); closeList(); html.push(codeBlocks[Number(block[1])] || ""); index += 1; continue;
-    }
-    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
-    if (heading) {
-      flushParagraph(); closeList(); const level = heading[1].length + 1; html.push(`<h${level}>${renderMarkdownInline(heading[2])}</h${level}>`); index += 1; continue;
-    }
-    const item = trimmed.match(/^([-*+]|\d+[.)])\s+(.+)$/);
-    if (item) {
-      flushParagraph(); const wanted = /^\d/.test(item[1]) ? "ol" : "ul"; if (listType !== wanted) { closeList(); listType = wanted; html.push(`<${wanted}>`); } html.push(`<li>${renderMarkdownInline(item[2])}</li>`); index += 1; continue;
-    }
-    if (/^>\s?/.test(trimmed)) {
-      flushParagraph(); closeList(); html.push(`<blockquote>${renderMarkdownInline(trimmed.replace(/^>\s?/, ""))}</blockquote>`); index += 1; continue;
-    }
-    if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
-      flushParagraph(); closeList(); html.push("<hr>"); index += 1; continue;
-    }
-    if (!trimmed) {
-      flushParagraph(); closeList(); index += 1; continue;
-    }
-    closeList(); paragraph.push(line); index += 1;
-  }
-  flushParagraph(); closeList();
-  return html.join("");
+  return window.ClawChatContent.render(text);
 }
 
 function enhanceMarkdown(container) {
@@ -399,14 +307,20 @@ function addAssistantStream() {
   if (inner.querySelector(".empty")) inner.innerHTML = "";
   const div = document.createElement("div");
   div.className = "msg agent";
-  div.innerHTML = `<div class="message-body"><div class="mc"></div></div>`;
+  div.innerHTML = '<div class="message-body"><div class="mc" aria-live="polite"></div><p class="chat-response-state">正在生成…</p></div>';
   inner.appendChild(div);
   const target = div.querySelector(".mc");
-  return text => {
+  const status = div.querySelector(".chat-response-state");
+  const update = text => {
+    const chat = $("chat");
+    const follow = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 100;
     target.innerHTML = md(text);
     enhanceMarkdown(target);
-    $("chat").scrollTop = $("chat").scrollHeight;
+    status.hidden = true;
+    if (follow) chat.scrollTop = chat.scrollHeight;
   };
+  update.note = text => { status.textContent = text; status.hidden = false; };
+  return update;
 }
 
 function formatArtifactBytes(value) {
@@ -550,40 +464,12 @@ function sendMessage() {
 }
 
 async function readChatStream(response, onText, onMeta) {
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let text = "";
-  let meta = {};
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let index;
-    while ((index = buffer.indexOf("\n\n")) >= 0) {
-      const block = buffer.slice(0, index);
-      buffer = buffer.slice(index + 2);
-      if (!block.trim() || block.includes("data: [DONE]")) continue;
-      const event = (block.match(/^event:\s*(.+)$/m) || [])[1] || "message";
-      const data = (block.match(/^data:\s*([\s\S]*)$/m) || [])[1] || "";
-      try {
-        const payload = JSON.parse(data);
-        if (event === "clawos_meta") {
-          meta = { ...meta, ...payload };
-          onMeta(meta);
-          continue;
-        }
-        const piece = payload.choices?.[0]?.delta?.content || "";
-        text += piece;
-        onText(text);
-      } catch (err) {}
-    }
-  }
-  return { text, meta };
+  return window.ClawChatContent.readStream(response, onText, onMeta);
 }
 
 async function submitMessage(text, confirmedTools, attachments, webSearchMode = "off") {
   busy = true;
+  lastTaskId = null;
   window.activeChatController = new AbortController();
   $("send").disabled = true;
   if ($("stop")) $("stop").disabled = false;
@@ -604,7 +490,10 @@ async function submitMessage(text, confirmedTools, attachments, webSearchMode = 
         messages: [{ role: "user", content: text }]
       })
     });
-    if (!response.ok) throw new Error("chat " + response.status);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(typeof error.detail === "string" ? error.detail : `请求失败 (${response.status})`);
+    }
     const contentType = response.headers.get("content-type") || "";
     let data = null;
     let streamMeta = {};
@@ -643,7 +532,7 @@ async function submitMessage(text, confirmedTools, attachments, webSearchMode = 
     await loadSessions();
     await refreshAll();
   } catch (err) {
-    update(err.name === "AbortError" ? "已停止生成。" : "请求失败：" + err.message);
+    update.note(err.name === "AbortError" ? "已停止生成，已收到的内容保留。" : "请求失败：" + err.message);
   } finally {
     busy = false;
     window.activeChatController = null;
@@ -3045,7 +2934,9 @@ async function openDocumentReview(id) {
     const status = document.createElement("p"); body.appendChild(status); status.textContent = "正在加载复核证据…";
     try {
       const data = await api(`/api/documents/${Number(id)}/review`);
-      status.textContent = `${data.items.filter(item => item.state !== "rejected").length} 条待复核 · ${data.items.filter(item => item.state === "rejected").length} 条已拒绝 · ${data.history.length} 条历史记录。请核对整行和表头，尤其是数字、单位和否定词。`;
+      const effort = data.review_effort || {};
+      const timing = effort.timed_submissions ? ` · 已记录 ${effort.timed_submissions} 次真实操作，共 ${(effort.active_review_ms / 1000).toFixed(1)} 秒、修改 ${effort.corrected_cell_count} 格` : " · 尚无真实复核耗时样本";
+      status.textContent = `${data.items.filter(item => item.state !== "rejected").length} 条待复核 · ${data.items.filter(item => item.state === "rejected").length} 条已拒绝 · ${data.history.length} 条历史记录${timing}。请核对整行和表头，尤其是数字、单位和否定词。`;
       const publish = document.createElement("button"); publish.textContent = "将已确认内容写入知识库";
       publish.onclick = async () => {
         if (!window.confirm("只发布已对照原图确认的内容；待复核或拒绝的内容不会发布。继续？")) return;
@@ -3061,13 +2952,13 @@ async function openDocumentReview(id) {
       for (const item of data.items) {
         const section = document.createElement("section"); section.style.cssText = "border-top:1px solid #8885;margin-top:20px;padding-top:12px";
         const title = document.createElement("h3"); title.textContent = `第 ${item.cells[0]?.page || "?"} 页 · 证据 ${item.chunk_id} · ${item.state === "rejected" ? "已拒绝，可重新核对" : "待确认"}`;
-        section.appendChild(title); const inputs = new Map(); let loaded = 0;
+        section.appendChild(title); const inputs = new Map(); let loaded = 0; let reviewStartedAt = null;
         for (const cell of item.cells) {
           const row = document.createElement("div"); row.style.cssText = "display:grid;grid-template-columns:minmax(160px,1fr) minmax(180px,1fr);gap:12px;margin:12px 0";
           const source = document.createElement("div");
           const label = document.createElement("p"); label.textContent = `第 ${cell.page} 页 · ${cell.is_header ? "表头" : cell.header || "正文"}`; source.appendChild(label);
           const img = document.createElement("img"); img.src = cell.crop_url; img.alt = "原始 PDF 单元格裁剪"; img.style.cssText = "max-width:100%;border:1px solid #8885";
-          img.onload = () => { loaded += 1; }; img.onerror = () => { status.textContent = "原图加载失败，不能确认。请检查源文件后重试。"; };
+          img.onload = () => { loaded += 1; if (loaded === item.cells.length) reviewStartedAt = performance.now(); }; img.onerror = () => { status.textContent = "原图加载失败，不能确认。请检查源文件后重试。"; };
           source.appendChild(img); row.appendChild(source);
           const editor = document.createElement("div");
           const input = document.createElement("textarea"); input.value = cell.text; input.rows = 3; input.style.width = "100%";
@@ -3084,7 +2975,8 @@ async function openDocumentReview(id) {
             if (!checked.checked || loaded !== item.cells.length) { status.textContent = "请等待原图加载完成，并勾选核对确认。"; return; }
             button.disabled = true;
             try {
-              await api(`/api/documents/${Number(id)}/review`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({chunk_id:item.chunk_id,revision:data.revision,values:Object.fromEntries([...inputs].map(([key,input])=>[key,input.value])),confirmed:true,action})});
+              const activeReviewMs = Math.max(0, Math.round(performance.now() - (reviewStartedAt || performance.now())));
+              await api(`/api/documents/${Number(id)}/review`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({chunk_id:item.chunk_id,revision:data.revision,values:Object.fromEntries([...inputs].map(([key,input])=>[key,input.value])),confirmed:true,action,active_review_ms:activeReviewMs})});
               await render(); await loadOcrQueue();
             } catch (err) { status.textContent = `${err.message}；请关闭后重新加载复核窗口。`; button.disabled = false; }
           }; section.appendChild(button);

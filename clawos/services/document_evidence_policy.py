@@ -13,12 +13,12 @@ def source_usable(connection, source: str) -> bool:
         return True
     rows = connection.execute("SELECT citation,metadata FROM document_chunks WHERE document_id=?", (int(match[1]),)).fetchall()
     document = connection.execute("SELECT status,metadata FROM documents WHERE id=?", (int(match[1]),)).fetchone()
-    if not rows and document and (document["status"] in {"needs_ocr", "needs_review", "ready_with_exclusions"}
-                                 or json.loads(document["metadata"] or "{}").get("review_revision")):
-        # Re-ingestion replaces chunks before repopulation; that intermediate
-        # state must not revive an older published citation.
+    if not document or not rows:
         return False
     exact = [row for row in rows if row["citation"] == source]
+    # A fragment citation must resolve exactly, never to another surviving chunk.
+    if '#' in str(source) and not exact:
+        return False
     for row in exact or rows:
         try:
             if json.loads(row["metadata"]).get("review_required"):

@@ -1,5 +1,23 @@
 # Source-linked critical-cell review acceptance (2026-08-31)
 
+## Review-effort telemetry update — 2026-09-04
+
+The review dialog now starts a monotonic timer only after all source crops for a
+row have loaded. Each approve/reject submission can carry the active duration;
+the server bounds it to zero–four hours, independently derives corrected and
+inspected cell counts from authoritative before/after values, stores them in the
+append-only review event and returns aggregate seconds per inspected/corrected
+cell. Missing timings remain missing and are never estimated. The console states
+when no real timing sample exists.
+
+Timing is explicitly labelled `client_monotonic_clock_untrusted_telemetry`: it is
+useful for product workload measurement but cannot authorize publication or
+serve as tamper-proof benchmark truth. Automated benchmark correction does not
+enter this metric. Focused tests cover bounded/optional timing, server-derived
+edit counts and aggregation. The separate fixed OCR regression now reaches
+60/60 automatically with zero worsened changes, but source review remains
+enabled because the development set is neither independent nor document-disjoint.
+
 ## Outcome and boundary
 
 Implemented an explicit correction workflow for positioned OCR evidence. Critical

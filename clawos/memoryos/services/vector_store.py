@@ -659,12 +659,30 @@ class MemoryVectorStore:
             "title": title,
         })
 
+    def _sync_personal_memories(self):
+        """Re-embed changed canonical memories without rebuilding knowledge vectors."""
+        from contextlib import closing
+        with self._lock, closing(sqlite3.connect(self.db_path,timeout=5)) as connection:
+            connection.row_factory=sqlite3.Row
+            for row in connection.execute('SELECT * FROM memories'):
+                doc_id=f"mem_{row['id']}"
+                if not row['enabled']:
+                    self._store.remove(doc_id)
+                    continue
+                previous=self._store.get(doc_id)
+                text=f"{row['memory_type']} {row['category']} {row['key']} {row['value']}"
+                if previous and previous.get('text')==text and (previous.get('metadata') or {}).get('version')==row['current_version']:
+                    continue
+                self._store.add(doc_id,text,dict(type=row['memory_type'],category=row['category'],source=row['source'],
+                    title=row['key'],confidence=row['confidence'],owner_id=row['owner_id'],workspace_id=row['workspace_id'],version=row['current_version']))
+
     def search(
         self, query: str, top_k: int = 10, min_score: float = 0.15,
         filters: dict | None = None,
     ) -> list[dict]:
         self._ensure_loaded()
         self._sync_outbox()
+        self._sync_personal_memories()
         candidates = self._store.search(query, max(top_k*4,20), min_score, filters=filters)
         safe = []
         # The public vector-search API also crosses the review boundary. Never
@@ -676,6 +694,20 @@ class MemoryVectorStore:
                 from services.document_evidence_policy import source_usable
                 for item in candidates:
                     meta = item.get("metadata") or {}
+                    item_id=str(item.get("id") or "")
+                    if item_id.startswith("mem_"):
+                        memory=connection.execute("SELECT * FROM memories WHERE id=?",(int(item_id[4:]),)).fetchone()
+                        if not memory or not memory['enabled']:
+                            continue
+                        expected=f"{memory['memory_type']} {memory['category']} {memory['key']} {memory['value']}"
+                        if item.get('text') != expected:
+                            continue
+                        if filters and (filters.get('owner_id',memory['owner_id'])!=memory['owner_id'] or filters.get('workspace_id',memory['workspace_id'])!=memory['workspace_id']):
+                            continue
+                    elif item_id.startswith("exp_"):
+                        memory=connection.execute("SELECT enabled FROM memories WHERE memory_type='experience' AND key=?",('reflection:'+item_id[4:],)).fetchone()
+                        if memory and not memory['enabled']:
+                            continue
                     if not source_usable(connection, meta.get("source", "")):
                         continue
                     if meta.get("type") == "knowledge_v2":
@@ -686,7 +718,8 @@ class MemoryVectorStore:
         except sqlite3.DatabaseError:
             # Without authoritative state, document knowledge must stay withheld.
             safe = [item for item in candidates if not str((item.get("metadata") or {}).get("source", "")).startswith("doc:")
-                    and (item.get("metadata") or {}).get("type") != "knowledge_v2"]
+                    and (item.get("metadata") or {}).get("type") != "knowledge_v2"
+                    and not str(item.get("id", "")).startswith(("mem_", "exp_"))]
         return safe[:top_k]
 
     def search_experiences(self, query: str, top_k: int = 5) -> list[dict]:

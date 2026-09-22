@@ -68,7 +68,9 @@ class ReviewLoopTests(unittest.TestCase):
 
     def test_correct_publish_idempotent_and_auditable(self):
         first = self.form()
-        self.service.submit(self.doc["id"], **first)
+        submitted = self.service.submit(self.doc["id"], active_review_ms=4200, **first)
+        self.assertEqual(submitted["review_effort"]["corrected_cell_count"], 1)
+        self.assertEqual(submitted["review_effort"]["active_review_ms"], 4200)
         chunks = self.store.get_document_chunks(self.doc["id"])
         self.assertEqual(len(chunks),1)
         self.assertIn("Score = 95%+",chunks[0]["content"])
@@ -85,6 +87,9 @@ class ReviewLoopTests(unittest.TestCase):
         queue = self.service.queue(self.doc["id"])
         self.assertEqual(len(queue["history"]),2)
         self.assertIn("959%+",queue["history"][0]["payload"])
+        self.assertEqual(queue["review_effort"]["timed_submissions"], 1)
+        self.assertEqual(queue["review_effort"]["active_review_ms"], 4200)
+        self.assertEqual(queue["review_effort"]["corrected_cell_count"], 2)
         self.assertEqual(self.service.publish(self.doc["id"],confirmed=True)["count"],2)
         self.assertTrue(self.store.search_knowledge_v2("Score"))
 
@@ -95,6 +100,16 @@ class ReviewLoopTests(unittest.TestCase):
         payload["values"].pop(next(iter(payload["values"])))
         with self.assertRaises(ValueError): self.service.submit(self.doc["id"],**payload)
         self.assertFalse(self.service.queue(self.doc["id"])["history"])
+
+    def test_review_timing_is_optional_bounded_and_never_inferred(self):
+        payload = self.form()
+        payload["active_review_ms"] = 14_400_001
+        with self.assertRaisesRegex(ValueError, "timing"):
+            self.service.submit(self.doc["id"], **payload)
+        payload.pop("active_review_ms")
+        result = self.service.submit(self.doc["id"], **payload)
+        self.assertIsNone(result["review_effort"]["active_review_ms"])
+        self.assertEqual(self.service.queue(self.doc["id"])["review_effort"]["timed_submissions"], 0)
 
     def test_stale_revision_and_reingestion_do_not_reuse_approval(self):
         stale = self.form(1)

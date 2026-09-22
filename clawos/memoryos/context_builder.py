@@ -10,6 +10,7 @@ from .services.ingestion import IngestionService
 from .services.retrieval import RetrievalService
 from .services.evaluation import EvaluationService
 from .services.management import ManagementService
+from services.response_contract import SYSTEM_PROMPT, RESPONSE_STYLE, request_history
 
 
 class ContextBuilder:
@@ -25,17 +26,19 @@ class ContextBuilder:
         self._evaluation = EvaluationService(store)
         self._coding_context = coding_context_service
 
-    def build_system_prompt(self, session_id: str, prompt_policy: dict | None = None) -> str:
+    def build_system_prompt(self, session_id: str, prompt_policy: dict | None = None, owner_id="default", workspace_id="default") -> str:
         """Construct system prompt enriched with 7 memory types and retrieved knowledge."""
         user_profile = os.environ.get("USERPROFILE", "")
         desktop = os.path.join(user_profile, "Desktop") if user_profile else ""
         parts = [
-            "You are ClawOS, a personal AI agent. "
+            SYSTEM_PROMPT + " "
             f"Environment: Windows, user_profile: {user_profile or 'unknown'}, desktop: {desktop or 'unknown'}. "
-            "Always use correct Windows paths. For file_write use the desktop path unless user specifies otherwise."
+            "Use correct Windows paths and the configured output workspace unless the user supplies a permitted path."
         ]
 
-        memories = self._store.list_memories(include_disabled=False, limit=20)
+        legacy_scope = owner_id == "default" and workspace_id == "default"
+        memories = self._store.list_memories(include_disabled=False, limit=20, actor_id=owner_id, workspace_id=workspace_id)
+        memories = [m for m in memories if m.get("owner_id", "default")==owner_id and m.get("workspace_id", "default")==workspace_id]
         if memories:
             by_type = {}
             for item in memories:
@@ -48,7 +51,7 @@ class ContextBuilder:
                 parts.append("Long-term MemoryOS records:\n" + "\n".join(lines))
 
         # ── PROFILE ──
-        profiles = self._store.get_all_profiles()
+        profiles = self._store.get_all_profiles() if legacy_scope else []
         if profiles:
             by_cat = {}
             for p in profiles:
@@ -58,7 +61,7 @@ class ContextBuilder:
                 parts.append(f"Profile ({cat}):\n" + "\n".join(lines))
 
         # ── PREFERENCES ──
-        prefs = self._store.get_all_preferences()
+        prefs = self._store.get_all_preferences() if legacy_scope else []
         if prefs:
             high_conf = [p for p in prefs if p.get("confidence", 0) >= 0.5]
             if high_conf:
@@ -66,7 +69,7 @@ class ContextBuilder:
                 parts.append("Preferences:\n" + "\n".join(lines))
 
         # ── KNOWLEDGE ──
-        knowledge = self._store.list_knowledge()
+        knowledge = self._store.list_knowledge() if legacy_scope else []
         if knowledge:
             top_k = sorted(knowledge, key=lambda k: k.get("access_count", 0), reverse=True)[:3]
             if top_k:
@@ -74,7 +77,7 @@ class ContextBuilder:
                 parts.append("Key Knowledge:\n" + "\n".join(klines))
 
         # ── EXPERIENCES ──
-        exps = self._store.get_recent_experiences(3)
+        exps = self._store.get_recent_experiences(3) if legacy_scope else []
         if exps:
             elines = []
             for e in exps:
@@ -95,14 +98,14 @@ class ContextBuilder:
         # ── BEHAVIOR RULES ──
         parts.append(
             "IMPORTANT: You MUST call the appropriate tool for file operations, system commands, searches, and data management. "
-            "For file creation ALWAYS use file_write tool, NEVER describe creating a file in text. "
+            "For file creation use the appropriate artifact or file tool; do not merely describe creating a file. "
             "For running commands ALWAYS use shell_exec tool, NEVER fake command output. "
             "For memory operations ALWAYS use the tool, NEVER invent profile data. "
             "For skill operations ALWAYS use skill tools. "
             "Never claim to have done something unless you actually called the tool. "
             "Be concise. "
             "Reply ONLY in Chinese if user writes in Chinese, ONLY in English if English. "
-            "Never mix languages in one response. Never invent tool names. "
+            "Keep code, technical terms and source titles intact. Never invent tool names. "
             "If shell_exec fails, report it honestly. "
             "Follow stored preferences. Do not use emojis."
         )
@@ -111,6 +114,7 @@ class ContextBuilder:
         addition = str(policy.get("system") or policy.get("prompt") or "").strip()
         if addition:
             parts.append("[Active runtime prompt policy]\n" + addition)
+        parts.append(RESPONSE_STYLE)
         return "\n\n".join(parts)
 
     def ingest_and_store(self, session_id: str, role: str, content: str):
@@ -136,6 +140,7 @@ class ContextBuilder:
         diagnostics: list[dict[str, Any]] | None = None,
         coding_token_budget: int = 12000,
         total_token_budget: int = 32000,
+        conversation_messages: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         """Build messages array with full memory pipeline: profile + knowledge + retrieval + history."""
         message_count = len(
@@ -145,7 +150,8 @@ class ContextBuilder:
             ManagementService(self._store).compact_conversation(
                 session_id, keep_recent=max(20, max_history * 2)
             )
-        system = self.build_system_prompt(session_id, prompt_policy=prompt_policy)
+        scope = dict(retrieval_policy or {})
+        system = self.build_system_prompt(session_id, prompt_policy=prompt_policy, owner_id=str(scope.get("owner_id") or "default"), workspace_id=str(scope.get("workspace_id") or "default"))
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
 
         context_retrieval_policy = dict(retrieval_policy or {})
@@ -195,13 +201,16 @@ class ContextBuilder:
                 })
 
         # Inject conversation history
-        history = self._store.get_recent_messages(session_id, max_history * 2)
+        explicit = request_history(conversation_messages)
+        history = explicit if explicit is not None else self._store.get_recent_messages(session_id, max_history * 2)
         history = [m for m in history if m["role"] in ("user", "assistant")]
         history = history[-(max_history - 1):]
-        if history and history[-1]["role"] == "user" and history[-1].get("content", "") == user_text:
+        current_text = next((m.get("content") for m in reversed(conversation_messages or [])
+                             if m.get("role") == "user"), user_text)
+        if history and history[-1]["role"] == "user" and history[-1].get("content", "") in (user_text, current_text):
             history = history[:-1]
         for m in history:
-            messages.append({"role": m["role"], "content": m.get("content", "")[:4000]})
+            messages.append({"role": m["role"], "content": m.get("content", "")})
 
         messages.append({"role": "user", "content": user_text})
         return self._fit_global_budget(messages, total_token_budget)

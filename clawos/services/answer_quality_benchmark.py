@@ -57,6 +57,22 @@ SEEDS = [
 ]
 
 
+RELATION_CASES = [
+    ("compare_en_reversed", "coding", "Which model was more accurate?", "Model A outperformed Model B in accuracy.", "Model B outperformed Model A in accuracy.", False),
+    ("compare_en_opposite", "coding", "Which model was more accurate?", "Model A was higher than Model B in accuracy.", "Model A was lower than Model B in accuracy.", False),
+    ("compare_zh_reversed", "research", "哪个模型准确率更高？", "模型A的准确率高于模型B。", "模型B的准确率高于模型A。", False),
+    ("compare_zh_opposite", "research", "哪个方案延迟更低？", "方案甲的延迟低于方案乙。", "方案甲的延迟高于方案乙。", False),
+    ("condition_en_reversed", "operations", "When does the service retry?", "The service retries only when the request fails.", "The request fails only when the service retries.", False),
+    ("condition_en_reversed_2", "security", "When is access granted?", "Access is granted only when authentication succeeds.", "Authentication succeeds only when access is granted.", False),
+    ("condition_zh_reversed", "coding", "任务何时结束？", "仅当测试通过时，任务才可以结束。", "仅当任务结束时，测试才可以通过。", False),
+    ("condition_zh_reversed_2", "security", "何时允许外部请求？", "仅当域名通过策略检查时，沙箱才可以发起请求。", "仅当沙箱发起请求时，域名才可以通过策略检查。", False),
+    ("compare_en_supported", "coding", "Which model was more accurate?", "Model A outperformed Model B in accuracy.", "In accuracy, Model A exceeded Model B.", True),
+    ("compare_zh_supported", "research", "哪个模型准确率更高？", "模型A的准确率高于模型B。", "模型A的准确率超过模型B。", True),
+    ("condition_en_supported", "operations", "When does the service retry?", "The service retries only when the request fails.", "The service retries only if the request fails.", True),
+    ("condition_zh_supported", "coding", "任务何时结束？", "仅当测试通过时，任务才可以结束。", "任务只有在测试通过时才可以结束。", True),
+]
+
+
 def build_common_task_corpus() -> dict[str, Any]:
     records = []
     for index, (seed_id, domain, query, evidence_text, unconditional) in enumerate(SEEDS):
@@ -91,8 +107,23 @@ def build_common_task_corpus() -> dict[str, Any]:
                 "expected_valid": expected_valid, "expected_issue": expected_issue,
                 "expected_relations": expected_relations,
             })
+    for case_id, domain, query, evidence_text, answer_text, expected_valid in RELATION_CASES:
+        citation = f"benchmark:{case_id}"
+        records.append({
+            "seed_id": case_id, "domain": domain, "split": "test",
+            "query": query, "id": case_id,
+            "variant": "relation_supported" if expected_valid else "relation_reversal",
+            "answer": f"{answer_text} [{citation}]", "expected_answer": evidence_text,
+            "evidence": [{"id": case_id, "citation": citation, "text": evidence_text}],
+            "must_refuse": False, "expected_valid": expected_valid,
+            "expected_issue": "" if expected_valid else "relation_mismatch",
+            "expected_relations": {
+                "claims": [{"supported_by": [citation], "relation_preserved": expected_valid}],
+                "unsupported_claims": [] if expected_valid else [answer_text],
+            },
+        })
     payload = {
-        "name": "clawos-answer-quality-common-tasks-v1", "version": "1.0.0",
+        "name": "clawos-answer-quality-common-tasks-v1", "version": "1.1.0",
         "review_status": "maintainer_seeded_proxy",
         "truth_boundary": "Synthetic proxy interactions generated from maintainer-authored common-task facts; not real user feedback.",
         "records": records,
@@ -122,6 +153,8 @@ def run_answer_quality_benchmark(corpus_path: str | Path = DEFAULT_CORPUS) -> di
         raise ValueError("frozen corpus digest mismatch")
 
     correct = issue_correct = positives = negatives = positive_hits = negative_hits = 0
+    relation_positive_hits = relation_positive_total = 0
+    relation_negative_hits = relation_negative_total = 0
     split_metrics: dict[str, dict[str, int]] = {}
     failures = []
     with tempfile.TemporaryDirectory() as td:
@@ -139,6 +172,12 @@ def run_answer_quality_benchmark(corpus_path: str | Path = DEFAULT_CORPUS) -> di
             negatives += int(not expected)
             positive_hits += int(expected and predicted)
             negative_hits += int(not expected and not predicted)
+            if case.get("variant") == "relation_supported":
+                relation_positive_total += 1
+                relation_positive_hits += int(predicted)
+            elif case.get("variant") == "relation_reversal":
+                relation_negative_total += 1
+                relation_negative_hits += int(not predicted and validation["issues"].get("relation_mismatch") == 1)
             expected_issue = str(case.get("expected_issue") or "")
             issue_hit = not expected_issue or int(validation["issues"].get(expected_issue, 0)) > 0
             issue_correct += int(issue_hit)
@@ -161,6 +200,8 @@ def run_answer_quality_benchmark(corpus_path: str | Path = DEFAULT_CORPUS) -> di
             "valid_answer_recall": wilson_interval(positive_hits, positives),
             "invalid_answer_rejection": wilson_interval(negative_hits, negatives),
             "issue_detection": wilson_interval(issue_correct, len(cases)),
+            "relation_preservation": wilson_interval(relation_positive_hits, relation_positive_total),
+            "relation_reversal_rejection": wilson_interval(relation_negative_hits, relation_negative_total),
         }
         metrics = {key: value["rate"] for key, value in intervals.items()}
         split_intervals = {
@@ -171,6 +212,7 @@ def run_answer_quality_benchmark(corpus_path: str | Path = DEFAULT_CORPUS) -> di
         thresholds = {
             "classification_accuracy": 0.95, "valid_answer_recall": 0.95,
             "invalid_answer_rejection": 0.95, "issue_detection": 0.95,
+            "relation_preservation": 1.0, "relation_reversal_rejection": 1.0,
         }
         report = {
             "name": corpus["name"], "version": corpus["version"], "corpus_digest": digest,

@@ -63,6 +63,71 @@ class AnswerQualityValidatorTests(unittest.TestCase):
         )
         self.assertTrue(result["valid"])
 
+    def test_reversed_comparison_roles_are_rejected(self):
+        from services.answer_quality_service import ClaimEvidenceAnswerValidator
+
+        cases = [
+            ("Model A outperformed Model B in accuracy.", "Model B outperformed Model A in accuracy."),
+            ("模型A的准确率高于模型B。", "模型B的准确率高于模型A。"),
+            ("方案甲的延迟低于方案乙。", "方案甲的延迟高于方案乙。"),
+        ]
+        for evidence_text, answer_text in cases:
+            with self.subTest(answer=answer_text):
+                result = ClaimEvidenceAnswerValidator.validate(
+                    query="比较两者", answer=f"{answer_text} [doc:comparison]",
+                    evidence=[{"citation": "doc:comparison", "text": evidence_text}],
+                )
+                self.assertFalse(result["valid"])
+                self.assertEqual(result["issues"]["relation_mismatch"], 1)
+                self.assertEqual(result["claims"][0]["relation_mismatch"], 1)
+
+    def test_reversed_condition_roles_are_rejected(self):
+        from services.answer_quality_service import ClaimEvidenceAnswerValidator
+
+        cases = [
+            ("The service retries only when the request fails.", "The request fails only when the service retries."),
+            ("仅当测试通过时，任务才可以结束。", "仅当任务结束时，测试才可以通过。"),
+        ]
+        for evidence_text, answer_text in cases:
+            with self.subTest(answer=answer_text):
+                result = ClaimEvidenceAnswerValidator.validate(
+                    query="条件是什么", answer=f"{answer_text} [doc:condition]",
+                    evidence=[{"citation": "doc:condition", "text": evidence_text}],
+                )
+                self.assertFalse(result["valid"])
+                self.assertEqual(result["issues"]["relation_mismatch"], 1)
+
+    def test_relation_guard_keeps_supported_paraphrases(self):
+        from services.answer_quality_service import ClaimEvidenceAnswerValidator
+
+        cases = [
+            ("Model A outperformed Model B in accuracy.", "In accuracy, Model A exceeded Model B."),
+            ("Model A was higher than Model B in accuracy.", "Model B was lower than Model A in accuracy."),
+            ("仅当测试通过时，任务才可以结束。", "任务只有在测试通过时才可以结束。"),
+        ]
+        for evidence_text, answer_text in cases:
+            with self.subTest(answer=answer_text):
+                result = ClaimEvidenceAnswerValidator.validate(
+                    query="总结结论", answer=f"{answer_text} [doc:supported]",
+                    evidence=[{"citation": "doc:supported", "text": evidence_text}],
+                )
+                self.assertTrue(result["valid"])
+                self.assertEqual(result["issues"]["relation_mismatch"], 0)
+
+    def test_conflicting_relation_cannot_be_diluted_by_generic_evidence(self):
+        from services.answer_quality_service import ClaimEvidenceAnswerValidator
+
+        result = ClaimEvidenceAnswerValidator.validate(
+            query="哪个模型更准确？",
+            answer="Model B outperformed Model A in accuracy. [doc:mix]",
+            evidence=[
+                {"citation": "doc:mix", "text": "Model A outperformed Model B in accuracy."},
+                {"citation": "doc:mix", "text": "Model A and Model B were compared in accuracy."},
+            ],
+        )
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["issues"]["relation_mismatch"], 1)
+
 
 class AnswerQualityFeedbackTests(unittest.TestCase):
     def setUp(self):
@@ -91,16 +156,21 @@ class AnswerQualityFeedbackTests(unittest.TestCase):
         self.assertEqual(stats["proxy_count"], 1)
         self.assertIn("never counted", stats["truth_boundary"])
 
-    def test_frozen_proxy_benchmark_has_240_cases_and_confidence_intervals(self):
+    def test_frozen_proxy_benchmark_includes_relation_adversaries_and_confidence_intervals(self):
         from services.answer_quality_benchmark import DEFAULT_CORPUS, run_answer_quality_benchmark
 
         report = run_answer_quality_benchmark(DEFAULT_CORPUS)
-        self.assertEqual(report["case_count"], 240)
-        self.assertEqual(report["fixed_test_count"], 48)
+        self.assertEqual(report["case_count"], 252)
+        self.assertEqual(report["fixed_test_count"], 60)
         self.assertFalse(report["counts_as_real_user_feedback"])
         self.assertTrue(report["passed"])
         self.assertGreaterEqual(report["confidence_intervals"]["classification_accuracy"]["lower"], 0.95)
-        self.assertEqual(report["split_confidence_intervals"]["test"]["total"], 48)
+        self.assertEqual(report["split_confidence_intervals"]["test"]["total"], 60)
+        self.assertEqual(report["confidence_intervals"]["relation_preservation"]["total"], 4)
+        self.assertEqual(report["confidence_intervals"]["relation_reversal_rejection"]["total"], 8)
+        self.assertEqual(report["metrics"]["relation_preservation"], 1.0)
+        self.assertEqual(report["metrics"]["relation_reversal_rejection"], 1.0)
+        self.assertFalse(report["failures"])
 
     def test_explicit_console_consent_captures_real_query_answer_pair(self):
         import clawos_server as server

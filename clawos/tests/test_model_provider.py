@@ -136,7 +136,7 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(payload["stop"], ["</s>"])
         self.assertEqual(payload["max_tokens"], 64)
 
-    def test_openai_provider_uses_reasoning_content_when_content_is_empty(self):
+    def test_openai_provider_rejects_reasoning_only_completion(self):
         from providers import create_model_provider
 
         response = FakeResponse({
@@ -151,8 +151,9 @@ class ModelProviderTests(unittest.TestCase):
 
         result = asyncio.run(provider.complete([{"role": "user", "content": "json"}], http_client=client))
 
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["content"], '{"ok":true}')
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["content"], "")
+        self.assertEqual(result["error"], "empty_final_answer")
 
     def test_qwen_api_and_glm_aliases_use_openai_compatible_contract(self):
         from providers import create_model_provider

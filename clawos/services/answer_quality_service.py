@@ -51,13 +51,21 @@ def wilson_interval(successes: int, total: int, z: float = 1.959964) -> dict[str
 
 
 class ClaimEvidenceAnswerValidator:
-    """Auditable lexical verifier; never presented as an unrestricted NLI model."""
+    """Auditable lexical/relational verifier; never presented as unrestricted NLI."""
 
     REFUSAL_MARKERS = (
         "没有足够证据", "没有找到", "无法根据", "不能根据", "证据不足",
         "insufficient evidence", "cannot determine", "not enough evidence",
     )
     NEGATION_MARKERS = (" not ", " no ", "never", "cannot", "不", "未", "无", "不能")
+    COMPARISON_DIRECTIONS = {
+        "outperformed": 1, "exceeded": 1, "higher than": 1, "greater than": 1,
+        "better than": 1, "more than": 1, "above": 1,
+        "underperformed": -1, "lower than": -1, "less than": -1,
+        "worse than": -1, "below": -1,
+        "优于": 1, "高于": 1, "超过": 1, "大于": 1, "多于": 1,
+        "低于": -1, "少于": -1, "小于": -1, "劣于": -1,
+    }
 
     @classmethod
     def validate(
@@ -98,7 +106,10 @@ class ClaimEvidenceAnswerValidator:
                 item["supported"] and item["citations"] and not item["condition_omission"]
                 for item in validations
             )
-            if valid and expected_similarity is not None and expected_similarity < 0.55:
+            if (
+                valid and expected_similarity is not None and expected_similarity < 0.55
+                and not all(item["relation_preserved"] for item in validations)
+            ):
                 valid = False
             decision = "supported" if valid else "unsupported_or_misattributed"
 
@@ -107,6 +118,7 @@ class ClaimEvidenceAnswerValidator:
             "citation_mismatch": sum(item["citation_mismatch"] for item in validations),
             "missing_citation": sum(not bool(item["citations"]) for item in validations),
             "condition_omission": sum(item["condition_omission"] for item in validations),
+            "relation_mismatch": sum(item["relation_mismatch"] for item in validations),
             "wrong_refusal": int(not must_refuse and refusal),
             "missing_refusal": int(must_refuse and not refusal),
         }
@@ -120,7 +132,7 @@ class ClaimEvidenceAnswerValidator:
             "condition_retention_rate": round(condition_ok / len(validations), 6) if validations else 1.0,
             "expected_answer_similarity": round(expected_similarity, 6) if expected_similarity is not None else None,
             "issues": issue_counts, "claims": validations,
-            "truth_boundary": "Deterministic citation, numeric, polarity, condition and lexical-overlap verifier; not a semantic entailment model.",
+            "truth_boundary": "Deterministic citation, numeric, polarity, bounded comparison/condition relation and lexical-overlap verifier; not a semantic entailment model.",
         }
 
     @classmethod
@@ -159,13 +171,23 @@ class ClaimEvidenceAnswerValidator:
             for evidence in evidence_map.get(citation, []):
                 if evidence not in resolved:
                     resolved.append(evidence)
-        scores = [cls._support_score(clean, str(item.get("text") or item.get("excerpt") or "")) for item in resolved]
+        evidence_texts = [str(item.get("text") or item.get("excerpt") or "") for item in resolved]
+        relation_mismatches = [cls._relation_mismatch(clean, value) for value in evidence_texts]
+        relation_matches = [cls._relation_match(clean, value) for value in evidence_texts]
+        scores = [
+            0.0 if mismatch else max(
+                cls._support_score(clean, value),
+                0.8 if relation_match else 0.0,
+            )
+            for value, mismatch, relation_match in zip(evidence_texts, relation_mismatches, relation_matches)
+        ]
         best = max(scores) if scores else 0.0
         best_evidence = resolved[scores.index(best)] if scores else None
+        relation_mismatch = any(relation_mismatches) and not any(relation_matches)
         condition_omission = bool(best_evidence) and cls._has_condition(
             str(best_evidence.get("text") or best_evidence.get("excerpt") or "")
         ) and not cls._has_condition(clean)
-        supported = bool(resolved) and best >= 0.62 and not condition_omission
+        supported = bool(resolved) and best >= 0.62 and not condition_omission and not relation_mismatch
         return {
             "text": clean, "citations": citations,
             "resolved_citations": [str(item.get("citation") or item.get("id") or "") for item in resolved],
@@ -173,7 +195,114 @@ class ClaimEvidenceAnswerValidator:
             "unsupported_expansion": int(not supported),
             "citation_mismatch": int(bool(citations) and not supported),
             "condition_omission": int(condition_omission),
+            "relation_mismatch": int(relation_mismatch),
+            "relation_preserved": bool(relation_matches) and any(relation_matches),
         }
+
+    @classmethod
+    def _relation_mismatch(cls, claim: str, evidence: str) -> bool:
+        """Reject explicit role/direction inversions for relations we can parse safely.
+
+        Absence of a parsed relation is not treated as proof. The guard only fires
+        when both sides expose the same participants with an incompatible mapping.
+        """
+        claim_comparison = cls._comparison_relation(claim)
+        evidence_comparison = cls._comparison_relation(evidence)
+        if claim_comparison and evidence_comparison:
+            c_left, c_direction, c_right = claim_comparison
+            e_left, e_direction, e_right = evidence_comparison
+            same_roles = cls._role_matches(c_left, e_left) and cls._role_matches(c_right, e_right)
+            reversed_roles = cls._role_matches(c_left, e_right) and cls._role_matches(c_right, e_left)
+            if (same_roles and c_direction != e_direction) or (reversed_roles and c_direction == e_direction):
+                return True
+
+        claim_condition = cls._condition_relation(claim)
+        evidence_condition = cls._condition_relation(evidence)
+        if claim_condition and evidence_condition:
+            c_condition, c_effect = claim_condition
+            e_condition, e_effect = evidence_condition
+            if cls._role_matches(c_condition, e_effect) and cls._role_matches(c_effect, e_condition):
+                return True
+        return False
+
+    @classmethod
+    def _relation_match(cls, claim: str, evidence: str) -> bool:
+        claim_comparison = cls._comparison_relation(claim)
+        evidence_comparison = cls._comparison_relation(evidence)
+        if claim_comparison and evidence_comparison:
+            c_left, c_direction, c_right = claim_comparison
+            e_left, e_direction, e_right = evidence_comparison
+            same_roles = cls._role_matches(c_left, e_left) and cls._role_matches(c_right, e_right)
+            reversed_roles = cls._role_matches(c_left, e_right) and cls._role_matches(c_right, e_left)
+            return (same_roles and c_direction == e_direction) or (
+                reversed_roles and c_direction != e_direction
+            )
+        claim_condition = cls._condition_relation(claim)
+        evidence_condition = cls._condition_relation(evidence)
+        if claim_condition and evidence_condition:
+            return (
+                cls._role_matches(claim_condition[0], evidence_condition[0])
+                and cls._role_matches(claim_condition[1], evidence_condition[1])
+            )
+        return False
+
+    @classmethod
+    def _comparison_relation(cls, value: str) -> tuple[str, int, str] | None:
+        clean = re.sub(r"\[[^\[\]]+\]", "", _normalized(value)).strip(" .。")
+        operators = sorted(cls.COMPARISON_DIRECTIONS, key=len, reverse=True)
+        operator_pattern = "|".join(re.escape(item) for item in operators)
+        match = re.search(rf"(?P<left>.+?)\s*(?P<operator>{operator_pattern})\s*(?P<right>.+)", clean)
+        if not match:
+            return None
+        left = re.sub(r"^(?:in|on)\s+[^,，]{1,80}[,，]\s*", "", match.group("left")).strip()
+        right = re.split(r"\s+(?:in|on|by)\s+|[,，。.]", match.group("right"), maxsplit=1)[0].strip()
+        return cls._role_key(left), cls.COMPARISON_DIRECTIONS[match.group("operator")], cls._role_key(right)
+
+    @classmethod
+    def _condition_relation(cls, value: str) -> tuple[str, str] | None:
+        clean = re.sub(r"\[[^\[\]]+\]", "", _normalized(value)).strip(" .。")
+        match = re.match(r"(?P<effect>.+?)\s+only\s+(?:when|if)\s+(?P<condition>.+)", clean)
+        if match:
+            return cls._role_key(match.group("condition")), cls._role_key(match.group("effect"))
+        match = re.match(r"only\s+(?:when|if)\s+(?P<condition>.+?)[,，]\s*(?P<effect>.+)", clean)
+        if match:
+            return cls._role_key(match.group("condition")), cls._role_key(match.group("effect"))
+        match = re.match(r"(?:仅当|只有在?)(?P<condition>.+?)(?:时|[,，])[,，]?\s*(?P<effect>.+)", clean)
+        if match:
+            return cls._role_key(match.group("condition")), cls._role_key(match.group("effect"))
+        match = re.match(r"(?P<effect_pre>.+?)只有在?(?P<condition>.+?)时(?P<effect_post>.+)", clean)
+        if match:
+            effect = f"{match.group('effect_pre')}{match.group('effect_post')}"
+            return cls._role_key(match.group("condition")), cls._role_key(effect)
+        return None
+
+    @staticmethod
+    def _role_key(value: str) -> str:
+        clean = _normalized(value).strip(" ,，.。")
+        clean = re.sub(r"^(?:the|a|an)\s+", "", clean)
+        clean = re.sub(r"\b(?:is|are|was|were|can|may|must|should|will|would|could)\b", "", clean)
+        clean = re.sub(r"(?:才|则|可以|可|必须|应该|应当|允许)", "", clean)
+        clean = re.sub(r"\s+", " ", clean).strip()
+        if "的" in clean:
+            clean = clean.rsplit("的", 1)[0]
+        words = [
+            item for item in re.findall(r"[a-z0-9]+", clean)
+            if item not in {"model", "system", "accuracy", "latency", "rate", "score", "result"}
+        ]
+        if words:
+            return " ".join(words)
+        return re.sub(r"[\s，。,.]", "", clean)
+
+    @classmethod
+    def _role_matches(cls, left: str, right: str) -> bool:
+        if not left or not right:
+            return False
+        if left == right:
+            return True
+        left_tokens, right_tokens = _tokens(left), _tokens(right)
+        if not left_tokens or not right_tokens:
+            return False
+        return len(left_tokens & right_tokens) / max(len(left_tokens), len(right_tokens)) >= 0.8
 
     @classmethod
     def _support_score(cls, claim: str, evidence: str) -> float:

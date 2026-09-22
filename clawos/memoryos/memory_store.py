@@ -14,9 +14,32 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
+from functools import wraps
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+def atomic_workflow(method):
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        with self.transaction():
+            return method(self, *args, **kwargs)
+    return run
+
+
+class AtomicConnection(sqlite3.Connection):
+    """Execute schema statements without sqlite3.executescript's implicit COMMIT."""
+    def executescript(self, script):
+        pending = ''
+        for part in script.split(';'):
+            pending += part + ';'
+            if sqlite3.complete_statement(pending):
+                self.execute(pending)
+                pending = ''
+        if pending.strip(' ;\n\r\t'):
+            self.execute(pending)
+        return self.cursor()
 
 
 class MemoryStore:
@@ -24,13 +47,27 @@ class MemoryStore:
 
     def __init__(self, db_path: str = ""):
         self._db_path = db_path or str(Path(__file__).parent.parent / "memoryos.db")
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._transaction_state = threading.local()
         self._init_db()
 
     @contextmanager
     def _conn(self):
+        active = getattr(self._transaction_state, 'connection', None)
+        if active is not None:
+            self._transaction_state.sequence += 1
+            name = f"nested_{self._transaction_state.sequence}"
+            active.execute(f"SAVEPOINT {name}")
+            try:
+                yield active
+                active.execute(f"RELEASE SAVEPOINT {name}")
+            except BaseException:
+                active.execute(f"ROLLBACK TO SAVEPOINT {name}")
+                active.execute(f"RELEASE SAVEPOINT {name}")
+                raise
+            return
         with self._lock:
-            conn = sqlite3.connect(self._db_path, timeout=10)
+            conn = sqlite3.connect(self._db_path, timeout=10, factory=AtomicConnection)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=ON")
@@ -42,6 +79,22 @@ class MemoryStore:
                 raise
             finally:
                 conn.close()
+
+    @contextmanager
+    def transaction(self):
+        """Publish a complete synchronous workflow; nested methods use savepoints."""
+        if getattr(self._transaction_state, 'connection', None) is not None:
+            with self._conn() as connection:
+                yield connection
+            return
+        with self._conn() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            self._transaction_state.connection = connection
+            self._transaction_state.sequence = 0
+            try:
+                yield connection
+            finally:
+                self._transaction_state.connection = None
 
     def _init_db(self):
         with self._conn() as c:
@@ -230,6 +283,13 @@ class MemoryStore:
                     created_at TEXT DEFAULT (datetime('now'))
                 );
                 CREATE INDEX IF NOT EXISTS idx_mtclaw_trace_session ON mtclaw_traces(session_id, id);
+                CREATE TABLE IF NOT EXISTS conversation_archive (
+                    original_id INTEGER PRIMARY KEY,
+                    session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL,
+                    tool_calls TEXT, metadata TEXT, created_at TEXT,
+                    archived_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_conversation_archive_session ON conversation_archive(session_id,original_id);
                 CREATE TABLE IF NOT EXISTS memories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     memory_type TEXT NOT NULL CHECK(memory_type IN ('profile','preference','project','experience','skill')),
@@ -4321,6 +4381,7 @@ class MemoryStore:
 
     # ── PROFILE ──
 
+    @atomic_workflow
     def set_profile(
         self, key: str, value: str, category: str = "general", importance: float = 0.5,
         source: str = "profile_ingestion", actor_id: str = "system",
@@ -4343,20 +4404,34 @@ class MemoryStore:
             """, (category, key, value, importance))
         return result
 
+    @staticmethod
+    def _effective_legacy_memory(connection, row, memory_type):
+        if not row:
+            return None
+        result=dict(row)
+        memory=connection.execute("SELECT * FROM memories WHERE memory_type=? AND category=? AND key=?",(memory_type,row['category'],row['key'])).fetchone()
+        if memory:
+            if not memory['enabled'] or memory['workspace_id']!='default' or memory['owner_id']!='default':
+                return None
+            result['value']=memory['value']
+            result['confidence' if memory_type=='preference' else 'importance']=memory['confidence']
+        return result
+
     def get_profile(self, key: str, category: str = "general") -> dict | None:
         with self._conn() as c:
             row = c.execute(
                 "SELECT * FROM profiles WHERE category=? AND key=?", (category, key)
             ).fetchone()
-            return dict(row) if row else None
+            return self._effective_legacy_memory(c,row,"profile")
 
     def get_all_profiles(self) -> list[dict]:
         with self._conn() as c:
             rows = c.execute("SELECT * FROM profiles ORDER BY importance DESC").fetchall()
-            return [dict(r) for r in rows]
+            return [item for row in rows if (item := self._effective_legacy_memory(c,row,"profile")) is not None]
 
     # ── PREFERENCES ──
 
+    @atomic_workflow
     def set_preference(
         self, key: str, value: str, category: str = "general", confidence: float = 0.5,
         source: str = "preference_ingestion", actor_id: str = "system",
@@ -4384,33 +4459,31 @@ class MemoryStore:
             row = c.execute(
                 "SELECT * FROM preferences WHERE category=? AND key=?", (category, key)
             ).fetchone()
-            return dict(row) if row else None
+            return self._effective_legacy_memory(c,row,"preference")
 
     def get_all_preferences(self) -> list[dict]:
         with self._conn() as c:
             rows = c.execute("SELECT * FROM preferences ORDER BY confidence DESC").fetchall()
-            return [dict(r) for r in rows]
+            return [item for row in rows if (item := self._effective_legacy_memory(c,row,"preference")) is not None]
 
     # ── CONVERSATIONS ──
 
+    @atomic_workflow
     def add_message(self, session_id: str, role: str, content: str, tool_calls: str = "", metadata: str = ""):
         with self._conn() as c:
-            # Auto-truncate: keep max 100 messages per session
             count = c.execute("SELECT COUNT(*) FROM conversations WHERE session_id=?", (session_id,)).fetchone()[0]
             if count >= 100:
-                c.execute(
-                    "DELETE FROM conversations WHERE id IN (SELECT id FROM conversations WHERE session_id=? ORDER BY created_at ASC LIMIT 10)",
-                    (session_id,)
-                )
+                from .services.management import ManagementService
+                ManagementService(self).compact_conversation(session_id, keep_recent=90)
             c.execute(
                 "INSERT INTO conversations (session_id, role, content, tool_calls, metadata) VALUES (?, ?, ?, ?, ?)",
-                (session_id, role, content[:8000], tool_calls, metadata)
+                (session_id, role, content, tool_calls, metadata)
             )
 
     def get_session_messages(self, session_id: str, limit: int = 30) -> list[dict]:
         with self._conn() as c:
             rows = c.execute(
-                "SELECT role, content, tool_calls, metadata, created_at FROM conversations WHERE session_id=? ORDER BY id ASC LIMIT ?",
+                "SELECT id, role, content, tool_calls, metadata, created_at FROM conversations WHERE session_id=? ORDER BY id ASC LIMIT ?",
                 (session_id, limit)
             ).fetchall()
             return [dict(r) for r in rows]
@@ -4462,6 +4535,16 @@ class MemoryStore:
                 (session_id, str(summary)[:20_000], int(source_message_count)),
             )
 
+    def archive_session_messages(self, session_id, message_ids):
+        ids=[int(value) for value in message_ids]
+        with self._conn() as c:
+            for message_id in ids:
+                c.execute("""INSERT OR IGNORE INTO conversation_archive
+                    (original_id,session_id,role,content,tool_calls,metadata,created_at)
+                    SELECT id,session_id,role,content,tool_calls,metadata,created_at FROM conversations WHERE id=? AND session_id=?""",(message_id,session_id))
+                c.execute("DELETE FROM conversations WHERE id=? AND session_id=? AND EXISTS (SELECT 1 FROM conversation_archive WHERE original_id=?)",(message_id,session_id,message_id))
+        return len(ids)
+
     def delete_oldest_session_messages(self, session_id: str, count: int) -> int:
         with self._conn() as c:
             cursor = c.execute(
@@ -4507,6 +4590,7 @@ class MemoryStore:
 
     # ── EXPERIENCES ──
 
+    @atomic_workflow
     def add_experience(self, task, outcome, lesson="", context="", solution="", tags=None, importance=0.5):
         with self._conn() as c:
             cursor = c.execute(
@@ -4527,7 +4611,7 @@ class MemoryStore:
     def get_recent_experiences(self, limit: int = 20) -> list[dict]:
         with self._conn() as c:
             rows = c.execute(
-                "SELECT * FROM experiences ORDER BY id DESC LIMIT ?", (limit,)
+                "SELECT * FROM experiences e WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.memory_type='experience' AND m.key='reflection:'||e.id AND m.enabled=0) ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
             return [dict(r) for r in rows]
 
@@ -4604,9 +4688,9 @@ class MemoryStore:
             }
     # ── KNOWLEDGE ──
 
+    @atomic_workflow
     def add_knowledge(self, title, content, category="domain", source="", tags=None, confidence=0.5, *, reviewed_chunk_id=None):
         with self._conn() as c:
-            c.execute("BEGIN IMMEDIATE")
             from services.document_evidence_policy import source_usable
             if not source_usable(c, source):
                 raise ValueError("Document source requires review before knowledge publication")
@@ -4634,6 +4718,8 @@ class MemoryStore:
             result["knowledge_v2_id"] = absorbed["id"]
             result["absorption_outcome"] = absorbed["absorption_outcome"]
         except (ImportError, OSError, sqlite3.DatabaseError, ValueError):
+            if getattr(self._transaction_state, "connection", None) is not None:
+                raise
             result["knowledge_v2_id"] = None
         return result
 
@@ -4706,12 +4792,13 @@ class MemoryStore:
             if row: c.execute("UPDATE knowledge SET access_count=access_count+1 WHERE id=?", (kid,))
             return dict(row) if row else None
 
+    @atomic_workflow
     def update_knowledge(self, kid, title, content, category="domain", source="", tags=None, confidence=0.5):
         try:
             from services.knowledge_core_service import KnowledgeCoreService
             KnowledgeCoreService(self).expire_legacy(int(kid), "legacy_record_updated")
         except (ImportError, OSError, sqlite3.DatabaseError, ValueError):
-            pass
+            raise
         with self._conn() as c:
             c.execute(
                 """
@@ -4736,25 +4823,28 @@ class MemoryStore:
                 )
                 result["knowledge_v2_id"] = absorbed["id"]
             except (ImportError, OSError, sqlite3.DatabaseError, ValueError, TypeError):
-                result["knowledge_v2_id"] = None
+                raise
         return result
 
+    @atomic_workflow
     def delete_knowledge(self, kid):
         try:
             from services.knowledge_core_service import KnowledgeCoreService
             KnowledgeCoreService(self).expire_legacy(int(kid), "legacy_record_deleted")
         except (ImportError, OSError, sqlite3.DatabaseError, ValueError):
-            pass
+            raise
         with self._conn() as c:
             cursor = c.execute("DELETE FROM knowledge WHERE id=?", (int(kid),))
             return cursor.rowcount > 0
 
+    @atomic_workflow
     def delete_knowledge_by_source_prefix(self, prefix):
         try:
             from services.knowledge_core_service import KnowledgeCoreService
             KnowledgeCoreService(self).expire_source_prefix(prefix)
         except (ImportError, OSError, sqlite3.DatabaseError, ValueError):
-            pass
+            if getattr(self._transaction_state, "connection", None) is not None:
+                raise
         with self._conn() as c:
             cursor = c.execute("DELETE FROM knowledge WHERE source LIKE ?", (f"{prefix}%",))
             return cursor.rowcount
@@ -4779,9 +4869,11 @@ class MemoryStore:
 
     # ── CONTEXT SNAPSHOTS ──
 
-    def add_document(self, title, filename="", file_path="", file_hash="", mime_type="", category="domain", extractor="", status="ready", metadata=None):
+    def add_document(self, title, filename="", file_path="", file_hash="", mime_type="", category="domain", extractor="", status="ready", metadata=None, *, document_id=0):
         with self._conn() as c:
-            existing = c.execute("SELECT id FROM documents WHERE file_hash=? AND file_hash<>''", (file_hash,)).fetchone()
+            existing = c.execute("SELECT id FROM documents WHERE file_hash=? AND file_hash<>''", (file_hash,)).fetchone() if not document_id else c.execute("SELECT id FROM documents WHERE id=?",(int(document_id),)).fetchone()
+            if document_id and not existing:
+                raise ValueError("Document not found")
             meta = json.dumps(metadata or {}, ensure_ascii=False)
             if existing:
                 doc_id = int(existing["id"])

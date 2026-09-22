@@ -58,5 +58,13 @@
     {"page": 1, "bbox": [85, 335, 510, 429], "kind": "prose"},
     {"page": 2, "bbox": [85, 270, 510, 780], "kind": "flowchart"}
   ],
-  "gates": {"region_iou": 0.95, "cell_text_exact": 0.9, "critical_exact": 1.0}
+  "gates": {
+    "region_iou": 0.95,
+    "cell_text_exact": 0.9,
+    "critical_exact": 1.0,
+    "manual_cell_edit_reduction": 0.5,
+    "critical_edits_required": 0,
+    "auto_changes_worsened": 0,
+    "verification_elapsed_seconds": 90.0
+  }
 }

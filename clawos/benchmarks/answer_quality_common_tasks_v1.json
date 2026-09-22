@@ -1,6 +1,6 @@
 {
   "name": "clawos-answer-quality-common-tasks-v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "review_status": "maintainer_seeded_proxy",
   "truth_boundary": "Synthetic proxy interactions generated from maintainer-authored common-task facts; not real user feedback.",
   "records": [
@@ -7403,7 +7403,395 @@
         "claims": [],
         "unsupported_claims": []
       }
+    },
+    {
+      "seed_id": "compare_en_reversed",
+      "domain": "coding",
+      "split": "test",
+      "query": "Which model was more accurate?",
+      "id": "compare_en_reversed",
+      "variant": "relation_reversal",
+      "answer": "Model B outperformed Model A in accuracy. [benchmark:compare_en_reversed]",
+      "expected_answer": "Model A outperformed Model B in accuracy.",
+      "evidence": [
+        {
+          "id": "compare_en_reversed",
+          "citation": "benchmark:compare_en_reversed",
+          "text": "Model A outperformed Model B in accuracy."
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": false,
+      "expected_issue": "relation_mismatch",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:compare_en_reversed"
+            ],
+            "relation_preserved": false
+          }
+        ],
+        "unsupported_claims": [
+          "Model B outperformed Model A in accuracy."
+        ]
+      }
+    },
+    {
+      "seed_id": "compare_en_opposite",
+      "domain": "coding",
+      "split": "test",
+      "query": "Which model was more accurate?",
+      "id": "compare_en_opposite",
+      "variant": "relation_reversal",
+      "answer": "Model A was lower than Model B in accuracy. [benchmark:compare_en_opposite]",
+      "expected_answer": "Model A was higher than Model B in accuracy.",
+      "evidence": [
+        {
+          "id": "compare_en_opposite",
+          "citation": "benchmark:compare_en_opposite",
+          "text": "Model A was higher than Model B in accuracy."
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": false,
+      "expected_issue": "relation_mismatch",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:compare_en_opposite"
+            ],
+            "relation_preserved": false
+          }
+        ],
+        "unsupported_claims": [
+          "Model A was lower than Model B in accuracy."
+        ]
+      }
+    },
+    {
+      "seed_id": "compare_zh_reversed",
+      "domain": "research",
+      "split": "test",
+      "query": "哪个模型准确率更高？",
+      "id": "compare_zh_reversed",
+      "variant": "relation_reversal",
+      "answer": "模型B的准确率高于模型A。 [benchmark:compare_zh_reversed]",
+      "expected_answer": "模型A的准确率高于模型B。",
+      "evidence": [
+        {
+          "id": "compare_zh_reversed",
+          "citation": "benchmark:compare_zh_reversed",
+          "text": "模型A的准确率高于模型B。"
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": false,
+      "expected_issue": "relation_mismatch",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:compare_zh_reversed"
+            ],
+            "relation_preserved": false
+          }
+        ],
+        "unsupported_claims": [
+          "模型B的准确率高于模型A。"
+        ]
+      }
+    },
+    {
+      "seed_id": "compare_zh_opposite",
+      "domain": "research",
+      "split": "test",
+      "query": "哪个方案延迟更低？",
+      "id": "compare_zh_opposite",
+      "variant": "relation_reversal",
+      "answer": "方案甲的延迟高于方案乙。 [benchmark:compare_zh_opposite]",
+      "expected_answer": "方案甲的延迟低于方案乙。",
+      "evidence": [
+        {
+          "id": "compare_zh_opposite",
+          "citation": "benchmark:compare_zh_opposite",
+          "text": "方案甲的延迟低于方案乙。"
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": false,
+      "expected_issue": "relation_mismatch",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:compare_zh_opposite"
+            ],
+            "relation_preserved": false
+          }
+        ],
+        "unsupported_claims": [
+          "方案甲的延迟高于方案乙。"
+        ]
+      }
+    },
+    {
+      "seed_id": "condition_en_reversed",
+      "domain": "operations",
+      "split": "test",
+      "query": "When does the service retry?",
+      "id": "condition_en_reversed",
+      "variant": "relation_reversal",
+      "answer": "The request fails only when the service retries. [benchmark:condition_en_reversed]",
+      "expected_answer": "The service retries only when the request fails.",
+      "evidence": [
+        {
+          "id": "condition_en_reversed",
+          "citation": "benchmark:condition_en_reversed",
+          "text": "The service retries only when the request fails."
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": false,
+      "expected_issue": "relation_mismatch",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:condition_en_reversed"
+            ],
+            "relation_preserved": false
+          }
+        ],
+        "unsupported_claims": [
+          "The request fails only when the service retries."
+        ]
+      }
+    },
+    {
+      "seed_id": "condition_en_reversed_2",
+      "domain": "security",
+      "split": "test",
+      "query": "When is access granted?",
+      "id": "condition_en_reversed_2",
+      "variant": "relation_reversal",
+      "answer": "Authentication succeeds only when access is granted. [benchmark:condition_en_reversed_2]",
+      "expected_answer": "Access is granted only when authentication succeeds.",
+      "evidence": [
+        {
+          "id": "condition_en_reversed_2",
+          "citation": "benchmark:condition_en_reversed_2",
+          "text": "Access is granted only when authentication succeeds."
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": false,
+      "expected_issue": "relation_mismatch",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:condition_en_reversed_2"
+            ],
+            "relation_preserved": false
+          }
+        ],
+        "unsupported_claims": [
+          "Authentication succeeds only when access is granted."
+        ]
+      }
+    },
+    {
+      "seed_id": "condition_zh_reversed",
+      "domain": "coding",
+      "split": "test",
+      "query": "任务何时结束？",
+      "id": "condition_zh_reversed",
+      "variant": "relation_reversal",
+      "answer": "仅当任务结束时，测试才可以通过。 [benchmark:condition_zh_reversed]",
+      "expected_answer": "仅当测试通过时，任务才可以结束。",
+      "evidence": [
+        {
+          "id": "condition_zh_reversed",
+          "citation": "benchmark:condition_zh_reversed",
+          "text": "仅当测试通过时，任务才可以结束。"
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": false,
+      "expected_issue": "relation_mismatch",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:condition_zh_reversed"
+            ],
+            "relation_preserved": false
+          }
+        ],
+        "unsupported_claims": [
+          "仅当任务结束时，测试才可以通过。"
+        ]
+      }
+    },
+    {
+      "seed_id": "condition_zh_reversed_2",
+      "domain": "security",
+      "split": "test",
+      "query": "何时允许外部请求？",
+      "id": "condition_zh_reversed_2",
+      "variant": "relation_reversal",
+      "answer": "仅当沙箱发起请求时，域名才可以通过策略检查。 [benchmark:condition_zh_reversed_2]",
+      "expected_answer": "仅当域名通过策略检查时，沙箱才可以发起请求。",
+      "evidence": [
+        {
+          "id": "condition_zh_reversed_2",
+          "citation": "benchmark:condition_zh_reversed_2",
+          "text": "仅当域名通过策略检查时，沙箱才可以发起请求。"
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": false,
+      "expected_issue": "relation_mismatch",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:condition_zh_reversed_2"
+            ],
+            "relation_preserved": false
+          }
+        ],
+        "unsupported_claims": [
+          "仅当沙箱发起请求时，域名才可以通过策略检查。"
+        ]
+      }
+    },
+    {
+      "seed_id": "compare_en_supported",
+      "domain": "coding",
+      "split": "test",
+      "query": "Which model was more accurate?",
+      "id": "compare_en_supported",
+      "variant": "relation_supported",
+      "answer": "In accuracy, Model A exceeded Model B. [benchmark:compare_en_supported]",
+      "expected_answer": "Model A outperformed Model B in accuracy.",
+      "evidence": [
+        {
+          "id": "compare_en_supported",
+          "citation": "benchmark:compare_en_supported",
+          "text": "Model A outperformed Model B in accuracy."
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": true,
+      "expected_issue": "",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:compare_en_supported"
+            ],
+            "relation_preserved": true
+          }
+        ],
+        "unsupported_claims": []
+      }
+    },
+    {
+      "seed_id": "compare_zh_supported",
+      "domain": "research",
+      "split": "test",
+      "query": "哪个模型准确率更高？",
+      "id": "compare_zh_supported",
+      "variant": "relation_supported",
+      "answer": "模型A的准确率超过模型B。 [benchmark:compare_zh_supported]",
+      "expected_answer": "模型A的准确率高于模型B。",
+      "evidence": [
+        {
+          "id": "compare_zh_supported",
+          "citation": "benchmark:compare_zh_supported",
+          "text": "模型A的准确率高于模型B。"
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": true,
+      "expected_issue": "",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:compare_zh_supported"
+            ],
+            "relation_preserved": true
+          }
+        ],
+        "unsupported_claims": []
+      }
+    },
+    {
+      "seed_id": "condition_en_supported",
+      "domain": "operations",
+      "split": "test",
+      "query": "When does the service retry?",
+      "id": "condition_en_supported",
+      "variant": "relation_supported",
+      "answer": "The service retries only if the request fails. [benchmark:condition_en_supported]",
+      "expected_answer": "The service retries only when the request fails.",
+      "evidence": [
+        {
+          "id": "condition_en_supported",
+          "citation": "benchmark:condition_en_supported",
+          "text": "The service retries only when the request fails."
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": true,
+      "expected_issue": "",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:condition_en_supported"
+            ],
+            "relation_preserved": true
+          }
+        ],
+        "unsupported_claims": []
+      }
+    },
+    {
+      "seed_id": "condition_zh_supported",
+      "domain": "coding",
+      "split": "test",
+      "query": "任务何时结束？",
+      "id": "condition_zh_supported",
+      "variant": "relation_supported",
+      "answer": "任务只有在测试通过时才可以结束。 [benchmark:condition_zh_supported]",
+      "expected_answer": "仅当测试通过时，任务才可以结束。",
+      "evidence": [
+        {
+          "id": "condition_zh_supported",
+          "citation": "benchmark:condition_zh_supported",
+          "text": "仅当测试通过时，任务才可以结束。"
+        }
+      ],
+      "must_refuse": false,
+      "expected_valid": true,
+      "expected_issue": "",
+      "expected_relations": {
+        "claims": [
+          {
+            "supported_by": [
+              "benchmark:condition_zh_supported"
+            ],
+            "relation_preserved": true
+          }
+        ],
+        "unsupported_claims": []
+      }
     }
   ],
-  "corpus_digest": "edbe99cef30b75d10d5a23416c16a1b80c4e10cefe0af22d29957472ed053ecd"
+  "corpus_digest": "0e623ca45de992449bfa9ff396198fab4ad7e549b46025e42f3add523dd99936"
 }

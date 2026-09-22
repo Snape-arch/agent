@@ -1,6 +1,43 @@
-# Raster region and table recovery — 2026-08-31
+# Raster region and table recovery — updated 2026-09-04
 
-Status: **bounded structural acceptance passed; exact text/critical-value acceptance failed**. Not generic document-layout understanding or WPS parity.
+Status: **bounded development-corpus structural, text and review-effort acceptance passed**. Not generic document-layout understanding or WPS parity.
+
+## 2026-09-04 automatic-recognition and effort closure
+
+The unchanged source/labels now use bounded cell views plus a conservative
+candidate selector. It ranks correlated OCR views with generic percentage/unit,
+identifier-shape, document-local recurrence and near-identical multi-view
+evidence. It contains no benchmark-specific replacement dictionary. Automatic
+selection never clears `review_required`, never sets `auto_accepted`, and retains
+the original transcription, candidates, scores and truth-boundary metadata.
+
+The acceptance report now measures workload instead of treating simulated human
+correction as OCR success. On the fixed development document, the pre-selector
+baseline needs **7/60 cell edits and 9 character edits**; the final result needs
+**0/60 and 0**, with **5/5 critical values exact**. All seven automatic changes
+improve the frozen label distance and none worsen it. The first broader consensus
+rule caused one real false correction (`响应` -> `啊应`); the new
+`auto_changes_worsened == 0` gate rejected that run, and the rule was restricted
+to identifier-only changes before the passing rerun.
+
+| New workload/accuracy check | Fresh result |
+| --- | ---: |
+| Cell text exact | **60/60** |
+| Critical text exact | **5/5** |
+| Manual cell edits required | **7 -> 0** |
+| Character edits required | **9 -> 0** |
+| Automatic changes improved / worsened | **7 / 0** |
+| Verified cells | **32** |
+| Extra cell-verification compute | **61.688 s** |
+| Whole two-page benchmark | **71.813 s** |
+
+Reproduce with `--out clawos/output/regions-20260904/adaptive-v3`; the strict CLI
+exits **0** and every structural, exactness, critical, non-table, workload,
+no-regression and 90-second verification-budget gate passes. The two overlay
+pages were visually checked again. These 60 correlated, agent-transcribed cells
+were used during development, so 60/60 is regression evidence only—not held-out
+accuracy, an independent confidence interval, physical-scan robustness or WPS
+parity. Document-disjoint human labels remain required before a release claim.
 
 ## Implemented path
 
