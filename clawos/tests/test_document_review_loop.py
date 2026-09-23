@@ -57,10 +57,10 @@ class ReviewLoopTests(unittest.TestCase):
     def test_pending_excluded_from_chunks_search_paper_graph_and_export(self):
         self.assertEqual(self.store.get_document_chunks(self.doc["id"]), [])
         self.assertEqual(self.store.search_document_chunks("959"), [])
-        self.assertNotIn("959", json.dumps(self.store.get_document(self.doc["id"])))
-        self.assertNotIn("959", json.dumps(self.store.list_documents()))
+        self.assertNotIn("959%+", json.dumps(self.store.get_document(self.doc["id"])))
+        self.assertNotIn("959%+", json.dumps(self.store.list_documents()))
         analysis = PaperIntelligenceService(self.store).analyze_document(self.doc["id"])
-        self.assertNotIn("959", json.dumps(analysis))
+        self.assertNotIn("959%+", json.dumps(analysis))
         self.assertEqual(KnowledgeService(self.store,self.root).citation_answer(document_id=self.doc["id"])["count"],0)
         table = self.doc["metadata"]["semantic_graph"]["tables"][0]
         with self.assertRaisesRegex(ValueError,"review"):
@@ -81,7 +81,8 @@ class ReviewLoopTests(unittest.TestCase):
         self.service.submit(self.doc["id"], **self.form())
         self.assertEqual(self.store.get_document(self.doc["id"])["status"],"ready")
         safe = json.dumps(self.store.get_document(self.doc["id"]),ensure_ascii=False)
-        self.assertNotIn("959",safe)
+        # Match the erroneous OCR value, not a coincidental substring of a hash.
+        self.assertNotIn("959%+",safe)
         self.assertNotIn("7信",safe)
         self.assertIn("7倍",safe)
         queue = self.service.queue(self.doc["id"])

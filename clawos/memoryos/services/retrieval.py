@@ -45,7 +45,13 @@ class BM25Index:
         return [{"doc_id": s[2], "text": s[3][:300], "score": s[1]} for s in scores[:top_k]]
 
     def _tokenize(self, text):
-        return [t.lower() for t in re.findall(r"[\w\u4e00-\u9fff]{2,}", text)]
+        # Chinese has no word separators: whole-sentence tokens never match a question.
+        tokens = re.findall(r"[a-z0-9_]+", str(text).lower())
+        for run in re.findall(r"[\u4e00-\u9fff]+", str(text)):
+            tokens.extend(run[i:i+2] for i in range(len(run)-1))
+            if len(run) == 1:
+                tokens.append(run)
+        return tokens
 
 
 def _default_reranker_model_path():

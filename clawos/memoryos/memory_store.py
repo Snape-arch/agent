@@ -5017,8 +5017,8 @@ class MemoryStore:
         with self._conn() as c:
             c.execute("INSERT INTO context_snapshots (session_id,task_description,active_tools,environment,user_intent) VALUES (?,?,?,?,?)",
                       (session_id, task, json.dumps(active_tools or []), environment, user_intent))
-            c.execute("DELETE FROM context_snapshots WHERE id NOT IN (SELECT id FROM context_snapshots WHERE session_id=? ORDER BY id DESC LIMIT 20)",
-                      (session_id,))
+            c.execute("DELETE FROM context_snapshots WHERE session_id=? AND id NOT IN (SELECT id FROM context_snapshots WHERE session_id=? ORDER BY id DESC LIMIT 20)",
+                      (session_id, session_id))
 
     def get_latest_context(self, session_id):
         with self._conn() as c:

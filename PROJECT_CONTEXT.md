@@ -1,5 +1,13 @@
 # Project Context
 
+## Database reliability and learning continuity (2026-09-24)
+
+- Fixed cross-session context snapshot deletion, same-second backup collisions and unsafe file replacement during SQLite restore. Restore now stages schema migration, preserves the pre-restore database, and uses SQLite backup with WAL-aware connections. Added read-only database health/verified-backup CLI.
+- Existing `clawos/memoryos.db`: integrity OK, no foreign-key errors, 552 legacy knowledge rows all linked, 3 documents/166 chunks with no missing source files. Verified backup under ignored `clawos/output/database-backups`; no destructive restoration or production reindex performed.
+- Chinese BM25 now matches character pairs across sentence boundaries. Education now tracks current-question/latest-submission progress and source-bound remediation, retrieves old question IDs beyond the activity window, rejects revision mismatches, and gives the tutor current drafts/chapter feedback. Added refresh recovery for browser drafts and shared Markdown rendering for tutor output.
+- Validation: final full suite **617/617 in 328.396 s**; focused reliability **7/7**, existing materials **10/10**, knowledge transactions **12/12**, evidence/learning **5/5**, document review **15/15**, shared Markdown/SSE **7/7**. Intermediate full runs exposed an outdated question-version status assertion and an OCR test matching digits inside a random hash; both assertions were corrected. Browser verified synthetic remediation, refresh recovery, revised submission, practice/assessment round trip, Markdown and desktop/390px layouts. No live model quality claims for this block; production was not restarted.
+- Details/reproduction/limits: `clawos/benchmarks/DATA_LEARNING_RELIABILITY.md`. Keep tools, weights, credentials, databases, QA output and runtime registry counters out of Git. Remote fetch recovered; baseline 76f5e4f was 1 ahead / 0 behind its upstream work branch, 14 ahead / 2 behind origin/master. Deliver this block and the previously unpushed commit together without force or a master merge.
+
 ## Chat quality and consolidated delivery (2026-09-23)
 
 - Unified the direct/provider and MemoryOS answer contract: natural, specific prose, purposeful Markdown, intact technical terms and evidence-bounded action claims. The tool loop now delivers its completed answer without a second rewrite or context rebuild; tool-only fast paths use paired assistant/tool messages for final synthesis.

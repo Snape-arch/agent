@@ -66,7 +66,9 @@ class EvidenceQualityTests(unittest.TestCase):
         saved=self.materials.chapter_response(mid,chapter['id'],['应当先查找证据，再解释结论成立条件。']*3,project,question_event_id=original_questions['id'])
         self.assertEqual(saved['data']['question_event_id'],original_questions['id'])
         self.assertEqual(saved['data']['status'],'needs_review')
-        self.assertEqual(self.materials.state(mid)['chapters'][0]['status'],'submitted')
+        # The older submission is retained, but does not complete the newer questions.
+        self.assertEqual(self.materials.state(mid)['chapters'][0]['status'],'in_progress')
+        self.assertEqual(self.materials.chapter_submission(mid,saved['id'])['question_event_id'],original_questions['id'])
         with self.assertRaises(ValueError):self.materials.chapter_response(mid,chapter['id'],['x']*3,project)
         with self.assertRaises(ValueError):self.materials.chapter_response(mid,chapter['id'],['应当先查找证据，再解释结论成立条件。']*3,dict(project,quote='缺少证据就拒答'))
         with self.assertRaises(ValueError):self.materials.chapter(mid,chapter['id'],'another-learner')
