@@ -35,11 +35,14 @@ class AcademyStudioService:
         with self.store._conn() as conn:
             records = {row["record_key"]: json.loads(row["payload"]) for row in conn.execute(
                 "SELECT record_key,payload FROM academy_studio_records WHERE learner_id=?", (learner_id,))}
+            has_materials = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='academy_materials'").fetchone()
+            materials = [dict(row) for row in conn.execute('''SELECT id,title,status FROM academy_materials
+                WHERE learner=? ORDER BY created_at DESC,id DESC LIMIT 4''', (learner_id,))] if has_materials else []
         dashboard = self.learning.dashboard(learner_id=learner_id)
         active = dashboard["course"]["id"] == self.course_id
         return dict(schema="clawos.academy-studio.v1", course_id=self.course_id,
                     lessons=LESSONS, papers=PAPERS, resources=RESOURCES, projects=PROJECTS,
-                    tracks=[dict(t, nodes=track_nodes(t)) for t in TRACKS], records=records,
+                    tracks=[dict(t, nodes=track_nodes(t)) for t in TRACKS], records=records, materials=materials,
                     active=active, dashboard=dashboard if active else None,
                     active_course=dashboard["course"]["title"], checked_at="2026-09-10")
 

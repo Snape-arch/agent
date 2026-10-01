@@ -1,6 +1,8 @@
-# ClawOS 当前工作状态（2026-09-24）
+# ClawOS 当前工作状态（2026-10-01）
 
-最新一轮修复数据库恢复与跨会话快照保留、中文知识检索，并完善教育板块的章节进度、补学清单、草稿恢复及导师上下文。原数据库只读体检通过，已生成校验备份。验证与边界见 `clawos/benchmarks/DATA_LEARNING_RELIABILITY.md`，最新结果以 `PROJECT_CONTEXT.md` 顶部为准。
+本轮教育升级加入材料每日计划、闭卷回忆与间隔复习、学习档案和教学角色运行轨迹；修复多 agent 失败传播、返工依赖、恢复检查点和持久化状态。数据库只读体检正常，详见 `clawos/benchmarks/ACADEMY_JOURNEY_ACCEPTANCE.md`；最终全量回归 638/638 通过（317.078 秒），其余验证以 `PROJECT_CONTEXT.md` 顶部记录为准。按本地个人产品尺度评为 82/100，教师校准、整本教材深度、完整资料/向量恢复与长期实测仍是主要问题。
+
+上一轮修复数据库恢复与跨会话快照保留、中文知识检索，并完善教育板块的章节进度、补学清单、草稿恢复及导师上下文。原数据库只读体检通过，已生成校验备份。验证与边界见 `clawos/benchmarks/DATA_LEARNING_RELIABILITY.md`，最新结果以 `PROJECT_CONTEXT.md` 顶部为准。
 
 本轮已修正模型回答重复改写、降级配置、上下文重复、历史截断、失败状态，以及前端 Markdown/SSE 处理。真实 DeepSeek 合成问题和实际浏览器表格、代码块、嵌套列表、重新打开、窄屏验收通过；详细范围与限制见 `clawos/benchmarks/CHAT_QUALITY_ACCEPTANCE.md`。
 

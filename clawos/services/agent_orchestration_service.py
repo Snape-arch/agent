@@ -24,11 +24,12 @@ class AgentOrchestrationService:
             "failures": gate.get("failures") or [],
         }]
         for item in rework_rounds:
+            round_gate = item.get("quality_gate") or {}
             gate_statuses.append({
                 "name": f"rework_round_{item.get('round')}",
-                "status": item.get("status", "failed"),
+                "status": item['status'] if item.get('status') in {'blocked','blocked_external_dependency'} else round_gate.get("status") or item.get("status", "failed"),
                 "score": item.get("final_score"),
-                "failures": item.get("required_rework") or item.get("unresolved") or [],
+                "failures": round_gate.get("failures") or item.get("hard_blockers") or item.get("required_rework") or item.get("unresolved") or [],
             })
         workflow = self.workflow_engine.gate_rework_until_done(
             workflow_id=run_record["run_id"],
@@ -37,6 +38,9 @@ class AgentOrchestrationService:
             artifact_saves=run_record["artifacts"],
         )
         run_record["workflow"] = {**run_record.get("workflow", {}), "state_machine": workflow}
+        run_record["status"] = workflow["state"]
+        run_record["outputs"]["initial_quality_gate"] = gate
+        run_record["outputs"]["quality_gate"] = (result.get("rework_loop") or {}).get("final_quality_gate") or gate
         if self.store:
             run_record = self.store.save_run_record(run_record)
         return run_record

@@ -90,7 +90,10 @@ class EvidenceQualityTests(unittest.TestCase):
                 data=dict(chapter=chapter['id'],subject='研究方法')
                 bad=await c.post(path+'/chapter-questions',json=data)
                 self.assertEqual(bad.status_code,502)
-                self.assertFalse(self.materials.state(mid)['events'])
+                events=self.materials.state(mid)['events']
+                self.assertFalse([e for e in events if e['kind']!='model_run'])
+                self.assertEqual(events[0]['data']['status'],'failed')
+                self.assertEqual(self.store.get_run_record(events[0]['data']['run_id'])['status'],'failed')
                 model.side_effect=None;model.return_value={'choices':[{'message':{'content':json.dumps(questions,ensure_ascii=False)}}]}
                 good=await c.post(path+'/chapter-questions',json=data)
                 self.assertEqual(good.status_code,200,good.text)

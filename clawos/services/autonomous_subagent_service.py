@@ -82,6 +82,7 @@ class AutonomousSubagentService:
             **(run_budget or {}),
         }
         run_id = f"subagents-{int(time.time())}-{uuid.uuid4().hex[:8]}"
+        evidence_digest = self._hash_json(shared_evidence or [])
         root = self.checkpoint_root / run_id
         completed: dict[str, dict[str, Any]] = {}
         saved: dict[str, Any] = {}
@@ -92,9 +93,27 @@ class AutonomousSubagentService:
             except ValueError as exc:
                 raise ValueError("resume checkpoint is outside the subagent root") from exc
             saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+            if saved.get("objective") != objective or saved.get("roles") != [asdict(item) for item in specs]:
+                raise ValueError("resume checkpoint objective or role policy differs from this run")
+            if saved.get('evidence_digest') != evidence_digest:
+                raise ValueError('resume checkpoint evidence differs or lacks a verifiable digest; start a new run')
             run_id = str(saved["run_id"])
             root = checkpoint.parent
             completed = dict(saved.get("completed") or {})
+            # A checkpoint is evidence, not permission to reuse failed work or
+            # downstream outputs produced from an invalid dependency.
+            valid = {item.role_id for item in specs}
+            completed = {key: value for key, value in completed.items() if key in valid
+                         and value.get("status") == "passed"
+                         and not (value.get("output") or {}).get("hard_gate_failures")
+                         and not (value.get("output") or {}).get("requires_human_approval")}
+            for _ in specs:
+                stale = {item.role_id for item in specs if item.role_id in completed
+                         and not set(item.depends_on) <= set(completed)}
+                if not stale:
+                    break
+                for key in stale:
+                    completed.pop(key)
         root.mkdir(parents=True, exist_ok=True)
         started = time.perf_counter()
         ledger = {"model_calls": 0, "tool_calls": 0, "tokens": 0, "estimated_tokens": False, **dict(saved.get("ledger") or {})}
@@ -114,13 +133,15 @@ class AutonomousSubagentService:
                 async with semaphore:
                     return await self._run_role(objective, spec, completed, shared_evidence or [], confirmed, ledger, budget, events, budget_lock)
             results = await asyncio.gather(*(launch(item) for item in ready))
+            stop = False
             for spec, result in zip(ready, results):
                 completed[spec.role_id] = result
                 pending.pop(spec.role_id, None)
-                self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events, review_cycle=review_state)
-                if result["status"] in {"failed", "budget_exhausted", "human_gate"} and spec.hard_gate:
-                    pending.clear()
-                    break
+                if spec.hard_gate and (result["status"] != 'passed' or (result.get('output') or {}).get('hard_gate_failures')):
+                    stop = True
+            self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events, review_cycle=review_state, evidence_digest=evidence_digest)
+            if stop:
+                pending.clear()
         arbitration = self._arbitrate(specs, completed)
         reviewer_result = completed.get(str(review_state.get("reviewer_role") or "")) or {}
         reviewer_output = reviewer_result.get("output") or {}
@@ -128,7 +149,7 @@ class AutonomousSubagentService:
         if review_state.get("enabled") and reviewer_rejected:
             arbitration = await self._run_review_cycle(
                 objective, specs, completed, shared_evidence or [], confirmed, ledger, budget,
-                events, budget_lock, root, run_id, review_state,
+                events, budget_lock, root, run_id, review_state, evidence_digest,
             )
         status = arbitration["status"]
         payload = {
@@ -147,11 +168,19 @@ class AutonomousSubagentService:
             "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             "human_approval_required": status == "human_gate",
         }
-        self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events, arbitration, review_state)
+        self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events, arbitration, review_state, evidence_digest)
         self._save_run(payload, actor)
         return payload
 
     async def _run_role(self, objective: str, spec: SubagentRoleSpec, completed: dict[str, dict[str, Any]], shared_evidence: list[dict[str, Any]], confirmed: set[str], ledger: dict[str, Any], budget: dict[str, Any], events: list[dict[str, Any]], budget_lock: asyncio.Lock) -> dict[str, Any]:
+        blocked = [key for key in spec.depends_on if (completed.get(key) or {}).get('status') != 'passed'
+                   or ((completed.get(key) or {}).get('output') or {}).get('hard_gate_failures')
+                   or ((completed.get(key) or {}).get('output') or {}).get('requires_human_approval')]
+        if blocked:
+            error = 'dependency did not pass: ' + ', '.join(blocked)
+            events.append(dict(role_id=spec.role_id,event='role_blocked',timestamp=now_iso(),error=error))
+            return dict(role_id=spec.role_id,status='blocked',output={},trace=[],
+                        metrics=dict(model_calls=0,tool_calls=0,tokens=0),dependency_roles=spec.depends_on,error=error)
         dependency_outputs = {key: self._public_result(completed[key]) for key in spec.depends_on}
         packet = {
             "role_id": spec.role_id,
@@ -165,7 +194,14 @@ class AutonomousSubagentService:
             {"role": "system", "content": spec.system_policy + "\nNever reveal hidden reasoning. Return concise JSON matching required_output. Use only allowed tools."},
             {"role": "user", "content": json.dumps(packet, ensure_ascii=False)},
         ]
-        provider = self.provider_factory(spec)
+        try:
+            provider = self.provider_factory(spec)
+        except Exception as exc:
+            error = f"provider initialization failed: {type(exc).__name__}: {exc}"
+            events.append({"role_id": spec.role_id, "event": "role_completed", "timestamp": now_iso(), "status": "failed", "error": error})
+            return {"role_id": spec.role_id, "status": "failed", "output": {}, "trace": [],
+                    "metrics": {"model_calls": 0, "tool_calls": 0, "tokens": 0}, "error": error,
+                    "context_hash": self._hash_json(packet), "dependency_roles": spec.depends_on}
         trace = []
         local_model_calls = local_tool_calls = local_tokens = 0
         output: dict[str, Any] = {}
@@ -198,6 +234,9 @@ class AutonomousSubagentService:
             invocation = {"attempt": attempt, "timestamp": invocation_started_at, "completed_at": now_iso(), "status": "passed" if result.get("ok") else "failed", "ok": bool(result.get("ok")), "provider": result.get("provider", ""), "model": result.get("model", ""), "duration_ms": round((time.perf_counter() - started) * 1000, 2), "tokens": used_tokens, "tokens_estimated": estimated_flag, "prompt_hash": self._hash_json(messages), "error": result.get("error", "")}
             trace.append({"type": "model", **invocation})
             events.append({"role_id": spec.role_id, "event": "model_invocation", **invocation})
+            if ledger['tokens'] > int(budget['max_tokens']):
+                status, error = 'budget_exhausted', 'provider usage exceeded the run token budget'
+                break
             if not result.get("ok"):
                 error = str(result.get("error") or "provider failed")
                 if attempt < spec.max_model_calls:
@@ -277,7 +316,7 @@ class AutonomousSubagentService:
     def _review_state(config: dict[str, Any] | None, specs: list[SubagentRoleSpec], saved: dict[str, Any]) -> dict[str, Any]:
         if not config and saved:
             config = saved
-        if not config:
+        if not config or config.get('enabled') is False:
             return {"enabled": False, "rounds": [], "disagreements": [], "release": {}}
         existing = dict(saved or {})
         state = {
@@ -300,6 +339,7 @@ class AutonomousSubagentService:
         self, objective: str, specs: list[SubagentRoleSpec], completed: dict[str, dict[str, Any]],
         shared_evidence: list[dict[str, Any]], confirmed: set[str], ledger: dict[str, Any], budget: dict[str, Any],
         events: list[dict[str, Any]], budget_lock: asyncio.Lock, root: Path, run_id: str, state: dict[str, Any],
+        evidence_digest: str,
     ) -> dict[str, Any]:
         by_id = {item.role_id: item for item in specs}
         executor = by_id[state["executor_role"]]
@@ -326,11 +366,26 @@ class AutonomousSubagentService:
             if executor_result.get("status") != "passed":
                 round_result = {"round": round_no, "status": "failed", "executor_status": executor_result.get("status"), "reviewer_status": "not_run", "started_at": disagreement["timestamp"], "completed_at": now_iso()}
                 state["rounds"].append(round_result)
-                self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events, review_cycle=state)
+                self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events, review_cycle=state, evidence_digest=evidence_digest)
                 return self._arbitrate(specs, completed)
             reviewer_spec = replace(reviewer, objective=f"{reviewer.objective}\nIndependent re-review round {round_no}: verify the revised executor result against the original gate. Release only when every rejection is resolved.")
-            reviewer_result = await self._run_role(objective, reviewer_spec, completed, cycle_evidence, confirmed, ledger, budget, events, budget_lock)
-            completed[reviewer.role_id] = reviewer_result
+            affected = {executor.role_id}
+            for _ in specs:
+                affected.update(item.role_id for item in specs if set(item.depends_on) & affected)
+            affected.add(reviewer.role_id)
+            pending = {key: by_id[key] for key in affected if key != executor.role_id}
+            for key in pending:
+                completed.pop(key, None)
+            while pending:
+                ready = [item for item in pending.values() if set(item.depends_on) <= set(completed)]
+                if not ready:
+                    break
+                for item in ready:
+                    current_spec = reviewer_spec if item.role_id == reviewer.role_id else item
+                    completed[item.role_id] = await self._run_role(objective,current_spec,completed,cycle_evidence,
+                        confirmed,ledger,budget,events,budget_lock)
+                    pending.pop(item.role_id)
+            reviewer_result = completed.get(reviewer.role_id) or {}
             arbitration = self._arbitrate(specs, completed)
             round_status = "released" if arbitration["status"] == "passed" else "revision_required"
             round_result = {"round": round_no, "status": round_status, "executor_status": executor_result.get("status"), "reviewer_status": reviewer_result.get("status"), "started_at": disagreement["timestamp"], "completed_at": now_iso(), "arbitration": arbitration}
@@ -339,9 +394,9 @@ class AutonomousSubagentService:
             if arbitration["status"] == "passed":
                 state["release"] = {"status": "released", "round": round_no, "reviewer_role": reviewer.role_id, "timestamp": now_iso(), "reviewer_output_hash": self._hash_json(reviewer_result.get("output") or {})}
                 events.append({"event": "reviewer_released", "timestamp": state["release"]["timestamp"], "status": "passed", "round": round_no, "reviewer_role": reviewer.role_id})
-                self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events, arbitration, state)
+                self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events, arbitration, state, evidence_digest)
                 return arbitration
-            self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events, arbitration, state)
+            self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events, arbitration, state, evidence_digest)
         return self._arbitrate(specs, completed)
 
     async def _execute_tool(self, name: str, arguments: dict[str, Any], context: dict[str, Any]) -> Any:
@@ -355,6 +410,7 @@ class AutonomousSubagentService:
         human_reasons = []
         confidences = []
         budget_failures = []
+        role_failures = []
         for spec in specs:
             result = completed.get(spec.role_id) or {}
             output = result.get("output") or {}
@@ -365,11 +421,13 @@ class AutonomousSubagentService:
                 human_reasons.append(f"{spec.role_id}: human approval requested")
             if result.get("status") == "budget_exhausted":
                 budget_failures.append(spec.role_id)
+            if result.get("status") in {"failed", "blocked"}:
+                role_failures.append(f"{spec.role_id}: {result.get('error') or result.get('status')}")
             try:
                 confidences.append(float(output.get("confidence")))
             except (TypeError, ValueError):
                 pass
-        if hard_failures:
+        if hard_failures or role_failures:
             status = "failed"
         elif human_reasons or (confidences and min(confidences) < 0.55):
             status = "human_gate"
@@ -379,7 +437,7 @@ class AutonomousSubagentService:
             status = "budget_exhausted"
         else:
             status = "passed"
-        return {"status": status, "hard_gate_failures": hard_failures, "human_gate_reasons": human_reasons, "average_confidence": round(sum(confidences) / len(confidences), 4) if confidences else None, "rule": "hard safety/test/evidence gates override judge or majority"}
+        return {"status": status, "hard_gate_failures": hard_failures, "role_failures": role_failures, "human_gate_reasons": human_reasons, "average_confidence": round(sum(confidences) / len(confidences), 4) if confidences else None, "rule": "hard safety/test/evidence gates override judge or majority"}
 
     def _tools_for(self, allowed: list[str]) -> list[dict[str, Any]]:
         return [item for item in self.tool_definitions if str(item.get("function", item).get("name") or "") in allowed]
@@ -427,13 +485,19 @@ class AutonomousSubagentService:
         for item in specs:
             if item.role_id in item.depends_on or not set(item.depends_on) <= valid:
                 raise ValueError(f"invalid dependencies for role: {item.role_id}")
+        resolved = set()
+        while len(resolved) < len(valid):
+            ready = {item.role_id for item in specs if item.role_id not in resolved and set(item.depends_on) <= resolved}
+            if not ready:
+                raise ValueError("subagent dependency graph is cyclic")
+            resolved.update(ready)
 
     @staticmethod
     def _hash_json(value: Any) -> str:
         return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str).encode()).hexdigest()
 
-    def _write_checkpoint(self, root: Path, run_id: str, objective: str, specs: list[SubagentRoleSpec], completed: dict[str, Any], ledger: dict[str, Any], events: list[dict[str, Any]], arbitration: dict[str, Any] | None = None, review_cycle: dict[str, Any] | None = None) -> None:
-        payload = {"schema": "clawos.subagent-checkpoint.v1", "run_id": run_id, "objective": objective, "roles": [asdict(item) for item in specs], "completed": completed, "ledger": ledger, "events": events, "arbitration": arbitration or {}, "review_cycle": review_cycle or {}, "updated_at": now_iso()}
+    def _write_checkpoint(self, root: Path, run_id: str, objective: str, specs: list[SubagentRoleSpec], completed: dict[str, Any], ledger: dict[str, Any], events: list[dict[str, Any]], arbitration: dict[str, Any] | None = None, review_cycle: dict[str, Any] | None = None, evidence_digest: str = '') -> None:
+        payload = {"schema": "clawos.subagent-checkpoint.v1", "run_id": run_id, "objective": objective, "roles": [asdict(item) for item in specs], "completed": completed, "ledger": ledger, "events": events, "arbitration": arbitration or {}, "review_cycle": review_cycle or {}, "evidence_digest": evidence_digest, "updated_at": now_iso()}
         temporary = root / ".checkpoint.tmp"
         temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         temporary.replace(root / "checkpoint.json")
@@ -447,7 +511,7 @@ class AutonomousSubagentService:
         run.add_artifact("checkpoint", "Autonomous subagent checkpoint", payload["checkpoint"], sha256=checkpoint_sha256, bytes=checkpoint.stat().st_size if checkpoint.is_file() else 0)
         for role_id, result in payload["results"].items():
             run.add_evidence("subagent_role", f"{role_id} completed with status {result.get('status')}", citation=f"run:{payload['run_id']}#role={role_id}", score=(result.get("output") or {}).get("confidence"))
-        for failure in payload["arbitration"].get("hard_gate_failures") or []:
+        for failure in [*(payload["arbitration"].get("hard_gate_failures") or []), *(payload["arbitration"].get("role_failures") or [])]:
             run.add_failure_case("subagent_hard_gate", failure, severity="high", remediation="Resolve the hard gate and resume from checkpoint.")
         for item in (payload.get("review_cycle") or {}).get("disagreements") or []:
             run.add_failure_case(

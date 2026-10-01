@@ -1,8 +1,74 @@
 """HTTP adapter; shared model and material service are injected by the host."""
 import asyncio
+import json
+import time
+import uuid
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
-from services.academy_materials import model_json
+from services.academy_materials import model_json, digest
+from services.runtime_records import RunRecord, now_iso
+
+
+async def teaching_run(service, model, mid, action, data, learner, prompts):
+    """Transport, role trace, evidence validation and persistence share one outcome."""
+    doc=service.document(mid,learner)
+    roles=['teacher','reviewer'] if len(prompts)==2 else ['tutor' if action=='tutor' else 'teacher']
+    run=RunRecord(run_id='academy-teaching-'+uuid.uuid4().hex,run_type='academy_teaching',
+        title=action,status='running',actor=learner,scenario='education',
+        inputs=dict(material_id=mid,revision=doc['payload'].get('revision'),citation=data.get('citation'),
+                    chapter=data.get('chapter'),response_id=data.get('response_id')),
+        workflow=dict(mode='shared_router_role_prompts',roles=roles))
+    service.store.save_run_record(run.to_dict())
+    trace=[]
+    started=time.perf_counter()
+    try:
+        replies=[]
+        for index,prompt in enumerate(prompts):
+            step=dict(role=roles[index],status='running',prompt_digest=digest(prompt))
+            trace.append(step)
+            try:
+                reply=await asyncio.wait_for(model(prompt,[]),timeout=75)
+            except Exception:
+                step['status']='failed'
+                raise HTTPException(502,'模型服务暂不可用或超时；原文与已保存草稿不受影响，未计为通过。')
+            step.update(status='completed',response_digest=digest(reply))
+            replies.append(reply)
+        if service.document(mid,learner)['payload'].get('revision') != doc['payload'].get('revision'):
+            raise ValueError('原文版本已变化，模型结果未保存，请重新请求')
+        if action=='chapter-review':
+            result=service.save_chapter_review(mid,data.get('response_id'),[model_json(r) for r in replies],learner)
+        elif action=='chapter-questions':
+            result=service.save_chapter_questions(mid,data.get('chapter'),data.get('subject'),model_json(replies[0]),learner)
+        elif action=='guide':
+            result=service.save_guide(mid,data.get('citation'),model_json(replies[0]),learner)
+        elif action=='tutor':
+            reply=replies[0]['choices'][0]['message']['content']
+            if not isinstance(reply,str) or not reply.strip():
+                raise ValueError('导师没有返回有效建议')
+            result=service.event(mid,'tutor',dict(citation=data.get('citation'),question=data['question'],answer=reply[:6000]))
+        else:
+            result=service.save_assessment(mid,data.get('citation'),data['answer'],[model_json(r) for r in replies],learner)
+        run.status=result['data'].get('status','completed')
+        run.outputs=dict(event_id=result['id'],evidence_validated=True,answer_verified=False)
+        result['run_id']=run.run_id
+        run.add_evidence('learning_material','Teaching result binds to this material revision',
+            citation=data.get('citation') or mid,revision=doc['payload'].get('revision'))
+        return result
+    finally:
+        if run.status=='running':
+            run.status='failed'
+            run.add_failure_case('teaching_incomplete','Model call or evidence validation did not complete',
+                                 remediation='Saved work is preserved. Retry this action.')
+        for step in trace:
+            if step['status']=='running':
+                step['status']='cancelled'
+        run.completed_at=now_iso()
+        run.metrics=dict(model_calls=len(trace),duration_ms=round((time.perf_counter()-started)*1000,2))
+        run.workflow['trace']=trace
+        service.store.save_run_record(run.to_dict())
+        service.event(mid,'model_run',dict(run_id=run.run_id,action=action,status=run.status,
+            citation=data.get('citation'),trace=trace,event_id=run.outputs.get('event_id'),
+            boundary='同一共享模型路由的不同角色提示；引用校验不代表专家认证。'))
 
 
 def materials_router(service_factory, model):
@@ -40,6 +106,23 @@ def materials_router(service_factory, model):
         except ValueError as exc:
             raise HTTPException(404,str(exc))
 
+    @router.get('/{mid}/passport')
+    async def passport(mid: str, learner_id: str='local-user'):
+        try:
+            value=service_factory().journey.passport(mid,learner_id)
+            return Response(json.dumps(value,ensure_ascii=False,indent=2),media_type='application/json',
+                headers={'Content-Disposition':f'attachment; filename="learning-passport-{mid}.json"'})
+        except ValueError as exc:
+            raise HTTPException(404,str(exc))
+
+    @router.get('/{mid}/recalls/{attempt_id}')
+    async def recall(mid: str, attempt_id: int, learner_id: str='local-user'):
+        try:
+            journey=service_factory().journey
+            return journey._public(journey.attempt(mid,attempt_id,learner_id))
+        except ValueError as exc:
+            raise HTTPException(404,str(exc))
+
     @router.get('/{mid}/projects/{task_id}/export')
     async def export(mid: str, task_id: int, learner_id: str='local-user'):
         try:
@@ -57,6 +140,14 @@ def materials_router(service_factory, model):
             learner=str(data.get('learner_id') or 'local-user')
             cid=data.get('citation')
             service.document(mid,learner)
+            if action=='journey-settings':
+                return service.journey.settings(mid,data.get('minutes'),learner)
+            if action=='recall-start':
+                return service.journey.start(mid,data.get('chapter'),learner)
+            if action=='recall-submit':
+                return service.journey.submit(mid,data.get('attempt_id'),data.get('answers'),learner)
+            if action=='recall-rate':
+                return service.journey.rate(mid,data.get('attempt_id'),data.get('rating'),learner)
             if action in ('chapter-response','chapter-draft'):
                 if type(data.get('question_event_id')) is not int:
                     raise ValueError('请提供当前诊断题版本')
@@ -91,24 +182,7 @@ def materials_router(service_factory, model):
                 prompts=[service.teaching_prompt(mid,cid,data.get('question'),learner)]
             else:
                 prompts=[service.assessment_prompt(mid,cid,data.get('answer'),learner,critic=x) for x in (False,True)]
-            try:
-                replies=[]
-                for prompt in prompts:
-                    replies.append(await asyncio.wait_for(model(prompt,[]),timeout=75))
-            except Exception:
-                raise HTTPException(502,'模型服务暂不可用或超时；原文与已保存草稿不受影响，未计为通过。')
-            if action=='chapter-review':
-                return service.save_chapter_review(mid,data.get('response_id'),[model_json(r) for r in replies],learner)
-            if action=='chapter-questions':
-                return service.save_chapter_questions(mid,data.get('chapter'),data.get('subject'),model_json(replies[0]),learner)
-            if action=='guide':
-                return service.save_guide(mid,cid,model_json(replies[0]),learner)
-            if action=='tutor':
-                reply=replies[0]['choices'][0]['message']['content']
-                if not isinstance(reply,str) or not reply.strip():
-                    raise ValueError('导师没有返回有效建议')
-                return service.event(mid,'tutor',dict(citation=cid,question=data['question'],answer=reply[:6000]))
-            return service.save_assessment(mid,cid,data['answer'],[model_json(r) for r in replies],learner)
+            return await teaching_run(service,model,mid,action,data,learner,prompts)
         except (ValueError,TypeError,KeyError,IndexError) as exc:
             raise HTTPException(400,str(exc))
     return router

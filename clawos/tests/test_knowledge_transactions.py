@@ -78,7 +78,13 @@ class KnowledgeTransactionTests(unittest.TestCase):
     def test_learning_state_survives_long_activity_history(self):
         service=AcademyMaterials(self.store,self.root/'materials')
         state=service.upload('book.txt',self.file.read_bytes());mid=state['document']['id'];cid=state['chapters'][0]['id']
-        event=service.event(mid,'chapter_response',dict(chapter=cid,answers=['saved'],status='needs_review'))
+        quote=state['chapters'][0]['text']
+        questions=dict(questions=[dict(dimension=d,question='Explain the evidence condition.',quote=quote,
+            criterion='Explain when the conclusion is supported.') for d in ('concept','reasoning','transfer')])
+        q=service.save_chapter_questions(mid,cid,'research',questions)
+        event=service.chapter_response(mid,cid,['Saved explanation of the evidence condition.']*3,
+            dict(question='What supports the conclusion?',method='Read the source evidence.',result='Source located for checking.',
+                 reflection='Further independent checks are required.',quote=quote),question_event_id=q['id'])
         for i in range(210):service.event(mid,'tutor',dict(citation='another',answer=str(i)))
         state=service.state(mid)
         self.assertEqual(state['chapters'][0]['status'],'submitted')

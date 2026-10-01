@@ -41,6 +41,8 @@ class AcademyMaterials:
                 id INTEGER PRIMARY KEY AUTOINCREMENT, material_id TEXT NOT NULL,
                 kind TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')));
                 CREATE INDEX IF NOT EXISTS academy_material_event_idx ON academy_material_events(material_id,id);''')
+        from services.academy_journey import AcademyJourney
+        self.journey = AcademyJourney(self)
 
     def document(self, mid, learner='local-user'):
         with self.store._conn() as conn:
@@ -75,7 +77,7 @@ class AcademyMaterials:
                 return dict(materials=[dict(r) for r in conn.execute('SELECT id,title,filename,digest,status,created_at FROM academy_materials WHERE learner=? ORDER BY created_at DESC,id DESC', (learner,))])
         doc = self.document(mid, learner)
         with self.store._conn() as conn:
-            events = [dict(id=r['id'], kind=r['kind'], data=json.loads(r['payload'])) for r in conn.execute("""WITH
+            events = [dict(id=r['id'], kind=r['kind'], data=json.loads(r['payload']), created_at=r['created_at']) for r in conn.execute("""WITH
                 current_questions AS (SELECT MAX(id) id FROM academy_material_events
                     WHERE material_id=? AND kind='chapter_questions' GROUP BY json_extract(payload,'$.chapter')),
                 current_answers AS (SELECT MAX(id) id FROM academy_material_events
@@ -94,7 +96,7 @@ class AcademyMaterials:
                 ORDER BY id DESC""", (mid,)*6)]
         chapters = self.chapters(doc, events)
         return dict(document=doc, events=events, diagnostic=RagWorkshop.questions(DIAGNOSTIC),
-                    chapters=chapters, learning_plan=self.learning_plan(chapters))
+                    chapters=chapters, learning_plan=self.learning_plan(chapters), journey=self.journey.state(doc, chapters))
 
     @staticmethod
     def learning_plan(chapters):
@@ -118,12 +120,16 @@ class AcademyMaterials:
                 if not text:
                     continue
                 key = f"{p['id']}:{left}"
-                question = next((e for e in events if e['kind']=='chapter_questions' and e['data'].get('chapter')==key), None)
+                question = next((e for e in events if e['kind']=='chapter_questions' and e['data'].get('chapter')==key
+                                 and e['data'].get('revision')==doc['payload']['revision']), None)
                 response_event = next((e for e in events if e['kind']=='chapter_response' and e['data'].get('chapter')==key
-                                       and (not question or e['data'].get('question_event_id')==question['id'])), None)
+                                       and question and e['data'].get('question_event_id')==question['id']
+                                       and e['data'].get('revision')==doc['payload']['revision']), None)
                 response = response_event['data'] if response_event else None
-                review = next((e['data'] for e in events if e['kind']=='chapter_review' and response_event
-                               and e['data'].get('response_id')==response_event['id']), None)
+                review_event = next((e for e in events if e['kind']=='chapter_review' and response_event
+                               and e['data'].get('response_id')==response_event['id']
+                               and e['data'].get('revision')==doc['payload']['revision']), None)
+                review = review_event['data'] if review_event else None
                 status = review['status'] if review else ('submitted' if response else 'in_progress' if question else 'not_started')
                 remediation = []
                 if review and status != 'passed':
@@ -137,6 +143,9 @@ class AcademyMaterials:
                     citation=p['id'], text=text, page=p.get('page'), source_url=p['source_url'],
                     revision=doc['payload']['revision'], review_required=bool(p.get('review_required')),
                     status='needs_review' if p.get('review_required') else status,
+                    question_event_id=question['id'] if question else None,
+                    review_event_id=review_event['id'] if review_event else None,
+                    reviewed_at=review_event.get('created_at') if review_event else None,
                     response=response, remediation=remediation,
                     boundary='按可识别标题和片段边界划分；顺序为原文阅读顺序，不推断先修关系。'))
         return chapters
