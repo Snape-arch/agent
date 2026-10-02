@@ -80,7 +80,8 @@ class WorkspaceServicesTests(unittest.TestCase):
         self.assertEqual(result["meeting_card"]["transcript_status"], "transcript_imported")
         self.assertTrue(card_exists)
         self.assertEqual(run["run_type"], "meeting_audio")
-        self.assertTrue(result["knowledge_item"])
+        self.assertIsNone(result["knowledge_item"])
+        self.assertTrue(result['meeting_card']['review_required'])
         self.assertTrue(any(d["connector_type"] == "calendar_ics" for d in drafts["drafts"]))
         self.assertTrue(draft_exists)
 

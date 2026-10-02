@@ -6,22 +6,25 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const clone=v=>JSON.parse(JSON.stringify(v)), id=()=>crypto.randomUUID();
 const inline=window.markdownit({html:false,linkify:false,breaks:true});
 inline.renderer.rules.image=(tokens,index)=>esc(tokens[index]?.content||"图片");
-let doc=null,selected=null,undo=[],redo=[],dirty=false,saving=null,timer=null,conflict=false,reading=false,suggestion="",suggestionAnchor=null;
+let me=null,doc=null,selected=null,undo=[],redo=[],dirty=false,saving=null,timer=null,conflict=false,reading=false,suggestion="",suggestionAnchor=null;
 let strokes=[],activeStroke=null,drawingId=null;
 const block=(type="paragraph",text="")=>({id:id(),type,text,...(type==="heading"?{level:2}:type==="code"?{language:"python"}:type==="table"?{cells:[["项目","观察","依据"],["","",""],["","",""]]}:type==="drawing"?{strokes:[]}:type==="todo"?{checked:false}:{})});
 function status(s){$("docStatus").textContent=s;}
 async function api(path="",data,method){const r=await fetch(base+path,{method:method||(data?"POST":"GET"),headers:data?{"Content-Type":"application/json"}:{},body:data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok){const e=Error(v.detail||"请求失败");e.status=r.status;throw e;}return v;}
-function draftKey(nid=doc?.id){return "clawos_document_draft_"+(nid||"new");}
+function draftKey(nid=doc?.id){return "clawos_document_draft_"+(me?.id||"local-user")+"_"+(nid||"new");}
+function legacyDraftKey(nid){return "clawos_document_draft_"+(nid||"new");}
+function readDraft(nid){try{return JSON.parse(localStorage.getItem(draftKey(nid))||((me?.id||'local-user')==='local-user'?localStorage.getItem(legacyDraftKey(nid)):null)||"null");}catch(e){return null;}}
 function cache(){try{localStorage.setItem(draftKey(),JSON.stringify(doc));return true;}catch(e){status("设备草稿空间不足，请立即保存或导出文档。");return false;}}
 function checkpoint(){undo.push(clone(doc));undo=undo.slice(-60);redo=[];}
 function changed(){dirty=true;cache();status("草稿已保留 · 等待保存");clearTimeout(timer);timer=setTimeout(()=>save().catch(()=>{}),1300);outline();}
 async function save(){
  clearTimeout(timer);if(!doc)return;if(conflict)throw Error("请先处理版本冲突");if(saving){await saving;if(dirty)return save();return doc;}
  if(!dirty&&doc.id)return doc;
+ if(doc.role&&!editable())throw Error("当前权限不能保存修改；可导出设备草稿。");
  const before=clone(doc);dirty=false;status("保存中…");
  saving=(async()=>{try{const result=await api(before.id?"/"+before.id:"",before,before.id?"PUT":"POST");
  const oldKey=draftKey(before.id);doc.id=result.id;doc.version=result.version;doc.updated_at=result.updated_at;
- localStorage.removeItem(oldKey);if(dirty)cache();else localStorage.removeItem(draftKey());
+ localStorage.removeItem(oldKey);if((me?.id||'local-user')==='local-user')localStorage.removeItem(legacyDraftKey(before.id));if(dirty)cache();else localStorage.removeItem(draftKey());
  const u=new URL(location.href);u.searchParams.set("document",doc.id);history.replaceState(null,"",u);
  status("已保存 · 版本 "+doc.version);await library();return doc;
  }catch(e){dirty=true;if(e.status===409){conflict=true;$("docCopy").hidden=false;$("docReload").hidden=false;}cache();status(e.message);throw e;}finally{saving=null;}})();
@@ -30,8 +33,8 @@ async function save(){
 async function library(){try{const r=await api();$("docLibrary").innerHTML=r.documents.map(d=>'<button data-document="'+esc(d.id)+'" class="'+(doc?.id===d.id?"active":"")+'">'+esc(d.title)+'</button>').join("");}catch(e){status("文档列表读取失败："+e.message);}}
 async function open(nid){
  if(doc&&(dirty||saving))await save();
- const loaded=await api("/"+nid);let draft;try{draft=JSON.parse(localStorage.getItem(draftKey(nid))||"null");}catch(e){}
- doc=draft||loaded;dirty=!!draft;conflict=!!draft&&draft.version!==loaded.version;
+ const loaded=await api("/"+nid);const draft=readDraft(nid);
+ doc=draft||loaded;doc.role=loaded.role;reading=!!doc.role&&!['owner','editor'].includes(doc.role);dirty=!!draft&&!reading;conflict=!!draft&&draft.version!==loaded.version;
  undo=[];redo=[];selected=null;$("docCopy").hidden=!conflict;$("docReload").hidden=!conflict;
  history.replaceState(null,"","?document="+nid);render();await library();
  status(conflict?"已恢复设备草稿；服务器版本已变化，请另存或载入最新。":draft?"已恢复未保存草稿。":"已保存 · 版本 "+doc.version);
@@ -85,7 +88,7 @@ function renderBlock(b){
  else body=(b.type==="bullet"?'<span class="list-marker">•</span>':b.type==="numbered"?'<span class="list-marker">'+(doc.blocks.filter(x=>x.type==="numbered").findIndex(x=>x.id===b.id)+1)+'.</span>':"")+(b.type==="todo"?'<input type="checkbox" aria-label="待办完成状态" data-field="checked" '+(b.checked?"checked":"")+' '+(reading?"disabled":"")+'>':"")+(reading&&window.ClawChatContent?'<div class="block-edit">'+ClawChatContent.render(b.text)+'</div>':edit(b.text,b.type==="heading"?"章节标题":"内容"));
  return '<section class="doc-block '+b.type+(selected===b.id?" selected":"")+'" data-block="'+b.id+'" data-level="'+(b.level||2)+'">'+tools(b)+body+'</section>';
 }
-function render(){if(!doc)return;$("docTitle").value=doc.title;$("docContext").value=doc.context||"";$("docBlocks").innerHTML=doc.blocks.map(renderBlock).join("");for(const b of doc.blocks.filter(b=>b.type==="drawing"))draw($("docBlocks").querySelector('[data-block="'+b.id+'"] canvas'),b.strokes);outline();$("docUndo").disabled=!undo.length;$("docRedo").disabled=!redo.length;}
+function render(){if(!doc)return;permissions();$("docTitle").value=doc.title;$("docContext").value=doc.context||"";$("docBlocks").innerHTML=doc.blocks.map(renderBlock).join("");for(const b of doc.blocks.filter(b=>b.type==="drawing"))draw($("docBlocks").querySelector('[data-block="'+b.id+'"] canvas'),b.strokes);outline();$("docUndo").disabled=!editable()||!undo.length;$("docRedo").disabled=!editable()||!redo.length;}
 function outline(){$("docOutline").innerHTML=(doc?.blocks||[]).filter(b=>b.type==="heading").map(b=>'<button data-outline="'+b.id+'">'+esc(b.text||"无标题")+'</button>').join("");}
 function insert(type,extra={}){
  if(reading)return;if(type==="image"){$("docImageFile").click();return;}if(type==="drawing"){openDrawing();return;}
@@ -110,7 +113,7 @@ $("drawUndo").onclick=()=>{strokes.pop();draw(canvas,strokes);};$("drawClear").o
 $("drawInsert").onclick=()=>{if(activeStroke){status("请先结束当前笔迹");return;}mutate(()=>{let b=doc.blocks.find(b=>b.id===drawingId);if(!b){b=block("drawing");const i=doc.blocks.findIndex(b=>b.id===selected);doc.blocks.splice(i<0?doc.blocks.length:i+1,0,b);}b.strokes=clone(strokes);b.text=$("drawCaption").value;selected=b.id;});$("drawDialog").close();};
 $("docBlocks").addEventListener("focusin",e=>{const node=e.target.closest("[data-block]");if(node){selected=node.dataset.block;document.querySelectorAll(".doc-block").forEach(n=>n.classList.toggle("selected",n===node));}});
 $("docBlocks").addEventListener("beforeinput",e=>{if(!reading)checkpoint();});
-$("docBlocks").addEventListener("input",e=>{if(reading)return;const b=doc.blocks.find(b=>b.id===e.target.closest("[data-block]")?.dataset.block);if(!b)return;if(e.target.dataset.cell){const [r,c]=e.target.dataset.cell.split(",").map(Number);b.cells[r][c]=e.target.innerText;}else{const field=e.target.dataset.field;if(field)b[field]=e.target.type==="checkbox"?e.target.checked:field==="level"?Number(e.target.value):e.target.isContentEditable?serializeInline(e.target):e.target.value;}changed();$("docUndo").disabled=!undo.length;$("docRedo").disabled=!redo.length;});
+$("docBlocks").addEventListener("input",e=>{if(reading)return;const b=doc.blocks.find(b=>b.id===e.target.closest("[data-block]")?.dataset.block);if(!b)return;if(e.target.dataset.cell){const [r,c]=e.target.dataset.cell.split(",").map(Number);b.cells[r][c]=e.target.innerText;}else{const field=e.target.dataset.field;if(field)b[field]=e.target.type==="checkbox"?e.target.checked:field==="level"?Number(e.target.value):e.target.isContentEditable?serializeInline(e.target):e.target.value;}changed();$("docUndo").disabled=!editable()||!undo.length;$("docRedo").disabled=!editable()||!redo.length;});
 $("docBlocks").addEventListener("change",e=>{if(e.target.dataset.field==="level"){const b=doc.blocks.find(b=>b.id===e.target.closest("[data-block]")?.dataset.block);mutate(()=>{b.level=Number(e.target.value);});}});
 $("docBlocks").addEventListener("click",async e=>{const node=e.target.closest("[data-block]"),button=e.target.closest("[data-op]");if(!node||!button)return;selected=node.dataset.block;const i=doc.blocks.findIndex(b=>b.id===selected),b=doc.blocks[i],op=button.dataset.op;
  if(op==="copy-code"){try{await navigator.clipboard.writeText(b.text);status("代码已复制");}catch(e){status("复制不可用，请选择代码后手动复制");}return;}if(reading)return;if(op==="drawing"){openDrawing(b);return;}
@@ -149,9 +152,58 @@ $("docExport").onchange=async e=>{const format=e.target.value;e.target.value="";
 $("docHistory").onclick=async()=>{try{await save();const r=await api("/"+doc.id+"/history");$("docVersions").hidden=false;$("docVersions").innerHTML=r.versions.map(v=>'<button data-version="'+v.version+'">版本 '+v.version+' · '+esc(v.created_at)+'</button>').join("");$("docVersions").onclick=e=>{const n=Number(e.target.dataset.version),v=r.versions.find(v=>v.version===n);if(v)mutate(()=>{doc.title=v.title;doc.context=v.context;doc.blocks=clone(v.blocks);});};status("选择历史版本可恢复为新版本，当前内容仍可撤销。");}catch(e){status(e.message);}};
 $("docCopy").onclick=async()=>{try{const before=clone(doc),old=draftKey();delete before.id;delete before.version;before.title=(before.title+" · 草稿副本").slice(0,200);const result=await api("",before);localStorage.removeItem(old);doc=result;dirty=false;conflict=false;$("docCopy").hidden=true;$("docReload").hidden=true;history.replaceState(null,"","?document="+doc.id);render();await library();status("草稿已另存为副本。");}catch(e){status(e.message);}};
 $("docReload").onclick=async()=>{try{const latest=await api("/"+doc.id);checkpoint();doc=latest;dirty=false;conflict=false;$("docCopy").hidden=true;$("docReload").hidden=true;localStorage.removeItem(draftKey());render();status("已载入最新版本；原草稿可撤销恢复。");}catch(e){status(e.message);}};
-document.querySelectorAll("[data-assist]").forEach(button=>button.onclick=async()=>{const b=doc.blocks.find(b=>b.id===selected);if(!b?.text?.trim()){$("docAssistStatus").textContent="请先选择一个有文字的内容块。";return;}button.disabled=true;suggestionAnchor=b.id;$("docAssistStatus").textContent="正在请求导写建议…";try{const r=await api("/assist",{text:b.text.slice(0,12000),mode:button.dataset.assist});suggestion=r.draft;$("docSuggestion").textContent=suggestion;$("docSuggestion").hidden=false;$("docAccept").hidden=false;$("docAssistStatus").textContent=r.boundary;}catch(e){$("docAssistStatus").textContent=e.message;}finally{button.disabled=false;}});
+document.querySelectorAll("[data-assist]").forEach(button=>button.onclick=async()=>{const b=doc.blocks.find(b=>b.id===selected);if(!b?.text?.trim()){$("docAssistStatus").textContent="请先选择一个有文字的内容块。";return;}button.disabled=true;suggestionAnchor=b.id;$("docAssistStatus").textContent="正在请求导写建议…";try{const r=await api("/assist",{text:b.text.slice(0,12000),mode:button.dataset.assist,document_id:doc.id});suggestion=r.draft;$("docSuggestion").textContent=suggestion;$("docSuggestion").hidden=false;$("docAccept").hidden=false;$("docAssistStatus").textContent=r.boundary;}catch(e){$("docAssistStatus").textContent=e.message;}finally{button.disabled=false;}});
 $("docAccept").onclick=()=>{selected=suggestionAnchor;insert("quote",{text:"导写建议（待复核）\n"+suggestion});$("docAccept").hidden=true;};
 document.addEventListener("keydown",e=>{if(e.ctrlKey||e.metaKey){if(["b","i"].includes(e.key.toLowerCase())){e.preventDefault();format(e.key.toLowerCase()==="b"?"bold":"italic");}if(e.key.toLowerCase()==="s"){e.preventDefault();save().catch(e=>status(e.message));}if(e.key.toLowerCase()==="z"){e.preventDefault();(e.shiftKey?$("docRedo"):$("docUndo")).click();}}if(e.key==="Escape"&&!$("drawDialog").open&&document.body.classList.contains("doc-focus"))$("docFocus").click();});
+function editable(){return !doc?.role||['owner','editor'].includes(doc.role);}
+function permissions(){
+ const can=editable();if(!can)reading=true;
+ document.body.classList.toggle('doc-reading',reading);
+ for(const key of ['docTitle','docContext'])$(key).readOnly=!can;
+ for(const key of ['docSave','docInsert','docTemplate','docImport','docAdd','docAccept'])$(key).disabled=!can;
+ $('docUndo').disabled=!can||!undo.length;$('docRedo').disabled=!can||!redo.length;
+ $('docNew').disabled=!!me&&me.id!=='local-user';
+ document.querySelectorAll('[data-format],[data-assist]').forEach(b=>b.disabled=!can);
+ $('collabOwner').hidden=doc?.role!=='owner';$('collabFeishu').disabled=doc?.role!=='owner';
+ $('collabSend').disabled=doc?.role==='viewer';$('collabComment').disabled=doc?.role==='viewer';
+}
+async function collaboration(path,data){
+ const r=await fetch('/api/collaboration'+path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined});
+ const v=await r.json();if(!r.ok){const e=Error(v.detail||'协作请求失败');e.status=r.status;throw e;}return v;
+}
+const cp=()=>'/documents/'+doc.id;
+function localTime(value){const date=new Date(String(value).replace(' ','T')+'Z');return Number.isNaN(date.getTime())?value:date.toLocaleString('zh-CN',{hour12:false});}
+function collabRender(r){
+ $('collabPeople').textContent=({owner:'所有者',editor:'可编辑',commenter:'可评论',viewer:'仅阅读'}[r.role])+' · 在线：'+(r.online.map(p=>p.name).join('、')||'暂无');
+ $('collabComments').innerHTML=r.comments.map(c=>'<article class="collab-comment '+(c.resolved?'resolved':'')+'"><b>'+esc(c.name)+'</b><small>版本 '+c.version+' · '+esc(localTime(c.created_at))+(c.version<doc.version?' · 请对照该历史版本':'')+(c.block_id&&!doc.blocks.some(b=>b.id===c.block_id)?' · 原内容块已移除':'')+'</small><p>'+esc(c.text)+'</p>'+(c.block_id?'<button data-comment-anchor="'+esc(c.block_id)+'">定位内容块</button>':'')+(!c.resolved&&(c.user_id===me?.id||r.role==='owner')?'<button data-resolve="'+esc(c.id)+'">标为已解决</button>':'')+'</article>').join('')||'<p>暂无评论，选择一个内容块开始讨论。</p>';
+ $('collabMembers').innerHTML=r.members.map(m=>'<p>'+esc(m.name)+' · '+esc(m.role)+(m.role!=='owner'?'<button data-revoke="'+esc(m.user_id)+'">撤销访问</button>':'')+'</p>').join('');
+ const actions={invite:'生成邀请',join:'加入协作',edit:'保存文档',revoke:'撤销访问',comment:'发表评论',resolve:'解决评论'};
+ $('collabAudit').innerHTML=r.audit.map(a=>'<p>'+esc(actions[a.action]||a.action)+' · '+esc(localTime(a.created_at))+'</p>').join('')||'<p>仅所有者可查看协作记录。</p>';
+}
+async function syncCollaboration(){
+ if(!doc?.id||document.hidden)return;const nid=doc.id;
+ try{await collaboration(cp()+'/presence',{block_id:selected||''});const r=await collaboration(cp());if(doc?.id!==nid)return;
+ const identityChanged=r.viewer_id&&r.viewer_id!==me?.id,roleChanged=doc.role!==r.role;
+ if(identityChanged){if(dirty)cache();me=await collaboration('/me');undo=[];redo=[];clearTimeout(timer);if(dirty){conflict=true;$('docReload').hidden=false;status('协作身份已切换；原身份草稿已保留，请导出或载入最新。');}await library();}
+ doc.role=r.role;if(identityChanged||roleChanged){reading=!editable();render();}permissions();collabRender(r);
+ if(r.version!==doc.version&&!saving){
+   if(dirty){conflict=true;clearTimeout(timer);$('docReload').hidden=false;$('docCopy').hidden=me?.id!=='local-user';status('协作者已更新文档；设备草稿已保留，请导出草稿或载入最新后合并。');}
+   else{const latest=await api('/'+nid);if(doc?.id!==nid||dirty||saving)return;doc=latest;undo=[];redo=[];render();status('已同步协作者修改 · 版本 '+doc.version);}
+ }
+ }catch(e){if([401,403].includes(e.status)){doc.role='viewer';reading=true;render();clearTimeout(timer);status('协作访问已过期或撤销；设备草稿仍可导出。');}else if(!$('collabPanel').hidden)status(e.message);}
+}
+$('docCollab').onclick=()=>{$('collabPanel').hidden=!$('collabPanel').hidden;syncCollaboration();};
+$('collabInvite').onclick=async()=>{try{await save();const r=await collaboration(cp()+'/invite',{role:$('collabRole').value});$('collabCode').hidden=false;$('collabCode').value=r.code;$('collabInviteHint').textContent=r.boundary;$('collabCode').select();}catch(e){status(e.message);}};
+$('collabRevokeInvites').onclick=async()=>{try{await collaboration(cp()+'/revoke',{user_id:''});$('collabCode').hidden=true;status('所有未使用邀请已撤销。');}catch(e){status(e.message);}};
+$('collabMembers').onclick=async e=>{if(!e.target.dataset.revoke)return;try{await collaboration(cp()+'/revoke',{user_id:e.target.dataset.revoke});await syncCollaboration();status('成员访问与待用邀请已撤销。');}catch(e){status(e.message);}};
+$('collabSend').onclick=async()=>{try{if(editable())await save();await collaboration(cp()+'/comments',{block_id:selected||'',version:doc.version,text:$('collabComment').value});$('collabComment').value='';await syncCollaboration();}catch(e){status(e.message);}};
+$('collabComments').onclick=async e=>{try{if(e.target.dataset.resolve){await collaboration(cp()+'/comments/'+e.target.dataset.resolve+'/resolve',{});await syncCollaboration();}if(e.target.dataset.commentAnchor){const b=doc.blocks.find(b=>b.id===e.target.dataset.commentAnchor);if(!b){status('原内容块已移除，请从版本记录查看。');return;}selected=b.id;render();$('docBlocks').querySelector('[data-block="'+b.id+'"]')?.scrollIntoView({block:'center',behavior:'smooth'});}}catch(err){status(err.message);}};
+$('collabDraft').onclick=()=>{if(!doc)return;const url=URL.createObjectURL(new Blob([JSON.stringify(doc,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='document-draft.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+$('collabFeishu').onclick=async()=>{try{await save();const r=await fetch('/api/feishu/documents/'+doc.id+'/draft',{method:'POST'});const v=await r.json();if(!r.ok)throw Error(v.detail||'飞书草稿失败');status('已生成飞书审批草稿 #'+v.id+'；请在飞书连接器预览并选择发送目标。');const a=document.createElement('a');a.href='/console?view=feishu&summary='+v.id;a.textContent='打开飞书草稿 #'+v.id;a.className='collab-link';$('collabInviteHint').replaceChildren(a);}catch(e){status(e.message);}};
+$('docJoin').onclick=()=>$('joinDialog').showModal();$('joinClose').onclick=()=>$('joinDialog').close();
+$('joinSubmit').onclick=async()=>{try{if(dirty||saving)await save();const u=await collaboration('/join',{code:$('joinCode').value.trim(),name:$('joinName').value.trim()});location.href='/academy/notes?document='+u.document_id;}catch(e){$('joinStatus').textContent=e.message;}};
+$('collabLogout').onclick=async()=>{try{if(dirty||saving)await save();await collaboration('/logout',{});location.reload();}catch(e){status(e.message);}};
+setInterval(syncCollaboration,4000);
 window.addEventListener("beforeunload",e=>{if(dirty||saving){cache();e.preventDefault();e.returnValue="";}});
-(async()=>{try{const nid=new URLSearchParams(location.search).get("document");if(nid)await open(nid);else{let draft;try{draft=JSON.parse(localStorage.getItem(draftKey(null))||"null");}catch(e){}if(draft){doc=draft;dirty=true;render();await save();}else{const list=await api();if(list.documents.length&&!new URLSearchParams(location.search).has("source"))await open(list.documents[0].id);else await newDoc();}}}catch(e){status("无法打开文档："+e.message);}})();
+(async()=>{try{try{me=await collaboration("/me");}catch(e){}const nid=new URLSearchParams(location.search).get("document");if(nid)await open(nid);else{const draft=readDraft(null);if(draft){doc=draft;dirty=true;render();await save();}else{const list=await api();if(list.documents.length&&!new URLSearchParams(location.search).has("source"))await open(list.documents[0].id);else if(!me||me.id!=="local-user")status("请先加入协作，或打开已有授权文档。");else await newDoc();}}}catch(e){status("无法打开文档："+e.message);}})();
 })();

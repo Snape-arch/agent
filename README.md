@@ -22,6 +22,12 @@ cd <your-cloned-agent-repo>
 .\start_clawos.bat
 ```
 
+新增日常工作台入口：`/data-lab` 支持 CSV/TSV/XLSX 清洗、派生列、分组统计、图表和处理流程导出；
+`/meetings` 支持原文草稿、复核发布、行动项和协作文档；`/academy/notes` 支持按文档授权的阅读/评论/编辑与版本冲突保护。
+会议及文档可生成带来源的飞书审批草稿，实际发送仍需配置就绪、白名单和原生审批。
+双架构仍为 ClawOS 工作台/MemoryOS → MTClaw 函数路由 → 受限工具桥 → 请求级证据。
+本轮验收及未完成的真实租户/长期并发部分见 `clawos/benchmarks/COLLABORATION_DATA_MTCLAW_ACCEPTANCE.md`。
+
 For an explicit local daily-use profile after the verified Qwen, llama.cpp,
 embedding, and Chroma assets are installed:
 

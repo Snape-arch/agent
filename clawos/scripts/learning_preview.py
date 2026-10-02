@@ -64,10 +64,18 @@ def main():
         server.UPLOAD_DIR = Path(td) / 'uploads'
         server.UPLOAD_DIR.mkdir(exist_ok=True)
         server.OUTPUT_ROOT = Path(td) / "output"
+        from workspace_services import WorkspaceServices
+        from security.policy import ToolSecurityPolicy
+        from services.feishu import FeishuConnectorService, FeishuConfig
+        from mtclaw.adapter import MTClawAdapter
+        server.g_workspace_services=WorkspaceServices(service.store,ToolSecurityPolicy([td]))
+        server.g_feishu_connector_service=FeishuConnectorService(service.store,None,FeishuConfig())
+        server.g_mtclaw_adapter=MTClawAdapter({'enabled':False})
         app = FastAPI(lifespan=preview_lifespan)
         app.middleware('http')(server.no_cache_static_shell)
+        app.middleware('http')(server.workbench_access)
         for route in server.app.routes:
-            if route.path.startswith(("/api/academy/learning/", "/api/academy/paper/", "/api/documents", "/academy")):
+            if route.path.startswith(("/api/academy/learning/", "/api/academy/paper/", "/api/documents", "/academy", '/api/collaboration','/api/data-lab','/api/meeting-workbench','/api/feishu','/api/architecture','/api/workspace/meetings')) or route.path in ('/','/product','/data-lab','/meetings','/console'):
                 app.router.routes.append(route)
         app.mount("/static", StaticFiles(directory=server.STATIC_DIR), name="static")
         app.mount("/assets", StaticFiles(directory=server.STATIC_DIR / "assets"), name="assets")

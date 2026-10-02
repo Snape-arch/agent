@@ -303,7 +303,7 @@ class WorkspaceServices:
             )
             return self.get_meeting(int(cursor.lastrowid), conn=c)
 
-    def process_meeting_transcript(self, meeting_id, transcript):
+    def process_meeting_transcript(self, meeting_id, transcript, publish_memory=True):
         decisions, risks, actions = self._extract_meeting_items(transcript)
         summary = self._summarize_text(transcript)
         with self.store._conn() as c:
@@ -335,19 +335,20 @@ class WorkspaceServices:
                     ),
                 )
             meeting = self.get_meeting(meeting_id, conn=c)
-        self.store.upsert_memory(
-            "experience",
-            f"meeting:{meeting_id}",
-            summary or meeting["title"],
-            category="meeting",
-            source="meeting_workflow",
-            confidence=0.8,
-            evidence=[{
-                "evidence_type": "meeting_transcript",
-                "source_ref": f"meeting:{meeting_id}",
-                "excerpt": transcript[:1000],
-            }],
-        )
+        if publish_memory:
+            self.store.upsert_memory(
+                "experience",
+                f"meeting:{meeting_id}",
+                summary or meeting["title"],
+                category="meeting",
+                source="meeting_workflow",
+                confidence=0.8,
+                evidence=[{
+                    "evidence_type": "meeting_transcript",
+                    "source_ref": f"meeting:{meeting_id}",
+                    "excerpt": transcript[:1000],
+                }],
+            )
         return meeting
 
     def get_meeting(self, meeting_id, conn=None):
@@ -458,7 +459,9 @@ class WorkspaceServices:
                 ),
             )
         if transcript_text.strip():
-            meeting = self.process_meeting_transcript(meeting["id"], transcript_text)
+            meeting = self.process_meeting_transcript(meeting["id"], transcript_text, publish_memory=False)
+            with self.store._conn() as c:
+                c.execute("UPDATE meetings SET status='needs_review' WHERE id=?", (meeting["id"],))
         return {
             "meeting": self.get_meeting(meeting["id"]),
             "audio_path": str(audio),

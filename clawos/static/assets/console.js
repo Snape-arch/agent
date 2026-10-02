@@ -3068,26 +3068,32 @@ async function loadFeishuCenter() {
   // §13 resource endpoints: each is a dedicated URL, not an action router.
   const get = (path) => api(path).catch(err => ({ error: err.message }));
   try {
-    const [health, messages, summaries, approvals, dispatches] = await Promise.all([
+    const [health, messages, summaries, approvals, dispatches, permissions] = await Promise.all([
       get("/api/feishu/health"),
       get("/api/feishu/messages?limit=50"),
       get("/api/feishu/summaries?limit=50"),
       get("/api/feishu/approvals?limit=50"),
       get("/api/feishu/dispatches?limit=50"),
+      get('/api/feishu/permissions'),
     ]);
     const cfg = (health && health.config) || {};
     const cli = (health && health.client) || {};
+    const populateTargets=()=>{const field=$('feishuTargetId');if(!field)return;const previous=field.value,targets=(permissions.targets||[]).filter(t=>t.type===$('feishuTargetType').value);field.innerHTML=targets.length?'<option value="">请选择白名单目标</option>'+targets.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.id)+'</option>').join(''):'<option value="">此类型尚未配置目标白名单</option>';if(targets.some(t=>t.id===previous))field.value=previous;};
+    if($('feishuTargetType'))$('feishuTargetType').onchange=populateTargets;populateTargets();
+    if ($('feishuPermissions')) $('feishuPermissions').innerHTML = '<h3>权限链路</h3>'+table(['环节','状态','依据'],(permissions.checks||[]).map(c=>[c.name,c.ready?'已配置':'待配置',c.detail]))+'<p class="hint">'+esc(permissions.boundary||permissions.error||'')+'</p>';
+    const summaryParam = new URLSearchParams(location.search).get('summary');
+    if (summaryParam && /^\d+$/.test(summaryParam) && $('feishuSummaryId')) $('feishuSummaryId').value=summaryParam;
     // P1-2: disable outbound write buttons until the connector is configured.
     window.__feishuCfg = cfg;
-    const feishuConfigured = !!cfg.configured;
+    const feishuConfigured = !!(cfg.configured && cfg.live && cfg.live_ready && health.has_client);
     const caBtn = $("feishuCreateApprovalBtn");
     const sendBtn = $("feishuSendBtn");
     if (caBtn) caBtn.disabled = !feishuConfigured;
     if (sendBtn) sendBtn.disabled = !feishuConfigured;
     if ($("feishuHealth")) $("feishuHealth").innerHTML = table(["项", "值"], [
       ["事件模式(event_mode)", cfg.event_mode || "—"],
-      ["实时发送(live)", { html: statusBadge(cfg.live ? "ok" : "pending") }],
-      ["实时就绪(live_ready)", { html: statusBadge(cfg.live_ready ? "ok" : "pending") }],
+      ["实时发送", cfg.live ? "已开启" : "已关闭 · 仅本地草稿"],
+      ["配置就绪", cfg.live_ready ? "已配置；平台权限仍需验证" : "配置不完整"],
       ["App 配置", cfg.configured ? "已配置" : "未配置(env)"],
       ["Client 连接", cli.connection || (health && health.has_client ? "已连接" : "无")],
       ["审批定义码", cfg.approval_code_present ? "已配置" : "—"],
@@ -3101,7 +3107,8 @@ async function loadFeishuCenter() {
     if ($("feishuMessagesTable")) $("feishuMessagesTable").innerHTML = (messages && messages.length) ? table(["聊天", "发送者", "类型", "内容", "接收时间", "状态"], (messages || []).map(m => [m.chat_id, m.sender_id, m.message_type, m.text, m.create_time, { html: statusBadge(m.processed_status) }])) : '<tr><td colspan="6" class="empty-state">暂无消息</td></tr>';
     if ($("feishuSummariesTable")) $("feishuSummariesTable").innerHTML = (summaries && summaries.length) ? table(["ID", "主题", "结论数", "行动项数", "来源消息", "状态", "创建时间"], (summaries || []).map(s => [s.id, s.topic, (s.conclusions || []).length, (s.action_items || []).length, (s.source_message_ids || []).join(","), { html: statusBadge(s.status) }, s.created_at])) : '<tr><td colspan="7" class="empty-state">暂无纪要</td></tr>';
     const preview = (approvals || [])[0];
-    if ($("feishuPreview")) $("feishuPreview").textContent = preview ? (preview.body_text || "（空正文）") : "暂无待审批/待发送内容。";
+    const draft = Array.isArray(summaries) ? summaries.find(s=>String(s.id)===summaryParam) : null;
+    if ($("feishuPreview")) $("feishuPreview").textContent = draft ? ('待审批草稿：'+draft.topic+'\n\n'+(draft.conclusions||[]).map(c=>c.text).join('\n\n')+'\n来源：'+(draft.source_message_ids||[]).join(', ')) : preview ? (preview.body_text || "（空正文）") : "暂无待审批/待发送内容。";
     if ($("feishuApprovalsTable")) $("feishuApprovalsTable").innerHTML = (approvals && approvals.length) ? table(["ID", "目标", "状态", "审批人", "已用", "有效期", "创建时间"], (approvals || []).map(a => {
       const expired = a.expires_at_epoch && a.expires_at_epoch < Math.floor(Date.now() / 1000);
       return [a.id, (a.target_type || "") + ":" + (a.target_id || ""), { html: statusBadge(a.status) }, a.approver_id, { html: statusBadge(a.used ? "used" : "no") }, { html: statusBadge(expired ? "expired" : "valid") }, a.created_at_epoch ? new Date(a.created_at_epoch * 1000).toLocaleString() : ""];
@@ -3137,7 +3144,7 @@ async function feishuCreateSummary() {
 async function feishuCreateApproval() {
   const targetType = ($("feishuTargetType").value || "chat").trim();
   const targetId = ($("feishuTargetId").value || "").trim();
-  if (!targetId) { alert("请填写 target_id（须为白名单内的 chat_id 或 open_id）"); return; }
+  if (!targetId) { alert("请选择白名单内的发送目标；暂无目标时请先配置连接器。"); return; }
   // P1-2: 不再静默提交 confirmed:true；必须人类显式确认。审批人由飞书实例决定，不手填。
   const ok = confirm(
     `确认创建飞书出站审批？\n\n目标：${targetType}:${targetId}\n\n` +
@@ -3385,7 +3392,7 @@ renderKnowledgeWorkspaceShell();
 setAutonomyMode(localStorage.getItem("clawos-autonomy-mode") || "approve");
 loadSessions();
 startTaskStream();
-const initialView = (location.hash || "").replace("#", "");
+const initialView = (location.hash || "").replace("#", "") || new URLSearchParams(location.search).get('view');
 setView(initialView);
 setInterval(loadHealth, 30000);
 setInterval(() => {

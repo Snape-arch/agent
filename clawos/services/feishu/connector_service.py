@@ -8,8 +8,9 @@ Closed loop:
   -> send only after a valid, unexpired, unused, hash-matching approval
      (at-most-once guaranteed by a unique idempotency_key + used flag)
 
-No app_secret, token, or full message body is written to the DB, logs, or
-API responses. All side-effecting operations are audited.
+No app_secret or token is written to the DB, logs or API responses.
+Whitelisted message text and approval snapshots are retained in the local DB;
+message retention is configurable. Side-effecting operations are audited.
 """
 from __future__ import annotations
 
@@ -54,6 +55,8 @@ def _sha256(text: str) -> str:
 
 
 def _json_loads(value, default):
+    if isinstance(value,(list,dict)):
+        return value
     if value is None or value == "":
         return default
     try:
@@ -73,16 +76,21 @@ def _extract_safe_text(message_type: str, raw_content):
             return raw_content, {}
     else:
         payload = raw_content
+    if not isinstance(payload, dict):
+        raise ValueError('message content must be an object')
 
     if message_type == "text":
         return str(payload.get("text", "")), {}
     if message_type == "post":
         parts = []
-        zh = (payload.get("zh_cn", {}) or {})
-        for _title, blocks in zh.get("content", []) or []:
+        zh = payload.get('zh_cn') or payload.get('en_us') or payload
+        for blocks in zh.get("content", []) or []:
+            if not isinstance(blocks, list): continue
             for block in blocks:
                 if isinstance(block, dict) and block.get("tag") == "text":
                     parts.append(str(block.get("text", "")))
+                elif isinstance(block, dict) and block.get('tag') == 'a':
+                    parts.append(str(block.get('text') or ''))
         return "\n".join(parts), {"post_title": zh.get("title", "")}
     if message_type in ("image", "file", "audio", "video", "media", "sticker"):
         return "", {"attachment_type": message_type, "note": "attachment metadata only; not downloaded"}
@@ -109,7 +117,7 @@ def parse_message_event(event: dict) -> dict:
     chat_type = str(message.get("chat_type") or "")
     message_type = str(message.get("message_type") or "text")
     create_time = str(message.get("create_time") or header.get("create_time") or "")
-    sender = message.get("sender") or {}
+    sender = ev.get('sender') or message.get("sender") or {}
     sender_id_obj = sender.get("sender_id") or {}
     sender_id = str(sender_id_obj.get("open_id") or sender_id_obj.get("user_id") or sender.get("sender_id") or "").strip()
     text, safe_meta = _extract_safe_text(message_type, message.get("content"))
@@ -212,14 +220,14 @@ def _extract_actual_approvers(resp: dict) -> list:
         status = str(task.get("status") or "").upper()
         if ttype and ttype != "APPROVE":
             continue
-        if status and status not in ("APPROVED", "DONE"):
+        if status != "APPROVED":
             continue
         _add(task.get("open_id"))
     for entry in resp.get("timeline") or []:
         if not isinstance(entry, dict):
             continue
         etype = str(entry.get("type") or "").upper()
-        if etype and etype not in ("APPROVE", "PASS"):
+        if etype not in ("APPROVE", "PASS"):
             continue
         _add(entry.get("open_id"))
     return approvers
@@ -257,6 +265,11 @@ class FeishuConnectorService:
 
     # ---- receive -------------------------------------------------------
     def receive_event(self, event: dict, *, received_via: str = "http") -> dict:
+        header = event.get('header') or {}
+        if header.get('tenant_key') and header['tenant_key'] != self.config.tenant_id:
+            raise PermissionError('event tenant does not match configured tenant')
+        if header.get('app_id') and header['app_id'] != self.config.app_id:
+            raise PermissionError('event app does not match configured app')
         parsed = parse_message_event(event)
         chat_id = parsed["chat_id"]
         tenant_id = self.config.tenant_id
@@ -314,8 +327,8 @@ class FeishuConnectorService:
 
     def list_messages(self, *, chat_id: str = "", limit: int = 50, only_received: bool = True) -> list:
         with self.store._conn() as c:
-            clauses = []
-            params = []
+            clauses = ['tenant_id=?']
+            params = [self.config.tenant_id]
             if only_received:
                 clauses.append("processed_status='received'")
             if chat_id:
@@ -336,8 +349,8 @@ class FeishuConnectorService:
         with self.store._conn() as c:
             for mid in message_ids:
                 row = c.execute(
-                    "SELECT * FROM feishu_messages WHERE id=? AND processed_status='received'",
-                    (int(mid),),
+                    "SELECT * FROM feishu_messages WHERE id=? AND processed_status='received' AND tenant_id=?",
+                    (int(mid), self.config.tenant_id),
                 ).fetchone()
                 if row:
                     messages.append(self._msg_to_dict(row))
@@ -380,21 +393,27 @@ class FeishuConnectorService:
 
     def update_summary(self, summary_id: int, fields: dict) -> dict:
         allowed = {
-            "title", "topic", "conclusions", "action_items",
+            "topic", "conclusions", "action_items",
             "owner_candidates", "deadline_candidates", "open_questions",
         }
         sets, params = [], []
         for key in allowed:
             if key in fields:
                 value = fields[key]
+                if key=='topic':
+                    if not isinstance(value,str) or not 1<=len(value)<=2000:raise ValueError('invalid summary topic')
+                elif not isinstance(value,list) or len(value)>200 or len(json.dumps(value,ensure_ascii=False))>100000:
+                    raise ValueError('summary fields must be bounded arrays')
+                if key=='action_items' and any(not isinstance(a,dict) or not isinstance(a.get('description'),str) for a in value):
+                    raise ValueError('action items need descriptions')
                 sets.append(f"{key}=?")
                 params.append(json.dumps(value, ensure_ascii=False) if isinstance(value, (list, dict)) else value)
         if not sets:
             raise ValueError("no editable fields provided")
-        params.append(int(summary_id))
+        params.extend((int(summary_id), self.config.tenant_id))
         with self.store._conn() as c:
-            c.execute(f"UPDATE feishu_summaries SET {', '.join(sets)} WHERE id=?", params)
-            row = c.execute("SELECT * FROM feishu_summaries WHERE id=?", (int(summary_id),)).fetchone()
+            c.execute(f"UPDATE feishu_summaries SET {', '.join(sets)} WHERE id=? AND tenant_id=?", params)
+            row = c.execute("SELECT * FROM feishu_summaries WHERE id=? AND tenant_id=?", (int(summary_id), self.config.tenant_id)).fetchone()
             if not row:
                 raise ValueError("summary not found")
             summary_id_out = row["id"]
@@ -407,7 +426,7 @@ class FeishuConnectorService:
 
     def get_summary(self, summary_id: int) -> dict:
         with self.store._conn() as c:
-            row = c.execute("SELECT * FROM feishu_summaries WHERE id=?", (int(summary_id),)).fetchone()
+            row = c.execute("SELECT * FROM feishu_summaries WHERE id=? AND tenant_id=?", (int(summary_id), self.config.tenant_id)).fetchone()
             if not row:
                 raise ValueError("summary not found")
             return self._summary_to_dict(row)
@@ -415,12 +434,21 @@ class FeishuConnectorService:
     def list_summaries(self, limit: int = 50) -> list:
         with self.store._conn() as c:
             rows = c.execute(
-                "SELECT * FROM feishu_summaries ORDER BY id DESC LIMIT ?",
-                [max(1, min(int(limit or 50), 500))],
+                "SELECT * FROM feishu_summaries WHERE tenant_id=? ORDER BY id DESC LIMIT ?",
+                [self.config.tenant_id,max(1, min(int(limit or 50), 500))],
             ).fetchall()
             return [self._summary_to_dict(r) for r in rows]
 
     # ---- approval gate -------------------------------------------------
+    def document_draft(self,title,text,source_ref):
+        """Freeze a local document as a reviewable draft, with no tenant write."""
+        with self.store._conn() as c:
+            cur=c.execute('INSERT INTO feishu_summaries(tenant_id,topic,conclusions,action_items,owner_candidates,deadline_candidates,open_questions,source_message_ids) VALUES (?,?,?,\'[]\',\'[]\',\'[]\',\'[]\',?)',
+                (self.config.tenant_id,title,json.dumps([dict(text=text,source_message_id=source_ref,source_timestamp=_iso_now())],ensure_ascii=False),json.dumps([source_ref])))
+            nid=cur.lastrowid
+        self._audit(action='feishu.document.draft',decision='allow',resource_type='feishu_summary',resource_id=str(nid),details=dict(source_ref=source_ref,content_hash=_sha256(text)))
+        return self.get_summary(nid)
+
     def create_approval(
         self, summary_id: int, target_type: str, target_id: str, *,
         confirmed: bool = False, approver_id: str = "", outbound_msg_type: str = "text",
@@ -429,6 +457,8 @@ class FeishuConnectorService:
             raise PermissionError("confirmed=true is required to create a Feishu approval")
         if not target_id:
             raise ValueError("target_id is required")
+        if outbound_msg_type not in ('text','post'):
+            raise ValueError('only text or post outbound messages are supported')
         # Defect 7: enforce the outbound whitelist at approval-create time, BEFORE
         # any summary lookup, so a non-whitelisted target can never enter the
         # approval pipeline (and the API surfaces it as a 409, not a 400 from a
@@ -437,6 +467,9 @@ class FeishuConnectorService:
             raise PermissionError(
                 f"outbound target not whitelisted: {target_type}:{target_id}"
             )
+        if self.config.live:
+            ready,missing=self.config.live_readiness()
+            if not ready or not self.client:raise RuntimeError('live connector unavailable: '+','.join(missing))
         summary = self.get_summary(summary_id)
         body_text = self._build_body(summary)
         content_hash = _sha256(body_text + "|" + json.dumps(summary["source_message_ids"]))
@@ -475,28 +508,11 @@ class FeishuConnectorService:
                 # source message ids so the approver sees exactly what will be
                 # sent. Defect 2: do NOT pass an illegal plain-text title.
                 control_id = self.config.approval_form_control_id or "widget-body-1"
-                form = [
-                    {
-                        "id": control_id,
-                        "type": "textarea",
-                        "value": body_text,
-                    },
-                    {
-                        "id": "widget-target",
-                        "type": "input",
-                        "value": f"{target_type}:{target_id}",
-                    },
-                    {
-                        "id": "widget-content-hash",
-                        "type": "input",
-                        "value": content_hash,
-                    },
-                    {
-                        "id": "widget-source-ids",
-                        "type": "input",
-                        "value": json.dumps(summary["source_message_ids"], ensure_ascii=False),
-                    },
-                ]
+                # A single known tenant control carries the full review context.
+                form = [{"id": control_id, "type": "textarea", "value": body_text
+                    + "\n\n发送目标：" + f"{target_type}:{target_id}"
+                    + "\n内容 SHA-256：" + content_hash
+                    + "\n来源：" + json.dumps(summary["source_message_ids"], ensure_ascii=False)}]
                 resp = self.client.create_approval_instance(
                     approval_code=self.config.approval_definition_code,
                     form=form,
@@ -533,7 +549,7 @@ class FeishuConnectorService:
         if self.config.live and self.client:
             try:
                 resp = self.client.get_approval_instance(
-                    approval["feishu_instance_code"], user_id=approval["approver_id"] or None,
+                    approval["feishu_instance_code"], open_id=approval["approver_id"] or None,
                 )
                 status = (resp.get("status") or "PENDING").upper()
             except FeishuClientError as exc:
@@ -542,7 +558,9 @@ class FeishuConnectorService:
                     resource_type="feishu_approval", resource_id=str(approval_id),
                     reason=f"query failed: {exc.category}: {exc}",
                 )
-                return approval
+                # Never release a cached approval when current authority could
+                # not be checked. The native decision is unknown.
+                return dict(approval,status=APPROVAL_FAILED,reason='native approval query failed: '+exc.category)
         else:
             # Offline mode: read status from the (test) client if present.
             if self.client is not None:
@@ -589,6 +607,15 @@ class FeishuConnectorService:
         if confirmed is not True:
             raise PermissionError("confirmed=true is required to send after approval")
         approval = self.get_approval(approval_id)
+        if self.config.live:
+            ready, missing = self.config.live_readiness()
+            if not ready or not self.client:
+                raise RuntimeError('live connector unavailable: '+','.join(missing))
+            if not approval.get('feishu_instance_code'):
+                raise PermissionError('native approval instance is required; send blocked')
+        if self.config.live and self.client and approval.get('feishu_instance_code') and not approval.get('used'):
+            approval = self.sync_approval(approval_id)
+
 
         if approval["status"] == APPROVAL_REJECTED:
             raise PermissionError("approval was rejected; send blocked")
@@ -604,13 +631,16 @@ class FeishuConnectorService:
         # actual approver blocks the send even if the row is marked approved.
         verified = approval.get("verified_approver_open_ids") or []
         authorized = [a for a in verified if self.config.is_authorized_approver(a)]
-        if self.config.approver_open_ids and not authorized:
+        if not authorized:
             raise PermissionError("no verified authorized approver; send blocked")
         # Re-check the outbound whitelist immediately before sending (defect 7).
         if not self.config.is_whitelisted_target(approval["target_type"], approval["target_id"]):
             raise PermissionError("outbound target not whitelisted; send blocked")
 
         frozen_body = approval["body_text"]
+        expected_hash=_sha256(frozen_body+'|'+json.dumps(approval['source_message_ids']))
+        if expected_hash!=approval['content_hash']:
+            raise PermissionError('frozen approval content hash mismatch; re-approval required')
         if new_body is not None and new_body != frozen_body:
             new_hash = _sha256(new_body + "|" + json.dumps(approval["source_message_ids"], ensure_ascii=False))
             if new_hash != approval["content_hash"]:
@@ -620,15 +650,15 @@ class FeishuConnectorService:
         target_type = approval["target_type"]
         target_id = approval["target_id"]
         outbound_msg_type = approval["outbound_msg_type"] or "text"
-        send_content = json.dumps({"text": frozen_body}, ensure_ascii=False)
+        send_content = json.dumps({"text": frozen_body} if outbound_msg_type=='text' else {'zh_cn':{'title':'会议 / 文档纪要','content':[[{'tag':'text','text':frozen_body}]]}}, ensure_ascii=False)
 
         # At-most-once: if a dispatch for this key already exists, return it.
         existing = self._find_dispatch_by_key(idempotency_key)
         if existing:
             return existing
 
-        dispatch_id = self._create_dispatch(approval_id, idempotency_key, target_type, target_id, outbound_msg_type)
         try:
+            dispatch_id = self._create_dispatch(approval_id, idempotency_key, target_type, target_id, outbound_msg_type)
             if self.config.live and self.client:
                 resp = self.client.send_message(
                     receive_id_type=target_type,
@@ -715,7 +745,7 @@ class FeishuConnectorService:
 
     def get_dispatch(self, dispatch_id: int) -> dict:
         with self.store._conn() as c:
-            row = c.execute("SELECT * FROM feishu_dispatches WHERE id=?", (int(dispatch_id),)).fetchone()
+            row = c.execute("SELECT d.* FROM feishu_dispatches d JOIN feishu_approvals a ON a.id=d.approval_id WHERE d.id=? AND a.tenant_id=?", (int(dispatch_id),self.config.tenant_id)).fetchone()
             if not row:
                 raise ValueError("dispatch not found")
             return self._dispatch_to_dict(row)
@@ -723,14 +753,14 @@ class FeishuConnectorService:
     def list_dispatches(self, limit: int = 50) -> list:
         with self.store._conn() as c:
             rows = c.execute(
-                "SELECT * FROM feishu_dispatches ORDER BY id DESC LIMIT ?",
-                [max(1, min(int(limit or 50), 500))],
+                "SELECT d.* FROM feishu_dispatches d JOIN feishu_approvals a ON a.id=d.approval_id WHERE a.tenant_id=? ORDER BY d.id DESC LIMIT ?",
+                [self.config.tenant_id,max(1, min(int(limit or 50), 500))],
             ).fetchall()
             return [self._dispatch_to_dict(r) for r in rows]
 
     def get_approval(self, approval_id: int) -> dict:
         with self.store._conn() as c:
-            row = c.execute("SELECT * FROM feishu_approvals WHERE id=?", (int(approval_id),)).fetchone()
+            row = c.execute("SELECT * FROM feishu_approvals WHERE id=? AND tenant_id=?", (int(approval_id),self.config.tenant_id)).fetchone()
             if not row:
                 raise ValueError("approval not found")
             return self._approval_to_dict(row)
@@ -738,8 +768,8 @@ class FeishuConnectorService:
     def list_approvals(self, limit: int = 50) -> list:
         with self.store._conn() as c:
             rows = c.execute(
-                "SELECT * FROM feishu_approvals ORDER BY id DESC LIMIT ?",
-                [max(1, min(int(limit or 50), 500))],
+                "SELECT * FROM feishu_approvals WHERE tenant_id=? ORDER BY id DESC LIMIT ?",
+                [self.config.tenant_id,max(1, min(int(limit or 50), 500))],
             ).fetchall()
             return [self._approval_to_dict(r) for r in rows]
 

@@ -19,11 +19,12 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 for _ in $(seq 1 30); do
-  if curl -fsS "$MTCLAW_BASE_URL/health" >/dev/null; then
+  if curl --max-time 6 -fsS "$MTCLAW_BASE_URL/ready" >/dev/null; then
     break
   fi
   sleep 1
 done
 
-curl -fsS "$MTCLAW_BASE_URL/health" >/dev/null
-exec python3 "$ROOT/clawos_server.py" --host 0.0.0.0 --port 18790
+curl --max-time 6 -fsS "$MTCLAW_BASE_URL/ready" >/dev/null
+# Keep the shell alive so its EXIT trap also stops the router when ClawOS exits.
+python3 "$ROOT/clawos_server.py" --host 0.0.0.0 --port 18790

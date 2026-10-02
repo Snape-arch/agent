@@ -1868,6 +1868,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="ClawOS Agent", version="1.0.0", lifespan=lifespan)
 
 NO_CACHE_STATIC_PATHS = {
+    "/data-lab",
+    "/meetings",
+    "/assets/workbench.js",
+    "/assets/workbench.css",
     "/",
     "/product",
     "/academy",
@@ -2441,6 +2445,8 @@ async def chat_completions(request: Request):
                     "used": True,
                     "provider": g_mtclaw_adapter.base_url,
                     "duration_ms": mtclaw_result.get("duration_ms", 0),
+                    "request_id": mtclaw_result.get("request_id", ""),
+                    "trace_status": mtclaw_result.get("trace_status", "no_current_tool_evidence"),
                     "trace": trace,
                 },
                 "task_id": task_id,
@@ -4391,7 +4397,7 @@ async def api_meeting_audio_import(request: Request):
     if data.get("confirmed") is not True:
         raise HTTPException(409, "confirmed=true is required for meeting writes")
     try:
-        result = g_workspace_services.import_meeting_audio(
+        result = await run_in_threadpool(g_workspace_services.import_meeting_audio,
             data.get("audio_path", ""),
             transcript_path=data.get("transcript_path", ""),
             transcript=data.get("transcript", ""),
@@ -4422,9 +4428,9 @@ async def api_meeting_audio_upload(
         raise HTTPException(400, "supported audio files: wav, mp3, m4a, flac, ogg")
     upload_root = UPLOAD_DIR / "meeting_audio"
     upload_root.mkdir(parents=True, exist_ok=True)
-    stamp = int(time.time() * 1000)
+    stamp = str(int(time.time() * 1000)) + '_' + __import__('uuid').uuid4().hex[:12]
     audio_path = upload_root / f"{stamp}_{filename}"
-    audio_bytes = await audio.read()
+    audio_bytes = await audio.read(100_000_001)
     if not audio_bytes or len(audio_bytes) > 100_000_000:
         raise HTTPException(400, "meeting audio must be between 1 byte and 100 MB")
     if suffix == ".wav" and not (audio_bytes.startswith(b"RIFF") and b"WAVE" in audio_bytes[:16]):
@@ -4435,14 +4441,14 @@ async def api_meeting_audio_upload(
     if transcript_file and transcript_file.filename:
         transcript_name = safe_filename(transcript_file.filename or "transcript.txt")
         transcript_path_obj = upload_root / f"{stamp}_{transcript_name}"
-        transcript_bytes = await transcript_file.read()
+        transcript_bytes = await transcript_file.read(5_000_001)
         if len(transcript_bytes) > 5_000_000:
             raise HTTPException(400, "transcript file exceeds 5 MB")
         transcript_path_obj.write_bytes(transcript_bytes)
         transcript_path = str(transcript_path_obj)
 
     try:
-        result = g_workspace_services.import_meeting_audio(
+        result = await run_in_threadpool(g_workspace_services.import_meeting_audio,
             str(audio_path),
             transcript_path=transcript_path,
             transcript=transcript,
@@ -4879,7 +4885,80 @@ from services.academy_material_api import materials_router
 app.include_router(materials_router(_academy_materials, _academy_material_model))
 
 from services.academy_documents import AcademyDocuments, documents_router
-app.include_router(documents_router(lambda: AcademyDocuments(_learning_product().store), _academy_material_model))
+from starlette.concurrency import run_in_threadpool
+from services.collaboration import Collaboration, collaboration_router, direct_owner
+from services.data_lab import DataLab, data_lab_router
+from services.meeting_workbench import MeetingWorkbench, meeting_router
+
+_workbench_cache = {}
+def _workbench_service(kind):
+    store = _learning_product().store
+    key = (kind,id(store))
+    if key not in _workbench_cache:
+        if kind == 'collaboration':
+            AcademyDocuments(store)
+            service = Collaboration(store)
+        elif kind == 'data': service = DataLab(store)
+        else: service = MeetingWorkbench(g_workspace_services)
+        _workbench_cache[key] = service
+    return _workbench_cache[key]
+
+def _collaboration(): return _workbench_service('collaboration')
+app.include_router(documents_router(lambda: AcademyDocuments(_learning_product().store), _academy_material_model, _collaboration))
+app.include_router(collaboration_router(_collaboration))
+app.include_router(data_lab_router(lambda: _workbench_service('data'), _collaboration))
+app.include_router(meeting_router(lambda: _workbench_service('meeting'), _collaboration, lambda: _feishu_service()))
+
+@app.middleware('http')
+async def workbench_access(request: Request, call_next):
+    path = request.url.path
+    if path.startswith(('/api/','/v1/')) and path not in ('/api/collaboration/join','/api/feishu/events'):
+        try:
+            uid = 'local-user' if direct_owner(request) else await run_in_threadpool(lambda: _collaboration().identity(request)['id'])
+            if uid != 'local-user' and not path.startswith(('/api/collaboration/','/api/academy/learning/documents')):
+                raise HTTPException(403, '协作会话仅允许访问授权文档')
+        except HTTPException as e:
+            return JSONResponse({'detail':e.detail},status_code=e.status_code)
+    if request.method not in ('GET','HEAD','OPTIONS') and path != '/api/feishu/events':
+        origin = request.headers.get('origin')
+        from urllib.parse import urlsplit
+        if request.headers.get('sec-fetch-site') == 'cross-site' or (origin and (urlsplit(origin).netloc != request.url.netloc or urlsplit(origin).scheme != request.url.scheme)):
+            return JSONResponse({'detail':'拒绝跨站写入'},status_code=403)
+    return await call_next(request)
+
+@app.get('/data-lab')
+async def data_lab_page(): return FileResponse(STATIC_DIR / 'workbench.html')
+
+@app.get('/meetings')
+async def meetings_page(): return FileResponse(STATIC_DIR / 'workbench.html')
+
+@app.get('/api/architecture/chain')
+async def architecture_chain():
+    health = await g_mtclaw_adapter.health() if g_mtclaw_adapter else {'enabled':False,'status':'not_initialized'}
+    return {'architecture':'ClawOS 工作台 / 记忆 / 执行策略 → MTClaw 函数路由 → 受限工具桥 → 本次请求 trace → 反思',
+            'mtclaw':health,'fallback_on_error':g_mtclaw_adapter.fallback_on_error if g_mtclaw_adapter else None,
+            'trace_contract':'request_id + session_key；旧路由器缺少 request_id 时不认领历史工具调用',
+            'safe_tools':sorted(__import__('mtclaw.bridge_runner',fromlist=['SAFE_TOOLS']).SAFE_TOOLS),
+            'boundary':'同会话请求在 ClawOS 适配器中串行；桥仅接受白名单动作，写操作仍走 ClawOS 策略。'}
+
+@app.get('/api/feishu/permissions')
+async def feishu_permissions():
+    cfg=_feishu_service().config
+    return {'config':cfg.redacted(),'targets':[{'type':'chat','id':x} for x in cfg.allowed_chat_ids]+[{'type':'user','id':x} for x in cfg.allowed_target_open_ids],
+        'checks':[{'name':'消息接收','ready':bool(cfg.allowed_chat_ids),'detail':'群白名单 + 官方 SDK / 已验证 webhook；只读取白名单消息'},
+                  {'name':'审批','ready':bool(cfg.approval_definition_code and cfg.approval_form_control_id and cfg.approval_initiator_open_id),'detail':'使用已配置的真实表单控件；正文、目标、内容摘要与来源一并展示'},
+                  {'name':'审批人','ready':bool(cfg.approver_open_ids),'detail':'从原生审批 APPROVED 任务 / PASS 记录核验 open_id，发送前重新读取'},
+                  {'name':'本地访问','ready':True,'detail':'仅本机所有者可操作连接器；文档邀请不会授予连接器或数据库权限'}],
+        'boundary':'配置状态不等于飞书平台已授予 scope；原生 API 拒绝会返回权限类别。未进行云文档 ACL 同步。'}
+
+@app.post('/api/feishu/documents/{nid}/draft')
+async def feishu_document_draft(nid:str,request:Request):
+    uid=_collaboration().identity(request)['id']
+    _collaboration().require(nid,uid,'owner')
+    s=AcademyDocuments(_learning_product().store);doc=s.get(nid,uid)
+    text=s.markdown(doc)
+    if len(text)>20000:raise HTTPException(400,'飞书草稿最多 20,000 字，请选择较短文档')
+    return _feishu_service().document_draft(doc['title'],text,f'document:{nid}#version={doc["version"]}')
 
 
 @app.get("/academy/materials")

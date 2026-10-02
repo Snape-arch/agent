@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import time
 import wave
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -63,7 +64,9 @@ class MeetingAudioService:
             transcript_status=transcript_status,
             engine=transcript_meta["engine"],
         )
-        slug = safe_artifact_slug(title or audio.stem)
+        run_id = 'meeting-audio-' + uuid.uuid4().hex
+        slug = safe_artifact_slug(title or audio.stem) + '-' + run_id[-12:]
+        meeting_card['review_required'] = bool(transcript_text.strip())
         card_artifact = self.artifacts.write_markdown(
             f"{slug}/meeting_card.md",
             f"{title or audio.stem} Meeting Card",
@@ -88,22 +91,20 @@ class MeetingAudioService:
                 "transcription": transcript_meta,
             },
         )
-        workflow = self.workflow_engine.gate_rework_until_done(
-            workflow_id=f"meeting-audio-{safe_artifact_slug(str(meeting_id or slug))}",
-            name="meeting_audio_to_card",
-            gate_statuses=[{
-                "name": "transcript_available",
-                "status": "pass" if transcript_text.strip() else "blocked",
-                "score": 100 if transcript_text.strip() else 0,
-                "failures": [] if transcript_text.strip() else ["No local ASR engine or transcript was available."],
-            }],
-            artifact_saves=[card_artifact, transcript_artifact],
-        )
+        workflow_run = self.workflow_engine.start(run_id, 'meeting_audio_to_card')
+        workflow_run.transition('running', reason='transcript extraction completed')
+        workflow_run.add_gate('transcript_available', 'pass' if transcript_text.strip() else 'blocked', 100 if transcript_text.strip() else 0, [] if transcript_text.strip() else ['No transcript available'])
+        for artifact in (card_artifact, transcript_artifact): workflow_run.add_artifact(artifact)
+        if transcript_text.strip():
+            workflow_run.transition('waiting_gate', reason='awaiting human transcript/minutes review')
+            workflow_run.add_gate('human_review', 'pending', None, ['Draft is not published to knowledge'])
+        else: workflow_run.transition('blocked', reason='no transcript')
+        workflow = workflow_run.to_dict()
         run = RunRecord(
-            run_id=f"meeting-audio-{safe_artifact_slug(str(meeting_id or slug))}",
+            run_id=run_id,
             run_type="meeting_audio",
             title=title or audio.stem,
-            status=("needs_review" if any(not t.get("speaker") for t in diarization) else "pass") if transcript_text.strip() else "blocked",
+            status="needs_review" if transcript_text.strip() else "blocked",
             actor="meeting-audio-service",
             scenario="meeting",
             inputs={"audio_path": str(audio), "transcript_path": str(transcript_path or "")},
@@ -119,7 +120,7 @@ class MeetingAudioService:
         )
         run.add_artifact("meeting_card", "Structured meeting card", card_artifact["path"], storage=card_artifact)
         run.add_artifact("transcript_json", "Transcript and diarization JSON", transcript_artifact["path"], storage=transcript_artifact)
-        run.add_evidence("meeting_audio", summary or title or audio.stem, citation=card_artifact["path"], score=1.0 if transcript_text.strip() else 0.0)
+        run.add_evidence("meeting_audio", summary or title or audio.stem, citation=card_artifact["path"], score=0.5 if transcript_text.strip() else 0.0)
         if not transcript_text.strip():
             run.add_failure_case(
                 "meeting_audio_transcription_unavailable",
@@ -130,15 +131,8 @@ class MeetingAudioService:
             )
         run_record = self.store.save_run_record(run.to_dict()) if self.store else run.to_dict()
         knowledge_item = None
-        if transcript_text.strip() and self.store:
-            knowledge_item = self.store.add_knowledge(
-                title=f"{title or audio.stem} meeting card",
-                content=json.dumps(meeting_card, ensure_ascii=False, indent=2),
-                category="meeting",
-                source=card_artifact["path"],
-                tags=["meeting", "audio", "artifact", "evidence"],
-                confidence=0.84,
-            )
+        # ASR/import is a draft. Publishing unreviewed summaries used to let
+        # recognition mistakes become authoritative retrieval evidence.
         return {
             "transcript": transcript_text,
             "transcript_status": transcript_status,

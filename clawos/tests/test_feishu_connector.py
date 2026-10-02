@@ -48,6 +48,9 @@ def sample_event(message_id, *, chat_id="oc_test", text="hello", event_id=None, 
 def make_service(tmp_db, *, live=True, **cfg_kwargs):
     store = MemoryStore(str(tmp_db))
     cfg = FeishuConfig(
+        app_id='cli_fixture',
+        approval_form_control_id='widget-body-1',
+        approval_initiator_open_id='ou_initiator',
         tenant_id="tenant_1",
         allowed_chat_ids=["oc_test"],
         allowed_user_ids=["ou_approver"],

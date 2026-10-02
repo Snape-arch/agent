@@ -112,12 +112,13 @@ class AcademyDocuments:
         with self.store._conn() as c:
             return dict(documents=[dict(id=r['id'],version=r['version'],updated_at=r['updated_at'],title=json.loads(r['payload'])['title']) for r in c.execute('SELECT * FROM academy_documents WHERE learner=? ORDER BY updated_at DESC,id DESC',(learner,))])
 
-    def save(self,value,nid=None,learner='local-user'):
+    def save(self,value,nid=None,learner='local-user',authorize=None):
         clean=validate_document(value)
         payload=json.dumps(clean,ensure_ascii=False)
         expected=value.get('version')
         if nid and (type(expected) is not int or expected<1): raise ValueError('请提供当前文档版本')
-        with self.store._conn() as c:
+        with self.store.transaction() as c:
+            if authorize: authorize(c)
             if nid:
                 changed=c.execute("UPDATE academy_documents SET payload=?,version=version+1,updated_at=datetime('now') WHERE id=? AND learner=? AND version=?",(payload,nid,learner,expected)).rowcount
                 if not changed: raise DocumentConflict('另一个页面已修改此文档；你的草稿已保留，请载入最新版本或另存副本。')
@@ -158,15 +159,26 @@ class AcademyDocuments:
         return '\n\n'.join(rows)+'\n'
 
 
-def documents_router(factory,model):
+def documents_router(factory,model,access_factory=None):
+    from starlette.concurrency import run_in_threadpool
     router=APIRouter(prefix='/api/academy/learning/documents')
+    def service(request):
+        if not access_factory:return factory()
+        from .collaboration import AuthorizedDocuments
+        access=access_factory()
+        return AuthorizedDocuments(factory(),access,access.identity(request)['id'])
     @router.get('')
-    async def index(learner_id:str='local-user'): return factory().index(learner_id)
+    def index(request:Request,learner_id:str='local-user'): return service(request).index(learner_id)
     @router.post('/assist')
     async def assist(request:Request):
         import asyncio
         try:
             data=await request.json();text=data.get('text');mode=data.get('mode')
+            if access_factory:
+                def authorize():
+                    access=access_factory();uid=access.identity(request)['id']
+                    access.require(data.get('document_id',''),uid,'editor')
+                await run_in_threadpool(authorize)
             if not isinstance(text,str) or not 4<=len(text)<=12000 or mode not in ('explain','counterexample','questions','polish'):
                 raise ValueError('请选择一个内容块和有效导写动作')
             actions=dict(explain='解释概念与条件',counterexample='找反例和证据缺口',questions='提出三个可验证问题',polish='保留观点并改善表达')
@@ -174,20 +186,21 @@ def documents_router(factory,model):
             answer=reply['choices'][0]['message']['content']
             if not isinstance(answer,str) or not answer.strip():raise ValueError('模型未返回有效草稿')
             return dict(draft=answer[:6000],boundary='模型建议，插入前请复核；不会自动覆盖原文。')
+        except HTTPException:raise
         except (ValueError,TypeError,KeyError) as e:raise HTTPException(400,str(e))
         except Exception:raise HTTPException(502,'导写服务暂不可用，已保存内容不受影响。')
     @router.get('/{nid}')
-    async def get(nid:str,learner_id:str='local-user'):
-        try:return factory().get(nid,learner_id)
+    def get(nid:str,request:Request,learner_id:str='local-user'):
+        try:return service(request).get(nid,learner_id)
         except ValueError as e:raise HTTPException(404,str(e))
     @router.get('/{nid}/history')
-    async def history(nid:str,learner_id:str='local-user'):
-        try:return factory().history(nid,learner_id)
+    def history(nid:str,request:Request,learner_id:str='local-user'):
+        try:return service(request).history(nid,learner_id)
         except ValueError as e:raise HTTPException(404,str(e))
     @router.get('/{nid}/export')
-    async def export(nid:str,format:str='markdown',learner_id:str='local-user'):
+    def export(nid:str,request:Request,format:str='markdown',learner_id:str='local-user'):
         try:
-            s=factory();doc=s.get(nid,learner_id)
+            s=service(request);doc=s.get(nid,learner_id)
             if format not in ('markdown','json'):raise ValueError('不支持的导出格式')
             return Response(s.markdown(doc) if format=='markdown' else json.dumps(doc,ensure_ascii=False,indent=2),media_type='text/markdown' if format=='markdown' else 'application/json',headers={'Content-Disposition':f'attachment; filename="document-{nid}.{"md" if format=="markdown" else "json"}"'})
         except ValueError as e:raise HTTPException(400,str(e))
@@ -199,7 +212,7 @@ def documents_router(factory,model):
         try:
             if len(await request.body())>8*1024*1024:raise ValueError('文档需小于 8 MB')
             data=await request.json()
-            return factory().save(data,nid,str(data.get('learner_id') or 'local-user'))
+            return await run_in_threadpool(lambda: service(request).save(data,nid,str(data.get('learner_id') or 'local-user')))
         except DocumentConflict as e:raise HTTPException(409,str(e))
         except (ValueError,TypeError,KeyError) as e:raise HTTPException(400,str(e))
     return router
