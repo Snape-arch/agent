@@ -178,7 +178,7 @@ class MaintenanceService:
             foreign_keys = [dict(table=r[0], rowid=r[1], parent=r[2]) for r in conn.execute('PRAGMA foreign_key_check')]
             names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             wanted = ('conversations', 'conversation_archive', 'knowledge', 'documents', 'document_chunks',
-                      'knowledge_records_v2', 'academy_materials', 'academy_material_events', 'academy_recall_attempts')
+                      'knowledge_records_v2', 'academy_materials', 'academy_material_events', 'academy_recall_attempts', 'academy_documents')
             counts = {name: conn.execute('SELECT COUNT(*) FROM ' + name).fetchone()[0] for name in wanted if name in names}
             unlinked = 0
             if {'knowledge', 'knowledge_legacy_links_v2'}.issubset(names):
@@ -186,10 +186,15 @@ class MaintenanceService:
             missing_sources = 0
             if 'documents' in names:
                 missing_sources = sum(1 for (path,) in conn.execute("SELECT file_path FROM documents WHERE file_path<>''") if not Path(path).is_file())
+            missing_artifacts=0
+            if 'run_artifacts' in names:
+                missing_artifacts=sum(1 for (path,) in conn.execute("SELECT uri FROM run_artifacts WHERE uri<>''")
+                    if '://' not in path and Path(path).is_absolute() and not Path(path).is_file())
             logical = {}
             for child, parent, key in [('document_chunks','documents','document_id'),
                                        ('academy_material_events','academy_materials','material_id'),
                                        ('academy_recall_attempts','academy_materials','material_id'),
+                                       ('academy_document_versions','academy_documents','document_id'),
                                        ('knowledge_sources_v2','knowledge_records_v2','knowledge_id')]:
                 if {child,parent}.issubset(names):
                     logical['orphan_'+child] = conn.execute(f'SELECT COUNT(*) FROM {child} c LEFT JOIN {parent} p ON p.id=c.{key} WHERE p.id IS NULL').fetchone()[0]
@@ -200,6 +205,8 @@ class MaintenanceService:
             warnings = []
             if missing_sources:
                 warnings.append('document_source_files_missing')
+            if missing_artifacts:
+                warnings.append('registered_artifact_files_missing')
             if unlinked:
                 warnings.append('legacy_knowledge_not_linked')
             if vector.get('failed'):
@@ -212,7 +219,7 @@ class MaintenanceService:
                     status='failed' if not sqlite_ok or not links_ok or missing_sources else 'degraded' if warnings else 'healthy',
                     logical_checks=logical, vector_projection=vector, warnings=warnings, integrity=integrity,
                     foreign_key_errors=foreign_keys, counts=counts, unlinked_legacy_knowledge=unlinked,
-                    missing_document_files=missing_sources, checked_at=self._now())
+                    missing_document_files=missing_sources, missing_artifact_files=missing_artifacts, checked_at=self._now())
 
     def config_check(self) -> dict[str, Any]:
         checks: list[dict[str, Any]] = []

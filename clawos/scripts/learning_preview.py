@@ -31,6 +31,9 @@ def main():
                 yield
             server.http_client = None
         else:
+            async def offline_model(*args, **kwargs):
+                raise RuntimeError('Models disabled in isolated preview; start with --models for explicit provider actions')
+            server.call_routing_llm=offline_model
             yield
     # Keep temporary QA state in the ignored workspace output directory. Some
     # desktop sessions clean OS temp storage between turns while uvicorn lives.
@@ -56,10 +59,15 @@ def main():
                 expected_concepts=["证据", "检查"], cognitive_level="explain", difficulty=.5, source_ref="fixture:reasoning")
             service.publish_course(course["id"])
         server._learning_product = lambda: service
+        server.g_memory_store = service.store
+        server.MEMORY_DB = Path(td) / 'learning.db'
+        server.UPLOAD_DIR = Path(td) / 'uploads'
+        server.UPLOAD_DIR.mkdir(exist_ok=True)
         server.OUTPUT_ROOT = Path(td) / "output"
         app = FastAPI(lifespan=preview_lifespan)
+        app.middleware('http')(server.no_cache_static_shell)
         for route in server.app.routes:
-            if route.path.startswith("/api/academy/learning/") or route.path.startswith("/academy"):
+            if route.path.startswith(("/api/academy/learning/", "/api/academy/paper/", "/api/documents", "/academy")):
                 app.router.routes.append(route)
         app.mount("/static", StaticFiles(directory=server.STATIC_DIR), name="static")
         app.mount("/assets", StaticFiles(directory=server.STATIC_DIR / "assets"), name="assets")

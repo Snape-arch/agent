@@ -135,16 +135,8 @@ g_upstream_provider: Any = None
 def load_config(cfg_path: Path) -> dict[str, Any]:
     with open(cfg_path, "r", encoding="utf-8-sig") as f:
         cfg = json.load(f)
-    env_pattern = re.compile(r"\$\{([A-Z0-9_]+)(?::-(.*?))?\}")
-    def _sub(v):
-        if isinstance(v, str):
-            return env_pattern.sub(lambda m: os.environ.get(m.group(1), m.group(2) or m.group(0)), v)
-        if isinstance(v, dict):
-            return {k: _sub(vv) for k, vv in v.items()}
-        if isinstance(v, list):
-            return [_sub(vv) for vv in v]
-        return v
-    return normalize_config(_sub(cfg))
+    from services.config_environment import resolve_environment
+    return normalize_config(resolve_environment(cfg))
 
 
 def normalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -1883,12 +1875,19 @@ NO_CACHE_STATIC_PATHS = {
     "/academy/paper",
     "/academy/code",
     "/academy/notes",
+    "/academy/materials",
     "/academy/ingest",
     "/academy/quiz",
     "/console",
     "/assets/site.css",
     "/assets/site.js",
     "/assets/academy.js",
+    "/assets/academy-documents.js",
+    "/assets/academy-documents.css",
+    "/assets/academy-pdf-pages.js",
+    "/assets/academy-reader.css",
+    "/assets/academy-materials.js",
+    "/assets/academy-materials.css",
     "/assets/console.js",
 }
 
@@ -3891,12 +3890,32 @@ async def api_system_restore(request: Request):
             label=str(data.get("label") or "pre-restore"),
         )
         if g_vector_store:
-            g_vector_store.refresh()
+            result['vector_recovery']=g_vector_store.rebuild()
+            if not result['vector_recovery'].get('consistent'):
+                raise RuntimeError('Database restored; vector rebuild is incomplete. Pre-restore backup retained.')
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except RuntimeError as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse(result)
+
+
+@app.post('/api/system/backup/bundle')
+async def api_system_backup_bundle(request: Request):
+    from services.recovery_bundle import RecoveryBundle
+    data=await request.json()
+    try:
+        return await asyncio.to_thread(RecoveryBundle(get_maintenance_service(),OUTPUT_ROOT/'academy-materials').backup,str(data.get('label') or 'complete'))
+    except (ValueError,RuntimeError,OSError) as e:raise HTTPException(400,str(e))
+
+
+@app.post('/api/system/restore/drill')
+async def api_system_restore_drill(request: Request):
+    from services.recovery_bundle import RecoveryBundle
+    data=await request.json()
+    try:
+        return await asyncio.to_thread(RecoveryBundle(get_maintenance_service(),OUTPUT_ROOT/'academy-materials').restore_isolated,str(data.get('bundle_path') or ''))
+    except (ValueError,RuntimeError,OSError) as e:raise HTTPException(400,str(e))
 
 
 def _system_readiness_payload() -> dict[str, Any]:
@@ -4847,8 +4866,9 @@ def _academy_studio():
 
 
 def _academy_materials():
-    from services.academy_materials import AcademyMaterials
-    return AcademyMaterials(_learning_product().store, OUTPUT_ROOT / "academy-materials")
+    from services.academy_materials import AcademyMaterials, digest
+    profile=digest(dict(routing=config.get('routing',{}),llm=config.get('llm',{})))
+    return AcademyMaterials(_learning_product().store, OUTPUT_ROOT / "academy-materials", profile)
 
 
 async def _academy_material_model(messages, tools):
@@ -4857,6 +4877,9 @@ async def _academy_material_model(messages, tools):
 
 from services.academy_material_api import materials_router
 app.include_router(materials_router(_academy_materials, _academy_material_model))
+
+from services.academy_documents import AcademyDocuments, documents_router
+app.include_router(documents_router(lambda: AcademyDocuments(_learning_product().store), _academy_material_model))
 
 
 @app.get("/academy/materials")
@@ -5864,19 +5887,27 @@ async def api_academy_paper_annotation_save(request: Request):
         raise HTTPException(400, "annotation image must be PNG")
 
     title = str(data.get("title") or document.get("title") or document.get("filename") or f"document-{document_id}")[:160]
+    page=data.get('page',0)
+    if type(page) is not int or not 0<=page<=10000:raise HTTPException(400,'Invalid annotation page')
+    revision=str(document.get('file_hash') or '')
+    if data.get('source_revision') and data['source_revision']!=revision:raise HTTPException(409,'Source revision changed; reopen before saving annotation')
+    coordinate_space=data.get('coordinate_space','viewport')
+    if coordinate_space not in ('viewport','pdf_page'):raise HTTPException(400,'Invalid annotation coordinate space')
     stamp = int(time.time() * 1000)
-    filename = safe_filename(f"{stamp}_{title}_annotation.png")
+    import uuid
+    unique=uuid.uuid4().hex
+    filename = safe_filename(f"{stamp}_{unique}_{title}_annotation.png")
     storage = ArtifactStorage(OUTPUT_ROOT / "academy" / "annotations")
     artifact = storage.write_bytes(filename, raw, kind="png")
 
     run = RunRecord(
-        f"academy-annotation-{document_id}-{stamp}",
+        f"academy-annotation-{document_id}-{unique}",
         "academy_annotation",
         f"Academy paper annotation: {title}",
         status="pass",
         actor="user",
         scenario="research",
-        inputs={"document_id": document_id, "title": title},
+        inputs={"document_id": document_id, "title": title, "page":page,"source_revision":revision,"coordinate_space":coordinate_space},
         outputs={"artifact_path": artifact["path"]},
         tags=["academy", "paper", "annotation"],
     )
@@ -5981,12 +6012,18 @@ async def api_academy_paper_checkpoint_save(request: Request):
     chunks = g_memory_store.get_document_chunks(document_id, 12)
     title = str(document.get("title") or document.get("filename") or f"document-{document_id}")
     stamp = time.strftime("%Y%m%d-%H%M%S")
+    import uuid
+    unique=uuid.uuid4().hex
+    reading=data.get('reading') or {}
+    if not isinstance(reading,dict) or type(reading.get('page',1)) is not int or not 1<=reading.get('page',1)<=10000:
+        raise HTTPException(400,'Invalid reading position')
     checkpoint = {
         "schema": "clawos.academy.paper.checkpoint.v1",
         "created_at": stamp,
         "document": document,
         "status": status,
         "citation": data.get("citation") or {},
+        "reading": {"page":reading.get('page',1),"source_revision":document.get('file_hash','')},
         "chunks": [
             {
                 "chunk_index": chunk.get("chunk_index"),
@@ -5998,12 +6035,12 @@ async def api_academy_paper_checkpoint_save(request: Request):
         ],
     }
     storage = ArtifactStorage(OUTPUT_ROOT / "academy" / "checkpoints")
-    artifact = storage.write_json(f"{stamp}_{safe_artifact_slug(title)}_checkpoint.json", checkpoint)
+    artifact = storage.write_json(f"{stamp}_{unique}_{safe_artifact_slug(title)}_checkpoint.json", checkpoint)
     report = status.get("report") or {}
     knowledge = status.get("knowledge") or {}
     annotation = status.get("annotation") or {}
     run = RunRecord(
-        run_id=f"academy-paper-checkpoint-{document_id}-{stamp}",
+        run_id=f"academy-paper-checkpoint-{document_id}-{unique}",
         run_type="academy_paper_checkpoint",
         title=f"Academy paper checkpoint: {title}",
         status="pass",
@@ -7665,6 +7702,21 @@ async def api_document_source(document_id: int):
     return FileResponse(source, media_type=media_types[suffix], headers={"Content-Disposition": "inline"})
 
 
+from services.pdf_page_renderer import PdfPageRenderer
+_pdf_page_renderer=PdfPageRenderer()
+
+@app.get('/api/documents/{document_id}/page')
+async def api_document_page(document_id:int,page:int=1):
+    # Reuse the source endpoint's document ownership/root/type checks.
+    source=await api_document_source(document_id)
+    try:
+        value=await asyncio.to_thread(_pdf_page_renderer.render,source.path,page)
+        return JSONResponse(value)
+    except (ValueError,OSError) as e:raise HTTPException(400,str(e))
+    except ImportError:raise HTTPException(503,'PDF 页渲染依赖不可用，请安装项目 PyMuPDF 依赖。')
+
+
+
 @app.get("/api/artifacts/{artifact_id}")
 async def api_artifact_metadata(artifact_id: str):
     try:
@@ -7900,14 +7952,17 @@ async def api_document_semantic_graph(document_id: int, compact: bool = False):
 
 
 @app.get("/api/documents/{document_id}/chunks")
-async def api_document_chunks(document_id: int, limit: int = 20):
+async def api_document_chunks(document_id: int, limit: int = 20, offset: int = 0, include_review: bool = False):
     if not g_memory_store:
         return JSONResponse({"chunks": [], "count": 0}, status_code=503)
     document = g_memory_store.get_document(document_id)
     if not document:
         raise HTTPException(404, "Document not found")
-    chunks = g_memory_store.get_document_chunks(document_id, max(1, min(int(limit or 20), 100)))
-    return JSONResponse({"document": document, "chunks": chunks, "count": len(chunks)})
+    take=max(1,min(int(limit or 20),100));offset=max(0,offset)
+    chunks = g_memory_store.get_document_chunks(document_id, take+1, offset=offset,include_review=include_review)
+    has_more=len(chunks)>take;chunks=chunks[:take]
+    return JSONResponse({"document": document, "chunks": chunks, "count": len(chunks),"has_more":has_more,"next_offset":offset+len(chunks),
+        "boundary":"Review-required chunks are reader text only; they are not admitted as verified evidence." if include_review else "Only evidence-ready chunks."})
 
 
 @app.get("/api/documents/search")
@@ -7976,6 +8031,8 @@ def resolve_obsidian_output_dir(requested: str = "", category: str = "") -> Path
         raw = Path(requested).expanduser()
         if raw.is_absolute():
             output_dir = raw.resolve()
+        elif raw.parts[:2] == ('output','obsidian'):
+            output_dir = (output_root / Path(*raw.parts[2:])).resolve()
         else:
             repo_relative = (BASE_DIR.parent / raw).resolve()
             try:

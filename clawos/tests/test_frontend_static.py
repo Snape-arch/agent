@@ -153,7 +153,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("academyPaperTimeline", paper)
         self.assertIn("academyPaperTimelineDetail", paper)
         self.assertIn("academyCodeBlock", code)
-        self.assertIn("academyNoteOutput", notes)
+        self.assertIn("docBlocks", notes)
+        self.assertIn("drawCanvas", notes)
+        self.assertIn("docHistory", notes)
         self.assertIn("academyIngestStatus", ingest)
         self.assertIn("academyQuizGrid", quiz)
         for token in (
@@ -1262,7 +1264,7 @@ class FrontendStaticTests(unittest.TestCase):
             "academyDeleteReaderNote",
             "academySetupReaderControls",
             "frame.style.transform",
-            "requestFullscreen",
+            'classList.toggle("reader-window")',
             "history:",
             "domain:",
             "era:",

@@ -12,7 +12,10 @@ from services.runtime_records import RunRecord, now_iso
 async def teaching_run(service, model, mid, action, data, learner, prompts):
     """Transport, role trace, evidence validation and persistence share one outcome."""
     doc=service.document(mid,learner)
-    roles=['teacher','reviewer'] if len(prompts)==2 else ['tutor' if action=='tutor' else 'teacher']
+    from services.academy_teaching_quality import AcademyTeachingQuality
+    initial_bank=AcademyTeachingQuality(service,service.model_profile).bank(mid,learner)
+    bank_id=initial_bank['id'] if initial_bank else None
+    roles=[('reviewer' if i%2 else 'teacher') if action=='calibration-run' or len(prompts)==2 else 'tutor' if action=='tutor' else 'teacher' for i in range(len(prompts))]
     run=RunRecord(run_id='academy-teaching-'+uuid.uuid4().hex,run_type='academy_teaching',
         title=action,status='running',actor=learner,scenario='education',
         inputs=dict(material_id=mid,revision=doc['payload'].get('revision'),citation=data.get('citation'),
@@ -35,7 +38,17 @@ async def teaching_run(service, model, mid, action, data, learner, prompts):
             replies.append(reply)
         if service.document(mid,learner)['payload'].get('revision') != doc['payload'].get('revision'):
             raise ValueError('原文版本已变化，模型结果未保存，请重新请求')
-        if action=='chapter-review':
+        if action in ('chapter-review','calibration-run'):
+            current_bank=AcademyTeachingQuality(service,service.model_profile).bank(mid,learner)
+            if (current_bank['id'] if current_bank else None)!=bank_id:
+                raise ValueError('教师量尺在评阅期间已变化，结果未保存，请重新评阅')
+        if action=='calibration-run':
+            from services.academy_teaching_quality import AcademyTeachingQuality
+            result=AcademyTeachingQuality(service,service.model_profile).save_calibration(mid,data['bank_id'],[model_json(r) for r in replies],learner)
+        elif action=='seminar':
+            from services.academy_teaching_quality import AcademyTeachingQuality
+            result=AcademyTeachingQuality(service,service.model_profile).save_seminar(mid,data.get('chapters'),model_json(replies[0]),learner)
+        elif action=='chapter-review':
             result=service.save_chapter_review(mid,data.get('response_id'),[model_json(r) for r in replies],learner)
         elif action=='chapter-questions':
             result=service.save_chapter_questions(mid,data.get('chapter'),data.get('subject'),model_json(replies[0]),learner)
@@ -140,6 +153,11 @@ def materials_router(service_factory, model):
             learner=str(data.get('learner_id') or 'local-user')
             cid=data.get('citation')
             service.document(mid,learner)
+            if action in ('calibration-bank','seminar-response'):
+                from services.academy_teaching_quality import AcademyTeachingQuality
+                quality=AcademyTeachingQuality(service,service.model_profile)
+                if action=='calibration-bank':return quality.import_bank(mid,data.get('bank'),learner)
+                return quality.seminar_response(mid,data.get('seminar_id'),data.get('answers'),data.get('claims'),learner)
             if action=='journey-settings':
                 return service.journey.settings(mid,data.get('minutes'),learner)
             if action=='recall-start':
@@ -169,10 +187,17 @@ def materials_router(service_factory, model):
                 return service.event(mid,'draft',dict(citation=cid,answer=str(data.get('answer') or '')[:6000]))
             if action=='project':
                 return await asyncio.to_thread(service.project,mid,data.get('config'),data.get('cases'),learner)
-            if action not in ('guide','tutor','assess','chapter-questions','chapter-review'):
+            if action not in ('guide','tutor','assess','chapter-questions','chapter-review','seminar','calibration-run'):
                 raise ValueError('未知学习操作')
             # Build/validate inputs before calling the shared provider.
-            if action=='chapter-review':
+            if action=='calibration-run':
+                from services.academy_teaching_quality import AcademyTeachingQuality
+                bank,cases=AcademyTeachingQuality(service,service.model_profile).calibration_prompts(mid,learner)
+                data['bank_id']=bank['id'];prompts=[row[2] for row in cases]
+            elif action=='seminar':
+                from services.academy_teaching_quality import AcademyTeachingQuality
+                prompts=[AcademyTeachingQuality(service,service.model_profile).seminar_prompt(mid,data.get('chapters'),learner)]
+            elif action=='chapter-review':
                 prompts=[service.chapter_review_prompt(mid,data.get('response_id'),learner,critic=x) for x in (False,True)]
             elif action=='chapter-questions':
                 prompts=[service.chapter_prompt(mid,data.get('chapter'),data.get('subject'),learner)]

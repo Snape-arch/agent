@@ -338,12 +338,15 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 ],
             }), encoding="utf-8")
             old_base = server.BASE_DIR
+            old_output = server.OUTPUT_ROOT
             server.BASE_DIR = fake_base
+            server.OUTPUT_ROOT = report_dir
             try:
                 response = asyncio.run(server.api_latest_deepseek_qwen_acceptance())
                 payload = json.loads(response.body.decode("utf-8"))
             finally:
                 server.BASE_DIR = old_base
+                server.OUTPUT_ROOT = old_output
 
         self.assertTrue(payload["found"])
         self.assertTrue(payload["ok"])
@@ -894,7 +897,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
     def test_obsidian_export_output_dir_accepts_repo_relative_path(self):
         import clawos_server as server
 
-        output_root = (server.BASE_DIR.parent / "output" / "obsidian").resolve()
+        output_root = (server.OUTPUT_ROOT / "obsidian").resolve()
         full_relative = server.resolve_obsidian_output_dir("output/obsidian/browser-flow-check", "research")
         short_relative = server.resolve_obsidian_output_dir("browser-flow-check", "research")
         default_dir = server.resolve_obsidian_output_dir("", "research")

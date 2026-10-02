@@ -4951,12 +4951,12 @@ class MemoryStore:
                 item = safe_document(item)
             return item
 
-    def get_document_chunks(self, document_id, limit=20, *, include_review=False):
+    def get_document_chunks(self, document_id, limit=20, *, include_review=False, offset=0):
         with self._conn() as c:
             gate = "" if include_review else " AND json_valid(metadata) AND COALESCE(json_extract(metadata, '$.review_required'), 0)=0"
             rows = c.execute(
-                "SELECT * FROM document_chunks WHERE document_id=?" + gate + " ORDER BY chunk_index LIMIT ?",
-                (int(document_id), int(limit)),
+                "SELECT * FROM document_chunks WHERE document_id=?" + gate + " ORDER BY chunk_index LIMIT ? OFFSET ?",
+                (int(document_id), int(limit), max(0,int(offset))),
             ).fetchall()
             items = [dict(r) for r in rows]
             for item in items:

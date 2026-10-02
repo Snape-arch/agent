@@ -346,20 +346,38 @@ function academyPaperSnippet() {
 }
 
 function academyRenderPaperChunks() {
-  const target = document.getElementById("academyPaperText");
-  if (!target) return;
-  if (!academyPaperState.chunks.length) {
-    target.innerHTML = `<article class="paper-chunk"><b>Parsed Text</b><p>等待后端解析论文 chunk。</p></article>`;
-    academyRenderPaperRuntimeStatus();
-    return;
-  }
-  target.innerHTML = academyPaperState.chunks.slice(0, 10).map((chunk, index) => {
-    const label = chunk.citation || `doc:${academyPaperState.document?.id || "?"}#chunk=${chunk.chunk_index ?? index}`;
-    const text = chunk.text || chunk.content || chunk.preview || "";
-    return `<article class="paper-chunk"><b>${academyEsc(label)}</b><p>${academyEsc(text.slice(0, 720))}</p></article>`;
+  const target=document.getElementById("academyPaperText");
+  if(!target)return;
+  target.hidden=Boolean(academyPaperState.frameSource);
+  document.getElementById("academyPdfFrame")?.toggleAttribute("hidden",!academyPaperState.frameSource);
+  if(!academyPaperState.chunks.length){target.textContent="等待解析原文。";academyRenderPaperRuntimeStatus();return;}
+  document.getElementById("academyReaderEmpty")?.setAttribute("hidden","");
+  target.innerHTML=academyPaperState.chunks.map((chunk,index)=>{
+    const label=chunk.citation||'doc:'+academyPaperState.document?.id+'#chunk='+chunk.chunk_index;
+    const text=chunk.text||chunk.content||chunk.preview||"";
+    return '<article class="paper-chunk" data-chunk-index="'+Number(chunk.chunk_index??index)+'"><b>'+academyEsc(label)+(chunk.metadata?.review_required?' · 待复核文本':'')+'</b><p>'+academyEsc(text)+'</p></article>';
   }).join("");
-  academyRenderPaperRuntimeStatus();
+  if(academyPaperState.chunksHasMore)target.insertAdjacentHTML("beforeend",'<button type="button" id="academyMorePaperText">继续载入原文</button>');
+  document.getElementById("academyMorePaperText")?.addEventListener("click",async e=>{
+    e.currentTarget.disabled=true;
+    try{const r=await academyApi('/api/documents/'+academyPaperState.document.id+'/chunks?limit=100&include_review=true&offset='+academyPaperState.chunksNextOffset);
+      academyPaperState.chunks.push(...r.chunks);academyPaperState.chunksHasMore=r.has_more;academyPaperState.chunksNextOffset=r.next_offset;academyRenderPaperChunks();
+    }catch(error){academySetText("academyPaperStatus","原文载入失败："+error.message);e.currentTarget.disabled=false;}
+  });
+  const outline=document.querySelector(".reader-outline-list");
+  if(outline){
+    const rows=academyPaperState.chunks.filter((c,i)=>i===0||c.metadata?.heading||c.metadata?.section).slice(0,40);
+    outline.innerHTML=rows.map((c,i)=>{const page=Number(c.metadata?.page||c.metadata?.page_start)||0;
+      return '<button type="button" data-source-chunk="'+Number(c.chunk_index??i)+'" '+(page?'data-source-page="'+page+'"':'')+'><span>'+(i+1)+'</span><b>'+academyEsc(c.metadata?.heading||c.metadata?.section||'原文片段 '+(Number(c.chunk_index??i)+1))+(!page&&academyPaperState.frameSource?' · 页码未确认':'')+'</b></button>';
+    }).join("");
+    outline.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+      if(academyPaperState.frameSource){if(b.dataset.sourcePage)academyJumpPaperSection(b.dataset.sourcePage,b);else academySetText("academyPaperStatus","该片段没有可靠页码，请在原文中核对定位。");}
+      else target.querySelector('[data-chunk-index="'+b.dataset.sourceChunk+'"]')?.scrollIntoView({behavior:"smooth",block:"start"});
+    }));
+  }
+  academyRenderReaderNotes();academyRenderPaperRuntimeStatus();
 }
+
 
 function academyRenderCitationEvidence(result) {
   const answer = result?.answer || result?.summary || "暂无回答。";
@@ -749,11 +767,13 @@ async function academyOpenPaperCheckpoint(runId) {
   const payload = await academyApi(`/api/academy/paper/checkpoints/${encodeURIComponent(runId)}`);
   const checkpoint = payload.checkpoint || {};
   const status = checkpoint.status || {};
-  const doc = checkpoint.document || status.document || {};
-  academyPaperState.document = doc;
+  const savedDoc = checkpoint.document || status.document || {};
+  await academyOpenPaperDocument(Number(savedDoc.id),checkpoint.reading?.page||1);
+  const doc=academyPaperState.document;
+  const revision=checkpoint.reading?.source_revision||savedDoc.file_hash;
+  if(revision&&revision!==doc.file_hash)throw Error('原文版本已变化，已打开当前原文；旧引用和批注需重新核对。');
   academyPaperState.persistedStatus = status;
   academyPaperState.citation = checkpoint.citation || null;
-  academyPaperState.chunks = checkpoint.chunks || [];
   academyPaperState.report = status.report ? { report: status.report } : null;
   academyPaperState.savedKnowledgeId = status.knowledge?.id || null;
   academyPaperState.annotationArtifact = status.annotation?.artifact || null;
@@ -762,7 +782,7 @@ async function academyOpenPaperCheckpoint(runId) {
   if (title) title.value = doc.title || doc.filename || payload.summary?.document_title || "Checkpoint paper";
   const frame = document.getElementById("academyPdfFrame");
   if (frame) {
-    if (doc.id && academyPreviewablePaperSource(doc)) academySetPdfSource(`/api/documents/${Number(doc.id)}/source`);
+    if (doc.id && academyPreviewablePaperSource(doc)) academySetPdfSource(`/api/documents/${Number(doc.id)}/source`,academyPaperState.currentPage);
     else { frame.removeAttribute("src"); academyPaperState.frameSource = ""; document.getElementById("academyReaderEmpty")?.removeAttribute("hidden"); }
   }
   academyRenderPaperMeta();
@@ -778,8 +798,9 @@ function academyPreviewablePaperSource(doc) {
   const mime = String(doc?.mime_type || "").toLowerCase();
   return filename.endsWith(".pdf") || mime.includes("pdf");
 }
-async function academyOpenPaperDocument(documentId) {
+async function academyOpenPaperDocument(documentId,initialPage=1) {
   const doc = academyPaperState.documents.find(item => Number(item.id) === Number(documentId)) || { id: documentId };
+  academyPaperState.currentPage=initialPage;academyPaperState.pageCount=null;academyPaperState.selectedQuote='';
   academyPaperState.document = doc;
   academyPaperState.report = null;
   academyPaperState.citation = null;
@@ -791,13 +812,14 @@ async function academyOpenPaperDocument(documentId) {
   if (title) title.value = doc.title || doc.filename || `Document ${documentId}`;
   const frame = document.getElementById("academyPdfFrame");
   if (frame) {
-    if (academyPreviewablePaperSource(doc)) academySetPdfSource(`/api/documents/${Number(documentId)}/source`);
+    if (academyPreviewablePaperSource(doc)) academySetPdfSource(`/api/documents/${Number(documentId)}/source`,initialPage);
     else { frame.removeAttribute("src"); academyPaperState.frameSource = ""; document.getElementById("academyReaderEmpty")?.removeAttribute("hidden"); }
   }
   academySetText("academyPaperStatus", `Opening local paper doc:${documentId}...`);
-  const chunks = await academyApi(`/api/documents/${Number(documentId)}/chunks?limit=12`);
+  const chunks = await academyApi(`/api/documents/${Number(documentId)}/chunks?limit=100&include_review=true`);
   academyPaperState.document = chunks.document || doc;
   academyPaperState.chunks = chunks.chunks || chunks.items || [];
+  academyPaperState.chunksHasMore=chunks.has_more;academyPaperState.chunksNextOffset=chunks.next_offset;
   academyRenderPaperMeta();
   await academyRefreshPaperPersistedStatus().catch(() => null);
   academyRenderPaperChunks();
@@ -833,8 +855,9 @@ async function academyUploadPaper() {
   if (title && (!title.value || title.value.includes("Retrieval-Augmented"))) {
     title.value = academyPaperState.document.title || academyPaperState.document.filename || file.name;
   }
-  const chunks = await academyApi(`/api/documents/${Number(academyPaperState.document.id)}/chunks?limit=12`);
+  const chunks = await academyApi(`/api/documents/${Number(academyPaperState.document.id)}/chunks?limit=100&include_review=true`);
   academyPaperState.chunks = chunks.chunks || chunks.items || [];
+  academyPaperState.chunksHasMore=chunks.has_more;academyPaperState.chunksNextOffset=chunks.next_offset;
   academyRenderPaperMeta();
   await academyRefreshPaperPersistedStatus().catch(() => null);
   academyRenderPaperChunks();
@@ -918,7 +941,8 @@ async function academySavePaperCheckpoint() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         document_id: Number(academyPaperState.document.id),
-        citation: academyPaperState.citation || {}
+        citation: academyPaperState.citation || {},
+        reading: {page:academyPaperState.currentPage||1}
       })
     });
     academyPaperState.checkpointArtifact = saved.artifact || saved.status?.checkpoint?.artifact || null;
@@ -1047,6 +1071,8 @@ function academySetPdfSource(source, page = 1, mode = "fit") {
   if (!frame || !source) return;
   academyPaperState.frameSource = String(source).split("#")[0];
   academyPaperState.currentPage = Math.max(1, Number(page) || 1);
+  const pageInput = document.getElementById("academyPageNumber");
+  if (pageInput) pageInput.value = academyPaperState.currentPage;
   if (mode === "fit") academyReaderScale = 1;
   const view = mode === "fit" ? "view=FitH" : `zoom=${Math.round(academyReaderScale * 100)}`;
   frame.src = `${academyPaperState.frameSource}#page=${academyPaperState.currentPage}&${view}`;
@@ -1076,6 +1102,8 @@ function academyPreviewLocalPaper(file) {
   const frame = document.getElementById("academyPdfFrame");
   if (academyPaperState.pdfUrl) URL.revokeObjectURL(academyPaperState.pdfUrl);
   academyPaperState.pdfUrl = URL.createObjectURL(file);
+  academyPaperState.localFileKey = `${file.name}:${file.size}:${file.lastModified}`;
+  academyPaperState.document = null;
   if (frame && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))) academySetPdfSource(academyPaperState.pdfUrl);
   document.getElementById("academyReaderEmpty")?.setAttribute("hidden", "");
   academySetText("academyReaderProgress", "原文已打开");
@@ -1113,9 +1141,12 @@ function academyJumpPaperSection(page, button) {
     academySetText("academyPaperStatus", "请先打开 PDF，再使用目录跳转。");
     return;
   }
-  academyPaperState.currentPage = Math.max(1, Number(page) || 1);
+  academyCacheInk();
+  const pages = academyPaperState.pageCount || Number(academyPaperState.document?.metadata?.pages || academyPaperState.document?.metadata?.page_count) || 100000;
+  academyPaperState.currentPage = Math.min(pages, Math.max(1, Math.floor(Number(page) || 1)));
   document.querySelectorAll(".reader-outline-list button").forEach(item => item.classList.toggle("active", item === button));
   academyRefreshPdfView("page");
+  window.requestAnimationFrame(academyResizeInkCanvas);
   academySetText("academyReaderProgress", `正在阅读第 ${academyPaperState.currentPage} 页`);
   academySetText("academyPaperStatus", `已跳转到第 ${academyPaperState.currentPage} 页。`);
 }
@@ -1130,14 +1161,13 @@ function academyToggleOutline() {
 }
 
 async function academyToggleReaderFullscreen() {
-  const viewer = document.getElementById("academyPaperViewer");
-  if (!viewer) return;
-  try {
-    if (document.fullscreenElement === viewer) await document.exitFullscreen();
-    else await viewer.requestFullscreen();
-  } catch (error) {
-    academySetText("academyPaperStatus", `浏览器未允许全屏：${error.message}`);
-  }
+  const active = document.body.classList.toggle("reader-window");
+  if(active && window.innerWidth<750 && !document.querySelector(".paper-reader-workspace")?.classList.contains("notes-collapsed"))document.getElementById("academyReaderSideToggle")?.click();
+  const button = document.getElementById("academyReaderFullscreen");
+  button?.setAttribute("aria-pressed", String(active));
+  button?.setAttribute("aria-label", active ? "退出窗口阅读" : "进入窗口阅读");
+  if (button) button.textContent = active ? "退出窗口 · Esc" : "窗口阅读";
+  window.requestAnimationFrame(academyResizeInkCanvas);
 }
 
 function academyToggleResearchOps() {
@@ -1168,7 +1198,14 @@ function academySetGuidedPrompt(kind) {
 function academyRenderReaderNotes() {
   const target = document.getElementById("academyReaderNotes");
   if (!target) return;
-  target.innerHTML = academyReaderNotes.length ? academyReaderNotes.map(note => `<article><b>${academyEsc(note.tag || "阅读笔记")}</b><p>${academyEsc(note.text)}</p><small>${academyEsc(new Date(note.at || Date.now()).toLocaleString())}</small><button class="reader-note-delete" type="button" aria-label="删除笔记" data-reader-note-id="${academyEsc(note.id)}">×</button></article>`).join("") : `<div class="reader-placeholder"><b>还没有笔记</b><p>写下判断、疑问或复现线索，保存后会保留在这台设备。</p></div>`;
+  academySetupReaderNoteDraft();
+  const notes = academyCurrentReaderNotes();
+  target.innerHTML = notes.length ? notes.map(note => `<article><b>${academyEsc(note.tag || "阅读笔记")}</b><p>${academyEsc(note.text)}</p><small>第 ${academyEsc(note.page || 1)} 页 · ${academyEsc(new Date(note.at || Date.now()).toLocaleString())}</small><button class="reader-note-delete" type="button" aria-label="删除笔记" data-reader-note-id="${academyEsc(note.id)}">×</button></article>`).join("") : `<div class="reader-placeholder"><b>本篇还没有笔记</b><p>写下判断、疑问或复现线索，保存后会保留在这台设备。</p></div>`;
+}
+
+function academyCurrentReaderNotes() {
+  const title=document.getElementById("paperTitle")?.value || "";
+  return academyReaderNotes.filter(n=>n.document_id ? n.document_id===academyPaperState.document?.id : n.document===title);
 }
 
 function academyAddReaderNote() {
@@ -1180,10 +1217,9 @@ function academyAddReaderNote() {
     return;
   }
   const now = new Date().toISOString();
-  academyReaderNotes.unshift({ id: `${Date.now()}`, text, tag: document.getElementById("academyReaderNoteTag")?.value.trim() || "阅读笔记", at: now, document: document.getElementById("paperTitle")?.value || "" });
-  academyReaderNotes = academyReaderNotes.slice(0, 30);
+  academyReaderNotes.unshift({ id: crypto.randomUUID(), text, tag: document.getElementById("academyReaderNoteTag")?.value.trim() || "阅读笔记", at: now, page: academyPaperState.currentPage || 1, document_id: academyPaperState.document?.id, document: document.getElementById("paperTitle")?.value || "" });
   localStorage.setItem("clawos_academy_reader_notes", JSON.stringify(academyReaderNotes));
-  localStorage.removeItem("clawos_academy_reader_note_draft");
+  localStorage.removeItem(academyReaderDraftKey());
   if (input) input.value = "";
   academyRenderReaderNotes();
   academySetText("academyReaderNoteStatus", `笔记已保存 · ${new Date(now).toLocaleTimeString()}`);
@@ -1196,15 +1232,15 @@ function academyDeleteReaderNote(noteId) {
   academySetText("academyReaderNoteStatus", "笔记已删除。");
 }
 
+function academyReaderDraftKey() {
+  return 'clawos_reader_draft_v2_'+(academyPaperState.document?.id ? 'doc-'+academyPaperState.document.id+'-'+(academyPaperState.document.file_hash||'legacy') : academyPaperState.localFileKey || document.getElementById('paperTitle')?.value || 'unassigned');
+}
 function academySetupReaderNoteDraft() {
-  const input = document.getElementById("academyReaderNote");
-  if (!input) return;
-  const draft = localStorage.getItem("clawos_academy_reader_note_draft") || "";
-  if (draft && !input.value) input.value = draft;
-  input.addEventListener("input", () => {
-    localStorage.setItem("clawos_academy_reader_note_draft", input.value);
-    academySetText("academyReaderNoteStatus", input.value.trim() ? "草稿已自动保存。" : "请输入阅读笔记。");
-  });
+  const input=document.getElementById('academyReaderNote');if(!input)return;
+  const key=academyReaderDraftKey();
+  if(input.dataset.draftKey!==key){input.value=localStorage.getItem(key)||'';input.dataset.draftKey=key;}
+  if(input.dataset.draftBound)return;input.dataset.draftBound='true';
+  input.addEventListener('input',()=>{try{localStorage.setItem(academyReaderDraftKey(),input.value);academySetText('academyReaderNoteStatus','本篇草稿已保留。');}catch(e){academySetText('academyReaderNoteStatus','草稿空间不足，请整理到智能文档保存。');}});
 }
 
 function academySetupReaderControls() {
@@ -1212,6 +1248,28 @@ function academySetupReaderControls() {
   document.getElementById("academyZoomIn")?.addEventListener("click", () => academyReaderZoom(.1));
   document.getElementById("academyZoomFit")?.addEventListener("click", academyReaderFit);
   document.getElementById("academyReaderFullscreen")?.addEventListener("click", academyToggleReaderFullscreen);
+  document.addEventListener("keydown", e => {if (e.key === "Escape" && document.body.classList.contains("reader-window")) academyToggleReaderFullscreen();});
+  document.getElementById("academyReaderSideToggle")?.addEventListener("click", e => {
+    const hidden = document.querySelector(".paper-reader-workspace").classList.toggle("notes-collapsed");
+    e.currentTarget.textContent = hidden ? "展开笔记" : "收起笔记";
+    e.currentTarget.setAttribute("aria-pressed", String(hidden));
+    window.requestAnimationFrame(academyResizeInkCanvas);
+  });
+  const jump = page => { academyJumpPaperSection(page); const input = document.getElementById("academyPageNumber"); if(input) input.value=academyPaperState.currentPage; };
+  document.getElementById("academyPageNumber")?.addEventListener("change",e=>jump(e.target.value));
+  document.getElementById("academyPagePrevious")?.addEventListener("click",()=>jump(academyPaperState.currentPage-1));
+  document.getElementById("academyPageNext")?.addEventListener("click",()=>jump(academyPaperState.currentPage+1));
+  document.getElementById("academyOpenSmartDocument")?.addEventListener("click", async () => {
+    const title = document.getElementById("paperTitle")?.value || "阅读文档";
+    const source = title+' · 第 '+(academyPaperState.currentPage||1)+' 页'+(academyPaperState.document?.id?' · 文献 #'+academyPaperState.document.id:'');
+    const blocks=[];const add=(type,text)=>blocks.push({id:crypto.randomUUID(),type,text,...(type==='heading'?{level:2}:{})});
+    if(academyPaperState.selectedQuote)add('quote',academyPaperState.selectedQuote);
+    for(const note of academyCurrentReaderNotes()){add('heading',(note.tag||'阅读笔记')+' · 第 '+(note.page||1)+' 页');add('paragraph',note.text);}
+    const draft=document.getElementById('academyReaderNote')?.value.trim();if(draft){add('heading','待整理草稿');add('paragraph',draft);}
+    if(!blocks.length)add('paragraph','');
+    try{const saved=await academyApi('/api/academy/learning/documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:(title+' · 精读笔记').slice(0,200),context:source.slice(0,1000),blocks})});location.href='/academy/notes?document='+saved.id;}
+    catch(e){academySetText('academyReaderNoteStatus','智能文档创建失败，当前笔记保留：'+e.message);}
+  });
   document.getElementById("academyOutlineToggle")?.addEventListener("click", academyToggleOutline);
   document.getElementById("academySaveReaderNote")?.addEventListener("click", academyAddReaderNote);
   document.querySelectorAll("[data-paper-page]").forEach(button => button.addEventListener("click", () => academyJumpPaperSection(button.dataset.paperPage, button)));
@@ -1231,7 +1289,7 @@ function academyDownloadText(filename, text) {
 
 function academyExportReaderNotes() {
   const title = document.getElementById("paperTitle")?.value || "Paper notes";
-  const body = academyReaderNotes.map(note => `## ${note.tag}\n\n${note.text}`).join("\n\n");
+  const body = academyCurrentReaderNotes().map(note => `## ${note.tag} · 第 ${note.page || 1} 页\n\n${note.text}`).join("\n\n");
   academyDownloadText("paper-reading-notes.md", `# ${title}\n\n${body || "尚无阅读笔记。"}\n`);
 }
 
@@ -1239,8 +1297,8 @@ function academyResizeInkCanvas() {
   const canvas = document.getElementById("academyInkCanvas");
   const viewer = document.getElementById("academyPaperViewer");
   if (!canvas || !viewer) return;
-  const rect = viewer.getBoundingClientRect();
-  const toolbarInset = academyPaperState.frameSource ? 56 : 0;
+  const rect = (academyPaperState.controlledPage ? document.getElementById('academyPdfPage') : viewer).getBoundingClientRect();
+  const toolbarInset = academyPaperState.controlledPage ? 0 : academyPaperState.frameSource ? 56 : 0;
   const drawableHeight = Math.max(1, rect.height - toolbarInset);
   const ratio = window.devicePixelRatio || 1;
   canvas.width = Math.max(1, Math.round(rect.width * ratio));
@@ -1253,13 +1311,27 @@ function academyResizeInkCanvas() {
   academyRestoreInk();
 }
 
+function academyAnnotationKey() {
+  const source = academyPaperState.document?.id ? 'document-'+academyPaperState.document.id+'-'+(academyPaperState.document.file_hash || 'legacy')+'-'+(academyPaperState.controlledPage?'page-v2':'viewport') : academyPaperState.localFileKey;
+  return source ? 'clawos_academy_ink_'+source+'_page_'+(academyPaperState.currentPage || 1) : null;
+}
+
+function academyCacheInk() {
+  const key=academyAnnotationKey(),canvas=document.getElementById("academyInkCanvas");
+  if(!key || !canvas)return;
+  try { localStorage.setItem(key,canvas.toDataURL("image/png")); }
+  catch(e) { academySetText("academyPaperStatus","批注缓存空间不足，请保存为文献产物。 "); }
+}
+
 function academyRestoreInk() {
   const canvas = document.getElementById("academyInkCanvas");
   const viewer = document.getElementById("academyPaperViewer");
-  const saved = localStorage.getItem("clawos_academy_paper_annotation");
+  const key=academyAnnotationKey();
+  const saved = key && localStorage.getItem(key);
   if (!canvas || !viewer || !saved) return;
   const image = new Image();
   image.onload = () => {
+    if(key!==academyAnnotationKey())return;
     const rect = canvas.getBoundingClientRect();
     canvas.getContext("2d").drawImage(image, 0, 0, rect.width, rect.height);
   };
@@ -1325,15 +1397,17 @@ function academySetupInk() {
   canvas.addEventListener("pointerup", () => {
     academyPaperState.drawing = false;
     academyPaperState.lastPoint = null;
+    academyCacheInk();
   });
+  canvas.addEventListener("pointercancel", () => { academyPaperState.drawing=false;academyPaperState.lastPoint=null;academyCacheInk(); });
   document.getElementById("academyClearInk")?.addEventListener("click", () => {
     canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-    localStorage.removeItem("clawos_academy_paper_annotation");
+    if(academyAnnotationKey())localStorage.removeItem(academyAnnotationKey());
     academySetText("academyPaperStatus", "批注已清除。");
   });
   document.getElementById("academySaveAnnotation")?.addEventListener("click", async () => {
     const dataUrl = canvas.toDataURL("image/png");
-    localStorage.setItem("clawos_academy_paper_annotation", dataUrl);
+    academyCacheInk();
     if (!academyPaperState.document?.id) {
       academySetText("academyPaperStatus", "批注已保存到本地缓存；上传论文后可持久化为 Artifact。");
       return;
@@ -1343,7 +1417,8 @@ function academySetupInk() {
       const saved = await academyApi("/api/academy/paper/annotations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ document_id: Number(academyPaperState.document.id), title, image_data: dataUrl })
+        body: JSON.stringify({ document_id: Number(academyPaperState.document.id), title, image_data: dataUrl,
+          page: academyPaperState.currentPage, source_revision: academyPaperState.document.file_hash || '', coordinate_space: academyPaperState.controlledPage ? 'pdf_page' : 'viewport' })
       });
       academyPaperState.annotationArtifact = saved.artifact;
       await academyRefreshPaperPersistedStatus().catch(() => null);
