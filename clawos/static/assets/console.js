@@ -229,6 +229,7 @@ function setView(viewName) {
   $("viewTitle").textContent = (VIEW_META[viewName] || VIEW_META.chat)[0];
   $("viewSub").textContent = (VIEW_META[viewName] || VIEW_META.chat)[1];
   if (location.hash !== "#" + viewName) history.replaceState(null, "", "#" + viewName);
+  document.dispatchEvent(new CustomEvent('workspace-view', {detail:viewName}));
   document.body.classList.remove("sidebar-open");
   closeCommandDrawer();
   refreshView(viewName);
@@ -3080,7 +3081,7 @@ async function loadFeishuCenter() {
     const cli = (health && health.client) || {};
     const populateTargets=()=>{const field=$('feishuTargetId');if(!field)return;const previous=field.value,targets=(permissions.targets||[]).filter(t=>t.type===$('feishuTargetType').value);field.innerHTML=targets.length?'<option value="">请选择白名单目标</option>'+targets.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.id)+'</option>').join(''):'<option value="">此类型尚未配置目标白名单</option>';if(targets.some(t=>t.id===previous))field.value=previous;};
     if($('feishuTargetType'))$('feishuTargetType').onchange=populateTargets;populateTargets();
-    if ($('feishuPermissions')) $('feishuPermissions').innerHTML = '<h3>权限链路</h3>'+table(['环节','状态','依据'],(permissions.checks||[]).map(c=>[c.name,c.ready?'已配置':'待配置',c.detail]))+'<p class="hint">'+esc(permissions.boundary||permissions.error||'')+'</p>';
+    if ($('feishuPermissions')) $('feishuPermissions').innerHTML = '<h3>权限链路</h3><div class="feishu-status-scroll"><table class="table">'+table(['环节','状态','依据'],(permissions.checks||[]).map(c=>[c.name,c.ready?'已配置':'待配置',c.detail]))+'</table></div><p class="hint">'+esc(permissions.boundary||permissions.error||'')+'</p>';
     const summaryParam = new URLSearchParams(location.search).get('summary');
     if (summaryParam && /^\d+$/.test(summaryParam) && $('feishuSummaryId')) $('feishuSummaryId').value=summaryParam;
     // P1-2: disable outbound write buttons until the connector is configured.
@@ -3090,7 +3091,7 @@ async function loadFeishuCenter() {
     const sendBtn = $("feishuSendBtn");
     if (caBtn) caBtn.disabled = !feishuConfigured;
     if (sendBtn) sendBtn.disabled = !feishuConfigured;
-    if ($("feishuHealth")) $("feishuHealth").innerHTML = table(["项", "值"], [
+    if ($("feishuHealth")) $("feishuHealth").innerHTML = '<p class="feishu-readiness"><strong>'+esc(cfg.live_ready ? '连接配置已就绪' : '当前仅可创建本地草稿')+'</strong><br>'+esc(cfg.live_ready ? '发送仍需白名单目标和原生审批通过。' : '请先配置应用、审批表单、发起人、审批人和允许发送的目标。')+'</p><details><summary>查看连接配置</summary><div class="feishu-status-scroll"><table class="table">'+table(["项", "值"], [
       ["事件模式(event_mode)", cfg.event_mode || "—"],
       ["实时发送", cfg.live ? "已开启" : "已关闭 · 仅本地草稿"],
       ["配置就绪", cfg.live_ready ? "已配置；平台权限仍需验证" : "配置不完整"],
@@ -3103,7 +3104,7 @@ async function loadFeishuCenter() {
       ["允许目标数", cfg.whitelist_target_open_ids ?? 0],
       ["授权审批人数", cfg.approvers ?? 0],
       ["消息留存(天)", cfg.message_retention_days ?? "—"],
-    ]);
+    ])+'</table></div></details>';
     if ($("feishuMessagesTable")) $("feishuMessagesTable").innerHTML = (messages && messages.length) ? table(["聊天", "发送者", "类型", "内容", "接收时间", "状态"], (messages || []).map(m => [m.chat_id, m.sender_id, m.message_type, m.text, m.create_time, { html: statusBadge(m.processed_status) }])) : '<tr><td colspan="6" class="empty-state">暂无消息</td></tr>';
     if ($("feishuSummariesTable")) $("feishuSummariesTable").innerHTML = (summaries && summaries.length) ? table(["ID", "主题", "结论数", "行动项数", "来源消息", "状态", "创建时间"], (summaries || []).map(s => [s.id, s.topic, (s.conclusions || []).length, (s.action_items || []).length, (s.source_message_ids || []).join(","), { html: statusBadge(s.status) }, s.created_at])) : '<tr><td colspan="7" class="empty-state">暂无纪要</td></tr>';
     const preview = (approvals || [])[0];
@@ -3115,7 +3116,7 @@ async function loadFeishuCenter() {
     })) : '<tr><td colspan="7" class="empty-state">暂无审批</td></tr>';
     if ($("feishuDispatchesTable")) $("feishuDispatchesTable").innerHTML = (dispatches && dispatches.length) ? table(["ID", "审批ID", "目标", "状态", "尝试", "飞书消息ID", "API码", "API消息", "追踪ID"], (dispatches || []).map(d => [d.id, d.approval_id, (d.target_type || "") + ":" + (d.target_id || ""), { html: statusBadge(d.status) }, d.attempts, d.feishu_message_id, d.api_code, d.api_msg, d.trace_id])) : '<tr><td colspan="9" class="empty-state">暂无发送回执</td></tr>';
   } catch (err) {
-    if ($("feishuHealth")) $("feishuHealth").innerHTML = table(["状态", "说明"], [["加载失败", err.message]]);
+    if ($("feishuHealth")) $("feishuHealth").innerHTML = '<div class="feishu-status-scroll"><table class="table">'+table(["状态", "说明"], [["加载失败", err.message]])+'</table></div>';
   }
 }
 
