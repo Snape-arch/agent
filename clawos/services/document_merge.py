@@ -104,7 +104,7 @@ def merge_document(base, local, remote):
             if remaining is not None and remaining != b:
                 raise MergeConflict('被删除的内容块仍有他人编辑')
         else:
-            merged[bid] = merge_value(b, l, r, '内容块 ' + bid)
+            merged[bid] = merge_table(b,l,r) if all(x['type']=='table' for x in (b,l,r)) else merge_value(b, l, r, '内容块 ' + bid)
     common = set(bm) & set(lm) & set(rm)
     orders = [[b['id'] for b in d['blocks'] if b['id'] in common] for d in (base, local, remote)]
     if orders[1] != orders[0] and orders[2] != orders[0] and orders[1] != orders[2]:
@@ -123,4 +123,25 @@ def merge_document(base, local, remote):
         else:
             order.insert(order.index(previous) + 1, bid)
     result['blocks'] = [merged[bid] for bid in order]
+    return result
+
+
+def merge_table(base,local,remote):
+    if local==base or local==remote:return deepcopy(remote)
+    if remote==base:return deepcopy(local)
+    shapes=[(len(x['cells']),len(x['cells'][0])) for x in (base,local,remote)]
+    if len(set(shapes))!=1:raise MergeConflict('表格尺寸和内容被同时修改')
+    others=[{k:v for k,v in x.items() if k not in ('cells','cell_inline')} for x in (base,local,remote)]
+    result=merge_value(*others,'表格')
+    cells=[];inline=[]
+    for i in range(shapes[0][0]):
+        row=[];runs=[]
+        for j in range(shapes[0][1]):
+            values=[]
+            for x in (base,local,remote):
+                spans=x.get('cell_inline',[[None]*shapes[0][1] for _ in range(shapes[0][0])])[i][j]
+                values.append(dict(text=x['cells'][i][j],inline=spans if spans is not None else [dict(text=x['cells'][i][j],marks=[])]))
+            value=merge_value(*values,'表格单元格');row.append(value['text']);runs.append(value['inline'])
+        cells.append(row);inline.append(runs)
+    result.update(cells=cells,cell_inline=inline)
     return result

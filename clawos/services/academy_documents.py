@@ -25,7 +25,7 @@ def validate_document(value):
     clean = []
     ids = set()
     for b in blocks:
-        if not isinstance(b, dict) or b.get('type') not in {'paragraph','heading','quote','callout','bullet','numbered','todo','code','table','image','drawing','divider'}:
+        if not isinstance(b, dict) or b.get('type') not in {'paragraph','heading','quote','callout','bullet','numbered','todo','code','table','image','drawing','divider','math'}:
             raise ValueError('不支持的内容块')
         bid = b.get('id')
         if not isinstance(bid, str) or not re.fullmatch(r'[\w-]{1,80}', bid) or bid in ids:
@@ -33,7 +33,7 @@ def validate_document(value):
         ids.add(bid)
         row = dict(id=bid, type=b['type'])
         text = b.get('text','')
-        if not isinstance(text,str) or len(text)>30000:
+        if not isinstance(text,str) or ('inline' not in b and len(text)>30000):
             raise ValueError('内容块文字过长')
         row['text'] = text
         if 'inline' in b:
@@ -57,6 +57,11 @@ def validate_document(value):
             if not isinstance(language,str) or not re.fullmatch(r'[\w+#.-]{1,30}',language):
                 raise ValueError('代码语言无效')
             row['language']=language
+        if b['type']=='math':
+            if len(text)>2000: raise ValueError('公式需小于 2000 字')
+            caption=b.get('caption','')
+            if not isinstance(caption,str) or len(caption)>500: raise ValueError('公式说明过长')
+            row['caption']=caption
         if b['type']=='table':
             cells=b.get('cells')
             if not isinstance(cells,list) or not 1<=len(cells)<=50 or any(not isinstance(r,list) or not 1<=len(r)<=12 for r in cells):
@@ -64,6 +69,23 @@ def validate_document(value):
             if len({len(r) for r in cells})!=1 or any(not isinstance(c,str) or len(c)>2000 for r in cells for c in r):
                 raise ValueError('表格单元格无效')
             row['cells']=cells
+            if 'cell_inline' in b:
+                from .document_richtext import validate_inline, inline_markdown
+                runs=b['cell_inline']
+                if not isinstance(runs,list) or len(runs)!=len(cells) or any(not isinstance(r,list) or len(r)!=len(cells[0]) for r in runs):
+                    raise ValueError('表格富文本尺寸不一致')
+                row['cells']=[r[:] for r in cells]
+                row['cell_inline']=[]
+                for i, runs_row in enumerate(runs):
+                    clean_row=[]
+                    for j, spans in enumerate(runs_row):
+                        clean_spans=validate_inline(spans) if spans is not None else None
+                        if clean_spans is not None:
+                            if sum(len(s['text']) for s in clean_spans)>2000: raise ValueError('表格富文本单元过长')
+                            row['cells'][i][j]=inline_markdown(clean_spans)
+                            if len(row['cells'][i][j])>2000: raise ValueError('表格格式投影过长')
+                        clean_row.append(clean_spans)
+                    row['cell_inline'].append(clean_row)
         if b['type']=='image':
             data=b.get('data','')
             if not isinstance(data,str) or len(data)>2800000 or not re.fullmatch(r'data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+',data):
@@ -169,6 +191,7 @@ class AcademyDocuments:
             elif kind=='todo':t='- ['+('x' if b.get('checked') else ' ')+'] '+t
             elif kind=='bullet':t='  '*b.get('indent',0)+'- '+t
             elif kind=='numbered':t='  '*b.get('indent',0)+'1. '+t
+            elif kind=='math':t='$$\n'+t+'\n$$'+('\n\n'+b['caption'] if b.get('caption') else '')
             elif kind=='code':
                 fence='`'*max(3,max((len(m.group())+1 for m in re.finditer(r'`+',t)),default=3))
                 t=fence+b['language']+'\n'+t+'\n'+fence
@@ -248,10 +271,13 @@ def documents_router(factory,model,access_factory=None):
         def state():
             access=access_factory()
             return access.state(nid,access.identity(request)['id'])
+        def cursors():
+            access=access_factory()
+            return access.cursors(nid,access.identity(request)['id'])
         try: requested=int(request.headers.get('last-event-id',since))
         except (ValueError,TypeError):requested=0
         if requested<0 or requested>initial['version']:requested=0
-        return StreamingResponse(document_events(request,read,state if access_factory else None,requested),media_type='text/event-stream',headers={'Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'})
+        return StreamingResponse(document_events(request,read,state if access_factory else None,requested,cursors=cursors if access_factory else None),media_type='text/event-stream',headers={'Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'})
     @router.get('/{nid}/export')
     def export(nid:str,request:Request,format:str='markdown',learner_id:str='local-user'):
         try:

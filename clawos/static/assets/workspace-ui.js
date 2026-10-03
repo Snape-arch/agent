@@ -1,6 +1,7 @@
 /* Shared navigation uses ordinary links; no permissions or data are cached here. */
 (function () {
   'use strict';
+  const style=document.createElement('link');style.rel='stylesheet';style.href='/assets/product-system.css?v=20261003-studio5';document.head.append(style);
   const links = [
     ['/console', '工作空间', 'console'], ['/academy', '学习', 'academy'],
     ['/academy/notes', '文档', 'documents'], ['/meetings', '会议', 'meetings'],

@@ -19,7 +19,7 @@ def event(name, data, version=None):
     return (('id: '+str(version)+'\n') if version is not None else '') + 'event: '+name+'\ndata: '+json.dumps(data,ensure_ascii=False,separators=(',', ':'))+'\n\n'
 
 
-async def document_events(request, read, state, since=0, interval=.6):
+async def document_events(request, read, state, since=0, interval=.6, cursors=None):
     previous = None
     seen = since
     last_presence = 0
@@ -32,6 +32,7 @@ async def document_events(request, read, state, since=0, interval=.6):
                     yield event('document', document_delta(previous,current), current['version'])
                 previous, seen = current, current['version']
             now = time.monotonic()
+            if cursors: yield event('cursors',await run_in_threadpool(cursors))
             if state and now-last_presence >= 3:
                 yield event('presence', await run_in_threadpool(state))
                 last_presence = now

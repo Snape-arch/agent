@@ -36,6 +36,7 @@ class Collaboration:
             CREATE TABLE IF NOT EXISTS collaboration_invites(hash TEXT PRIMARY KEY, document_id TEXT NOT NULL, role TEXT NOT NULL, expires INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS collaboration_comments(id TEXT PRIMARY KEY, document_id TEXT NOT NULL, user_id TEXT NOT NULL, block_id TEXT NOT NULL, version INTEGER NOT NULL, text TEXT NOT NULL, resolved INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));
             CREATE TABLE IF NOT EXISTS collaboration_presence(document_id TEXT NOT NULL, user_id TEXT NOT NULL, seen INTEGER NOT NULL, block_id TEXT NOT NULL DEFAULT '', PRIMARY KEY(document_id,user_id));
+            CREATE TABLE IF NOT EXISTS collaboration_cursors(document_id TEXT NOT NULL,user_id TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(document_id,user_id));
             CREATE TABLE IF NOT EXISTS collaboration_audit(id INTEGER PRIMARY KEY, document_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')));
             INSERT OR IGNORE INTO collaboration_users VALUES ('local-user','本机所有者');
             ''')
@@ -121,6 +122,16 @@ class Collaboration:
             members = [dict(r) for r in c.execute("SELECT g.user_id,u.name,g.role FROM collaboration_grants g JOIN collaboration_users u ON u.id=g.user_id WHERE g.document_id=? UNION SELECT d.learner,u.name,'owner' FROM academy_documents d JOIN collaboration_users u ON u.id=d.learner WHERE d.id=?", (nid, nid))]
             audit = [dict(r) for r in c.execute('SELECT actor,action,detail,created_at FROM collaboration_audit WHERE document_id=? ORDER BY id DESC LIMIT 50', (nid,))] if role == 'owner' else []
         return dict(viewer_id=uid, role=role, version=version, comments=comments, online=online, members=members, audit=audit)
+
+    def cursors(self,nid,uid):
+        with self.store._conn() as c:
+            self.require(nid,uid,conn=c)
+            online=[dict(r) for r in c.execute('SELECT p.user_id,u.name,x.payload FROM collaboration_presence p JOIN collaboration_users u ON u.id=p.user_id JOIN collaboration_cursors x ON x.document_id=p.document_id AND x.user_id=p.user_id WHERE p.document_id=? AND p.seen>?',(nid,int(time.time())-35))]
+        return dict(cursors=[dict(user_id=r['user_id'],name=r['name'],**json.loads(r['payload'])) for r in online])
+
+    def presence(self,nid,uid,data):
+        from .document_cursor import heartbeat
+        return heartbeat(self,nid,uid,data)
 
     def revoke(self, nid, uid, target):
         with self.store._conn() as c:
@@ -238,10 +249,5 @@ def collaboration_router(factory):
         d=await request.json();return await run_in_threadpool(heartbeat,nid,request,d)
     def heartbeat(nid,request,d):
         s=factory();uid=s.identity(request)['id']
-        with s.store._conn() as c:
-            c.execute('BEGIN IMMEDIATE');s.require(nid,uid,conn=c)
-            bid=str(d.get('block_id') or '')[:80]
-            c.execute('INSERT INTO collaboration_presence VALUES (?,?,?,?) ON CONFLICT(document_id,user_id) DO UPDATE SET seen=excluded.seen,block_id=excluded.block_id', (nid,uid,int(time.time()),bid))
-            c.execute('DELETE FROM collaboration_presence WHERE seen<?', (int(time.time())-3600,))
-        return dict(ok=True)
+        return s.presence(nid,uid,d)
     return router

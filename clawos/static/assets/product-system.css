@@ -1,0 +1,38 @@
+/* Shared work surfaces follow the Learning Studio's ink, green and restrained spacing. */
+.workspace-links{scrollbar-width:none}.workspace-links::-webkit-scrollbar{display:none}
+.workspace-linked :is(.hero,.graph-list,.universe) :is(h1,h2,h3){color:#fff}
+.workspace-linked .hero .eyebrow,.workspace-linked .hero-side h3{color:#b9f4d4}
+.workspace-linked .wb-layout .kicker{font-size:11px;letter-spacing:.12em;color:var(--product-green)}
+.workspace-linked .wb-rail nav button.active{background:#e5f4ed;color:#184f3f}
+.workspace-linked .workflow button{background:#edf2ef;color:var(--product-muted)}
+.workspace-linked .workflow button[aria-current=step]{background:#e5f4ed;color:#184f3f;box-shadow:inset 0 -2px var(--product-green)}
+.workspace-linked .wb-layout :is(button,a.button):hover:not(.primary){border-color:#7f9b90;color:var(--product-green)}
+.workspace-linked .wb-card .muted{font-size:13px}
+.workspace-linked .wb-layout table{font-size:13px}
+.workspace-linked #stepResult{background:#edf5ef;color:#395c4b}
+.workspace-linked.aether-console{--c-blue-soft:#e5f4ed}
+.workspace-linked.aether-console .side-nav button.on{color:#184f3f!important}
+.workspace-linked.aether-console .side-brand b{white-space:normal;overflow:visible;overflow-wrap:anywhere;font-size:14px;line-height:1.35}
+.workspace-linked.aether-console .side-brand small{font-size:11px;letter-spacing:.035em}
+.workspace-linked .feishu-readiness{background:#edf5ef}
+:root{--product-ink:#172637;--product-muted:#596b78;--product-green:#16634b;--product-line:#dce5e2;--product-paper:#f4f6f5;--product-radius:12px;--product-font:"Segoe UI","Microsoft YaHei",sans-serif}
+body.workspace-linked{--workspace-ink:var(--product-ink);--workspace-muted:var(--product-muted);--workspace-line:var(--product-line);--workspace-blue:var(--product-green);font-family:var(--product-font);background:var(--product-paper);color:var(--product-ink);font-size:14px;line-height:1.7}
+.workspace-nav{height:56px;--workspace-height:56px;font-family:var(--product-font);gap:30px;padding:0 24px}.workspace-linked{--workspace-height:56px}
+.workspace-links a{font-size:14px;font-weight:600;padding:9px 15px;border-radius:8px}.workspace-links a[aria-current=page]{color:#184f3f;background:#e5f4ed}.workspace-links a:hover{background:#f0f5f2}
+.workspace-linked :is(button,input,select,textarea){font-family:var(--product-font)}
+.workspace-linked :is(h1,h2,h3){color:var(--product-ink);font-family:var(--product-font);letter-spacing:-.025em;overflow-wrap:anywhere}
+.workspace-linked :is(h1){font-size:32px;line-height:1.35}.workspace-linked :is(h2){font-size:22px;line-height:1.45}.workspace-linked :is(h3){font-size:17px;line-height:1.5}
+.workspace-linked .primary,.workspace-linked .pill.solid{background:var(--product-ink);border-color:var(--product-ink);color:#fff}
+.workspace-linked :is(.eyebrow,.doc-kicker,.academy-kicker){font-size:11px;line-height:1.5;letter-spacing:.12em;color:var(--product-green)}
+.workspace-linked :is(.wb-kicker,.side-label,.recent-label,.rail-caption,.reader-pane-head>div>span){font-size:12px;line-height:1.6;letter-spacing:.045em;color:var(--product-muted)}
+.workspace-linked :is(.wb-card,.card,.code-studio,.quiz-studio,.ingest-studio){border-radius:var(--product-radius);border-color:var(--product-line);box-shadow:0 3px 16px #17263704}
+.workspace-linked.academy-page{background:var(--product-paper);font-family:var(--product-font)}
+.workspace-linked.academy-page .academy-module-heading{padding:0 0 6px;max-width:100%}.workspace-linked.academy-page .academy-module-heading p{max-width:760px}
+.workspace-linked.academy-page :is(.code-missions .code-lab-tabs button small,.code-evidence-panel li small,.quiz-guidance li,.ingest-policy small,.code-run-empty p){font-size:12px;line-height:1.7;color:var(--product-muted)}
+.workspace-linked.academy-page :is(.code-missions .code-lab-tabs button b,.code-evidence-panel li b){font-size:13px;line-height:1.6}
+.workspace-linked.academy-page .code-editor-head :is(b,span){font-size:12px;color:#d2dde8}.workspace-linked.academy-page #academyCodeEvidenceStatus{margin:0;padding:14px 20px;font-size:12px;line-height:1.7}
+.workspace-linked.aether-console{--c-faint:var(--product-muted);--c-blue:var(--product-green)}.workspace-linked.aether-console .console-head{padding-block:18px;height:auto;min-height:82px}.workspace-linked.aether-console .side .brand{font-size:17px}.workspace-linked .wb-empty{max-width:680px;margin:64px auto;padding:32px}.workspace-linked .wb-empty h2{font-size:26px;margin-bottom:12px}
+.workspace-linked :focus-visible{outline:2px solid var(--product-green);outline-offset:3px}
+@media(max-width:780px){.workspace-nav{gap:12px;padding:0 12px}.workspace-links a{font-size:13px;padding:9px 11px}.workspace-linked h1{font-size:27px}.workspace-linked .wb-empty{margin:24px auto;padding:24px 16px}}
+@media(prefers-reduced-motion:reduce){.workspace-linked *{scroll-behavior:auto!important;animation-duration:0.01ms!important;transition-duration:0.01ms!important}}
+@media(forced-colors:active){.workspace-links a[aria-current=page]{outline:2px solid Highlight}}
