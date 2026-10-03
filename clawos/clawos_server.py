@@ -2801,8 +2801,11 @@ async def api_self_evolution_runs(status: str = "", limit: int = 100):
 async def api_self_evolution_board(limit: int = 50):
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
+    from reflection.self_evolution import SelfEvolutionManager
+    manager = SelfEvolutionManager(g_memory_store)
     runs = g_memory_store.list_self_evolution_runs(limit=limit)
     for run in runs:
+        run['paired_quality_evidence'] = manager.quality_evidence(run['id'])
         current = g_memory_store.get_runtime_policy(run['target_type'], run['target_key'])
         run['current_policy_version'] = int(current['version']) if current else 0
         run['stale_baseline'] = (run.get('status') in {'candidate','validated','shadow','canary'}
@@ -2842,6 +2845,84 @@ async def api_self_evolution_board(limit: int = 50):
         "stale_count": sum(bool(run['stale_baseline']) for run in runs),
         "enterprise_ready": False,
     })
+
+
+@app.get("/api/self-evolution/experiments")
+async def api_evolution_experiments():
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    experiments = g_memory_store.list_evolution_experiments(limit=20)
+    from services.evolution_experiments import source_fingerprints, loaded_executor_digest
+    current_sources, current_executor = source_fingerprints(), loaded_executor_digest()
+    summaries = []
+    for experiment in experiments:
+        definition, report = experiment['definition'], experiment['report']
+        policy = g_memory_store.get_runtime_policy(definition['target_type'], definition['target_key'])
+        stale = (definition.get('source_sha256') != current_sources
+                 or definition.get('loaded_executor_digest') != current_executor
+                 or definition.get('baseline_policy_version') != (int(policy['version']) if policy else 0))
+        summaries.append({key: experiment[key] for key in ('id','status','definition_digest','created_at')})
+        summaries[-1].update(target_type=definition['target_type'], target_key=definition['target_key'],
+                             stale_evidence=stale,
+                             case_count=len(definition['cases']), candidate_count=len(definition['candidates']),
+                             report={key: report.get(key) for key in ('selected_candidate_id','search_groups','holdout_groups',
+                                     'eligible_for_regression_queue','gates','baseline','candidate','paired_gate','error','message')})
+        if stale:
+            summaries[-1]['report']['eligible_for_regression_queue'] = False
+    return JSONResponse({'experiments': summaries, 'runtime_promotion_evidence': False})
+
+
+@app.get("/api/self-evolution/experiments/{experiment_id}")
+async def api_evolution_experiment_detail(experiment_id: int):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    experiment = g_memory_store.get_evolution_experiment(experiment_id)
+    if not experiment:
+        raise HTTPException(404, "experiment not found")
+    return JSONResponse({'experiment': experiment})
+
+
+@app.post("/api/self-evolution/experiments")
+async def api_evolution_experiment_freeze(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from services.evolution_experiments import EvolutionExperimentService
+    if len(await request.body()) > 8 * 1024 * 1024:
+        raise HTTPException(413, "experiment exceeds 8MiB")
+    data = await request.json()
+    try:
+        experiment = await asyncio.to_thread(EvolutionExperimentService(g_memory_store).freeze,
+            target_type=data.get('target_type',''), target_key=data.get('target_key',''),
+            baseline_payload=data.get('baseline_payload',{}), cases=data.get('cases'),
+            documents=data.get('documents'), reflections=data.get('reflections'), created_by=data.get('actor_id','console'))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({'experiment': experiment})
+
+
+@app.post("/api/self-evolution/experiments/{experiment_id}/replay")
+async def api_evolution_experiment_replay(experiment_id: int):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from services.evolution_experiments import EvolutionExperimentService
+    try:
+        experiment = await asyncio.to_thread(EvolutionExperimentService(g_memory_store).replay, experiment_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return JSONResponse({'experiment': experiment})
+
+
+@app.post("/api/self-evolution/experiments/{experiment_id}/nominate")
+async def api_evolution_experiment_nominate(experiment_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from services.evolution_experiments import EvolutionExperimentService
+    data = await request.json()
+    try:
+        run = EvolutionExperimentService(g_memory_store).nominate(experiment_id, data.get('actor_id','console'))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return JSONResponse({'run': run, 'next_step': 'execute regression, then collect fresh shadow and canary evidence'})
 
 
 @app.post("/api/self-evolution/runs")
@@ -2909,7 +2990,13 @@ async def api_self_evolution_candidate(request: Request):
             )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return JSONResponse({"candidate_payload": candidate})
+    from services.evolution_experiments import candidate_pool
+    try:
+        pool = candidate_pool(data.get('target_type',''), data.get('baseline_payload',{}), data.get('reflections'))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({"candidate_payload": candidate, "candidates": pool,
+                         "selection_requires_replay": True, "verified_gain": False})
 
 
 @app.post("/api/self-evolution/runs/{run_id}/evaluate")
@@ -2919,7 +3006,7 @@ async def api_self_evolution_evaluate(run_id: int, request: Request):
     from reflection.self_evolution import SelfEvolutionManager
     await request.json()
     try:
-        run = SelfEvolutionManager(g_memory_store).run_automatic_benchmarks(run_id)
+        run = await asyncio.to_thread(SelfEvolutionManager(g_memory_store).run_automatic_benchmarks, run_id)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return JSONResponse({"run": run})
@@ -3022,6 +3109,9 @@ async def api_self_evolution_rollback(run_id: int, request: Request):
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
     data = await request.json()
+    if data.get('mine_reflections') and g_memory_store:
+        data['reflections'] = [card for card in g_memory_store.list_reflection_cards(limit=100)
+                               if card.get('outcome') in {'failure','partial'}]
     if data.get('confirmed') is not True:
         raise HTTPException(409, 'confirmed=true is required for rollback')
     from reflection.self_evolution import SelfEvolutionManager
@@ -3113,7 +3203,8 @@ async def api_policy_promote(group_name: str, request: Request):
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return JSONResponse({"promotion": promotion})
+    return JSONResponse({"promotion": promotion, "run": promotion, "activated": False,
+                         "next_step": "execute regression and fresh paired shadow/canary evidence"})
 
 
 @app.post("/api/policy/promotions/{promotion_id}/rollback")

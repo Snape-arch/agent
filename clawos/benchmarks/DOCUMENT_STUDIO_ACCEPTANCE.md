@@ -81,3 +81,23 @@ Run `document_studio_acceptance.cjs` with `--url`, `--playwright`, `--browser`, 
 Run `document_collaboration_soak.py --hours 48 --workers 12 --interval 30 --reconnect-seconds 300 --port 18915 --session document-soak-20261003 --out clawos/output/document-soak-20261003`. It terminates only the preview it created. Progress/source hashes and actual final results determine the verdict; no simulated duration replaces the wall-clock test.
 
 Delivery follows the user's explicit authorization for `Snape-arch/agent`, branch `codex/coding-agent-competitive-p0-p2`. No master integration or force push. Exclude `tools`, weights, secrets, databases and runtime output; preserve the pre-existing `clawos/skills/skill_registry.jsonl` modification.
+
+## Actual 48-hour attempt: failed continuous coverage (2026-10-03)
+
+This supersedes earlier running / pending descriptions. The target was **172800 seconds**, with **12 authenticated API clients**. Start **2026-10-03T07:48:28.659742Z**, finish **2026-10-03T12:40:35.558767Z**. Reported elapsed **17526.89 seconds (4.8686 hours)** includes a **5453.69-second observation gap** and is **not successful continuous load**. The >90-second coverage guard failed honestly; host sleep/suspension or scheduling blockage is possible, but the report alone does not establish its cause.
+
+- Verdict **FAILED**; **14 errors**: 12 stream ReadTimeout events, one writer ReadTimeout, one continuous_coverage / monitor_gap_5453.7s event.
+- **4795 writes**, **47309 document events**, **214833 cursor events**, **480 controlled reconnects**, **1197 integrity checks**; sampled HTTP P95 **266.0ms**, database **1433600 bytes**.
+- Per-editor acknowledged writes **[400,400,400,400,400,400,399,400,400,399,398,399]**. Shutdown code fetched the final document and compared all 12 blocks against those acknowledgements; the complete 14-error list contains **no final_integrity loss error**. This is an end-of-attempt value check, not proof of 48-hour integrity.
+- Final authenticated revoke probe **revocation_pass=true** (HTTP403). The supervisor **30708** and its owned preview **50084** have ended; they were not restarted, and production was not restarted. The final report timestamp was checked against the owned process IDs.
+- Evidence: ignored output/document-soak-20261003/progress.json; SHA-256 **e93dc701fae8a63fe01a7435838cc875f5091a6ab30afd006523c28863e1cabf**. All five recorded collaboration-core fingerprints were compared to current files and still match:
+
+| Source | SHA-256 |
+|---|---|
+| services/academy_documents.py | c6aafcfa923b8e32a26a5f1c2581e590c882d70feef278b7970f9ee9bd89a5f8 |
+| services/document_events.py | 7e796ce5b7242f1c4cde2ca8a52f764a1fbb87d1aaa80000cf87d42ea2c081c3 |
+| services/document_cursor.py | 68af53fa3669b587395437a83646ffd51e8554c3449fa0f4539bb350aeff4f39 |
+| services/document_merge.py | 7c27ef387df2b617c4c2ce6fcacf5a79a8e5544b7d0ed405d29a755fa97dd154 |
+| services/collaboration.py | edbdc70c84f8a271d4bb7af726f7dc67baa03e56cedf3ae013338bcbe7366e36 |
+
+This was API/SSE load on one host. It does not establish physical multi-device, real browser collaboration, screen-reader speech, or sustained browser memory quality. Failure is preserved; there is no new 48-hour start and no completed 48-hour claim. A retry needs an environment that maintains actual continuous execution; idle or suspended time cannot count. After the final failed conclusion is committed and pushed, stop heartbeat48 for this completed attempt.

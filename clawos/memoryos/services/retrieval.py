@@ -119,10 +119,10 @@ class CrossEncoderReranker:
 class RetrievalService:
     """Multi-strategy retrieval: keyword (SQLite FTS) + BM25 + re-rank."""
 
-    def __init__(self, store, vector_store=None, reranker=None):
+    def __init__(self, store, vector_store=None, reranker=None, *, allow_env_reranker=True):
         self._store = store
         self._vector_store = vector_store
-        self._reranker = reranker or self._build_env_reranker()
+        self._reranker = reranker or (self._build_env_reranker() if allow_env_reranker else None)
         self._bm25 = BM25Index()
         self._bm25_populated = False
 

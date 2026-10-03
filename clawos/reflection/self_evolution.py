@@ -118,6 +118,10 @@ class SelfEvolutionManager:
         )
 
     def promote_canary(self, run_id, traffic_percent=10):
+        with self._store.transaction():
+            return self._promote_canary_locked(run_id, traffic_percent)
+
+    def _promote_canary_locked(self, run_id, traffic_percent=10):
         run = self._require(run_id)
         self._assert_current_baseline(run)
         self._assert_allowed_target(run["target_type"])
@@ -140,6 +144,10 @@ class SelfEvolutionManager:
         )
 
     def activate(self, run_id, actor_id="system", reason=""):
+        with self._store.transaction():
+            return self._activate_locked(run_id, actor_id, reason)
+
+    def _activate_locked(self, run_id, actor_id="system", reason=""):
         run = self._require(run_id)
         self._assert_current_baseline(run)
         self._assert_allowed_target(run["target_type"])
@@ -172,7 +180,7 @@ class SelfEvolutionManager:
         run = self._store.record_self_evolution_quality_signal(
             run_id, signal_type, value, metadata=metadata, created_by=created_by
         )
-        if run.get("status") == "canary" and not self._quality_gate_passed(run):
+        if run.get("status") == "canary" and not self._quality_gate_passed(run, require_support=False):
             run = self._store.update_self_evolution_run(
                 run_id,
                 status="rolled_back",
@@ -326,42 +334,24 @@ class SelfEvolutionManager:
             candidate["fallback_order"] = ["local", "manual_review"]
         return candidate
 
-    def _quality_gate_passed(self, run):
-        signals = run.get("quality_signals") or {}
-        for signal, limit in self.QUALITY_LIMITS.items():
-            item = signals.get(signal) or {}
-            if float(item.get("latest", item.get("average", 0)) or 0) > limit:
-                return False
-        retrieval = signals.get("retrieval_hit_rate") or {}
-        if retrieval and float(retrieval.get("latest", retrieval.get("average", 1)) or 0) < 0.80:
+    def quality_evidence(self, run_id, stage=None):
+        from services.learning_governance import paired_quality_report
+        run = self._require(run_id)
+        rows = self._store.list_self_evolution_quality_signals(run_id, limit=50000)
+        return paired_quality_report(rows, stage=stage or run.get("release_stage"))
+
+    def _quality_gate_passed(self, run, require_support=True):
+        from services.learning_governance import runtime_health_passed
+        rows = self._store.list_self_evolution_quality_signals(run["id"], limit=50000)
+        if not runtime_health_passed(rows):
             return False
-        rows = self._store.list_self_evolution_quality_signals(
-            run["id"], limit=500
+        report = self.quality_evidence(run["id"])
+        if require_support:
+            return report["passed"]
+        return not report["rejected"] and all(
+            item["confidence_lower"] >= -report["tolerance"]
+            for item in report["metrics"].values() if item["independent_clusters"] >= 30
         )
-        grouped = {}
-        for row in rows:
-            variant = str((row.get("metadata") or {}).get("variant") or "")
-            if variant not in {"control", "candidate"}:
-                continue
-            grouped.setdefault(
-                (str(row.get("signal_type") or ""), variant), []
-            ).append(float(row.get("value") or 0))
-        for signal in {
-            key[0] for key in grouped
-            if (key[0], "control") in grouped
-            and (key[0], "candidate") in grouped
-        }:
-            control = sum(grouped[(signal, "control")]) / len(
-                grouped[(signal, "control")]
-            )
-            candidate = sum(grouped[(signal, "candidate")]) / len(
-                grouped[(signal, "candidate")]
-            )
-            if signal in self.QUALITY_LIMITS and candidate > control + 0.02:
-                return False
-            if signal == "retrieval_hit_rate" and candidate < control - 0.02:
-                return False
-        return True
 
     def _quality_sample_count(self, run_id):
         from services.learning_governance import independent_evidence_ids
@@ -370,20 +360,7 @@ class SelfEvolutionManager:
         return len(independent_evidence_ids(rows))
 
     def _paired_quality_sample_count(self, run_id):
-        from services.learning_governance import independent_evidence_ids
-
-        rows = self._store.list_self_evolution_quality_signals(
-            run_id, limit=500
-        )
-        control = independent_evidence_ids(
-            row for row in rows
-            if (row.get("metadata") or {}).get("variant") == "control"
-        )
-        candidate = independent_evidence_ids(
-            row for row in rows
-            if (row.get("metadata") or {}).get("variant") == "candidate"
-        )
-        return len(control & candidate)
+        return self.quality_evidence(run_id)["matched_task_count"]
 
     def _require(self, run_id):
         run = self._store.get_self_evolution_run(run_id)

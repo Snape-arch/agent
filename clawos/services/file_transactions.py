@@ -18,9 +18,9 @@ def _file_lock(target, timeout=10):
     folder.mkdir(exist_ok=True)
     key = hashlib.sha256(os.path.normcase(str(target)).encode()).hexdigest()
     with (folder / (key + ".lock")).open("a+b") as handle:
-        if handle.tell() == 0:
-            handle.write(b"0")
-            handle.flush()
+        # Windows permits byte-range locks past EOF. Initializing a byte before
+        # acquiring the lock races another handle already locking the empty
+        # file, causing PermissionError at flush rather than bounded contention.
         deadline = time.monotonic() + timeout
         while True:
             try:

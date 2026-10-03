@@ -46,7 +46,7 @@ const VIEW_META = {
   memory: ["记忆治理", "管理画像、偏好、项目、经验和技能等系统记忆"],
   projects: ["项目", "进入本地项目、科研目录和交付任务"],
   reflection: ["反思循环", "审查任务复盘、改进建议、验证结果和回滚记录"],
-  evolution: ["Self-Evolution", "候选生成、自动基准门禁、shadow/canary 灰度和真实质量信号"],
+  evolution: ["策略演进实验室", "候选比较、成对回放与独立任务证据"],
   skills: ["固化技能", "查看可复用工作流、候选版本和执行质量"],
   tools: ["工具路由", "查看本地函数清单、参数结构和调用轨迹"],
   tasks: ["运行轨迹", "跟踪任务取消、重试、恢复、队列领取和事件审计"],
@@ -2439,10 +2439,12 @@ function evolutionActions(run) {
   const canShadow = status === "validated";
   const canCanary = status === "shadow" || status === "canary";
   const canActivate = status === "canary";
+  const evidenceReady = Boolean(run.paired_quality_evidence?.passed);
   return [
+    status === "candidate" ? `<button class="secondary" onclick="benchmarkEvolutionRun(${id})">运行回归</button>` : "",
     canShadow ? `<button class="secondary" onclick="shadowEvolutionRun(${id})">Shadow</button>` : "",
-    canCanary ? `<button class="secondary" onclick="canaryEvolutionRun(${id})">Canary</button>` : "",
-    canActivate ? `<button class="primary" onclick="activateEvolutionRun(${id})">Activate</button>` : "",
+    canCanary ? `<button class="secondary" ${evidenceReady ? "" : 'disabled title="尚缺本阶段成对任务证据"'} onclick="canaryEvolutionRun(${id})">灰度</button>` : "",
+    canActivate ? `<button class="primary" ${evidenceReady ? "" : 'disabled title="尚缺灰度阶段的新任务证据"'} onclick="activateEvolutionRun(${id})">激活</button>` : "",
     run.owns_active_policy ? `<button class="secondary" onclick="rollbackEvolutionRun(${id})">回滚</button>` : "",
     `<button class="secondary" onclick="snapshotEvolutionQuality(${id})">质量快照</button>`
   ].filter(Boolean).join(" ");
@@ -2458,18 +2460,19 @@ async function loadEvolution() {
     $("evolutionQualityTable").innerHTML = table(["Signal", "Value"], Object.keys(quality).map(key => [key, quality[key]]));
   }
   $("evolutionRunTable").innerHTML = table(
-    ["ID", "目标", "阶段", "流量", "门禁", "决策", "结论", "操作"],
+    ["ID", "目标", "阶段", "流量", "门禁", "成对证据", "结论", "操作"],
     runs.map(run => [
       run.id,
       `${run.target_type}/${run.target_key}`,
       { html: statusBadge(run.effective_stage || run.release_stage || run.status) },
       `${run.traffic_percent || 0}%`,
       { html: statusBadge((run.gate_result || {}).passed ? "passed" : run.status === "candidate" ? "pending" : "failed") },
-      run.publish_decision || "",
+      `${run.paired_quality_evidence?.matched_task_count || 0} 个任务 · ${run.paired_quality_evidence?.passed ? "本阶段通过" : "等待或阻止晋级"}`,
       run.conclusion || "",
       { html: evolutionActions(run) }
     ])
   );
+  await loadEvolutionExperiments();
   const selected = runs[0] || {};
   const checks = (selected.gate_result || {}).checks || [];
   if ($("evolutionGateTable")) {
@@ -2576,6 +2579,100 @@ async function activateEvolutionRun(id) {
   const data = await api(`/api/self-evolution/runs/${id}/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor_id: "console", reason: "console activation after shadow/canary review", confirmed: true }) });
   if ($("evolutionResult")) $("evolutionResult").textContent = JSON.stringify(data, null, 2);
   await loadEvolution();
+}
+
+let evolutionCandidateSearch = null;
+async function searchEvolutionCandidates() {
+  const status = $("evolutionSearchStatus");
+  try {
+    const request = {target_type: $("evoTargetType").value, target_key: $("evoTargetKey").value || "default",
+      baseline_payload: JSON.parse($("evoBaselinePayload").value || "{}"), mine_reflections: true};
+    status.textContent = "正在生成候选…";
+    const data = await api("/api/self-evolution/candidates", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(request)});
+    evolutionCandidateSearch = {request, candidates: data.candidates || []};
+    $("evolutionCandidateGrid").innerHTML = evolutionCandidateSearch.candidates.map((candidate, index) =>
+      `<article class="evolution-candidate-card"><h3>${esc(candidate.name)}</h3><p>${esc(candidate.hypothesis)} · ${Number(candidate.evidence?.reflection_count || 0)} 条失败反思</p><p>候选 ${esc(candidate.payload_digest.slice(0,12))} · 效果待验证</p><details><summary>检查配置差异</summary><pre>${esc(JSON.stringify(candidate.payload,null,2))}</pre></details><button class="secondary" onclick="queueSearchedCandidate(${index})">提名并运行回归</button></article>`).join("");
+    status.textContent = `${data.candidates?.length || 0} 个有界候选；仅配置提议，尚未验证质量提升。`;
+  } catch (err) { status.textContent = "候选生成失败：" + err.message; }
+}
+
+async function queueSearchedCandidate(index) {
+  const snapshot = evolutionCandidateSearch;
+  if (!snapshot?.candidates[index]) return;
+  try {
+    const data = await api("/api/self-evolution/runs", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({...snapshot.request, mine_reflections:false, candidate_payload:snapshot.candidates[index].payload, auto_queue:true, actor_id:"console"})});
+    $("evolutionSearchStatus").textContent = `候选 #${data.run.id} 已排队；后台回归通过后进入影子阶段。`;
+    await loadEvolution();
+  } catch (err) { $("evolutionSearchStatus").textContent = "提名失败：" + err.message; }
+}
+
+async function loadEvolutionExperiments() {
+  const target = $("evolutionExperimentTable");
+  if (!target) return;
+  try {
+    const data = await api("/api/self-evolution/experiments");
+    target.innerHTML = table(["实验", "目标", "状态", "任务 / 候选", "搜索 / 留出组", "离线结论", "操作"], (data.experiments || []).map(item => {
+      const report = item.report || {};
+      const id = Number(item.id);
+      const actions = [`<button class="secondary" onclick="exportEvolutionExperiment(${id})">下载证据</button>`];
+      if (item.status === "frozen") actions.unshift(`<button class="primary" onclick="replayEvolutionExperiment(${id})">成对回放</button>`);
+      if (report.eligible_for_regression_queue) actions.unshift(`<button class="secondary" onclick="nominateEvolutionExperiment(${id})">提名候选</button>`);
+      return [id, `${item.target_type}/${item.target_key}`, item.status, `${item.case_count} / ${item.candidate_count}`,
+        `${report.search_groups ?? "—"} / ${report.holdout_groups ?? "—"}`,
+        item.stale_evidence ? "源码或策略基线已变更；需新实验" : report.eligible_for_regression_queue ? "可提名；仍需回归和线上证据" : report.error || (item.status === "completed" ? "未通过；检查下载证据" : "等待回放"), {html:actions.join(" ")}];
+    }));
+  } catch (err) { $("evolutionExperimentStatus").textContent = "实验加载失败：" + err.message; }
+}
+
+async function freezeEvolutionExperiment() {
+  const status = $("evolutionExperimentStatus");
+  const file = $("evolutionExperimentFile").files[0];
+  if (!file) { status.textContent = "请先选择审核后的任务与资料 JSON。"; return; }
+  if (file.size > 8 * 1024 * 1024) { status.textContent = "文件超过 8MiB。"; return; }
+  try {
+    const data = JSON.parse(await file.text());
+    status.textContent = "正在冻结任务、资料与分组…";
+    const result = await api("/api/self-evolution/experiments", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)});
+    status.textContent = `实验 #${result.experiment.id} 已冻结，摘要 ${result.experiment.definition_digest.slice(0,12)}。`;
+    await loadEvolutionExperiments();
+  } catch (err) { status.textContent = "冻结失败：" + err.message; }
+}
+
+async function replayEvolutionExperiment(id) {
+  const status = $("evolutionExperimentStatus");
+  try {
+    status.textContent = `实验 #${id} 正在回放；检索使用隔离资料库，工具路由只计算合同。`;
+    const data = await api(`/api/self-evolution/experiments/${id}/replay`, {method:"POST"});
+    status.textContent = data.experiment.report.eligible_for_regression_queue ? `实验 #${id} 留出验证通过，可提名候选。` : `实验 #${id} 验证未通过，下载证据查看阻止原因。`;
+    await loadEvolutionExperiments();
+  } catch (err) { status.textContent = "回放未完成：" + err.message; }
+}
+
+async function nominateEvolutionExperiment(id) {
+  try {
+    const data = await api(`/api/self-evolution/experiments/${id}/nominate`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({actor_id:"console"})});
+    $("evolutionExperimentStatus").textContent = `候选 #${data.run.id} 已提名，请运行回归；离线回放不计入影子／灰度样本。`;
+    await loadEvolution();
+  } catch (err) { $("evolutionExperimentStatus").textContent = "提名失败：" + err.message; }
+}
+
+async function exportEvolutionExperiment(id) {
+  try {
+    const data = await api(`/api/self-evolution/experiments/${id}`);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data.experiment, null, 2)], {type:"application/json"}));
+    const link = document.createElement("a"); link.href = url; link.download = `evolution-experiment-${id}.json`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) { $("evolutionExperimentStatus").textContent = "证据下载失败：" + err.message; }
+}
+
+async function benchmarkEvolutionRun(id) {
+  try {
+    $("evolutionExperimentStatus").textContent = `候选 #${id} 正在运行隔离回归…`;
+    const data = await api(`/api/self-evolution/runs/${id}/evaluate`, {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+    $("evolutionExperimentStatus").textContent = `候选 #${id}：${data.run.status}；仍需本阶段成对任务证据。`;
+    await loadEvolution();
+  } catch (err) { $("evolutionExperimentStatus").textContent = "回归未完成：" + err.message; }
 }
 
 async function rollbackEvolutionRun(id) {

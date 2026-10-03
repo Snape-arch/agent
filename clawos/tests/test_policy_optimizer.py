@@ -76,19 +76,19 @@ class PolicyOptimizerTests(unittest.TestCase):
 
         self.assertEqual(result["reward"], 0.55)
 
-    def test_best_arm_can_be_promoted_and_rolled_back(self):
+    def test_best_arm_is_nominated_without_bypassing_release_gates(self):
         from memoryos.memory_store import MemoryStore
         from policy_optimizer import PolicyOptimizer
 
         with tempfile.TemporaryDirectory() as td:
             store = MemoryStore(str(Path(td) / "memory.db"))
-            store.set_runtime_policy("agent_policy", "research", {"agent": "baseline"})
+            store.set_runtime_policy("prompt", "research", {"prompt": "baseline"})
             optimizer = PolicyOptimizer(store)
             optimizer.register_group(
                 "research",
                 [
-                    {"name": "fast", "arm_type": "agent", "payload": {"agent": "fast"}},
-                    {"name": "deep", "arm_type": "agent", "payload": {"agent": "deep"}},
+                    {"name": "fast", "arm_type": "prompt", "payload": {"prompt": "fast"}},
+                    {"name": "deep", "arm_type": "prompt", "payload": {"prompt": "deep"}},
                 ],
                 exploration_rate=0,
             )
@@ -100,15 +100,14 @@ class PolicyOptimizerTests(unittest.TestCase):
                 if min(int(arm["pull_count"]) for arm in stats["arms"]) >= 30:
                     break
             promotion = optimizer.promote(
-                "research", "agent_policy", "research", min_pulls=30
+                "research", "prompt", "research", min_pulls=30
             )
-            active = store.get_runtime_policy("agent_policy", "research")
-            rolled_back = optimizer.rollback(promotion["id"])
-            restored = store.get_runtime_policy("agent_policy", "research")
+            active = store.get_runtime_policy("prompt", "research")
 
-        self.assertEqual(active["payload"], {"agent": "deep"})
-        self.assertEqual(rolled_back["status"], "rolled_back")
-        self.assertEqual(restored["payload"], {"agent": "baseline"})
+        self.assertEqual(active["payload"], {"prompt": "baseline"})
+        self.assertEqual(promotion["candidate_payload"], {"prompt": "deep"})
+        self.assertEqual(promotion["status"], "candidate")
+        self.assertEqual(promotion["baseline_policy_version"], active["version"])
 
 
 if __name__ == "__main__":

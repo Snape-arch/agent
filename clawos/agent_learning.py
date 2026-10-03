@@ -410,6 +410,7 @@ class AgentSkillPolicyNetwork:
         holdout_mae = self._mae(holdout, arm_map, weights)
         payload = {
             "schema": "clawos.agent-skill-policy.v1",
+            "baseline_active_model_id": (self.store.get_agent_policy_model(group_name=group_name, status="active") or {}).get("id", 0),
             "heads": weights,
             "arm_names": sorted(arm_map),
             "training_example_ids": [
@@ -460,7 +461,7 @@ class AgentSkillPolicyNetwork:
             or (item.get("selection_context") or {}).get("repository_id")
             or ""
         ).strip()
-        return f"repo:{repository}|task:{task_id}|session:{session_id}"
+        return f"repo:{repository}" if repository else f"task:{task_id}|session:{session_id}"
 
     def active_scores(
         self,
@@ -588,6 +589,10 @@ class TrajectoryCritic:
         training = [
             item for item in ordered if int(item["id"]) in training_ids
         ]
+        if (len(holdout) != len(holdout_ids) or len(training) != len(training_ids)
+                or {network._split_group(item) for item in training}
+                   & {network._split_group(item) for item in holdout}):
+            raise ValueError("training/holdout evidence missing or group leakage detected; retrain")
         reward_means: dict[str, float] = {}
         for name in arm_map:
             values = [
@@ -595,12 +600,11 @@ class TrajectoryCritic:
                 if item.get("action_name") == name
             ]
             reward_means[name] = self._mean(values)
-        estimates = []
-        observed_rewards = []
-        importance_weights = []
-        safety_violations = 0
+        from services.advanced_policy_learning import RobustOffPolicyEvaluator
+
         decisions = []
-        for item in holdout:
+        safety_violations = sum(bool(item.get("safety_violation")) for item in holdout)
+        def candidate_policy(item, candidates):
             context = {
                 **(item.get("task_context") or {}),
                 **(item.get("selection_context") or {}),
@@ -609,78 +613,67 @@ class TrajectoryCritic:
                 "environment": item.get("environment_state") or {},
                 "state": item.get("state") or {},
             }
-            scores = network.score_model(model, context, arms)
-            if not scores:
-                continue
+            eligible = [arm_map[name] for name in candidates if name in arm_map]
+            scores = network.score_model(model, context, eligible)
+            if set(scores) != set(candidates):
+                return {}
             chosen = max(scores, key=lambda name: (scores[name], name))
-            logged = item["action_name"]
-            behavior_q = reward_means.get(logged, 0.0)
-            candidate_q = reward_means.get(chosen, 0.0)
-            observed = float(item["observed_reward"])
-            propensity = max(
-                0.000001, min(float(item.get("behavior_propensity") or 1), 1.0)
-            )
-            matched = chosen == logged
-            weight = min(20.0, (1.0 / propensity) if matched else 0.0)
-            doubly_robust = candidate_q + weight * (observed - behavior_q)
-            estimates.append(max(-1.0, min(doubly_robust, 1.0)))
-            observed_rewards.append(observed)
-            importance_weights.append(weight)
-            safety_violations += int(
-                bool(item.get("safety_violation")) and matched
-            )
-            decisions.append({
-                "example_id": int(item["id"]),
-                "logged_action": logged,
-                "candidate_action": chosen,
-                "matched": matched,
-                "behavior_propensity": round(propensity, 8),
-            })
-        candidate_mean = self._mean(estimates)
-        baseline_mean = self._mean(observed_rewards)
-        standard_error = self._standard_error(estimates)
-        lower_95 = candidate_mean - 1.96 * standard_error
-        weight_sum = sum(importance_weights)
-        effective_sample_size = (
-            (weight_sum * weight_sum) /
-            max(sum(weight * weight for weight in importance_weights), 0.000001)
+            matched = chosen == item["action_name"]
+            decisions.append({"example_id": int(item["id"]), "candidate_action": chosen,
+                              "logged_action": item["action_name"], "matched": matched})
+            return {name: float(name == chosen) for name in candidates}
+
+        report = RobustOffPolicyEvaluator().evaluate(
+            holdout, candidate_policy, minimum_samples=max(30, int(min_samples)),
+            reward_model=lambda record, name: reward_means.get(name, 0.0),
         )
-        required = max(30, int(min_samples))
-        passed = bool(
-            len(estimates) >= required
-            and safety_violations == 0
-            and candidate_mean >= baseline_mean - float(regression_tolerance)
-            and lower_95 >= baseline_mean - max(0.25, float(regression_tolerance))
-        )
+        passed = bool(report["passed"] and safety_violations == 0)
         metrics = {
-            "evidence_type": "offline_doubly_robust",
-            "sample_count": len(estimates),
-            "baseline_mean_reward": round(baseline_mean, 6),
-            "candidate_estimated_reward": round(candidate_mean, 6),
-            "estimated_lift": round(candidate_mean - baseline_mean, 6),
-            "standard_error": round(standard_error, 6),
-            "confidence_lower_95": round(lower_95, 6),
-            "effective_sample_size": round(effective_sample_size, 6),
-            "safety_violation_count": safety_violations,
-            "regression_tolerance": float(regression_tolerance),
-            "passed": passed,
+            "schema": "clawos.router-promotion.v2", "evidence_type": "offline_robust_ope",
+            "sample_count": report["sample_count"],
+            "baseline_mean_reward": report["baseline_mean"],
+            "candidate_estimated_reward": report["doubly_robust"],
+            "estimated_lift": report["doubly_robust"] - report["baseline_mean"],
+            "confidence_lower_95": report["bootstrap"]["dr_lower_95"],
+            "effective_sample_size": report["effective_sample_size"],
+            "safety_violation_count": safety_violations, "passed": passed,
+            "regression_tolerance": 0.02,  # Caller cannot loosen the common gate.
             "decision_digest": _stable_digest(decisions),
+            "model_digest": _stable_digest(model["weights"]),
+            "holdout_digest": _stable_digest(holdout),
+            "arm_digest": _stable_digest(arms),
             "group_disjoint_holdout": True,
             "independent_reward_model": "training_arm_mean_v1",
-            "training_sample_count": len(training),
+            "training_sample_count": len(training), "robust_ope": report,
+            "scope": "offline pure-network argmax; live hybrid-router lift is not established",
         }
         return self.store.evaluate_agent_policy_model(model_id, metrics, passed)
 
     def activate(
         self, model_id: int, *, confirmed: bool = False
     ) -> dict[str, Any]:
+        with self.store.transaction():
+            return self._activate_locked(model_id, confirmed=confirmed)
+
+    def _activate_locked(self, model_id: int, *, confirmed: bool = False) -> dict[str, Any]:
         if not confirmed:
             raise ValueError("explicit confirmed=true is required for activation")
         model = self.store.get_agent_policy_model(model_id)
         if not model or model.get("status") != "shadow":
             raise ValueError("only a shadow-evaluated model can be activated")
-        if not (model.get("evaluation_metrics") or {}).get("passed"):
-            raise ValueError("offline trajectory gate did not pass")
+        metrics = model.get("evaluation_metrics") or {}
+        if not metrics.get("passed") or metrics.get("schema") != "clawos.router-promotion.v2":
+            raise ValueError("common robust offline trajectory gate did not pass; reevaluate this model")
+        current = self.store.get_agent_policy_model(group_name=model['group_name'], status='active')
+        if (model.get('weights') or {}).get('baseline_active_model_id', -1) != (current or {}).get('id', 0):
+            raise ValueError("active router changed; retrain and evaluate against its new baseline")
+        # Replay the immutable split against current logged outcomes/arms before
+        # activation, so changed rewards or arm payloads cannot reuse stale proof.
+        evaluated = self.evaluate(model_id)
+        fresh = evaluated.get("evaluation_metrics") or {}
+        if (not fresh.get("passed") or any(fresh.get(key) != metrics.get(key)
+                for key in ("model_digest", "holdout_digest", "arm_digest"))):
+            raise ValueError("evaluation evidence changed; review the fresh gate before activation")
         return self.store.activate_agent_policy_model(model_id)
 
     def rollback(

@@ -585,3 +585,31 @@ body.aether-console{font-size:14px;line-height:1.55}
 .aether-console .mc .md-table-wrap table{min-width:0!important;width:100%;table-layout:auto}
 .aether-console .chat-response-state{color:#697586;font-size:13px;line-height:1.6;margin:10px 0}
 .aether-console .message-body{min-width:0}
+
+/* Strategy experiments follow the shared readable workbench scale. */
+.evolution-workspace .ops-form label{display:grid;gap:8px;font-size:14px;color:var(--text,#20382e)}
+.evolution-candidate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:20px}
+.evolution-candidate-card{border:1px solid #d8e5dc;border-radius:16px;background:#f7faf7;padding:20px;min-width:0;color:#20382e}
+.evolution-candidate-card h3{font-size:17px;margin:0 0 8px}.evolution-candidate-card p{font-size:13px;line-height:1.6}
+.evolution-candidate-card pre{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto}
+.evolution-candidate-card button{margin-top:16px}.evolution-workspace summary{cursor:pointer;font-weight:600;font-size:14px;padding:12px 0}
+.evolution-experiment-panel p{line-height:1.75;max-width:85ch;overflow-wrap:anywhere;font-size:14px}
+.evolution-experiment-panel label{display:grid;gap:8px;min-width:0;font-size:14px}.evolution-experiment-table{overflow:auto;margin-top:20px}
+.evolution-workspace button:disabled{opacity:.55;cursor:not-allowed}.evolution-workspace input[type=file]{max-width:100%}
+@media(max-width:600px){.evolution-candidate-grid{grid-template-columns:1fr}.evolution-experiment-panel .action-row{align-items:stretch;flex-direction:column}}
+
+.evolution-workspace .ops-form label:last-of-type{grid-column:1/-1}
+.evolution-workspace .ops-form input,.evolution-workspace .ops-form select{width:100%;min-width:0}
+.evolution-workspace .ops-form textarea{width:100%;min-height:112px;font:14px/1.6 Consolas,monospace;resize:vertical}
+.evolution-workspace .primary{background:#2d6e53;color:#fff;border-color:#2d6e53}
+.evolution-workspace .primary:hover{background:#21543e}
+.evolution-workspace #evolutionQualityTable{width:100%;min-width:0}
+.evolution-workspace .table td{white-space:normal;overflow-wrap:anywhere;max-width:260px}
+.evolution-workspace .ops-form button{width:max-content;max-width:100%}
+
+.console-page .evolution-workspace{grid-template-columns:minmax(0,1fr)}
+.console-page .evolution-workspace>*{min-width:0;max-width:100%}
+.console-page .evolution-workspace .ops-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:14px}
+.console-page .evolution-workspace .ops-form label{min-width:0;font-size:14px;line-height:1.5}
+.console-page .evolution-workspace .library-head{flex-wrap:wrap;gap:14px}
+@media(max-width:600px){.console-page .evolution-workspace .ops-form{grid-template-columns:minmax(0,1fr)}.evolution-workspace .library-head>div{min-width:0}}

@@ -489,6 +489,15 @@ class MemoryStore:
                     FOREIGN KEY(run_id) REFERENCES self_evolution_runs(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_self_evolution_signals_run ON self_evolution_quality_signals(run_id, id DESC);
+                CREATE TABLE IF NOT EXISTS evolution_experiments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    definition TEXT NOT NULL,
+                    definition_digest TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'frozen',
+                    report TEXT NOT NULL DEFAULT '{}',
+                    created_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
                 CREATE TABLE IF NOT EXISTS policy_groups (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -2412,6 +2421,45 @@ class MemoryStore:
     # ---- SELF-EVOLUTION RUNS ----
 
     @atomic_workflow
+    def create_evolution_experiment(self, definition, definition_digest, created_by="system"):
+        with self._conn() as c:
+            cursor = c.execute("INSERT INTO evolution_experiments (definition,definition_digest,created_by) VALUES (?,?,?)",
+                               (json.dumps(definition, ensure_ascii=False), definition_digest, str(created_by)))
+            return self.get_evolution_experiment(cursor.lastrowid)
+
+    def get_evolution_experiment(self, experiment_id):
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM evolution_experiments WHERE id=?", (int(experiment_id),)).fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            result["definition"] = self._json_loads(result["definition"], {})
+            result["report"] = self._json_loads(result["report"], {})
+            return result
+
+    def list_evolution_experiments(self, limit=50):
+        with self._conn() as c:
+            rows = c.execute("SELECT id FROM evolution_experiments ORDER BY id DESC LIMIT ?",
+                             (max(1, min(int(limit), 100)),)).fetchall()
+            return [self.get_evolution_experiment(row["id"]) for row in rows]
+
+    def claim_evolution_experiment(self, experiment_id):
+        with self.transaction() as c:
+            changed = c.execute("UPDATE evolution_experiments SET status='running' WHERE id=? AND status='frozen'",
+                                (int(experiment_id),)).rowcount
+            if changed != 1:
+                raise ValueError("experiment already claimed; completed evidence is immutable")
+            return self.get_evolution_experiment(experiment_id)
+
+    def finish_evolution_experiment(self, experiment_id, report, failed=False):
+        with self.transaction() as c:
+            changed = c.execute("UPDATE evolution_experiments SET report=?,status=? WHERE id=? AND status='running'",
+                                (json.dumps(report, ensure_ascii=False), "failed" if failed else "completed", int(experiment_id))).rowcount
+            if changed != 1:
+                raise ValueError("only a claimed experiment can be finished once")
+            return self.get_evolution_experiment(experiment_id)
+
+    @atomic_workflow
     def create_self_evolution_run(
         self, title, target_type, target_key, baseline_payload, candidate_payload,
         benchmarks=None, conclusion="", publish_decision="pending",
@@ -2592,8 +2640,13 @@ class MemoryStore:
         self, run_id, signal_type, value, metadata=None, created_by="system",
     ):
         with self._conn() as c:
-            if not c.execute("SELECT id FROM self_evolution_runs WHERE id=?", (int(run_id),)).fetchone():
+            stage_row = c.execute("SELECT release_stage FROM self_evolution_runs WHERE id=?", (int(run_id),)).fetchone()
+            if not stage_row:
                 raise ValueError("self-evolution run not found")
+            import math
+            if not math.isfinite(float(value)) or not 0 <= float(value) <= 1:
+                raise ValueError("quality signal must be finite and between zero and one")
+            metadata = {**(metadata or {}), "observed_stage": stage_row["release_stage"]}
             c.execute(
                 """
                 INSERT INTO self_evolution_quality_signals
@@ -2625,13 +2678,10 @@ class MemoryStore:
                 "cancel_rate": 0.15,
                 "long_task_failure_rate": 0.10,
             }
-            unhealthy = any(
-                float((aggregate.get(key) or {}).get("latest", 0) or 0) > limit
-                for key, limit in limits.items()
-            )
-            retrieval = aggregate.get("retrieval_hit_rate") or {}
-            if retrieval and float(retrieval.get("latest", 1) or 0) < 0.80:
-                unhealthy = True
+            live = metadata.get('variant') != 'control' and metadata.get('source') not in {
+                'runtime_snapshot', 'offline_replay', 'policy_materialization'}
+            unhealthy = live and (float(value) > limits.get(signal_type, 1)
+                                 or (signal_type == 'retrieval_hit_rate' and float(value) < .80))
             if run_row and run_row["status"] == "canary" and unhealthy:
                 c.execute(
                     """
@@ -2648,7 +2698,7 @@ class MemoryStore:
 
     def list_self_evolution_quality_signals(self, run_id, limit=100):
         with self._conn() as c:
-            limit = max(1, min(int(limit or 100), 500))
+            limit = max(1, min(int(limit or 100), 50000))
             rows = c.execute(
                 """
                 SELECT * FROM self_evolution_quality_signals
@@ -3058,98 +3108,10 @@ class MemoryStore:
     def promote_policy_arm(
         self, group_id, arm_id, target_type, target_key, actor_id="system",
     ):
-        with self._conn() as c:
-            arm = c.execute(
-                "SELECT * FROM policy_arms WHERE id=? AND group_id=?",
-                (int(arm_id), int(group_id)),
-            ).fetchone()
-            if not arm:
-                raise ValueError("policy arm not found")
-            current = self.get_runtime_policy(target_type, target_key, conn=c)
-            previous_payload = current["payload"] if current else {}
-            payload = self._json_loads(arm["payload"], {})
-            version = int(current["version"]) + 1 if current else 1
-            c.execute(
-                """
-                INSERT INTO runtime_policies
-                    (target_type, target_key, payload, version, active, updated_by, updated_at)
-                VALUES (?, ?, ?, ?, 1, ?, datetime('now'))
-                ON CONFLICT(target_type, target_key) DO UPDATE SET
-                    payload=excluded.payload,
-                    version=excluded.version,
-                    active=1,
-                    updated_by=excluded.updated_by,
-                    updated_at=datetime('now')
-                """,
-                (
-                    str(target_type), str(target_key),
-                    json.dumps(payload, ensure_ascii=False),
-                    version, str(actor_id or "system"),
-                ),
-            )
-            cursor = c.execute(
-                """
-                INSERT INTO policy_promotions
-                    (group_id, arm_id, target_type, target_key, previous_payload,
-                     previous_existed, promoted_payload, promoted_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    int(group_id), int(arm_id), str(target_type), str(target_key),
-                    json.dumps(previous_payload, ensure_ascii=False),
-                    1 if current else 0,
-                    json.dumps(payload, ensure_ascii=False),
-                    str(actor_id or "system"),
-                ),
-            )
-            return self.get_policy_promotion(int(cursor.lastrowid), conn=c)
+        raise ValueError("direct arm publication is retired; nominate through SelfEvolutionManager and complete the shared release gates")
 
     def rollback_policy_promotion(self, promotion_id, actor_id="system"):
-        with self._conn() as c:
-            promotion = c.execute(
-                "SELECT * FROM policy_promotions WHERE id=?", (int(promotion_id),)
-            ).fetchone()
-            if not promotion:
-                raise ValueError("policy promotion not found")
-            if promotion["status"] != "active":
-                raise ValueError("policy promotion is not active")
-            current = self.get_runtime_policy(
-                promotion["target_type"], promotion["target_key"], conn=c
-            )
-            version = int(current["version"]) + 1 if current else 1
-            if promotion["previous_existed"]:
-                c.execute(
-                    """
-                    UPDATE runtime_policies
-                    SET payload=?, version=?, active=1, updated_by=?, updated_at=datetime('now')
-                    WHERE target_type=? AND target_key=?
-                    """,
-                    (
-                        promotion["previous_payload"], version, str(actor_id or "system"),
-                        promotion["target_type"], promotion["target_key"],
-                    ),
-                )
-            else:
-                c.execute(
-                    """
-                    UPDATE runtime_policies
-                    SET payload='{}', version=?, active=0, updated_by=?, updated_at=datetime('now')
-                    WHERE target_type=? AND target_key=?
-                    """,
-                    (
-                        version, str(actor_id or "system"),
-                        promotion["target_type"], promotion["target_key"],
-                    ),
-                )
-            c.execute(
-                """
-                UPDATE policy_promotions
-                SET status='rolled_back', rolled_back_at=datetime('now')
-                WHERE id=?
-                """,
-                (int(promotion_id),),
-            )
-            return self.get_policy_promotion(promotion_id, conn=c)
+        raise ValueError("legacy arm promotions have no bound publication version; review the current policy before manual restoration")
 
     def get_policy_promotion(self, promotion_id, conn=None):
         def fetch(c):
@@ -4090,6 +4052,7 @@ class MemoryStore:
             )
             return self.get_agent_policy_model(model_id, conn=c)
 
+    @atomic_workflow
     def activate_agent_policy_model(self, model_id):
         with self._conn() as c:
             model = c.execute(
@@ -4100,6 +4063,14 @@ class MemoryStore:
                 raise ValueError("agent policy model not found")
             if model["status"] != "shadow":
                 raise ValueError("only a shadow-evaluated model can be activated")
+            metrics = self._json_loads(model['evaluation_metrics'], {})
+            if not metrics.get('passed') or metrics.get('schema') != 'clawos.router-promotion.v2':
+                raise ValueError('common robust gate is required; legacy evaluations must be repeated')
+            weights = self._json_loads(model['weights'], {})
+            current = c.execute("SELECT id FROM agent_policy_models WHERE group_name=? AND status='active'",
+                                (model['group_name'],)).fetchone()
+            if weights.get('baseline_active_model_id', -1) != (current['id'] if current else 0):
+                raise ValueError('active router changed; retrain before publication')
             c.execute(
                 """
                 UPDATE agent_policy_models SET status='retired'
@@ -4117,6 +4088,7 @@ class MemoryStore:
             )
             return self.get_agent_policy_model(model_id, conn=c)
 
+    @atomic_workflow
     def rollback_agent_policy_model(self, model_id):
         with self._conn() as c:
             model = c.execute(

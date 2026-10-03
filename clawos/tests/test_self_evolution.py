@@ -84,6 +84,12 @@ class SelfEvolutionTests(unittest.TestCase):
                             created_by="test",
                         )
             canary = manager.promote_canary(shadow["id"], traffic_percent=10)
+            with self.assertRaisesRegex(ValueError, "30 runtime quality"):
+                manager.activate(canary["id"])
+            for sample in range(30):
+                for variant in ("control", "candidate"):
+                    manager.record_quality_signal(canary["id"], "quality_score", 0.9,
+                        metadata={"task_id": 1000 + sample, "session_id": f"canary-{sample}", "variant": variant})
             published = manager.activate(canary["id"], actor_id="self-evolution")
             active = store.get_runtime_policy("retrieval_params", "default")
 

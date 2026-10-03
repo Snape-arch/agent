@@ -1084,12 +1084,13 @@ class FrontendStaticTests(unittest.TestCase):
 
         for token in (
             "view-evolution",
-            "Self-Evolution Board",
+            "策略演进实验室",
             "evolutionRunTable",
             "evolutionGateTable",
             "evolutionQualityTable",
-            "queueEvolutionRun",
-            "shadow → canary → active",
+            "searchEvolutionCandidates",
+            "独立留出验证",
+            "evolutionExperimentTable",
         ):
             self.assertIn(token, html)
         for token in (

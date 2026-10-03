@@ -43,6 +43,21 @@ class FileHistoryEvolutionUpgradeTests(unittest.TestCase):
                 list(pool.map(lambda i: write_text(file, f'{i}\n', append=True), range(60)))
             self.assertEqual(sorted(map(int,file.read_text().splitlines())), list(range(60)))
 
+    def test_empty_lock_contention_waits_instead_of_writing_locked_byte(self):
+        from services.file_transactions import _file_lock
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td) / 'new-file.md'
+            with patch('services.file_transactions.tempfile.gettempdir', return_value=td):
+                with _file_lock(target):
+                    def contender():
+                        with _file_lock(target, timeout=.05):
+                            return 'unexpectedly acquired'
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        with self.assertRaisesRegex(TimeoutError, 'file is busy'):
+                            pool.submit(contender).result()
+                self.assertEqual(next((Path(td)/'clawos-file-locks').glob('*.lock')).stat().st_size, 0)
+                self.assertTrue(write_text(target, 'after release')['written'])
+
     def test_cross_process_cas_has_one_winner(self):
         code = '''import sys,time,pathlib,json
 from services.file_transactions import write_text
