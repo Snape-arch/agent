@@ -36,12 +36,22 @@ def validate_document(value):
         if not isinstance(text,str) or len(text)>30000:
             raise ValueError('内容块文字过长')
         row['text'] = text
+        if 'inline' in b:
+            if b['type'] not in {'paragraph','heading','quote','callout','bullet','numbered','todo'}:
+                raise ValueError('该内容块不支持富文本')
+            from .document_richtext import validate_inline, inline_markdown
+            row['inline'] = validate_inline(b['inline'])
+            row['text'] = inline_markdown(row['inline'])
         if b['type']=='heading':
             if type(b.get('level')) is not int or b['level'] not in (1,2,3):
                 raise ValueError('标题级别无效')
             row['level']=b['level']
         if b['type']=='todo':
             row['checked']=b.get('checked') is True
+        if b['type'] in ('bullet','numbered') and 'indent' in b:
+            if type(b['indent']) is not int or not 0 <= b['indent'] <= 4:
+                raise ValueError('列表缩进无效')
+            row['indent'] = b['indent']
         if b['type']=='code':
             language=b.get('language','text')
             if not isinstance(language,str) or not re.fullmatch(r'[\w+#.-]{1,30}',language):
@@ -120,6 +130,17 @@ class AcademyDocuments:
         with self.store.transaction() as c:
             if authorize: authorize(c)
             if nid:
+                if value.get('merge') is True:
+                    current = c.execute('SELECT version,payload FROM academy_documents WHERE id=? AND learner=?', (nid,learner)).fetchone()
+                    if not current: raise DocumentConflict('文档不存在或无法访问')
+                    if current['version'] != expected:
+                        prior = c.execute('SELECT payload FROM academy_document_versions WHERE document_id=? AND version=?', (nid,expected)).fetchone()
+                        if not prior: raise DocumentConflict('编辑基线已超出版本保留范围，请保留草稿并载入最新版本')
+                        from .document_merge import merge_document, MergeConflict
+                        try: clean = validate_document(merge_document(json.loads(prior['payload']), clean, json.loads(current['payload'])))
+                        except MergeConflict as e: raise DocumentConflict(str(e)+'；草稿已保留，请对照最新版本处理。') from e
+                        expected = current['version']
+                        payload = json.dumps(clean,ensure_ascii=False)
                 changed=c.execute("UPDATE academy_documents SET payload=?,version=version+1,updated_at=datetime('now') WHERE id=? AND learner=? AND version=?",(payload,nid,learner,expected)).rowcount
                 if not changed: raise DocumentConflict('另一个页面已修改此文档；你的草稿已保留，请载入最新版本或另存副本。')
                 version=expected+1
@@ -129,7 +150,9 @@ class AcademyDocuments:
             c.execute('INSERT INTO academy_document_versions(document_id,version,payload) VALUES (?,?,?)',(nid,version,payload))
             # Bound history storage while preserving the latest 50 actual snapshots.
             c.execute('DELETE FROM academy_document_versions WHERE document_id=? AND version<=?',(nid,version-50))
-        return self.get(nid,learner)
+            updated_at=c.execute('SELECT updated_at FROM academy_documents WHERE id=?',(nid,)).fetchone()['updated_at']
+        # Return this transaction's snapshot, not a later writer's state.
+        return dict(id=nid,version=version,updated_at=updated_at,**clean)
 
     def history(self,nid,learner='local-user'):
         self.get(nid,learner)
@@ -144,8 +167,8 @@ class AcademyDocuments:
             if kind=='heading':t='#'*b['level']+' '+t
             elif kind in ('quote','callout'):t='> '+t.replace('\n','\n> ')
             elif kind=='todo':t='- ['+('x' if b.get('checked') else ' ')+'] '+t
-            elif kind=='bullet':t='- '+t
-            elif kind=='numbered':t='1. '+t
+            elif kind=='bullet':t='  '*b.get('indent',0)+'- '+t
+            elif kind=='numbered':t='  '*b.get('indent',0)+'1. '+t
             elif kind=='code':
                 fence='`'*max(3,max((len(m.group())+1 for m in re.finditer(r'`+',t)),default=3))
                 t=fence+b['language']+'\n'+t+'\n'+fence
@@ -197,6 +220,38 @@ def documents_router(factory,model,access_factory=None):
     def history(nid:str,request:Request,learner_id:str='local-user'):
         try:return service(request).history(nid,learner_id)
         except ValueError as e:raise HTTPException(404,str(e))
+    @router.get('/{nid}/events')
+    async def events(nid:str, request:Request, since:int=0):
+        from fastapi.responses import StreamingResponse
+        from .document_events import document_events
+        if request.headers.get('origin') and request.headers['origin'] != str(request.base_url).rstrip('/'):
+            raise HTTPException(403,'实时协作需要同源连接')
+        initial = await run_in_threadpool(lambda: service(request).get(nid))
+        store = await run_in_threadpool(lambda: factory().store)
+        def read(seen):
+            if access_factory:
+                access=access_factory();uid=access.identity(request)['id']
+                with store._conn() as c:
+                    c.execute('BEGIN')
+                    role=access.require(nid,uid,conn=c)
+                    version=c.execute('SELECT version FROM academy_documents WHERE id=?',(nid,)).fetchone()['version']
+                    if version==seen: return None
+                    row=c.execute('SELECT * FROM academy_documents WHERE id=?',(nid,)).fetchone()
+                    return dict(id=nid,version=row['version'],updated_at=row['updated_at'],role=role,**json.loads(row['payload']))
+            with store._conn() as c:
+                c.execute('BEGIN')
+                row=c.execute('SELECT version FROM academy_documents WHERE id=? AND learner=?',(nid,'local-user')).fetchone()
+                if not row: raise HTTPException(404,'文档不存在')
+                if row['version']==seen: return None
+                row=c.execute('SELECT * FROM academy_documents WHERE id=? AND learner=?',(nid,'local-user')).fetchone()
+                return dict(id=nid,version=row['version'],updated_at=row['updated_at'],**json.loads(row['payload']))
+        def state():
+            access=access_factory()
+            return access.state(nid,access.identity(request)['id'])
+        try: requested=int(request.headers.get('last-event-id',since))
+        except (ValueError,TypeError):requested=0
+        if requested<0 or requested>initial['version']:requested=0
+        return StreamingResponse(document_events(request,read,state if access_factory else None,requested),media_type='text/event-stream',headers={'Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'})
     @router.get('/{nid}/export')
     def export(nid:str,request:Request,format:str='markdown',learner_id:str='local-user'):
         try:

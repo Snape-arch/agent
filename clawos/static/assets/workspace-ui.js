@@ -21,7 +21,9 @@
     if (key === active) a.setAttribute('aria-current', 'page');
     entries.append(a);
   }
-  nav.append(entries); document.body.classList.add('workspace-linked'); document.body.prepend(nav);
+  nav.append(entries); document.body.classList.add('workspace-linked');
+  const skip=document.body.querySelector(':scope > .skip');
+  if(skip)skip.after(nav);else document.body.prepend(nav);
   document.addEventListener('workspace-view', e => {
     const key = e.detail === 'feishu' ? 'feishu' : 'console';
     for (const a of entries.children) {

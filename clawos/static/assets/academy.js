@@ -1181,8 +1181,8 @@ function academyToggleResearchOps() {
 }
 
 function academySwitchReaderTab(tab) {
-  document.querySelectorAll("[data-reader-tab]").forEach(button => button.classList.toggle("active", button.dataset.readerTab === tab));
-  document.querySelectorAll("[data-reader-panel]").forEach(panel => panel.classList.toggle("active", panel.dataset.readerPanel === tab));
+  document.querySelectorAll("[data-reader-tab]").forEach(button => {const active=button.dataset.readerTab===tab;button.classList.toggle("active",active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;});
+  document.querySelectorAll("[data-reader-panel]").forEach(panel => {const active=panel.dataset.readerPanel===tab;panel.classList.toggle("active",active);panel.hidden=!active;});
 }
 
 function academySetGuidedPrompt(kind) {
@@ -1539,6 +1539,7 @@ function academyBoot() {
   academyRenderReaderNotes();
   academySetupReaderNoteDraft();
   academySetupReaderControls();
+  document.querySelector('.reader-note-tabs')?.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const tabs=[...document.querySelectorAll('[data-reader-tab]')],index=tabs.indexOf(document.activeElement);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length;academySwitchReaderTab(tabs[next].dataset.readerTab);tabs[next].focus();});
   document.getElementById("academyPaperViewer")?.addEventListener("keydown", event => {
     if (!(event.ctrlKey || event.metaKey)) return;
     if (["+", "="].includes(event.key)) { event.preventDefault(); academyReaderZoom(.1); }

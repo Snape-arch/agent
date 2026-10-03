@@ -18,3 +18,7 @@ body.workspace-linked{padding-top:var(--workspace-height)}
 @media(max-width:780px){.workspace-nav{gap:12px;padding:0 12px}.workspace-links a{padding:9px 12px}.workspace-brand{font-size:13px}.workspace-brand img{width:24px;height:24px}.workspace-linked .rail{top:auto}}
 @media(max-width:650px){.workspace-linked .doc-rail{top:auto}.workspace-nav{gap:8px}.workspace-links a{padding:10px;font-size:12px}.feishu-status-scroll table{font-size:12px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}}
+.workspace-linked>.skip{position:fixed;top:-80px;left:12px;background:white;padding:12px;z-index:100}.workspace-linked>.skip:focus{top:0}.workspace-linked main{scroll-margin-top:64px}
+.workspace-linked{--muted:#596a7f}.workspace-linked .wb-empty p,.workspace-linked .side-label,.workspace-linked .recent-label,.workspace-linked .side-bottom-label{color:#596a7f}
+.workspace-linked.aether-console .side .side-label,.workspace-linked.aether-console .side .recent-label,.workspace-linked.aether-console .side .side-bottom-label{color:#596a7f}
+.workspace-linked.aether-console{--c-faint:#596a7f}

@@ -72,6 +72,9 @@ def main():
         server.g_feishu_connector_service=FeishuConnectorService(service.store,None,FeishuConfig())
         server.g_mtclaw_adapter=MTClawAdapter({'enabled':False})
         app = FastAPI(lifespan=preview_lifespan)
+        @app.get('/api/qa/environment')
+        def qa_environment():
+            return dict(isolated=True,session=args.session,models_enabled=args.models)
         app.middleware('http')(server.no_cache_static_shell)
         app.middleware('http')(server.workbench_access)
         for route in server.app.routes:
