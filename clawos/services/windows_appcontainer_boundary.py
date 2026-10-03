@@ -165,6 +165,7 @@ class WindowsAppContainerBoundary:
             "a.OpenProcessToken(k.GetCurrentProcess(),8,ctypes.byref(token));"
             "a.GetTokenInformation(token,29,ctypes.byref(flag),ctypes.sizeof(flag),ctypes.byref(size));"
             "started=time.perf_counter();"
+            "\nif not flag.value: raise SystemExit('AppContainer token required; command was not started')\n"
             "\ntry:\n"
             " r=subprocess.run(cmd,cwd=cwd,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=limit,env=safe_env);"
             " payload={'exit_code':r.returncode,'stdout':r.stdout[-8000:],'stderr':r.stderr[-4000:],'timed_out':False}\n"

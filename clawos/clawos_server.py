@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from providers import create_model_provider
 from memoryos.document_ingestion import ingest_file, safe_filename
@@ -2802,17 +2802,27 @@ async def api_self_evolution_board(limit: int = 50):
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
     runs = g_memory_store.list_self_evolution_runs(limit=limit)
+    for run in runs:
+        current = g_memory_store.get_runtime_policy(run['target_type'], run['target_key'])
+        run['current_policy_version'] = int(current['version']) if current else 0
+        run['stale_baseline'] = (run.get('status') in {'candidate','validated','shadow','canary'}
+            and run.get('baseline_policy_version', -1) != run['current_policy_version'])
+        run['owns_active_policy'] = bool(current and current.get('active') and run.get('status')=='published'
+            and run['current_policy_version']==(run.get('rollback_payload') or {}).get('policy_version')
+            and current.get('payload')==run.get('candidate_payload'))
+        run['effective_stage'] = ('superseded' if run.get('status')=='published' and not run['owns_active_policy']
+                                  else run.get('release_stage') or run.get('status') or 'candidate')
     snapshot = g_memory_store.runtime_quality_snapshot()
     stage_counts: dict[str, int] = {}
     for run in runs:
-        stage = str(run.get("release_stage") or run.get("status") or "candidate")
+        stage = str(run['effective_stage'])
         stage_counts[stage] = stage_counts.get(stage, 0) + 1
     blocked = [
         run for run in runs
         if run.get("status") == "rejected"
         or not (run.get("gate_result") or {}).get("passed", True)
     ]
-    active = [run for run in runs if run.get("release_stage") == "active"]
+    active = [run for run in runs if run['owns_active_policy']]
     score = 100
     if not runs:
         score -= 25
@@ -2828,7 +2838,9 @@ async def api_self_evolution_board(limit: int = 50):
         "active_count": len(active),
         "blocked_count": len(blocked),
         "enterprise_score": score,
-        "enterprise_ready": score >= 85 and bool(runs),
+        "score_scope": "legacy_heuristic_not_acceptance",
+        "stale_count": sum(bool(run['stale_baseline']) for run in runs),
+        "enterprise_ready": False,
     })
 
 
@@ -3003,6 +3015,21 @@ async def reflection_stats():
     from reflection.learning_loop import LearningLoop
     loop = LearningLoop(g_reflection_engine, g_memory_store)
     return JSONResponse(loop.get_cycle_stats())
+
+
+@app.post("/api/self-evolution/runs/{run_id}/rollback")
+async def api_self_evolution_rollback(run_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    data = await request.json()
+    if data.get('confirmed') is not True:
+        raise HTTPException(409, 'confirmed=true is required for rollback')
+    from reflection.self_evolution import SelfEvolutionManager
+    try:
+        run = SelfEvolutionManager(g_memory_store).rollback(run_id, data.get('actor_id', 'user'), data.get('reason', ''))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return JSONResponse({'run': run})
 
 
 @app.post("/api/policy/groups")
@@ -4721,7 +4748,14 @@ async def api_research_learning_analysis(request: Request):
         markdown_path = str(report_row.get("markdown_path") or "")
         pdf_path = str(report_row.get("pdf_path") or "")
         if markdown_path:
-            Path(markdown_path).write_text(grounded_markdown, encoding="utf-8")
+            from services.file_transactions import write_text
+            write_text(markdown_path, grounded_markdown)
+        structured_base = report_row.get('json_path') or markdown_path or pdf_path
+        if structured_base:
+            from services.file_transactions import write_text
+            json_path = str(Path(structured_base).with_suffix('.json'))
+            write_text(json_path, json.dumps(synthesis, ensure_ascii=False, indent=2))
+            report_row['json_path'] = json_path
         if pdf_path:
             g_workspace_services._write_learning_analysis_pdf(Path(pdf_path), synthesis.get("title") or library_document.get("title") or "Paper report", grounded_markdown)
         metadata = dict(report_row.get("metadata") or {})
@@ -4731,6 +4765,7 @@ async def api_research_learning_analysis(request: Request):
             "evidence_count": synthesis.get("evidence_count", 0),
             "source_quality": synthesis.get("source_quality") or {},
             "synthesis": synthesis,
+            "json_path": report_row.get('json_path', ''),
             "model": {
                 "provider": model_trace.get("provider", ""),
                 "model": model_trace.get("model", ""),
@@ -4756,7 +4791,7 @@ async def api_research_learning_analysis(request: Request):
         result["preview"] = synthesis.get("summary") or grounded_markdown[:1200]
         result["library_document"] = library_document
         report = result.get("report") or {}
-        stamp = int(time.time() * 1000)
+        stamp = time.time_ns()
         run = RunRecord(
             f"academy-paper-report-{library_document_id}-{stamp}",
             "academy_paper_report",
@@ -4779,6 +4814,17 @@ async def api_research_learning_analysis(request: Request):
             run.add_artifact("markdown_report", "Academy paper markdown report", markdown_path)
         if pdf_path:
             run.add_artifact("pdf_report", "Academy paper PDF report", pdf_path)
+        if report.get('json_path'):
+            run.add_artifact('structured_report', 'Structured paper reading report', report['json_path'])
+        result['artifacts'] = [get_artifact_delivery_service().register(path, source_tool='academy_paper_report')
+                               for path in [markdown_path, pdf_path, report.get('json_path')]
+                               if path and Path(path).is_file()]
+        result['artifacts'] = [item for item in result['artifacts'] if item]
+        report['metadata']['artifacts'] = result['artifacts']
+        if report.get('id'):
+            with g_memory_store._conn() as conn:
+                conn.execute('UPDATE research_analysis_reports SET metadata=? WHERE id=?',
+                             (json.dumps(report['metadata'],ensure_ascii=False),int(report['id'])))
         run.add_evidence("academy_paper_report", "Report is linked to the uploaded source document", citation=f"doc:{library_document_id}", document_id=library_document_id)
         result["run"] = g_memory_store.save_run_record(run.to_dict())
     return JSONResponse(result)
@@ -6045,6 +6091,9 @@ def _academy_paper_status_payload(document_id: int) -> dict[str, Any]:
             "run_id": report_run.get("run_id", ""),
             "markdown_path": report.get("markdown_path", ""),
             "pdf_path": report.get("pdf_path", ""),
+            "json_path": report.get('json_path') or (report.get('metadata') or {}).get('json_path', ''),
+            "analysis": (report.get('metadata') or {}).get('synthesis', {}),
+            "artifacts": (report.get('metadata') or {}).get('artifacts', []),
             "updated_at": report_run.get("updated_at", ""),
         },
         "knowledge": {
@@ -9302,25 +9351,47 @@ async def memory_context(session_id: str):
             raise HTTPException(500, str(e))
     return JSONResponse({"error": "MemoryOS not initialized"}, status_code=503)
 @app.get("/api/history/{session_id}")
-async def get_history(session_id: str, limit: int = 50):
+async def get_history(session_id: str, limit: int = 50, before_id: int = 0):
     """Get conversation history for a session."""
     if g_memory_store:
         try:
-            msgs = g_memory_store.get_recent_messages(session_id, limit)
-            clean = [{"role": m["role"], "content": m.get("content", "")[:2000]} for m in msgs if m["role"] in ("user", "assistant")]
-            return JSONResponse({"session_id": session_id, "messages": clean, "count": len(clean)})
+            return JSONResponse(g_memory_store.conversation_history(session_id, limit, before_id))
         except Exception as e:
             raise HTTPException(500, str(e))
     return JSONResponse({"error": "MemoryOS not ready"}, status_code=503)
 @app.get("/api/sessions")
-async def api_list_sessions():
+async def api_list_sessions(q: str = "", limit: int = 500):
     if g_memory_store:
         try:
-            sessions = g_memory_store.list_sessions()
+            sessions = g_memory_store.list_sessions(q[:500], limit)
             return JSONResponse({"sessions": sessions, "count": len(sessions)})
         except Exception as e:
             raise HTTPException(500, str(e))
     return JSONResponse({"sessions": [], "count": 0})
+
+
+@app.get('/api/history/{session_id}/export')
+async def api_export_history(session_id: str, format: str = 'markdown'):
+    if not g_memory_store:
+        raise HTTPException(503, 'MemoryOS not ready')
+    if format not in {'markdown', 'json'}:
+        raise HTTPException(400, 'format must be markdown or json')
+    from services.conversation_history import export_history
+    try:
+        payload = export_history(g_memory_store, session_id)
+    except ValueError as exc:
+        raise HTTPException(413, str(exc))
+    suffix = 'json' if format == 'json' else 'md'
+    name = hashlib.sha256(session_id.encode()).hexdigest()[:16]
+    if format == 'json':
+        body = json.dumps(payload, ensure_ascii=False, indent=2)
+    else:
+        body = '# 对话记录\n\n' + '\n\n'.join(
+            f"## {'用户' if item['role']=='user' else '助手'} · {item['created_at']}\n\n{item['content']}"
+            for item in payload['messages'])
+    return Response(body, media_type='application/json' if format=='json' else 'text/markdown',
+                    headers={'Content-Disposition': f'attachment; filename="conversation-{name}.{suffix}"',
+                             'Cache-Control': 'no-store'})
 
 @app.get("/api/memory/search")
 async def api_memory_search(q: str = "", top_k: int = 10):

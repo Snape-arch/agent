@@ -442,6 +442,7 @@ class CodingWorkflowService:
     @staticmethod
     def _run_command(repo: Path, command: list[str], timeout_seconds: int) -> dict[str, Any]:
         started = time.perf_counter()
+        strict = os.environ.get("CLAWOS_REQUIRE_OS_SANDBOX", "").lower() in {"1", "true", "yes"}
         metadata_path = repo.parent / "workspace.json"
         if os.name == "nt" and metadata_path.is_file():
             try:
@@ -481,6 +482,8 @@ class CodingWorkflowService:
                                     "downgrade_blocked": True,
                                 },
                             }
+                    if strict:
+                        raise ValueError("strict sandbox requires an installed AppContainer; fallback blocked")
                     proxy = AuditedEgressProxy(
                         EgressProxyPolicy(allowed_hosts=[]),
                         secrets.token_urlsafe(32),
@@ -543,6 +546,12 @@ class CodingWorkflowService:
                         "production_sandbox_ready": False,
                     },
                 }
+        if strict:
+            return {"command": command, "exit_code": 126, "stdout": "",
+                    "stderr": "strict sandbox requires an isolated task workspace and Windows AppContainer",
+                    "timed_out": False, "duration_ms": round((time.perf_counter()-started)*1000, 2),
+                    "sandbox": {"backend": "strict-sandbox-gate", "launch_failed_closed": True,
+                                "downgrade_blocked": True, "production_sandbox_ready": False}}
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True, text=True, timeout=max(1, min(int(timeout_seconds or 180), 900)))
             return {"command": command, "exit_code": result.returncode, "stdout": result.stdout[-8000:], "stderr": result.stderr[-4000:], "timed_out": False, "duration_ms": round((time.perf_counter() - started) * 1000, 2), "sandbox": {"backend": "subprocess-policy-boundary", "os_enforced": False, "production_sandbox_ready": False}}

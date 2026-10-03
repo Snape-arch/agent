@@ -28,6 +28,13 @@ cd <your-cloned-agent-repo>
 双架构仍为 ClawOS 工作台/MemoryOS → MTClaw 函数路由 → 受限工具桥 → 请求级证据。
 本轮验收及未完成的真实租户/长期并发部分见 `clawos/benchmarks/COLLABORATION_DATA_MTCLAW_ACCEPTANCE.md`。
 
+论文报告支持全窗口阅读、实验条件/原文引用及 Markdown、PDF、JSON 下载，重新生成保留旧文件；
+工作台历史支持完整归档分页、全文查询、导出和会话恢复。文本工具支持预览、仅创建与 SHA-256 冲突保护。
+自进化候选绑定当前策略版本并支持受所有权保护的回滚。CodingWorkflowService 可用
+`CLAWOS_REQUIRE_OS_SANDBOX=1` 要求已安装的 Windows AppContainer，缺少边界时拒绝执行；
+默认兼容路径及文件锁并不等同完整操作系统隔离。本轮证据与后续边界见
+`clawos/benchmarks/FILE_HISTORY_EVOLUTION_ACCEPTANCE.md`。
+
 For an explicit local daily-use profile after the verified Qwen, llama.cpp,
 embedding, and Chroma assets are installed:
 

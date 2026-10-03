@@ -101,6 +101,7 @@ class SelfEvolutionManager:
 
     def start_shadow(self, run_id):
         run = self._require(run_id)
+        self._assert_current_baseline(run)
         self._assert_allowed_target(run["target_type"])
         gate = run.get("gate_result") or {}
         if not gate.get("passed"):
@@ -118,6 +119,7 @@ class SelfEvolutionManager:
 
     def promote_canary(self, run_id, traffic_percent=10):
         run = self._require(run_id)
+        self._assert_current_baseline(run)
         self._assert_allowed_target(run["target_type"])
         if run.get("status") not in {"shadow", "canary"}:
             raise ValueError("self-evolution run must be in shadow before canary")
@@ -139,6 +141,7 @@ class SelfEvolutionManager:
 
     def activate(self, run_id, actor_id="system", reason=""):
         run = self._require(run_id)
+        self._assert_current_baseline(run)
         self._assert_allowed_target(run["target_type"])
         if run.get("status") != "canary":
             raise ValueError("self-evolution run must complete canary before activation")
@@ -156,6 +159,14 @@ class SelfEvolutionManager:
 
     def publish(self, run_id, actor_id="system", reason=""):
         return self.activate(run_id, actor_id=actor_id, reason=reason)
+
+    def _assert_current_baseline(self, run):
+        current = self._store.get_runtime_policy(run['target_type'], run['target_key'])
+        if run.get('baseline_policy_version', -1) != (int(current['version']) if current else 0):
+            raise ValueError('runtime policy changed; create and benchmark a fresh candidate')
+
+    def rollback(self, run_id, actor_id="user", reason=""):
+        return self._store.rollback_self_evolution_run(run_id, actor_id, reason)
 
     def record_quality_signal(self, run_id, signal_type, value, metadata=None, created_by="system"):
         run = self._store.record_self_evolution_quality_signal(

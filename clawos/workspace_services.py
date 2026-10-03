@@ -714,6 +714,8 @@ class WorkspaceServices:
         """Generate an editable self-questioning paper study report."""
         formats = formats or ["markdown", "pdf"]
         formats = [str(item).lower() for item in formats]
+        if not formats or set(formats) - {'markdown','md','pdf','json'}:
+            raise ValueError('report formats must be markdown, pdf or json')
         if not output_dir:
             raise ValueError("output_dir is required")
         out = self.security.resolve_path(output_dir)
@@ -738,7 +740,7 @@ class WorkspaceServices:
         questions = self._analysis_questions(topics, page_text, max_depth, max_questions)
         concepts = self._paper_concepts(full_text, limit=14)
         report = self._render_learning_analysis_markdown(document, outline, questions, concepts, max_depth, report_style)
-        safe_name = self._safe_filename(f"{document['title']}_learning_analysis")
+        safe_name = self._safe_filename(f"{document['title']}_learning_analysis")[:150] + '_' + uuid.uuid4().hex[:12]
         markdown_path = ""
         pdf_path = ""
         if "markdown" in formats or "md" in formats:
@@ -751,6 +753,13 @@ class WorkspaceServices:
             pdf_path = str(pdf)
         else:
             pdf_engine = ""
+        json_path = ''
+        if 'json' in formats:
+            json_file = out / f'{safe_name}.json'
+            from services.file_transactions import write_text
+            write_text(json_file, json.dumps(dict(document=document,outline=outline,questions=questions,
+                                                 concepts=concepts), ensure_ascii=False, indent=2))
+            json_path = str(json_file)
         metadata = {
             "formats": formats,
             "source_file": document["file_path"],
@@ -760,6 +769,7 @@ class WorkspaceServices:
             "mode": "deterministic_evidence_based",
             "report_style": report_style,
             "pdf_engine": pdf_engine,
+            "json_path": json_path,
         }
         with self.store._conn() as c:
             cursor = c.execute(
@@ -779,6 +789,7 @@ class WorkspaceServices:
             ).fetchone()
         item = dict(row)
         item["metadata"] = json.loads(item["metadata"] or "{}")
+        item['json_path'] = json_path
         return {"report": item, "document": document, "preview": report[:1200]}
 
     def _resolve_research_document(self, document_id=None, file_path="", title=""):
@@ -1260,8 +1271,8 @@ class WorkspaceServices:
             "ink": colors.HexColor("#07111f"),
             "muted": colors.HexColor("#172033"),
             "rule": colors.HexColor("#7f8ea3"),
-            "accent": colors.HexColor("#0b3344"),
-            "soft": colors.HexColor("#edf3f6"),
+            "accent": colors.HexColor("#16765b"),
+            "soft": colors.HexColor("#eff7f3"),
         }
         styles = {
             "Title": ParagraphStyle(
@@ -1376,29 +1387,50 @@ class WorkspaceServices:
             canvas.setFont(font_name, 8.8)
             canvas.setFillColor(palette["muted"])
             canvas.drawString(doc.leftMargin, page_height - 12 * mm, "ClawOS Research Learning Analysis")
-            canvas.drawRightString(page_width - doc.rightMargin, page_height - 12 * mm, str(title)[:70])
+            short_title = str(title)
+            available = (page_width-doc.leftMargin-doc.rightMargin)*.48
+            while pdfmetrics.stringWidth(short_title,font_name,8.8)>available and short_title:
+                short_title=short_title[:-1]
+            if short_title != str(title): short_title=short_title[:-1]+'…'
+            canvas.drawRightString(page_width - doc.rightMargin, page_height - 12 * mm, short_title)
             canvas.line(doc.leftMargin, 14 * mm, page_width - doc.rightMargin, 14 * mm)
             canvas.drawString(doc.leftMargin, 9 * mm, datetime.now(timezone.utc).strftime("Generated %Y-%m-%d UTC"))
             canvas.drawRightString(page_width - doc.rightMargin, 9 * mm, f"Page {canvas.getPageNumber()}")
             canvas.restoreState()
 
         def md_inline(text):
-            escaped = xml_escape(str(text))
-            return re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", escaped)
+            # Keep portable local source labels; only safe absolute web links
+            # become PDF annotations. Escape content before ReportLab markup.
+            text = re.sub(r'`([^`]+)`', r'\1', str(text))
+            parts=[];start=0
+            for match in re.finditer(r'\[([^\]]+)\]\(([^\s)]+)\)',text):
+                parts.append(xml_escape(text[start:match.start()]))
+                label,url=match.groups()
+                parts.append(f'<a href="{xml_escape(url)}" color="#16765b">{xml_escape(label)}</a>'
+                             if url.startswith(('https://','http://')) and '"' not in url
+                             else xml_escape(label))
+                start=match.end()
+            parts.append(xml_escape(text[start:]))
+            return re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", ''.join(parts))
 
+        compact_grounded = '## 引用核查与原文索引' in markdown and len(markdown)<18000
         story = []
         story.append(Spacer(1, 10))
-        story.append(Paragraph("Journal-style paper reading dossier", styles["Kicker"]))
+        story.append(Paragraph("论文精读报告 · 来源 / 实验条件 / 适用边界" if compact_grounded else "Journal-style paper reading dossier", styles["Kicker"]))
         story.append(Paragraph(md_inline(title), styles["Title"]))
         story.append(HRFlowable(width="45%", thickness=1.0, color=palette["accent"], spaceBefore=2, spaceAfter=14, hAlign="CENTER"))
-        story.append(Paragraph("Structured parsing, self-questioning, evidence tracing, concepts, limits, and follow-up reading plan.", styles["Lead"]))
-        story.append(PageBreak())
-        for raw in markdown.splitlines():
+        story.append(Paragraph("依据上传原文整理，保留引用与核查入口。" if compact_grounded else "Structured parsing, self-questioning, evidence tracing, concepts, limits, and follow-up reading plan.", styles["Lead"]))
+        if not compact_grounded:
+            story.append(PageBreak())
+        markdown_lines = markdown.splitlines()
+        for line_index,raw in enumerate(markdown_lines):
             line = raw.strip()
             if not line:
-                story.append(Spacer(1, 5))
+                if not compact_grounded: story.append(Spacer(1, 5))
                 continue
             if line.startswith("# "):
+                if compact_grounded and line[2:].strip() == str(title).strip():
+                    continue
                 story.append(Paragraph(md_inline(line[2:]), styles["Heading1"]))
                 story.append(HRFlowable(width="100%", thickness=0.6, color=palette["rule"], spaceBefore=0, spaceAfter=7))
             elif line.startswith("## "):
@@ -1408,7 +1440,13 @@ class WorkspaceServices:
             elif line.startswith("#### "):
                 story.append(Paragraph(md_inline(line[5:]), styles["Heading3"]))
             elif line.startswith("- "):
-                story.append(Paragraph(md_inline(line[2:]), styles["Bullet"], bulletText="-"))
+                paragraph=Paragraph(md_inline(line[2:]), styles["Bullet"], bulletText="-")
+                if line.startswith('- [doc:') and '](' in line: paragraph.keepWithNext=True
+                if line_index+1<len(markdown_lines) and markdown_lines[line_index+1].strip().startswith('- 实验条件：'):
+                    paragraph.keepWithNext=True
+                story.append(paragraph)
+            elif line.startswith('> '):
+                story.append(Paragraph(md_inline(line[2:]), styles['Evidence']))
             elif line.startswith("璇佹嵁") or line.startswith("证据") or line.lower().startswith("evidence"):
                 story.append(KeepTogether([Paragraph(md_inline(line), styles["Evidence"])]))
             else:

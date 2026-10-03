@@ -78,7 +78,7 @@ def main():
         app.middleware('http')(server.no_cache_static_shell)
         app.middleware('http')(server.workbench_access)
         for route in server.app.routes:
-            if route.path.startswith(("/api/academy/learning/", "/api/academy/paper/", "/api/documents", "/academy", '/api/collaboration','/api/data-lab','/api/meeting-workbench','/api/feishu','/api/architecture','/api/workspace/meetings')) or route.path in ('/','/product','/data-lab','/meetings','/console'):
+            if route.path.startswith(("/api/academy/learning/", "/api/academy/paper/", "/api/documents", "/academy", '/api/collaboration','/api/data-lab','/api/meeting-workbench','/api/feishu','/api/architecture','/api/workspace/meetings', '/api/history/','/api/self-evolution/','/api/artifacts/','/api/workspace/research/learning-analysis')) or route.path in ('/','/product','/data-lab','/meetings','/console','/api/sessions'):
                 app.router.routes.append(route)
         app.mount("/static", StaticFiles(directory=server.STATIC_DIR), name="static")
         app.mount("/assets", StaticFiles(directory=server.STATIC_DIR / "assets"), name="assets")

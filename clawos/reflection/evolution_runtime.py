@@ -39,7 +39,7 @@ class RuntimePolicyController:
 
     def resolve(self, target_type: str, target_key: str, identity: str = "") -> dict[str, Any]:
         current = self._store.get_runtime_policy(target_type, target_key) or {}
-        active_payload = dict(current.get("payload") or {})
+        active_payload = dict(current.get("payload") or {}) if current.get('active', False) else {}
         selection = {
             "target_type": target_type,
             "target_key": target_key,
@@ -58,6 +58,7 @@ class RuntimePolicyController:
             if run.get("target_type") == target_type
             and run.get("target_key") == target_key
             and run.get("status") in {"shadow", "canary"}
+            and run.get("baseline_policy_version", -1) == int(current.get("version") or 0)
         ]
         if not eligible:
             return selection

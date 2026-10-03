@@ -1325,28 +1325,11 @@ def tool_file_write():
     if not path:
         print(json.dumps({"error": "path required"})); sys.exit(1)
     try:
-        target = os.path.abspath(path)
-        dirname = os.path.dirname(target)
-        if dirname:
-            os.makedirs(dirname, exist_ok=True)
-        if os.path.isfile(target):
-            with open(target, "rb") as handle:
-                before = handle.read()
-        else:
-            before = b""
-        before_sha256 = hashlib.sha256(before).hexdigest()
-        if expected_sha256 and expected_sha256 != before_sha256:
-            print(json.dumps({"error": "write conflict: expected_sha256 does not match current file", "path": target, "current_sha256": before_sha256}, ensure_ascii=False)); sys.exit(1)
-        prefix = before.decode("utf-8") if append and before else ""
-        payload = (prefix + str(content)).encode("utf-8")
-        temporary = os.path.join(dirname or os.getcwd(), f".{os.path.basename(target)}.{uuid.uuid4().hex}.tmp")
-        with open(temporary, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, target)
-        size = os.path.getsize(target)
-        print(json.dumps({"written": True, "path": target, "exists": True, "size_bytes": size, "append": append, "before_sha256": before_sha256, "sha256": hashlib.sha256(payload).hexdigest(), "atomic": True}, ensure_ascii=False))
+        from services.file_transactions import write_text
+        result = write_text(path, content, append=append, expected_sha256=expected_sha256,
+                            create_only=input_data.get("create_only") is True,
+                            preview=input_data.get("preview") is True)
+        print(json.dumps(result, ensure_ascii=False))
     except Exception as e:
         print(json.dumps({"error": f"Write failed: {str(e)}"}))
         sys.exit(1)

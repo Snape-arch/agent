@@ -853,6 +853,7 @@ class MemoryStore:
                 "release_stage": "TEXT NOT NULL DEFAULT 'candidate'",
                 "traffic_percent": "REAL NOT NULL DEFAULT 0",
                 "quality_signals": "TEXT NOT NULL DEFAULT '{}'",
+                "baseline_policy_version": "INTEGER NOT NULL DEFAULT -1",
             })
             self._ensure_columns(c, "memories", {
                 "source": "TEXT DEFAULT ''",
@@ -2383,6 +2384,7 @@ class MemoryStore:
         with self._conn() as c:
             return fetch(c)
 
+    @atomic_workflow
     def set_runtime_policy(self, target_type, target_key, payload, actor_id="system"):
         with self._conn() as c:
             current = self.get_runtime_policy(target_type, target_key, conn=c)
@@ -2409,6 +2411,7 @@ class MemoryStore:
 
     # ---- SELF-EVOLUTION RUNS ----
 
+    @atomic_workflow
     def create_self_evolution_run(
         self, title, target_type, target_key, baseline_payload, candidate_payload,
         benchmarks=None, conclusion="", publish_decision="pending",
@@ -2437,6 +2440,11 @@ class MemoryStore:
                     str(created_by or "system"),
                 ),
             )
+            current = self.get_runtime_policy(target_type, target_key, conn=c)
+            if current and current.get('active') and current['payload'] != baseline_payload:
+                raise ValueError('baseline payload must match the current runtime policy')
+            c.execute("UPDATE self_evolution_runs SET baseline_policy_version=? WHERE id=?",
+                      (int(current['version']) if current else 0, cursor.lastrowid))
             return self.get_self_evolution_run(int(cursor.lastrowid), conn=c)
 
     def list_self_evolution_runs(self, status="", limit=100):
@@ -2503,6 +2511,7 @@ class MemoryStore:
             )
             return self.get_self_evolution_run(run_id, conn=c)
 
+    @atomic_workflow
     def publish_self_evolution_run(self, run_id, actor_id="system", reason=""):
         with self._conn() as c:
             run = self.get_self_evolution_run(run_id, conn=c)
@@ -2513,9 +2522,12 @@ class MemoryStore:
             if run["publish_decision"] not in {"publish", "shadow_required", "canary"}:
                 raise ValueError("self-evolution run is not approved for activation")
             current = self.get_runtime_policy(run["target_type"], run["target_key"], conn=c)
+            if run.get("baseline_policy_version", -1) != (int(current['version']) if current else 0):
+                raise ValueError("runtime policy changed; create and benchmark a fresh candidate")
             rollback = {
                 "existed": bool(current),
                 "payload": current["payload"] if current else {},
+                "active": bool(current and current.get('active')),
             }
             version = int(current["version"]) + 1 if current else 1
             c.execute(
@@ -2554,6 +2566,26 @@ class MemoryStore:
                     int(run_id),
                 ),
             )
+            return self.get_self_evolution_run(run_id, conn=c)
+
+    @atomic_workflow
+    def rollback_self_evolution_run(self, run_id, actor_id="user", reason=""):
+        with self._conn() as c:
+            run = self.get_self_evolution_run(run_id, conn=c)
+            if not run or run['status'] != 'published':
+                raise ValueError('only a published self-evolution run can be rolled back')
+            current = self.get_runtime_policy(run['target_type'], run['target_key'], conn=c)
+            rollback = run['rollback_payload']
+            if (not current or current['version'] != rollback.get('policy_version')
+                    or current['payload'] != run['candidate_payload']):
+                raise ValueError('runtime policy changed; rollback cannot overwrite a newer policy')
+            c.execute('''UPDATE runtime_policies SET payload=?,version=version+1,active=?,
+                updated_by=?,updated_at=datetime('now') WHERE target_type=? AND target_key=?''',
+                (json.dumps(rollback.get('payload', {}), ensure_ascii=False),
+                 int(rollback.get('active', rollback.get('existed', False))), actor_id, run['target_type'], run['target_key']))
+            c.execute('''UPDATE self_evolution_runs SET status='rolled_back',release_stage='stopped',
+                traffic_percent=0,publish_decision='reject',conclusion=?,updated_at=datetime('now') WHERE id=?''',
+                (str(reason or 'Explicit rollback to previous runtime policy'), int(run_id)))
             return self.get_self_evolution_run(run_id, conn=c)
 
     def record_self_evolution_quality_signal(
@@ -4496,6 +4528,26 @@ class MemoryStore:
             ).fetchall()
             return [dict(r) for r in reversed(rows)]
 
+    def conversation_history(self, session_id, limit=50, before_id=0):
+        """Page full visible messages across compaction, using immutable IDs."""
+        limit = max(1, min(int(limit), 200))
+        before_id = max(0, int(before_id))
+        with self._conn() as c:
+            source = """WITH history AS (
+                SELECT id,session_id,role,content,created_at,0 AS archived FROM conversations
+                UNION ALL
+                SELECT original_id AS id,session_id,role,content,created_at,1 AS archived
+                FROM conversation_archive WHERE NOT EXISTS
+                (SELECT 1 FROM conversations WHERE id=conversation_archive.original_id)) """
+            rows = c.execute(source + """SELECT id,role,content,created_at,archived FROM history
+                WHERE session_id=? AND role IN ('user','assistant') AND (?=0 OR id<?)
+                ORDER BY id DESC LIMIT ?""", (session_id,before_id,before_id,limit+1)).fetchall()
+            more = len(rows) > limit
+            items = [dict(row) for row in reversed(rows[:limit])]
+            total = c.execute(source + "SELECT COUNT(*) FROM history WHERE session_id=? AND role IN ('user','assistant')", (session_id,)).fetchone()[0]
+            return dict(session_id=session_id, messages=items, count=len(items), total=total,
+                        has_more=more, next_before_id=items[0]['id'] if items and more else None)
+
     def get_session_summary(self, session_id: str) -> str:
         """Return the persistent semantic summary plus recent activity."""
         persisted = self.get_persisted_session_summary(session_id)
@@ -4617,21 +4669,27 @@ class MemoryStore:
 
     # ── STATS ──
 
-    def list_sessions(self) -> list[dict]:
+    def list_sessions(self, query="", limit=500) -> list[dict]:
         """List all conversation sessions with last message preview."""
         with self._conn() as c:
-            rows = c.execute("""
+            source = """WITH history AS (
+                SELECT id,session_id,role,content,created_at FROM conversations
+                UNION ALL SELECT original_id,session_id,role,content,created_at FROM conversation_archive
+                WHERE NOT EXISTS (SELECT 1 FROM conversations WHERE id=conversation_archive.original_id)) """
+            rows = c.execute(source + """
                 SELECT session_id, MAX(id) AS last_id
-                FROM conversations
+                FROM history WHERE role IN ('user','assistant')
+                AND (?='' OR instr(lower(session_id),lower(?))>0 OR session_id IN (SELECT session_id FROM history
+                    WHERE role IN ('user','assistant') AND instr(lower(content),lower(?))>0))
                 GROUP BY session_id
-                ORDER BY last_id DESC
-            """).fetchall()
+                ORDER BY last_id DESC LIMIT ?
+            """, (query,query,query,max(1,min(int(limit),500)))).fetchall()
             result = []
             for row in rows:
                 sid = row["session_id"]
-                msgs = c.execute("""SELECT role, content, created_at FROM conversations WHERE session_id=? ORDER BY id DESC LIMIT 1""", (sid,)).fetchone()
+                msgs = c.execute(source + """SELECT role, content, created_at FROM history WHERE session_id=? AND role IN ('user','assistant') ORDER BY id DESC LIMIT 1""", (sid,)).fetchone()
                 first_msgs = c.execute(
-                    "SELECT role, content FROM conversations WHERE session_id=? AND role IN ('user','assistant') ORDER BY id ASC LIMIT 6",
+                    source + "SELECT role, content FROM history WHERE session_id=? AND role IN ('user','assistant') ORDER BY id ASC LIMIT 6",
                     (sid,),
                 ).fetchall()
                 title, tags = self._summarize_session(first_msgs, sid)

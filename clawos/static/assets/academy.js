@@ -445,8 +445,16 @@ async function academyRefreshPaperPersistedStatus() {
     academyRenderPaperRuntimeStatus();
     return null;
   }
-  const status = await academyApi(`/api/academy/paper/status?document_id=${Number(academyPaperState.document.id)}`);
+  const documentId = Number(academyPaperState.document.id);
+  const status = await academyApi(`/api/academy/paper/status?document_id=${documentId}`);
+  if (Number(academyPaperState.document?.id) !== documentId) return null;
+  academyPaperState.document = {...academyPaperState.document,...status.document};
+  if (document.getElementById('paperTitle')) document.getElementById('paperTitle').value = academyPaperState.document.title || academyPaperState.document.filename || `Document ${documentId}`;
   academyPaperState.persistedStatus = status;
+  if (status.report?.ready && status.report?.analysis) {
+    academyPaperState.report = {report:status.report,analysis:status.report.analysis,artifacts:status.report.artifacts || []};
+    academyRenderPaperReport();
+  }
   if (status.knowledge?.id) academyPaperState.savedKnowledgeId = status.knowledge.id;
   if (status.annotation?.artifact) academyPaperState.annotationArtifact = status.annotation.artifact;
   if (status.checkpoint?.artifact) academyPaperState.checkpointArtifact = status.checkpoint.artifact;
@@ -472,10 +480,11 @@ function academyRenderPaperReport() {
   const renderItems = key => {
     const rows = analysis[key] || [];
     if (!rows.length) return `<p class="paper-report-empty">当前证据未稳定定位这一部分。</p>`;
-    return `<ul class="paper-report-points">${rows.slice(0, 4).map(item => `
+    return `<ul class="paper-report-points">${rows.map(item => `
       <li>
         <span class="paper-claim-status ${academyEsc(item.status || "inference")}">${item.status === "supported" ? "原文支持" : item.status === "not_found" ? "待核查" : "分析推断"}</span>
         <p>${academyEsc(item.text || "")}</p>
+        ${item.conditions?.length ? `<p class="paper-report-conditions"><b>实验条件：</b>${item.conditions.map(academyEsc).join('；')}</p>` : ''}
         <div class="paper-citation-row">${(item.citations || []).map(citation => `<button type="button" data-report-citation="${academyEsc(citation)}">${academyEsc(citation)}</button>`).join("")}</div>
       </li>`).join("")}</ul>`;
   };
@@ -484,19 +493,45 @@ function academyRenderPaperReport() {
     <div class="paper-report-heading">
       <div><span class="paper-report-kicker">Grounded review</span><h3>${academyEsc(analysis.title || academyPaperState.document?.title || "论文精读报告")}</h3></div>
       <span class="paper-report-mode">${modeLabel}</span>
+      <button type="button" class="paper-report-expand">全窗口阅读报告</button>
     </div>
     <p class="paper-report-summary">${academyEsc(analysis.summary || report.preview || "报告已生成。")}</p>
     <section class="paper-report-problem"><b>研究问题</b><p>${academyEsc(analysis.research_problem || "当前证据未稳定定位研究问题。")}</p></section>
     <div class="paper-report-sections">${sections.map(([key, label]) => `<details ${key === "methodology" || key === "experiments" ? "open" : ""}><summary>${label}<span>${(analysis[key] || []).length}</span></summary>${renderItems(key)}</details>`).join("")}</div>
     <div class="paper-report-verdict"><b>综合判断</b><p>${academyEsc(analysis.verdict || "请结合原文引用核查结论。")}</p></div>
-    <details class="paper-report-files"><summary>报告文件与解析质量</summary><div class="report-paths"><span>Markdown: ${academyEsc(markdownPath || "未返回")}</span><span>PDF: ${academyEsc(pdfPath || "未返回")}</span><span>证据片段: ${Number(analysis.evidence_count || 0)}</span></div></details>
+    <details class="paper-report-files"><summary>下载报告与核查来源</summary><p>引用属于当前论文，结论仍需回原文核查；实验条件随报告保留。</p><div class="report-paths">${(report.artifacts || []).map(item => `<a href="${academyEsc(item.download_url)}" download>${academyEsc(item.format.toUpperCase())} · ${academyEsc(item.name)}</a>`).join('')}<span>证据片段: ${Number(analysis.evidence_count || 0)}</span></div>
+    ${(analysis.source_index || []).map(item => `<details><summary>${academyEsc(item.citation)}</summary><blockquote>${academyEsc(item.excerpt)}</blockquote></details>`).join('')}</details>
   `;
   target.querySelectorAll("[data-report-citation]").forEach(button => button.addEventListener("click", () => {
     academySwitchReaderTab("evidence");
     academyAskPaperCitation(button.dataset.reportCitation || "");
   }));
   if (operationsCard) operationsCard.innerHTML = `<b>报告产物</b><p id="academyPaperReportStatus">${academyEsc(modeLabel)}，已生成 Markdown/PDF 和结构化证据报告。</p><div class="report-paths"><span>${academyEsc(markdownPath || "Markdown 未返回")}</span><span>${academyEsc(pdfPath || "PDF 未返回")}</span></div>`;
+  target.querySelector('.paper-report-expand').onclick = academyExpandPaperReport;
   academyRenderPaperRuntimeStatus();
+}
+
+function academyExpandPaperReport() {
+  const source = document.getElementById('paperDeepReadOutput');
+  if (!source?.classList.contains('grounded-paper-report')) return;
+  let dialog = document.getElementById('paperReportDialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id='paperReportDialog';dialog.className='paper-report-dialog';
+    dialog.setAttribute('aria-labelledby','paperReportDialogTitle');
+    dialog.innerHTML='<header><h2 id="paperReportDialogTitle">论文精读报告</h2><button type="button">返回原文 · Esc</button></header><div class="paper-report-dialog-body"></div>';
+    document.body.append(dialog);
+    dialog.querySelector('header button').onclick=()=>dialog.close();
+    dialog.querySelector('.paper-report-dialog-body').onclick=event=>{
+      const citation=event.target.closest('[data-report-citation]');
+      if (!citation) return;
+      dialog.close();academySwitchReaderTab('evidence');academyAskPaperCitation(citation.dataset.reportCitation);
+    };
+  }
+  const copy=source.cloneNode(true);copy.removeAttribute('id');
+  copy.querySelectorAll('details').forEach(item=>item.open=true);
+  dialog.querySelector('.paper-report-dialog-body').replaceChildren(copy);
+  dialog.showModal();
 }
 
 function academyLightPaperGraph(stage = "paper") {
@@ -686,7 +721,7 @@ async function academyOpenPaperTimelineEvent(index) {
   academyPaperState.chunks = pack.chunks || [];
   academyPaperState.projectItems = pack.project_items || [];
   academyPaperState.checkpoints = pack.checkpoints || [];
-  academyPaperState.report = pack.status?.report ? { report: pack.status.report } : null;
+  academyPaperState.report = pack.status?.report ? { report: pack.status.report, analysis:pack.status.report.analysis || {}, artifacts:pack.status.report.artifacts || [] } : null;
   academyPaperState.savedKnowledgeId = pack.status?.knowledge?.id || null;
   academyPaperState.annotationArtifact = pack.status?.annotation?.artifact || null;
   academyPaperState.checkpointArtifact = pack.status?.checkpoint?.artifact || null;
@@ -773,8 +808,12 @@ async function academyOpenPaperCheckpoint(runId) {
   const revision=checkpoint.reading?.source_revision||savedDoc.file_hash;
   if(revision&&revision!==doc.file_hash)throw Error('原文版本已变化，已打开当前原文；旧引用和批注需重新核对。');
   academyPaperState.persistedStatus = status;
+  if (status.report?.ready && status.report?.analysis) {
+    academyPaperState.report = {report:status.report,analysis:status.report.analysis,artifacts:status.report.artifacts || []};
+    academyRenderPaperReport();
+  }
   academyPaperState.citation = checkpoint.citation || null;
-  academyPaperState.report = status.report ? { report: status.report } : null;
+  academyPaperState.report = status.report ? { report: status.report, analysis:status.report.analysis || {}, artifacts:status.report.artifacts || [] } : null;
   academyPaperState.savedKnowledgeId = status.knowledge?.id || null;
   academyPaperState.annotationArtifact = status.annotation?.artifact || null;
   academyPaperState.checkpointArtifact = payload.summary?.artifact || status.checkpoint?.artifact || null;
@@ -823,7 +862,8 @@ async function academyOpenPaperDocument(documentId,initialPage=1) {
   academyRenderPaperMeta();
   await academyRefreshPaperPersistedStatus().catch(() => null);
   academyRenderPaperChunks();
-  academyGeneratePaperRead();
+  if (academyPaperState.report?.analysis) academyRenderPaperReport();
+  else academyGeneratePaperRead();
   academyLightPaperGraph("parsed");
   academyLoadPaperCheckpoints(Number(documentId)).catch(() => null);
   academyLoadPaperProjectBoard(Number(documentId)).catch(() => null);
@@ -1248,7 +1288,7 @@ function academySetupReaderControls() {
   document.getElementById("academyZoomIn")?.addEventListener("click", () => academyReaderZoom(.1));
   document.getElementById("academyZoomFit")?.addEventListener("click", academyReaderFit);
   document.getElementById("academyReaderFullscreen")?.addEventListener("click", academyToggleReaderFullscreen);
-  document.addEventListener("keydown", e => {if (e.key === "Escape" && document.body.classList.contains("reader-window")) academyToggleReaderFullscreen();});
+  document.addEventListener("keydown", e => {if (e.key === "Escape" && !document.querySelector('dialog[open]') && document.body.classList.contains("reader-window")) academyToggleReaderFullscreen();});
   document.getElementById("academyReaderSideToggle")?.addEventListener("click", e => {
     const hidden = document.querySelector(".paper-reader-workspace").classList.toggle("notes-collapsed");
     e.currentTarget.textContent = hidden ? "展开笔记" : "收起笔记";

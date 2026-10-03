@@ -361,7 +361,7 @@ class FrontendStaticTests(unittest.TestCase):
         css = self.read_page("assets/console.css")
 
         self.assertIn('href="/assets/site.css"', html)
-        self.assertIn('href="/assets/console.css"', html)
+        self.assertRegex(html, r'<link\s+rel="stylesheet"\s+href="/assets/console\.css(?:\?v=[^"<>]+)?"')
         self.assertIn('data-view="chat"', html)
         self.assertIn("workbench-new", html)
         self.assertIn("useWorkbenchPrompt", html + js)

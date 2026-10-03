@@ -1,5 +1,11 @@
 const API = location.origin;
 let currentSession = "default";
+let historyRequest = 0;
+let historyPage = null;
+let sessionSearchRequest = 0;
+let sessionSearchTimer;
+let sessionSearchRows = null;
+try { currentSession = localStorage.getItem('clawos-last-session') || 'default'; } catch (_) {}
 let busy = false;
 let lastToolCalls = [];
 let lastRoutingStrategy = null;
@@ -570,20 +576,72 @@ function cancelPending() {
 }
 
 function newChat() {
+  if (busy) return;
+  historyRequest++;
+  historyPage = null;
   currentSession = "s_" + Date.now();
+  try { localStorage.setItem('clawos-last-session', currentSession); } catch (_) {}
   $("chatInner").innerHTML = `<div class="empty workbench-empty task-empty"><b>开始一个新任务</b><span>输入目标，或添加需要处理的文件。</span></div>`;
   loadSessions();
   setView("chat");
 }
 
 async function switchSession(id) {
-  currentSession = id;
-  startTaskStream();
-  const data = await api("/api/history/" + encodeURIComponent(id));
-  $("chatInner").innerHTML = "";
-  (data.messages || []).forEach(message => addMessage(message.role === "assistant" ? "assistant" : "user", message.content));
-  renderSessions(window._sessions || []);
-  setView("chat");
+  if (busy) return;
+  const request = ++historyRequest;
+  try {
+    const data = await api("/api/history/" + encodeURIComponent(id));
+    if (request !== historyRequest || busy) return;
+    currentSession = id;
+    try { localStorage.setItem('clawos-last-session', id); } catch (_) {}
+    startTaskStream();
+    historyPage = data;
+    $("chatInner").innerHTML = "";
+    (data.messages || []).forEach(message => addMessage(message.role, message.content));
+    renderHistoryControls();
+    renderSessions(window._sessions || []);
+    setView("chat");
+  } catch (err) {
+    if (request === historyRequest) alert('历史记录加载失败：' + err.message);
+  }
+}
+
+function renderHistoryControls() {
+  $('historyControls')?.remove();
+  const controls = document.createElement('div');
+  controls.id = 'historyControls';
+  controls.className = 'history-controls';
+  const visible = $('chatInner').querySelectorAll('.msg').length;
+  controls.innerHTML = `<span role="status">已显示 ${visible} / ${Math.max(visible,Number(historyPage?.total || visible))} 条记录</span>
+    <button type="button" class="secondary" id="historyOlder" ${!historyPage?.has_more || visible >= 1000 ? 'hidden' : ''}>加载更早记录</button>
+    <a href="/api/history/${encodeURIComponent(currentSession)}/export?format=markdown" download>导出 Markdown</a>
+    <a href="/api/history/${encodeURIComponent(currentSession)}/export?format=json" download>导出 JSON</a>
+    ${visible >= 1000 ? '<small>页面最多显示 1000 条，完整记录可导出。</small>' : ''}`;
+  $('chatInner').prepend(controls);
+  $('historyOlder').onclick = loadOlderHistory;
+}
+
+async function loadOlderHistory() {
+  if (busy || !historyPage?.has_more) return;
+  const id = currentSession, request = historyRequest, button = $('historyOlder');
+  button.disabled = true;
+  try {
+    const data = await api(`/api/history/${encodeURIComponent(id)}?before_id=${historyPage.next_before_id}`);
+    if (id !== currentSession || request !== historyRequest || busy) return;
+    const container = $('chatInner'), first = container.querySelector('.msg');
+    const height = $('chat').scrollHeight, top = $('chat').scrollTop;
+    const fragment = document.createDocumentFragment();
+    for (const message of data.messages || []) {
+      addMessage(message.role, message.content);
+      fragment.append(container.lastElementChild);
+    }
+    container.insertBefore(fragment, first);
+    historyPage = data;
+    renderHistoryControls();
+    $('chat').scrollTop = top + $('chat').scrollHeight - height;
+    $('historyOlder')?.focus();
+  } catch (err) { if (id === currentSession) alert('更早记录加载失败：' + err.message); }
+  finally { if (button.isConnected) button.disabled = false; }
 }
 
 async function loadSessions() {
@@ -621,22 +679,37 @@ function sessionSummary(session) {
 
 function renderSessions(list) {
   const rows = list || [];
-  $("sessions").innerHTML = rows.map(session => `<div class="session ${session.session_id === currentSession ? "on" : ""}" onclick="switchSession('${esc(session.session_id)}')"><b>${esc(sessionTitle(session).slice(0, 54))}</b>${session.tags?.length ? `<div class="session-tags">${sessionTags(session)}</div>` : ""}</div>`).join("") || '<div class="session">暂无会话</div>';
+  $("sessions").innerHTML = rows.map(session => `<button type="button" class="session ${session.session_id === currentSession ? "on" : ""}" data-session="${esc(session.session_id)}"><b>${esc(sessionTitle(session).slice(0, 54))}</b>${session.tags?.length ? `<span class="session-tags">${sessionTags(session)}</span>` : ""}</button>`).join("") || '<div class="session">暂无会话</div>';
+  $('sessions').onclick = event => { const item = event.target.closest('[data-session]'); if (item) switchSession(item.dataset.session); };
 }
 
 function renderSessionSearch() {
   const target = $("sessionSearchList");
   if (!target) return;
   const query = ($("sessionQuery")?.value || "").toLowerCase();
-  const rows = (window._sessions || []).filter(session => {
+  const rows = sessionSearchRows?.query === query.trim() && query.trim() ? sessionSearchRows.rows : (window._sessions || []).filter(session => {
     const haystack = [session.title, session.topic, session.last_message, session.session_id, ...(session.tags || [])].join(" ").toLowerCase();
     return !query || haystack.includes(query);
   });
-  target.innerHTML = rows.map(session => `<button class="session-result" onclick="switchSession('${esc(session.session_id)}')">
+  target.innerHTML = rows.map(session => `<button type="button" class="session-result" data-session="${esc(session.session_id)}">
     <span class="session-result-copy"><b>${esc(sessionTitle(session).slice(0, 96))}</b><small>${esc(sessionSummary(session))}</small></span>
     <time>${esc(session.updated_at || session.session_id)}</time>
     <span class="session-continue">继续</span>
   </button>`).join("") || '<div class="empty-state">暂无匹配会话</div>';
+  target.onclick = event => { const item = event.target.closest('[data-session]'); if (item) switchSession(item.dataset.session); };
+}
+
+function searchSessionHistory() {
+  clearTimeout(sessionSearchTimer);
+  const request = ++sessionSearchRequest, query = $('sessionQuery').value.trim();
+  sessionSearchTimer = setTimeout(async () => {
+    try {
+      const data = await api('/api/sessions?q=' + encodeURIComponent(query));
+      if (request !== sessionSearchRequest) return;
+      sessionSearchRows = {query:query.toLowerCase(), rows:data.sessions || []};
+      renderSessionSearch();
+    } catch (err) { if (request === sessionSearchRequest) $('sessionSearchList').textContent = '搜索失败：' + err.message; }
+  }, 250);
 }
 
 function chooseLocalFile() {
@@ -2362,6 +2435,7 @@ async function rollbackReflection(id) { await transitionReflection(id, "rolled_b
 function evolutionActions(run) {
   const id = Number(run.id);
   const status = String(run.status || "");
+  if (run.stale_baseline) return '<span>策略基线已变更，请创建新候选并重新验证</span>';
   const canShadow = status === "validated";
   const canCanary = status === "shadow" || status === "canary";
   const canActivate = status === "canary";
@@ -2369,6 +2443,7 @@ function evolutionActions(run) {
     canShadow ? `<button class="secondary" onclick="shadowEvolutionRun(${id})">Shadow</button>` : "",
     canCanary ? `<button class="secondary" onclick="canaryEvolutionRun(${id})">Canary</button>` : "",
     canActivate ? `<button class="primary" onclick="activateEvolutionRun(${id})">Activate</button>` : "",
+    run.owns_active_policy ? `<button class="secondary" onclick="rollbackEvolutionRun(${id})">回滚</button>` : "",
     `<button class="secondary" onclick="snapshotEvolutionQuality(${id})">质量快照</button>`
   ].filter(Boolean).join(" ");
 }
@@ -2377,7 +2452,7 @@ async function loadEvolution() {
   if (!$("evolutionRunTable")) return;
   const data = await api("/api/self-evolution/board").catch(() => ({ runs: [], quality_snapshot: {} }));
   const runs = data.runs || [];
-  if ($("evolutionScore")) $("evolutionScore").textContent = `Evolution readiness: ${data.enterprise_score ?? "--"}% · ${data.enterprise_ready ? "enterprise gate passed" : "needs observation"}`;
+  if ($("evolutionScore")) $("evolutionScore").textContent = `当前有效策略 ${data.active_count || 0} · 基线失效候选 ${data.stale_count || 0} · 保留回归、影子与灰度门禁`;
   const quality = data.quality_snapshot || {};
   if ($("evolutionQualityTable")) {
     $("evolutionQualityTable").innerHTML = table(["Signal", "Value"], Object.keys(quality).map(key => [key, quality[key]]));
@@ -2387,7 +2462,7 @@ async function loadEvolution() {
     runs.map(run => [
       run.id,
       `${run.target_type}/${run.target_key}`,
-      { html: statusBadge(run.release_stage || run.status) },
+      { html: statusBadge(run.effective_stage || run.release_stage || run.status) },
       `${run.traffic_percent || 0}%`,
       { html: statusBadge((run.gate_result || {}).passed ? "passed" : run.status === "candidate" ? "pending" : "failed") },
       run.publish_decision || "",
@@ -2501,6 +2576,13 @@ async function activateEvolutionRun(id) {
   const data = await api(`/api/self-evolution/runs/${id}/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor_id: "console", reason: "console activation after shadow/canary review", confirmed: true }) });
   if ($("evolutionResult")) $("evolutionResult").textContent = JSON.stringify(data, null, 2);
   await loadEvolution();
+}
+
+async function rollbackEvolutionRun(id) {
+  try {
+    await api(`/api/self-evolution/runs/${id}/rollback`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmed:true,actor_id:'console'})});
+    await loadEvolution();
+  } catch (err) { alert('回滚未执行：' + err.message); }
 }
 
 async function snapshotEvolutionQuality(id) {
@@ -3391,7 +3473,7 @@ document.addEventListener("keydown", (event) => {
 applyReportPreset();
 renderKnowledgeWorkspaceShell();
 setAutonomyMode(localStorage.getItem("clawos-autonomy-mode") || "approve");
-loadSessions();
+loadSessions().then(() => { if (!initialView || initialView === 'chat') switchSession(currentSession); });
 startTaskStream();
 const initialView = (location.hash || "").replace("#", "") || new URLSearchParams(location.search).get('view');
 setView(initialView);

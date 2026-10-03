@@ -362,6 +362,7 @@ class PaperIntelligenceService:
 
     def _claims(self, chunks: list[dict[str, Any]], section_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         section_by_id = {item.get("chunk_id"): item["section"] for item in section_rows}
+        heading_by_id = {item.get('chunk_id'): str(item.get('heading') or '').strip().lower() for item in section_rows}
         claims = []
         seen = set()
         context_candidates = []
@@ -375,6 +376,8 @@ class PaperIntelligenceService:
             section = section_by_id.get(chunk.get("id"), "")
             for sentence in _sentences(chunk.get("content", "")):
                 low = sentence.lower()
+                if low == heading_by_id.get(chunk.get('id')):
+                    continue
                 if section not in {"findings", "conclusion", "limitations", "experiments"} and not any(cue in low for cue in CLAIM_CUES):
                     continue
                 if sentence.lower() in seen:

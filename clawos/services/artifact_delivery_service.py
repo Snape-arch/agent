@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import time
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ from typing import Any
 OUTPUT_KEYS = {
     "path", "output_path", "markdown_path", "pdf_path", "diff_path",
     "patch_path", "workbook", "presentation", "document", "report_path",
-    "persisted_report",
+    "persisted_report", "json_path",
 }
 PREVIEWABLE_SUFFIXES = {
     ".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif",
@@ -34,6 +35,8 @@ class ArtifactDeliveryService:
             tool = str(call.get("name") or "tool")
             result = call.get("result") or {}
             payload = result.get("data") if isinstance(result, dict) and isinstance(result.get("data"), dict) else result
+            if isinstance(payload, dict) and payload.get('preview') is True and not payload.get('written'):
+                continue
             for path in self._paths(payload):
                 key = os.path.normcase(str(path))
                 if key in seen:
@@ -67,9 +70,11 @@ class ArtifactDeliveryService:
             "download_url": f"/api/artifacts/{artifact_id}/download",
             "preview_url": f"/api/artifacts/{artifact_id}/preview" if suffix in PREVIEWABLE_SUFFIXES else "",
         }
-        registry = self._load()
-        registry[artifact_id] = item
-        self._write(registry)
+        from .file_transactions import _file_lock
+        with _file_lock(self.registry_path):
+            registry = self._load()
+            registry[artifact_id] = item
+            self._write(registry)
         return {key: value for key, value in item.items() if key != "path"}
 
     def resolve(self, artifact_id: str) -> tuple[dict[str, Any], Path]:
@@ -113,15 +118,24 @@ class ArtifactDeliveryService:
             return {}
         try:
             value = json.loads(self.registry_path.read_text(encoding="utf-8-sig"))
-            return value if isinstance(value, dict) else {}
-        except (OSError, json.JSONDecodeError):
-            return {}
+            if not isinstance(value, dict):
+                raise ValueError('artifact registry must be an object; recover it before registering files')
+            return value
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError('artifact registry is unreadable; recover it before registering files') from exc
 
     def _write(self, payload: dict[str, Any]) -> None:
         self.registry_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.registry_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        os.replace(temporary, self.registry_path)
+        descriptor, name = tempfile.mkstemp(prefix='.artifacts-',suffix='.tmp',dir=self.registry_path.parent)
+        temporary = Path(name)
+        try:
+            with os.fdopen(descriptor,'w',encoding='utf-8') as handle:
+                json.dump(payload,handle,ensure_ascii=False,indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary,self.registry_path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     @staticmethod
     def _sha(path: Path) -> str:

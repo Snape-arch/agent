@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
 from typing import Any
 
 
@@ -64,7 +65,8 @@ def _best_sentence(value: Any, section: str = "", limit: int = 520) -> str:
 def _canonical_citation(citation: str, document_id: Any) -> str:
     value = str(citation or "").strip()
     if value.startswith("doc:"):
-        return value
+        match = re.fullmatch(r"doc:(\d+)#page=([1-9]\d*)&chunk=([1-9]\d*)", value)
+        return value if match and str(int(match.group(1))) == str(document_id) else ""
     page = re.search(r"#page=(\d+)", value)
     chunk = re.search(r"(?:&|#)chunk=(\d+)", value)
     if page:
@@ -149,7 +151,9 @@ class GroundedPaperReport:
         )
         schema = {
             "summary": "one-sentence paper summary",
+            "summary_citations": ["doc:..."],
             "research_problem": "problem and motivation",
+            "research_problem_citations": ["doc:..."],
             "contributions": [{"text": "contribution", "citations": ["doc:..."], "status": "supported|inference|not_found"}],
             "methodology": [{"text": "mechanism or method", "citations": ["doc:..."], "status": "supported|inference|not_found"}],
             "experiments": [{"text": "setup, baseline, metric, or result", "citations": ["doc:..."], "status": "supported|inference|not_found"}],
@@ -212,7 +216,9 @@ class GroundedPaperReport:
             limitation_rows = [{"text": "当前解析证据中未定位到明确的局限性段落，需要回到原文人工核查。", "citations": [], "status": "not_found"}]
         payload = {
             "summary": summary,
+            "summary_citations": [summary_source[0]['citation']] if summary_source else [],
             "research_problem": _best_sentence((introduction or abstract or [{}])[0].get("excerpt"), "abstract", 620),
+            "research_problem_citations": [(introduction or abstract)[0]['citation']] if introduction or abstract else [],
             "contributions": rows_from("abstract", limit=3) or finding_rows[:3],
             "methodology": rows_from("methodology", limit=6),
             "experiments": rows_from("experiments", limit=6),
@@ -231,6 +237,10 @@ class GroundedPaperReport:
     def normalize(cls, payload: dict[str, Any], bundle: dict[str, Any], *, mode: str) -> dict[str, Any]:
         allowed = dict(bundle.get("allowed_citations") or {})
 
+        def valid_citations(value):
+            values = value if isinstance(value, list) else [value] if isinstance(value, str) else []
+            return list(dict.fromkeys(str(c) for c in values if str(c) in allowed))[:4]
+
         def normalize_rows(value: Any) -> list[dict[str, Any]]:
             if not isinstance(value, list):
                 value = [value] if value else []
@@ -241,14 +251,15 @@ class GroundedPaperReport:
                 if not text:
                     continue
                 citations = item.get("citations") or ([item.get("citation")] if item.get("citation") else [])
-                citations = [str(c) for c in citations if str(c) in allowed][:4]
+                citations = valid_citations(citations)
                 requested = str(item.get("status") or "supported")
                 status = requested if requested in {"supported", "inference", "not_found"} else "supported"
                 if status == "supported" and not citations:
                     status = "inference"
                 rows.append({"text": text, "citations": citations, "status": status})
                 if item.get("conditions"):
-                    rows[-1]["conditions"] = [_clean_text(value, 500) for value in item.get("conditions") or [] if _clean_text(value, 500)]
+                    values = item['conditions'] if isinstance(item['conditions'], list) else [item['conditions']]
+                    rows[-1]["conditions"] = [_clean_text(value, 500) for value in values[:12] if _clean_text(value, 500)]
             return rows
 
         normalized = {
@@ -256,19 +267,30 @@ class GroundedPaperReport:
             "mode": mode,
             "title": bundle.get("document", {}).get("title") or "Untitled paper",
             "summary": _clean_text(payload.get("summary"), 700),
+            "summary_citations": valid_citations(payload.get("summary_citations")),
             "research_problem": _clean_text(payload.get("research_problem"), 1000),
+            "research_problem_citations": valid_citations(payload.get("research_problem_citations")),
             "contributions": normalize_rows(payload.get("contributions")),
             "methodology": normalize_rows(payload.get("methodology")),
             "experiments": normalize_rows(payload.get("experiments")),
             "findings": normalize_rows(payload.get("findings")),
             "limitations": normalize_rows(payload.get("limitations")),
-            "open_questions": [_clean_text(item, 400) for item in list(payload.get("open_questions") or [])[:8] if _clean_text(item, 400)],
+            "open_questions": [_clean_text(item, 400) for item in (payload.get("open_questions") if isinstance(payload.get("open_questions"), list) else [payload.get("open_questions")] if payload.get("open_questions") else [])[:8] if _clean_text(item, 400)],
             "verdict": _clean_text(payload.get("verdict"), 900),
             "source_quality": bundle.get("quality") or {},
             "evidence_count": len(allowed),
         }
         if not normalized["summary"]:
             normalized["summary"] = "当前证据不足以形成可靠的一句话结论。"
+        rows = [item for key in REPORT_SECTION_KEYS for item in normalized[key]]
+        cited = list(dict.fromkeys(normalized['summary_citations'] + normalized['research_problem_citations']
+                                 + [citation for item in rows for citation in item['citations']]))
+        normalized['document_id'] = bundle.get('document', {}).get('id')
+        normalized['source_digest'] = hashlib.sha256(json.dumps(allowed, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        normalized['source_index'] = [dict(citation=c, excerpt=allowed[c]) for c in cited]
+        normalized['citation_audit'] = dict(cited_items=sum(bool(r['citations']) for r in rows),
+                                           total_items=len(rows), missing_sections=[k for k in REPORT_SECTION_KEYS if not normalized[k]],
+                                           semantic_entailment_verified=False)
         return normalized
 
     @staticmethod
@@ -284,7 +306,7 @@ class GroundedPaperReport:
         lines = [
             f"# {report.get('title') or '论文精读报告'}",
             "",
-            f"> 生成方式：{mode_label}。每条事实性结论仅保留当前证据包中的引用。",
+            f"> 生成方式：{mode_label}。引用已校验属于当前论文；引用存在不代表结论已经过语义核验。",
             "",
             "## 一句话结论",
             "",
@@ -304,7 +326,21 @@ class GroundedPaperReport:
                 status = {"supported": "原文支持", "inference": "分析推断", "not_found": "待核查"}.get(item.get("status"), "待核查")
                 citations = " ".join(f"[{citation}]" for citation in item.get("citations") or [])
                 lines.append(f"- **{status}**：{item.get('text', '')}{(' ' + citations) if citations else ''}")
+                if item.get('conditions'):
+                    lines.append("  - 实验条件：" + "；".join(item['conditions']))
         lines.extend(["", "## 仍需核查的问题", ""])
         lines.extend(f"- {item}" for item in report.get("open_questions") or ["无"])
         lines.extend(["", "## 综合判断", "", str(report.get("verdict") or ""), ""])
+        lines.extend(["## 引用核查与原文索引", "",
+                      f"证据快照 SHA-256：`{report.get('source_digest', '')}`", "",
+                      "模型概述和研究问题也需回原文核查；缺少证据的部分不得作为已验证结论。", ""])
+        for item in report.get('source_index') or []:
+            citation = item['citation']
+            page = re.search(r'#page=(\d+)', citation)
+            if page and report.get('document_id'):
+                lines.append(f"- [{citation}](/academy/paper?document={report['document_id']}&page={page.group(1)}&reader=window)")
+            else:
+                lines.append(f"- {citation}")
+            lines.append("  > " + item['excerpt'])
+        lines.append("")
         return "\n".join(lines)
