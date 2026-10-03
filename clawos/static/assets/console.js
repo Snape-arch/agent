@@ -2607,18 +2607,25 @@ async function queueSearchedCandidate(index) {
   } catch (err) { $("evolutionSearchStatus").textContent = "提名失败：" + err.message; }
 }
 
+let evolutionExperimentLoadGeneration = 0;
 async function loadEvolutionExperiments() {
+  const generation = ++evolutionExperimentLoadGeneration;
   const target = $("evolutionExperimentTable");
   if (!target) return;
   try {
     const data = await api("/api/self-evolution/experiments");
+    if (generation !== evolutionExperimentLoadGeneration) return;
     target.innerHTML = table(["实验", "目标", "状态", "任务 / 候选", "搜索 / 留出组", "离线结论", "操作"], (data.experiments || []).map(item => {
       const report = item.report || {};
       const id = Number(item.id);
       const actions = [`<button class="secondary" onclick="exportEvolutionExperiment(${id})">下载证据</button>`];
-      if (item.status === "frozen") actions.unshift(`<button class="primary" onclick="replayEvolutionExperiment(${id})">成对回放</button>`);
+      const job = item.job || {};
+      if (item.status === "frozen" || item.status === "paused" || job.recoverable) actions.unshift(`<button class="primary" onclick="replayEvolutionExperiment(${id})">${item.status === 'frozen' ? '成对回放' : '继续回放'}</button>`);
+      if (item.status === "running") actions.unshift(`<button class="secondary" onclick="controlEvolutionExperiment(${id},'pause')">暂停</button>`);
+      if (['frozen','running','paused'].includes(item.status)) actions.push(`<button class="secondary" onclick="controlEvolutionExperiment(${id},'cancel')">取消实验</button>`);
+      if (item.status === 'completed') actions.push(`<button class="secondary" onclick="selectEvolutionReview(${id})">准备盲评</button>`);
       if (report.eligible_for_regression_queue) actions.unshift(`<button class="secondary" onclick="nominateEvolutionExperiment(${id})">提名候选</button>`);
-      return [id, `${item.target_type}/${item.target_key}`, item.status, `${item.case_count} / ${item.candidate_count}`,
+      return [id, `${item.target_type}/${item.target_key}`, `${item.status} · ${job.checkpoint_count || 0} 个检查点${job.recoverable ? ' · 租约过期，可恢复' : ''}`, `${item.case_count} / ${item.candidate_count}`,
         `${report.search_groups ?? "—"} / ${report.holdout_groups ?? "—"}`,
         item.stale_evidence ? "源码或策略基线已变更；需新实验" : report.eligible_for_regression_queue ? "可提名；仍需回归和线上证据" : report.error || (item.status === "completed" ? "未通过；检查下载证据" : "等待回放"), {html:actions.join(" ")}];
     }));
@@ -2641,12 +2648,68 @@ async function freezeEvolutionExperiment() {
 
 async function replayEvolutionExperiment(id) {
   const status = $("evolutionExperimentStatus");
+  const poll = setInterval(() => loadEvolutionExperiments(), 4000);
   try {
     status.textContent = `实验 #${id} 正在回放；检索使用隔离资料库，工具路由只计算合同。`;
     const data = await api(`/api/self-evolution/experiments/${id}/replay`, {method:"POST"});
     status.textContent = data.experiment.report.eligible_for_regression_queue ? `实验 #${id} 留出验证通过，可提名候选。` : `实验 #${id} 验证未通过，下载证据查看阻止原因。`;
     await loadEvolutionExperiments();
-  } catch (err) { status.textContent = "回放未完成：" + err.message; }
+  } catch (err) { status.textContent = "回放未完成：" + err.message; await loadEvolutionExperiments(); }
+  finally { clearInterval(poll); }
+}
+
+async function controlEvolutionExperiment(id, action) {
+  try {
+    await api(`/api/self-evolution/experiments/${id}/control`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
+    $('evolutionExperimentStatus').textContent = action === 'pause' ? `实验 #${id} 已暂停，已保存的检查点可恢复。` : `实验 #${id} 已取消；留出题使用记录保留。`;
+    await loadEvolutionExperiments();
+  } catch (err) { $('evolutionExperimentStatus').textContent = '操作未完成：' + err.message; }
+}
+
+function selectEvolutionReview(id) {
+  $('evolutionReviewId').value = id;
+  $('evolutionReviewResult').innerHTML = '';
+  $('evolutionReviewId').focus();
+  $('evolutionReviewStatus').textContent = `已选择实验 #${id}。先上传绑定原始问题、策略摘要与模型信息的成对输出。`;
+}
+
+async function importEvolutionReview(kind) {
+  const status = $('evolutionReviewStatus');
+  try {
+    const id = Number($('evolutionReviewId').value), file = $('evolutionReviewFile').files[0];
+    if (!Number.isInteger(id) || id < 1 || !file) throw Error('请选择实验并上传 JSON 文件。');
+    if (file.size > 8*1024*1024) throw Error('文件超过 8MiB。');
+    const endpoint = kind === 'outputs' ? 'review-outputs' : 'reviews';
+    const data = await api(`/api/self-evolution/experiments/${id}/${endpoint}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(JSON.parse(await file.text()))});
+    status.textContent = kind === 'outputs' ? `输出已冻结，共 ${data.packet.entries.length} 题。可下载盲评包交给审核者。` : `已收录 ${data.summary.reviewer_count} 位具名审核者；${data.summary.reported_review_passed ? '报告评分通过，身份与模型执行仍待验证' : '尚未通过，检查样本、分歧和严重错误'}。`;
+    if (data.summary) renderEvolutionReviewSummary(data.summary);
+    else $('evolutionReviewResult').innerHTML = '';
+  } catch (err) { status.textContent = '导入未完成：' + err.message; }
+}
+
+function renderEvolutionReviewSummary(summary) {
+  const segments = summary.reviewed_gate?.segments || {};
+  const rows = Object.entries(segments).map(([name, report]) => {
+    const metrics = Object.values(report.metrics || {});
+    const count = metrics.length ? Math.min(...metrics.map(item => Number(item.independent_clusters || 0))) : 0;
+    const lower = metrics.length ? Math.min(...metrics.map(item => Number(item.confidence_lower || 0))) : 0;
+    return [name, count, count < 30 ? '样本不足' : report.passed ? '未见显著退步' : '检测到退步', `${(lower * 100).toFixed(1)} 个百分点`];
+  });
+  const conflicts = summary.adjudication_required?.length || 0, critical = summary.critical_errors?.length || 0;
+  const state = summary.reported_review_passed ? '评分报告通过' : Number(summary.reviewer_count) < 2 ? '等待第二位审核者' : conflicts || critical ? '需要人工复核' : '任务类别门禁未通过';
+  $('evolutionReviewResult').innerHTML = `<div class="evolution-review-summary"><h3>${esc(state)}</h3><p>模型执行与审核者身份尚待验证；当前报告评分不计入线上发布证据。</p><div class="evolution-review-metrics"><div><strong>${Number(summary.reviewer_count || 0)}</strong><span>具名审核者</span></div><div><strong>${Number(summary.case_count || 0)}</strong><span>成对留出题</span></div><div><strong>${conflicts}</strong><span>需复核的分歧</span></div><div><strong>${critical}</strong><span>严重错误标记</span></div></div><h3>任务类别验收</h3><p>每类至少 30 个独立任务组；置信下界低于 −2 个百分点会阻止通过。</p><div class="evolution-review-gates" role="region" aria-label="任务类别评分" tabindex="0"><table class="table">${table(['任务类别','独立任务组','结论','提升置信下界'],rows)}</table></div><details><summary>原始评分门禁数据</summary><pre tabindex="0" aria-label="原始评审数据">${esc(JSON.stringify(summary,null,2))}</pre></details></div>`;
+}
+
+async function exportEvolutionReview(kind) {
+  try {
+    const id = Number($('evolutionReviewId').value);
+    if (!Number.isInteger(id) || id < 1) throw Error('请选择实验。');
+    const data = await api(`/api/self-evolution/experiments/${id}/review/${kind}`);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data[kind],null,2)],{type:'application/json'}));
+    const link = document.createElement('a'); link.href = url; link.download = `evolution-review-${id}-${kind}.json`; link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    $('evolutionReviewStatus').textContent = kind === 'packet' ? '盲评包已导出，包含匿名 A/B 答案与正文摘要。' : '评审证据已导出，包含原始评分、分歧与来源绑定。';
+  } catch (err) { $('evolutionReviewStatus').textContent = '导出未完成：' + err.message; }
 }
 
 async function nominateEvolutionExperiment(id) {

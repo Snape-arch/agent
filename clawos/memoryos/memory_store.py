@@ -498,6 +498,46 @@ class MemoryStore:
                     created_by TEXT NOT NULL DEFAULT 'system',
                     created_at TEXT DEFAULT (datetime('now'))
                 );
+                CREATE TABLE IF NOT EXISTS evolution_attempts (
+                    token TEXT PRIMARY KEY,
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_experiments(id),
+                    status TEXT NOT NULL,
+                    lease_until REAL NOT NULL,
+                    started_at REAL NOT NULL,
+                    finished_at REAL,
+                    reason TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_evolution_attempts_exp ON evolution_attempts(experiment_id, started_at);
+                CREATE TABLE IF NOT EXISTS evolution_case_results (
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_experiments(id),
+                    case_id TEXT NOT NULL,
+                    candidate_id TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    outcome_digest TEXT NOT NULL,
+                    attempt_token TEXT NOT NULL,
+                    PRIMARY KEY(experiment_id,case_id,candidate_id)
+                );
+                CREATE TABLE IF NOT EXISTS evolution_exposures (
+                    input_key TEXT NOT NULL,
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_experiments(id),
+                    split TEXT NOT NULL,
+                    PRIMARY KEY(input_key,experiment_id)
+                );
+                CREATE TABLE IF NOT EXISTS evolution_review_packets (
+                    experiment_id INTEGER PRIMARY KEY REFERENCES evolution_experiments(id),
+                    packet_digest TEXT NOT NULL UNIQUE,
+                    payload TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS evolution_reviews (
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_review_packets(experiment_id),
+                    reviewer TEXT NOT NULL,
+                    submission TEXT NOT NULL,
+                    submission_digest TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY(experiment_id,reviewer)
+                );
                 CREATE TABLE IF NOT EXISTS policy_groups (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -2435,6 +2475,8 @@ class MemoryStore:
             result = dict(row)
             result["definition"] = self._json_loads(result["definition"], {})
             result["report"] = self._json_loads(result["report"], {})
+            from services.evolution_jobs import EvolutionJobStore
+            result["job"] = EvolutionJobStore(self).summary(int(experiment_id), conn=c)
             return result
 
     def list_evolution_experiments(self, limit=50):
@@ -2444,20 +2486,12 @@ class MemoryStore:
             return [self.get_evolution_experiment(row["id"]) for row in rows]
 
     def claim_evolution_experiment(self, experiment_id):
-        with self.transaction() as c:
-            changed = c.execute("UPDATE evolution_experiments SET status='running' WHERE id=? AND status='frozen'",
-                                (int(experiment_id),)).rowcount
-            if changed != 1:
-                raise ValueError("experiment already claimed; completed evidence is immutable")
-            return self.get_evolution_experiment(experiment_id)
+        from services.evolution_jobs import EvolutionJobStore
+        return EvolutionJobStore(self).claim(experiment_id)
 
-    def finish_evolution_experiment(self, experiment_id, report, failed=False):
-        with self.transaction() as c:
-            changed = c.execute("UPDATE evolution_experiments SET report=?,status=? WHERE id=? AND status='running'",
-                                (json.dumps(report, ensure_ascii=False), "failed" if failed else "completed", int(experiment_id))).rowcount
-            if changed != 1:
-                raise ValueError("only a claimed experiment can be finished once")
-            return self.get_evolution_experiment(experiment_id)
+    def finish_evolution_experiment(self, experiment_id, report, failed=False, *, attempt_token=""):
+        from services.evolution_jobs import EvolutionJobStore
+        return EvolutionJobStore(self).finish(experiment_id, attempt_token, report, failed=failed)
 
     @atomic_workflow
     def create_self_evolution_run(

@@ -67,7 +67,7 @@ def runtime_health_passed(rows):
             and latest.get("retrieval_hit_rate", 1) >= .80)
 
 
-def paired_quality_report(rows, *, minimum=30, stage=None, tolerance=0.02):
+def paired_quality_report(rows, *, minimum=30, stage=None, tolerance=0.02, family_size=1):
     """Compare the same metric on the same independent task, never two marginals.
 
     Repeated identical observations add no support. Conflicting duplicates,
@@ -123,7 +123,7 @@ def paired_quality_report(rows, *, minimum=30, stage=None, tolerance=0.02):
         metrics[metric].append((control_cluster, QUALITY_DIRECTIONS[metric] * (candidate - control)))
     summaries = {}
     # Bonferroni correction for the inspected metrics; fixed deterministic seed.
-    alpha = 0.05 / max(1, len(metrics))
+    alpha = 0.05 / (max(1, len(metrics)) * max(1, family_size))
     for metric, pairs in sorted(metrics.items()):
         clusters = defaultdict(list)
         for cluster, delta in pairs:
@@ -145,3 +145,29 @@ def paired_quality_report(rows, *, minimum=30, stage=None, tolerance=0.02):
         "passed": bool(summaries) and not rejected and all(item["passed"] for item in summaries.values()),
         "scope": "task-bound reported runtime outcomes; no automatic semantic verification",
     }
+
+
+def stratified_quality_report(rows, *, stage=None):
+    """Predeclared task segments must each pass; averages cannot hide harm."""
+    rows = list(rows)
+    segments = defaultdict(list)
+    identities = {}
+    conflict = False
+    for row in rows:
+        meta = row.get('metadata') or {}
+        if stage and meta.get('observed_stage') != stage:
+            continue
+        if meta.get('source') in {'runtime_snapshot', 'offline_replay', 'policy_materialization'}:
+            continue
+        segment = str(meta.get('segment') or 'default')
+        for identity in independent_evidence_ids([row]):
+            if identity in identities and identities[identity] != segment:
+                conflict = True
+            identities[identity] = segment
+        segments[segment].append(row)
+    reports = {segment: paired_quality_report(items, stage=stage, family_size=len(segments))
+               for segment, items in sorted(segments.items())}
+    return {'schema': 'clawos.stratified-quality.v1', 'segments': reports,
+            'identity_segment_conflict': conflict, 'minimum_per_segment': 30,
+            'passed': bool(reports) and not conflict and all(report['passed'] for report in reports.values()),
+            'meaning': 'predeclared segments, Bonferroni across segments and metrics; insufficient support blocks'}

@@ -335,10 +335,14 @@ class SelfEvolutionManager:
         return candidate
 
     def quality_evidence(self, run_id, stage=None):
-        from services.learning_governance import paired_quality_report
+        from services.learning_governance import paired_quality_report, stratified_quality_report
         run = self._require(run_id)
         rows = self._store.list_self_evolution_quality_signals(run_id, limit=50000)
-        return paired_quality_report(rows, stage=stage or run.get("release_stage"))
+        observed_stage = stage or run.get("release_stage")
+        report = paired_quality_report(rows, stage=observed_stage)
+        report['stratified_gate'] = stratified_quality_report(rows, stage=observed_stage)
+        report['passed'] = report['passed'] and report['stratified_gate']['passed']
+        return report
 
     def _quality_gate_passed(self, run, require_support=True):
         from services.learning_governance import runtime_health_passed
@@ -348,7 +352,12 @@ class SelfEvolutionManager:
         report = self.quality_evidence(run["id"])
         if require_support:
             return report["passed"]
-        return not report["rejected"] and all(
+        segment_gate = report['stratified_gate']
+        if segment_gate['identity_segment_conflict']:
+            return False
+        supported_segments = [metric for segment in segment_gate['segments'].values()
+                              for metric in segment['metrics'].values() if metric['independent_clusters'] >= 30]
+        return not report["rejected"] and all(metric['passed'] for metric in supported_segments) and all(
             item["confidence_lower"] >= -report["tolerance"]
             for item in report["metrics"].values() if item["independent_clusters"] >= 30
         )

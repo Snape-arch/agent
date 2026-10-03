@@ -1091,6 +1091,8 @@ class FrontendStaticTests(unittest.TestCase):
             "searchEvolutionCandidates",
             "独立留出验证",
             "evolutionExperimentTable",
+            "evolutionReviewId",
+            "evolutionReviewFile",
         ):
             self.assertIn(token, html)
         for token in (
@@ -1100,6 +1102,9 @@ class FrontendStaticTests(unittest.TestCase):
             "/api/self-evolution/runs/${id}/activate",
             "snapshotEvolutionQuality",
             "evolutionActions",
+            "controlEvolutionExperiment",
+            "importEvolutionReview",
+            "exportEvolutionReview",
             "loadEvolution",
         ):
             self.assertIn(token, js)

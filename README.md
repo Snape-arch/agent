@@ -35,6 +35,12 @@ cd <your-cloned-agent-repo>
 默认兼容路径及文件锁并不等同完整操作系统隔离。本轮证据与后续边界见
 `clawos/benchmarks/FILE_HISTORY_EVOLUTION_ACCEPTANCE.md`。
 
+策略演进实验室支持反思多候选、冻结任务成对回放、独立留出与任务类别门禁，
+以及带租约校验的检查点恢复。已使用的留出题禁止跨实验重用；模型成对输出可冻结为
+匿名 A/B 盲评包，收录不可覆盖的具名评分、分歧及完整证据。上传评分不计入线上发布证据，
+模型执行与审核者身份仍需独立认证。验收与边界见
+`clawos/benchmarks/SELF_EVOLUTION_STAGE2_ACCEPTANCE.md`。
+
 For an explicit local daily-use profile after the verified Qwen, llama.cpp,
 embedding, and Chroma assets are installed:
 

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from reflection.evolution_runtime import RuntimePolicyController
 from services.learning_governance import paired_quality_report
+from services.evolution_jobs import EvolutionJobStore, ExperimentLeaseLost, input_key
 
 
 def digest(value):
@@ -28,7 +29,7 @@ def digest(value):
 def source_fingerprints():
     root = Path(__file__).resolve().parents[1]
     return {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in (
-        "services/evolution_experiments.py", "services/learning_governance.py",
+        "services/evolution_experiments.py", "services/evolution_jobs.py", "services/evolution_review.py", "services/learning_governance.py",
         "reflection/evolution_runtime.py", "memoryos/services/retrieval.py",
         "services/knowledge_core_service.py", "memoryos/memory_store.py")}
 
@@ -36,7 +37,7 @@ def source_fingerprints():
 def loaded_executor_digest():
     """Bind evidence to imported code as well as files (long-lived workers)."""
     signatures = []
-    for name in ('services.evolution_experiments', 'services.learning_governance',
+    for name in ('services.evolution_experiments', 'services.evolution_jobs', 'services.evolution_review', 'services.learning_governance',
                  'reflection.evolution_runtime', 'memoryos.services.retrieval',
                  'services.knowledge_core_service', 'memoryos.memory_store'):
         module = importlib.import_module(name)
@@ -189,7 +190,10 @@ class EvolutionExperimentService:
             if not case.get("reviewed_by"):
                 raise ValueError("expected outcomes require a named reviewer")
             item = {"id": cid, "group_id": group, "query": query, "origin": origin,
-                    "task_id": task_id, "reviewed_by": str(case["reviewed_by"])[:120]}
+                    "task_id": task_id, "reviewed_by": str(case["reviewed_by"])[:120],
+                    "segment": str(case.get("segment") or "default").strip()[:120]}
+            if not item['segment']:
+                raise ValueError('segment must be nonempty')
             if target_type.startswith("retrieval"):
                 expected = list(dict.fromkeys(str(ref) for ref in case.get("expected_source_refs") or []))
                 if not expected or any(ref not in sources for ref in expected):
@@ -208,7 +212,7 @@ class EvolutionExperimentService:
                             required_tools=required, forbidden_tools=forbidden)
             # A duplicated input is not a second independent task, even under a
             # different id/group. Expected labels are excluded from the digest.
-            input_hash = digest({"query": query, "route": item.get("route")})
+            input_hash = input_key(item)
             if input_hash in seen_inputs:
                 raise ValueError("duplicate task input would contaminate independence or the holdout")
             seen_inputs.add(input_hash)
@@ -222,7 +226,7 @@ class EvolutionExperimentService:
         current = self.store.get_runtime_policy(target_type, target_key)
         if current and current.get("payload") != baseline_payload:
             raise ValueError("baseline payload differs from current runtime policy")
-        definition = {"schema": "clawos.evolution-experiment.v1", "target_type": target_type,
+        definition = {"schema": "clawos.evolution-experiment.v2", "target_type": target_type,
                       "target_key": str(target_key), "baseline_payload": baseline_payload,
                       "baseline_policy_version": int(current["version"]) if current else 0,
                       "documents": frozen_documents, "cases": frozen_cases, "candidates": candidates,
@@ -242,11 +246,13 @@ class EvolutionExperimentService:
                 duplicate = conn.execute("SELECT id FROM evolution_experiments WHERE definition_digest=?", (digest(definition),)).fetchone()
             if duplicate:
                 return self.store.get_evolution_experiment(duplicate["id"])
+            EvolutionJobStore(self.store).check_exposures(definition)
             return self.store.create_evolution_experiment(definition, digest(definition), created_by)
 
     def replay(self, experiment_id):
         experiment = self.store.claim_evolution_experiment(experiment_id)
         definition = experiment["definition"]
+        token = experiment['attempt_token']
         try:
             if definition.get('source_sha256') != source_fingerprints():
                 raise ValueError('replay source changed; freeze a fresh experiment')
@@ -261,18 +267,24 @@ class EvolutionExperimentService:
                                                source="replay:" + document["source_ref"], confidence=0.9)
                 # Explicitly disable environment/model-dependent rerankers.
                 retrieval = RetrievalService(frozen_store, allow_env_reranker=False)
-                report = self._execute(definition, retrieval)
+                report = self._execute(definition, retrieval, experiment_id, token)
             if (definition['source_sha256'] != source_fingerprints()
                     or definition['loaded_executor_digest'] != loaded_executor_digest()):
                 raise ValueError('executor changed during replay; evidence cannot be finalized')
             report["definition_digest"] = experiment["definition_digest"]
             report["report_digest"] = digest(report)
-            return self.store.finish_evolution_experiment(experiment_id, report)
+            return self.store.finish_evolution_experiment(experiment_id, report, attempt_token=token)
+        except ExperimentLeaseLost:
+            raise
         except Exception as exc:
-            self.store.finish_evolution_experiment(experiment_id, {"error": type(exc).__name__, "message": str(exc)[:500]}, failed=True)
+            try:
+                self.store.finish_evolution_experiment(experiment_id, {"error": type(exc).__name__, "message": str(exc)[:500]},
+                                                     failed=True, attempt_token=token)
+            except ExperimentLeaseLost:
+                pass  # A superseded worker must not mark the replacement failed.
             raise
 
-    def _execute(self, definition, retrieval):
+    def _execute(self, definition, retrieval, experiment_id, token):
         cases = definition["cases"]
         search = [case for case in cases if case["split"] == "search"]
         holdout = [case for case in cases if case["split"] == "holdout"]
@@ -283,6 +295,17 @@ class EvolutionExperimentService:
         search_outputs = {}
         rankings = []
         deadline = time.perf_counter() + 180
+        jobs = EvolutionJobStore(self.store)
+        saved = jobs.outcomes(experiment_id)
+        reused_count = len(saved)
+        def execute(case, candidate):
+            jobs.heartbeat(experiment_id, token)
+            key = (case['id'], candidate['id'])
+            if key not in saved:
+                outcome = self._run_case(definition, case, candidate['payload'], retrieval)
+                jobs.save(experiment_id, token, *key, outcome)
+                saved[key] = outcome
+            return saved[key]
         # Interleave baseline/candidates per case; reverse order on alternate
         # cases to limit warm-cache timing bias. Search never sees holdout labels.
         for index, case in enumerate(search):
@@ -290,7 +313,7 @@ class EvolutionExperimentService:
             for candidate in ordered:
                 if time.perf_counter() > deadline:
                     raise ValueError('bounded replay exceeded 180 seconds; reduce the dataset')
-                search_outputs.setdefault(candidate["id"], []).append(self._run_case(definition, case, candidate["payload"], retrieval))
+                search_outputs.setdefault(candidate["id"], []).append(execute(case, candidate))
         for candidate in alternatives:
             summary = self._summary(search_outputs[candidate["id"]])
             rankings.append({"id": candidate["id"], "name": candidate["name"], **summary})
@@ -306,16 +329,22 @@ class EvolutionExperimentService:
             if time.perf_counter() > deadline:
                 raise ValueError('bounded replay exceeded 180 seconds; reduce the dataset')
             order = (baseline, chosen) if index % 2 == 0 else (chosen, baseline)
-            outcomes = [self._run_case(definition, case, candidate["payload"], retrieval) for candidate in order]
+            outcomes = [execute(case, candidate) for candidate in order]
             control, candidate = outcomes if index % 2 == 0 else list(reversed(outcomes))
             pairs.append({"case_id": case["id"], "group_id": case["group_id"], "input_digest": case["input_digest"],
+                          "segment": case.get('segment', 'default'),
                           "control": control, "candidate": candidate})
             for variant, outcome in (("control", control), ("candidate", candidate)):
                 for metric, value in (("quality_score", outcome["quality"]), ("citation_coverage", outcome["citation_coverage"])):
                     signals.append({"signal_type": metric, "value": value,
                                 "metadata": {"variant": variant, "evidence_id": case["id"],
                                              "cluster_id": case["group_id"], "input_digest": case["input_digest"]}})
+        from services.learning_governance import stratified_quality_report
+        segments = {pair['case_id']: pair['segment'] for pair in pairs}
+        for row in signals:
+            row['metadata']['segment'] = segments[row['metadata']['evidence_id']]
         paired = paired_quality_report(signals)
+        stratified = stratified_quality_report(signals)
         safety_ok = not any(pair["candidate"]["safety_violations"] for pair in pairs)
         c = self._summary([pair["candidate"] for pair in pairs])
         b = self._summary([pair["control"] for pair in pairs])
@@ -323,17 +352,20 @@ class EvolutionExperimentService:
         latency_ok = c["p95_latency_ms"] <= b["p95_latency_ms"] * 1.2 + 10
         changed = chosen["id"] != "baseline"
         observed_change = any(digest(pair["control"]["output"]) != digest(pair["candidate"]["output"]) for pair in pairs)
-        return {"schema": "clawos.paired-replay.v1", "scope": definition["scope"],
+        return {"schema": "clawos.paired-replay.v2", "scope": definition["scope"],
+                "stratified_gate": stratified, "holdout_exposure_reserved": True,
+                "reused_checkpoint_count": reused_count,
+                "execution_scope": "function outcomes can span fenced attempts; this is not continuous-load evidence",
                 "selection_split": "search_only", "holdout_used_for_selection": False,
                 "search_groups": len({case["group_id"] for case in search}),
                 "holdout_groups": len({case["group_id"] for case in holdout}),
                 "search_rankings": rankings, "pareto_frontier": [row["id"] for row in frontier],
                 "selected_candidate_id": chosen["id"], "selected_payload": chosen["payload"],
                 "baseline": b, "candidate": c, "paired_gate": paired, "holdout_pairs": pairs,
-                "gates": {"paired_non_regression": paired["passed"], "safety": safety_ok,
+                "gates": {"paired_non_regression": paired["passed"], "segment_non_regression": stratified['passed'], "safety": safety_ok,
                           "context_budget": cost_ok, "latency": latency_ok, "changed_candidate": changed,
                           "actual_output_changed": observed_change},
-                "eligible_for_regression_queue": paired["passed"] and safety_ok and cost_ok and latency_ok and changed and observed_change,
+                "eligible_for_regression_queue": paired["passed"] and stratified['passed'] and safety_ok and cost_ok and latency_ok and changed and observed_change,
                 "runtime_promotion_evidence": False, "semantic_entailment_verified": False,
                 "meaning": "labelled source recall or routing contract quality; not answer semantics or measured monetary cost"}
 

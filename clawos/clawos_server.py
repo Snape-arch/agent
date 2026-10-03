@@ -2861,12 +2861,12 @@ async def api_evolution_experiments():
         stale = (definition.get('source_sha256') != current_sources
                  or definition.get('loaded_executor_digest') != current_executor
                  or definition.get('baseline_policy_version') != (int(policy['version']) if policy else 0))
-        summaries.append({key: experiment[key] for key in ('id','status','definition_digest','created_at')})
+        summaries.append({key: experiment[key] for key in ('id','status','definition_digest','created_at','job')})
         summaries[-1].update(target_type=definition['target_type'], target_key=definition['target_key'],
                              stale_evidence=stale,
                              case_count=len(definition['cases']), candidate_count=len(definition['candidates']),
                              report={key: report.get(key) for key in ('selected_candidate_id','search_groups','holdout_groups',
-                                     'eligible_for_regression_queue','gates','baseline','candidate','paired_gate','error','message')})
+                                     'eligible_for_regression_queue','gates','baseline','candidate','paired_gate','stratified_gate','error','message')})
         if stale:
             summaries[-1]['report']['eligible_for_regression_queue'] = False
     return JSONResponse({'experiments': summaries, 'runtime_promotion_evidence': False})
@@ -2889,7 +2889,7 @@ async def api_evolution_experiment_freeze(request: Request):
     from services.evolution_experiments import EvolutionExperimentService
     if len(await request.body()) > 8 * 1024 * 1024:
         raise HTTPException(413, "experiment exceeds 8MiB")
-    data = await request.json()
+    data = await _evolution_json(request)
     try:
         experiment = await asyncio.to_thread(EvolutionExperimentService(g_memory_store).freeze,
             target_type=data.get('target_type',''), target_key=data.get('target_key',''),
@@ -2917,12 +2917,80 @@ async def api_evolution_experiment_nominate(experiment_id: int, request: Request
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
     from services.evolution_experiments import EvolutionExperimentService
-    data = await request.json()
+    data = await _evolution_json(request)
     try:
         run = EvolutionExperimentService(g_memory_store).nominate(experiment_id, data.get('actor_id','console'))
     except ValueError as exc:
         raise HTTPException(409, str(exc))
     return JSONResponse({'run': run, 'next_step': 'execute regression, then collect fresh shadow and canary evidence'})
+
+
+async def _evolution_json(request):
+    if len(await request.body()) > 8 * 1024 * 1024:
+        raise HTTPException(413, 'payload exceeds 8MiB')
+    try:
+        value = await request.json()
+    except ValueError:
+        raise HTTPException(400, 'valid JSON is required')
+    if not isinstance(value, dict):
+        raise HTTPException(400, 'JSON object is required')
+    return value
+
+
+@app.post('/api/self-evolution/experiments/{experiment_id}/control')
+async def api_evolution_experiment_control(experiment_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, 'MemoryOS not initialized')
+    from services.evolution_jobs import EvolutionJobStore
+    value = await _evolution_json(request)
+    try:
+        result = await asyncio.to_thread(EvolutionJobStore(g_memory_store).control, experiment_id, value.get('action'))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return JSONResponse({'experiment': result})
+
+
+@app.post('/api/self-evolution/experiments/{experiment_id}/review-outputs')
+async def api_evolution_review_outputs(experiment_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, 'MemoryOS not initialized')
+    from services.evolution_review import EvolutionReviewService
+    value = await _evolution_json(request)
+    try:
+        packet = await asyncio.to_thread(EvolutionReviewService(g_memory_store).freeze_outputs,
+                                        experiment_id, value, value.get('actor_id','console'))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({'packet': packet})
+
+
+@app.post('/api/self-evolution/experiments/{experiment_id}/reviews')
+async def api_evolution_review_submit(experiment_id: int, request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, 'MemoryOS not initialized')
+    from services.evolution_review import EvolutionReviewService
+    value = await _evolution_json(request)
+    try:
+        summary = await asyncio.to_thread(EvolutionReviewService(g_memory_store).submit, experiment_id, value)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise HTTPException(400, str(exc))
+    return JSONResponse({'summary': summary})
+
+
+@app.get('/api/self-evolution/experiments/{experiment_id}/review/{kind}')
+async def api_evolution_review_get(experiment_id: int, kind: str):
+    if not g_memory_store:
+        raise HTTPException(503, 'MemoryOS not initialized')
+    from services.evolution_review import EvolutionReviewService
+    service = EvolutionReviewService(g_memory_store)
+    methods = {'packet': service.packet, 'summary': service.summary, 'evidence': service.evidence}
+    if kind not in methods:
+        raise HTTPException(404, 'review resource not found')
+    try:
+        result = await asyncio.to_thread(methods[kind], experiment_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    return JSONResponse({kind: result})
 
 
 @app.post("/api/self-evolution/runs")
