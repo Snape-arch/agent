@@ -7,17 +7,17 @@
   <meta name="theme-color" content="#315cf5"><link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/favicon-32.png"><link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="/assets/site.css">
   <link rel="stylesheet" href="/assets/academy-reader.css?v=20261002-release">
-<link rel="stylesheet" href="/assets/workspace-ui.css?v=20261003-studio5"><link rel="stylesheet" href="/assets/academy-unified.css?v=20261003.1"><link rel="stylesheet" href="/assets/paper-reports.css?v=20261003-files1"></head>
+<link rel="stylesheet" href="/assets/workspace-ui.css?v=20261003-studio5"><link rel="stylesheet" href="/assets/academy-unified.css?v=20261003.1"><link rel="stylesheet" href="/assets/paper-reports.css?v=20261003-files1"><link rel="stylesheet" href="/assets/product-system.css?v=20261004-redesign"></head>
 <body class="academy-page academy-reader-page" data-academy-page="paper"><a class="skip" href="#academyMain">跳到主要内容</a>
   <nav class="site-nav light claw-layer-nav" aria-label="AI Academy navigation">
     <a class="brand" href="/academy"><img class="mark" src="/assets/brand/clawos-logo-dark.png" alt=""><span><b>AI Academy</b><small>Paper Reader</small></span></a>
-    <div class="nav-links"><a href="/academy">Academy</a><a href="/academy/path">路线图</a><a class="active" href="/academy/paper">论文阅读</a><a href="/console">工作台</a></div>
+    <div class="nav-links"><a href="/academy">学习首页</a><a href="/academy/path">路线图</a><a class="active" href="/academy/paper">论文阅读</a><a href="/console">工作台</a></div>
     <a class="pill solid dark" href="/console#knowledge"><span class="fluent-icon" aria-hidden="true">&#xE8F1;</span>知识库</a>
   </nav>
 
   <main id="academyMain" tabindex="-1" class="academy-reader-main">
     <header class="reader-titlebar">
-      <div><span class="academy-kicker">Paper Reader</span><h1>读原文，也完成自己的研究判断。</h1><p>原文、批注、证据追问与导写笔记在同一个阅读界面完成。</p></div>
+      <div><span class="academy-kicker">文献阅读</span><h1>论文阅读器</h1><p>阅读原文、添加批注，整理笔记与阅读报告。</p></div>
       <div class="reader-title-actions">
         <label class="reader-open-file"><span class="fluent-icon" aria-hidden="true">&#xE8E5;</span>打开论文<input id="academyPaperFile" type="file" accept=".pdf,.txt,.md,.csv,.json,.html,.docx"></label>
         <button class="pill solid dark" id="academyUploadPaper" type="button" onclick="academyUploadPaper()"><span class="fluent-icon" aria-hidden="true">&#xE898;</span>解析原文</button>
@@ -25,14 +25,14 @@
     </header>
 
     <section class="reader-document-bar" aria-label="当前论文">
-      <label class="reader-document-title"><span>当前文献</span><input id="paperTitle" value="Retrieval-Augmented Generation for Knowledge-Intensive NLP"></label>
+      <label class="reader-document-title"><span>当前文献</span><input id="paperTitle" placeholder="打开论文后显示标题"></label>
       <div class="reader-document-state"><span class="state-dot"></span><span id="academyPaperStatus">选择论文即可本地预览；解析后解锁证据检索与报告。</span></div>
       <button class="icon-button reader-ops-toggle" type="button" onclick="academyToggleResearchOps()" aria-controls="academyResearchOps" aria-expanded="false" title="研究运行记录"><span class="fluent-icon" aria-hidden="true">&#xE9D2;</span></button>
     </section>
 
     <section class="paper-reader-workspace">
       <aside class="reader-outline" aria-label="论文目录">
-        <div class="reader-pane-head"><div><span>Outline</span><b>论文目录</b></div><button class="icon-button" id="academyOutlineToggle" type="button" title="折叠目录" aria-label="折叠论文目录" aria-expanded="true"><span class="fluent-icon" aria-hidden="true">&#xE70D;</span></button></div>
+        <div class="reader-pane-head"><div><span>文献导航</span><b>论文目录</b></div><button class="icon-button" id="academyOutlineToggle" type="button" title="折叠目录" aria-label="折叠论文目录" aria-expanded="true"><span class="fluent-icon" aria-hidden="true">&#xE70D;</span></button></div>
         <nav class="reader-outline-list"><p class="small">解析后显示原文目录，页码仅使用可验证定位。</p></nav>
         <div class="reader-progress-card"><span>阅读进度</span><b id="academyReaderProgress">未开始</b><div><i></i></div><small>批注与笔记仅在你主动保存时写入知识库。</small></div>
       </aside>
@@ -70,10 +70,10 @@
       </section>
 
       <aside class="paper-assistant-panel reader-notes-pane" id="academyPaperAssistant">
-        <div class="reader-pane-head"><div><span>Guided Writing</span><b>导写与证据</b></div><button class="icon-button" type="button" onclick="academyExportReaderNotes()" title="导出笔记"><span class="fluent-icon" aria-hidden="true">&#xE896;</span></button></div>
+        <div class="reader-pane-head"><div><span>阅读助手</span><b>导写与证据</b></div><button class="icon-button" type="button" onclick="academyExportReaderNotes()" title="导出笔记"><span class="fluent-icon" aria-hidden="true">&#xE896;</span></button></div>
         <div class="reader-note-tabs" role="tablist" aria-label="阅读助手面板"><button class="active" type="button" role="tab" id="reader-tab-guide" aria-controls="reader-panel-guide" aria-selected="true" tabindex="0" data-reader-tab="guide" onclick="academySwitchReaderTab('guide')">导写</button><button type="button" role="tab" id="reader-tab-evidence" aria-controls="reader-panel-evidence" aria-selected="false" tabindex="-1" data-reader-tab="evidence" onclick="academySwitchReaderTab('evidence')">证据</button><button type="button" role="tab" id="reader-tab-notes" aria-controls="reader-panel-notes" aria-selected="false" tabindex="-1" data-reader-tab="notes" onclick="academySwitchReaderTab('notes')">笔记</button></div>
         <div class="reader-tab-panel active" id="reader-panel-guide" role="tabpanel" aria-labelledby="reader-tab-guide" data-reader-panel="guide">
-          <label>研究问题<textarea id="paperAbstract" placeholder="用一句话写下论文试图解决的问题。">RAG 如何让生成模型在知识密集型任务中引用外部证据，并减少仅依赖参数记忆的事实错误？</textarea></label>
+          <label>研究问题<textarea id="paperAbstract" placeholder="用一句话写下论文试图解决的问题。"></textarea></label>
           <div class="guided-prompts">
             <button type="button" onclick="academySetGuidedPrompt('method')"><span>01</span><b>方法为何成立？</b><small>机制、假设与关键变量</small></button>
             <button type="button" onclick="academySetGuidedPrompt('evidence')"><span>02</span><b>证据是否充分？</b><small>实验、基线与消融</small></button>
@@ -122,5 +122,5 @@
   </main>
   <script src="/assets/academy.js?v=20261003-files1"></script>
   <script src="/assets/academy-pdf-pages.js?v=20261002-release"></script>
-<script src="/assets/workspace-ui.js?v=20261003-studio5"></script></body>
+<script src="/assets/workspace-ui.js?v=20261004-redesign"></script></body>
 </html>

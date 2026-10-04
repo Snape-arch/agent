@@ -39,18 +39,18 @@ let lastKnowledgeGraph = { nodes: [], edges: [], category: "all" };
 
 const $ = id => document.getElementById(id);
 const VIEW_META = {
-  chat: ["今日工作台", "任务、进度、交付与审批集中在一个工作面"],
+  chat: ["工作台", "对话、文件和任务"],
   search: ["搜索聊天", "查找历史会话并继续上下文"],
-  knowledge: ["知识库", "管理用户主动构建的 RAG 资料、文档和学习沉淀"],
+  knowledge: ["知识库", "管理资料、文档和检索来源"],
   dash: ["状态总览", "查看模型、工具、任务和记忆系统的运行状态"],
   memory: ["记忆治理", "管理画像、偏好、项目、经验和技能等系统记忆"],
   projects: ["项目", "进入本地项目、科研目录和交付任务"],
   reflection: ["反思循环", "审查任务复盘、改进建议、验证结果和回滚记录"],
   evolution: ["策略演进实验室", "候选比较、成对回放与独立任务证据"],
-  skills: ["固化技能", "查看可复用工作流、候选版本和执行质量"],
+  skills: ["技能", "查找、预演和管理可复用工作流"],
   tools: ["工具路由", "查看本地函数清单、参数结构和调用轨迹"],
-  tasks: ["运行轨迹", "跟踪任务取消、重试、恢复、队列领取和事件审计"],
-  ops: ["Ops Center", "备份恢复、配置检查、后台 worker 和真实业务长任务"],
+  tasks: ["任务与进度", "查看执行状态、任务记录与待处理事项"],
+  ops: ["运行维护", "备份与恢复、配置检查及后台任务"],
   benchmarks: ["冻结基准", "运行离线基准套件，查看通过率和 P95 延迟"],
   scenes: ["场景工作台", "核对会议、科研、办公、学习、Git 和技能治理的交付边界"],
   feishu: ["飞书连接器", "消息、纪要、审批与回执"],
@@ -204,20 +204,23 @@ function handleProjectFiles(event) {
 }
 
 function statusBadge(status) {
-  const raw = String(status ?? "").toLowerCase();
-  const ok = ["ok", "success", "succeeded", "ready", "true", "passed", "allow"].includes(raw);
-  const bad = ["error", "failed", "false", "deny", "canceled", "cancelled"].includes(raw);
-  const cls = ok ? "ok" : bad ? "err" : "wait";
-  const label = status === true ? "ok" : status === false ? "failed" : String(status || "pending");
-  return `<span class="state ${cls}">${esc(label)}</span>`;
+  const raw = String(status ?? "pending").trim().toLowerCase() || 'pending';
+  const labels = {ok:"正常",success:"成功",succeeded:"已完成",ready:"就绪",true:"通过",passed:"通过",allow:"允许",
+    error:"异常",failed:"失败",false:"未通过",deny:"拒绝",canceled:"已取消",cancelled:"已取消",pending:"待处理",
+    running:"进行中",queued:"排队中",active:"已启用",candidate:"候选",validated:"已验证",needs_changes:"需修改",
+    rejected:"已拒绝",canary:"灰度中",paused:"已暂停",blocked:"受阻",completed:"已完成",published:"已发布"};
+  const ok = ["ok","success","succeeded","ready","true","passed","allow","active","validated","completed","published"].includes(raw);
+  const bad = ["error","failed","false","deny","rejected","blocked"].includes(raw);
+  return `<span class="state ${ok ? "ok" : bad ? "err" : "wait"}" title="${esc(raw)}">${esc(labels[raw] || String(status ?? "待处理"))}</span>`;
 }
 
 function table(headers, rows) {
-  const head = `<thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>`;
+  const head = `<thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join("")}</tr></thead>`;
   const body = `<tbody>${(rows || []).map(row => `<tr>${row.map(cell => {
     if (cell && typeof cell === "object" && "html" in cell) return `<td>${cell.html}</td>`;
-    return `<td>${esc(cell)}</td>`;
-  }).join("")}</tr>`).join("")}</tbody>`;
+    if (cell && typeof cell === "object") return `<td><details class="cell-details"><summary>查看详细信息</summary><pre>${esc(JSON.stringify(cell,null,2))}</pre></details></td>`;
+    return `<td>${esc(cell ?? "—")}</td>`;
+  }).join("")}</tr>`).join("") || `<tr><td class="table-empty" colspan="${Math.max(1,headers.length)}">暂无记录</td></tr>`}</tbody>`;
   return head + body;
 }
 
@@ -252,8 +255,16 @@ document.querySelectorAll("button[data-view]").forEach(button => {
 });
 
 function toggleSidebar() {
-  if (window.matchMedia("(max-width: 760px)").matches) document.body.classList.toggle("sidebar-open");
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    document.body.classList.remove('sidebar-collapsed');
+    document.body.classList.toggle("sidebar-open");
+  }
   else document.body.classList.toggle("sidebar-collapsed");
+  const collapsed = document.body.classList.contains('sidebar-collapsed');
+  const button = document.querySelector('.side-collapse');
+  button?.setAttribute('aria-label', collapsed ? '展开侧栏' : '收起侧栏');
+  const label = button?.querySelector('.ui-action-label');
+  if (label) label.textContent = collapsed ? '展开' : '收起';
 }
 
 function md(text) {
@@ -575,13 +586,17 @@ function cancelPending() {
   $("confirmBar").classList.remove("on");
 }
 
+function emptyConversation() {
+  return `<div class="empty workbench-empty task-empty"><b>开始一个新任务</b><span>描述你的目标，或选择一个常用任务。</span><div class="workbench-quick" aria-label="常用任务">${["编写与开发","会议纪要","数据分析","论文精读"].map(kind=>`<button type="button" onclick="useWorkbenchPrompt('${kind}')"><b>${kind}</b><span>${({"编写与开发":"分析项目、修改代码、运行测试","会议纪要":"整理决策和后续行动","数据分析":"清洗数据、统计和生成图表","论文精读":"阅读原文、核对证据、撰写报告"})[kind]}</span></button>`).join("")}</div></div>`;
+}
+
 function newChat() {
   if (busy) return;
   historyRequest++;
   historyPage = null;
   currentSession = "s_" + Date.now();
   try { localStorage.setItem('clawos-last-session', currentSession); } catch (_) {}
-  $("chatInner").innerHTML = `<div class="empty workbench-empty task-empty"><b>开始一个新任务</b><span>输入目标，或添加需要处理的文件。</span></div>`;
+  $("chatInner").innerHTML = emptyConversation();
   loadSessions();
   setView("chat");
 }
@@ -596,7 +611,7 @@ async function switchSession(id) {
     try { localStorage.setItem('clawos-last-session', id); } catch (_) {}
     startTaskStream();
     historyPage = data;
-    $("chatInner").innerHTML = "";
+    $("chatInner").innerHTML = data.messages?.length ? "" : emptyConversation();
     (data.messages || []).forEach(message => addMessage(message.role, message.content));
     renderHistoryControls();
     renderSessions(window._sessions || []);
@@ -612,6 +627,7 @@ function renderHistoryControls() {
   controls.id = 'historyControls';
   controls.className = 'history-controls';
   const visible = $('chatInner').querySelectorAll('.msg').length;
+  if (!visible) return;
   controls.innerHTML = `<span role="status">已显示 ${visible} / ${Math.max(visible,Number(historyPage?.total || visible))} 条记录</span>
     <button type="button" class="secondary" id="historyOlder" ${!historyPage?.has_more || visible >= 1000 ? 'hidden' : ''}>加载更早记录</button>
     <a href="/api/history/${encodeURIComponent(currentSession)}/export?format=markdown" download>导出 Markdown</a>
@@ -723,7 +739,7 @@ function renderAttachmentTray() {
   tray.innerHTML = chatAttachments.map(item => {
     const loading = item.status === "loading";
     const label = loading ? "上传解析中" : item.status === "error" ? "解析失败" : `${item.chunk_count || 0} chunks`;
-    return `<div class="attachment-chip ${loading ? "loading" : ""} ${item.status === "error" ? "error" : ""}"><span class="attachment-spinner"></span><b>${esc(item.name)}</b><small>${esc(label)}</small><button type="button" onclick="removeAttachment('${esc(item.id)}')" title="移除附件"><span class="fluent-icon" aria-hidden="true">&#xE711;</span></button></div>`;
+    return `<div class="attachment-chip ${loading ? "loading" : ""} ${item.status === "error" ? "error" : ""}"><span class="attachment-spinner"></span><b>${esc(item.name)}</b><small>${esc(label)}</small><button type="button" onclick="removeAttachment('${esc(item.id)}')" title="移除附件"><span aria-hidden="true">×</span></button></div>`;
   }).join("");
 }
 

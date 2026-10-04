@@ -1,5 +1,15 @@
 # Project Context
 
+## 最新：工作空间前端重设计（2026-10-04）
+
+统一控制台、学习/材料、文档、阅读、会议、数据的字体回退、字号、字重、表格/表单与中性蓝白风格。共享product-system.css改为head同步加载；管理页固定标题遮挡、760px表格挤压、空历史清空入口、Windows私用图标与折叠侧栏文字旋转/Logo挤压均已处理。普通表格滚动区域与文档富文本表格分开，代码与KaTeX字体保持；中文状态、对象可展开详情、直接的学习/阅读文案，阅读器新空状态不预填论文与问题，不清用户草稿。
+
+最终隔离Python76/76（静态45/45、文档高级6/6、文档服务7/7、协作工作台18/18）、Node17/17（355.1906ms）、5个JS语法与git diff --check通过；Windows内置浏览器检查默认/390×844/1440×1000布局，现场17状态包含迭代失败与修复，不等于同版本17项独立通过。真实UI操作去重7→6、图表生成、文档中文/表格/公式/代码保存并重载、键盘表格横移、阅读窗口及侧栏收放。最终页面无整页横向溢出；折叠header/main/side统一52px、文字不旋转、Logo36×36。
+
+证据：clawos/benchmarks/FRONTEND_WORKSPACE_REDESIGN_ACCEPTANCE.md；忽略目录output/frontend-redesign-20261004。源码指纹f9ca17c90b63914050d81ff9dc2b40a9d474e17a42a7f136a68f7bb6e204d4ae；日常数据库8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543未变。主观视觉评分84/100，限本轮工作空间。自己的模型关闭隔离预览18924/PID35164保留用于用户查看，不重启生产。未验收读屏、跨OS、200%缩放、新PDF加载、长文档/大表格性能与持续多人负载；旧后台专业参数/历史CSS及首页宣传页仍待整理。48小时历史FAILED不变。
+
+沿用已授权远程与分支提交推送，排除tools/权重/凭据/数据库/output及原技能注册表修改，不强推/合并master。以下保留历史。
+
 ## Evolution stage3: captured providers, assigned sessions and adjudication (2026-10-04)
 
 - Continues90bdea2. New services/evolution_capture.py captures primary-provider complete stop answers with no tools/fallback, exact frozen context/input/policy/request/text/configuration digests, sanitized usage/duration and immutable per-answer receipts. Plans full paired holdouts, bounds calls/output tokens/timeout/attempt duration, preserves partial answers for explicit same-spec resume, fences paused/expired/replaced workers and rejects baseline/source/imported-executor or active endpoint/model/template drift. External output imports cannot claim application capture; no credentials, raw responses or endpoints are exported. Conditioned retrieval/routing context answers are not live agent/tool execution, prompt/template adapters or cryptographic model attestation.
