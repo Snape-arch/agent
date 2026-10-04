@@ -29,17 +29,19 @@ def digest(value):
 def source_fingerprints():
     root = Path(__file__).resolve().parents[1]
     return {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in (
-        "services/evolution_experiments.py", "services/evolution_jobs.py", "services/evolution_review.py", "services/learning_governance.py",
+        "services/evolution_experiments.py", "services/evolution_jobs.py", "services/evolution_review.py", "services/evolution_capture.py", "services/learning_governance.py",
         "reflection/evolution_runtime.py", "memoryos/services/retrieval.py",
-        "services/knowledge_core_service.py", "memoryos/memory_store.py")}
+        "services/knowledge_core_service.py", "memoryos/memory_store.py",
+        "providers/base.py", "providers/openai_compatible.py", "providers/qwen.py")}
 
 
 def loaded_executor_digest():
     """Bind evidence to imported code as well as files (long-lived workers)."""
     signatures = []
-    for name in ('services.evolution_experiments', 'services.evolution_jobs', 'services.evolution_review', 'services.learning_governance',
+    for name in ('services.evolution_experiments', 'services.evolution_jobs', 'services.evolution_review', 'services.evolution_capture', 'services.learning_governance',
                  'reflection.evolution_runtime', 'memoryos.services.retrieval',
-                 'services.knowledge_core_service', 'memoryos.memory_store'):
+                 'services.knowledge_core_service', 'memoryos.memory_store',
+                 'providers.base', 'providers.openai_compatible', 'providers.qwen'):
         module = importlib.import_module(name)
         for member_name, member in sorted(vars(module).items()):
             if inspect.isclass(member) and member.__module__ == name:

@@ -2670,7 +2670,8 @@ function selectEvolutionReview(id) {
   $('evolutionReviewId').value = id;
   $('evolutionReviewResult').innerHTML = '';
   $('evolutionReviewId').focus();
-  $('evolutionReviewStatus').textContent = `已选择实验 #${id}。先上传绑定原始问题、策略摘要与模型信息的成对输出。`;
+  $('evolutionReviewStatus').textContent = `已选择实验 #${id}。可捕获主模型回答，或上传绑定摘要的外部成对输出。`;
+  loadEvolutionCapture();
 }
 
 async function importEvolutionReview(kind) {
@@ -2688,17 +2689,44 @@ async function importEvolutionReview(kind) {
 }
 
 function renderEvolutionReviewSummary(summary) {
-  const segments = summary.reviewed_gate?.segments || {};
+  const authenticated = Number(summary.authenticated_reviewer_count || 0) > 0;
+  const segments = (authenticated ? summary.authenticated_reviewed_gate : summary.reviewed_gate)?.segments || {};
   const rows = Object.entries(segments).map(([name, report]) => {
     const metrics = Object.values(report.metrics || {});
     const count = metrics.length ? Math.min(...metrics.map(item => Number(item.independent_clusters || 0))) : 0;
     const lower = metrics.length ? Math.min(...metrics.map(item => Number(item.confidence_lower || 0))) : 0;
     return [name, count, count < 30 ? '样本不足' : report.passed ? '未见显著退步' : '检测到退步', `${(lower * 100).toFixed(1)} 个百分点`];
   });
-  const conflicts = summary.adjudication_required?.length || 0, critical = summary.critical_errors?.length || 0;
-  const state = summary.reported_review_passed ? '评分报告通过' : Number(summary.reviewer_count) < 2 ? '等待第二位审核者' : conflicts || critical ? '需要人工复核' : '任务类别门禁未通过';
-  $('evolutionReviewResult').innerHTML = `<div class="evolution-review-summary"><h3>${esc(state)}</h3><p>模型执行与审核者身份尚待验证；当前报告评分不计入线上发布证据。</p><div class="evolution-review-metrics"><div><strong>${Number(summary.reviewer_count || 0)}</strong><span>具名审核者</span></div><div><strong>${Number(summary.case_count || 0)}</strong><span>成对留出题</span></div><div><strong>${conflicts}</strong><span>需复核的分歧</span></div><div><strong>${critical}</strong><span>严重错误标记</span></div></div><h3>任务类别验收</h3><p>每类至少 30 个独立任务组；置信下界低于 −2 个百分点会阻止通过。</p><div class="evolution-review-gates" role="region" aria-label="任务类别评分" tabindex="0"><table class="table">${table(['任务类别','独立任务组','结论','提升置信下界'],rows)}</table></div><details><summary>原始评分门禁数据</summary><pre tabindex="0" aria-label="原始评审数据">${esc(JSON.stringify(summary,null,2))}</pre></details></div>`;
+  const conflicts = (authenticated ? summary.authenticated_adjudication_required : summary.adjudication_required)?.length || 0;
+  const critical = (authenticated ? summary.authenticated_critical_errors : summary.critical_errors)?.length || 0;
+  const count = Number(authenticated ? summary.authenticated_reviewer_count : summary.reviewer_count);
+  const passed = authenticated ? summary.authenticated_review_passed : summary.reported_review_passed;
+  const state = passed ? '评分报告通过' : count < 2 ? '等待第二位审核者' : conflicts || critical ? '需要人工复核' : '任务类别门禁未通过';
+  const provenance = summary.provider_execution_verified ? '应用已捕获主模型调用凭据' : '外部输出，模型执行未验证';
+  $('evolutionReviewResult').innerHTML = `<div class="evolution-review-summary"><h3>${esc(state)}</h3><p>${esc(provenance)}；${authenticated ? '评审已绑定授权会话' : '评分为自报名称'}。真人独立性与专业资格仍待核验；当前报告评分不计入线上发布证据。</p><div class="evolution-review-metrics"><div><strong>${count || 0}</strong><span>${authenticated ? '已认证会话评审者' : '具名审核者'}</span></div><div><strong>${Number(summary.case_count || 0)}</strong><span>成对留出题</span></div><div><strong>${conflicts}</strong><span>需复核的分歧</span></div><div><strong>${critical}</strong><span>严重错误标记</span></div></div><p>当前评分快照已裁决 ${Number(summary.authenticated_resolved_entries || 0)} 题；新增评审会使旧裁决失效，原始记录保留。</p><h3>任务类别验收</h3><p>每类至少 30 个独立任务组；置信下界低于 −2 个百分点会阻止通过。</p><div class="evolution-review-gates" role="region" aria-label="任务类别评分" tabindex="0"><table class="table">${table(['任务类别','独立任务组','结论','提升置信下界'],rows)}</table></div><details><summary>原始评分门禁数据</summary><pre tabindex="0" aria-label="原始评审数据">${esc(JSON.stringify(summary,null,2))}</pre></details></div>`;
 }
+
+function evolutionReviewId(){const id=Number($('evolutionReviewId').value);if(!Number.isSafeInteger(id)||id<1)throw Error('请选择实验。');return id;}
+async function loadEvolutionCapture(){
+  try{const data=await api(`/api/self-evolution/experiments/${evolutionReviewId()}/model-capture`),tokens=Number($('evolutionCaptureTokens').value);
+    $('evolutionCaptureStatus').textContent=`计划 ${data.plan.calls} 次调用 · 最大 ${data.plan.calls*tokens} 个输出 token · 状态 ${data.capture.status} · 已保存 ${data.capture.saved_answers} 个答案${data.capture.recoverable?' · 租约已过期，可显式继续':''}。`;
+  }catch(error){$('evolutionCaptureStatus').textContent='预算读取未完成：'+error.message;}
+}
+async function startEvolutionCapture(){
+  const button=$('evolutionCaptureStart');let timer;
+  try{const id=evolutionReviewId();button.disabled=true;$('evolutionCaptureStatus').textContent='捕获中，部分回答会逐条保存…';
+    timer=setInterval(loadEvolutionCapture,3000);
+    const data=await api(`/api/self-evolution/experiments/${id}/model-capture`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_calls:Number($('evolutionCaptureCalls').value),max_tokens:Number($('evolutionCaptureTokens').value),timeout:Number($('evolutionCaptureTimeout').value)})});
+    $('evolutionReviewStatus').textContent=`模型回答已捕获并冻结，共 ${data.packet.entries.length} 题。可授权会话用户开始盲评。`;
+  }catch(error){$('evolutionReviewStatus').textContent='捕获未完成：'+error.message;}
+  finally{clearInterval(timer);button.disabled=false;loadEvolutionCapture();}
+}
+async function pauseEvolutionCapture(){try{await api(`/api/self-evolution/experiments/${evolutionReviewId()}/model-capture/pause`,{method:'POST'});await loadEvolutionCapture();}catch(error){$('evolutionCaptureStatus').textContent='暂停未完成：'+error.message;}}
+async function exportEvolutionReceipts(){try{const id=evolutionReviewId(),data=await api(`/api/self-evolution/experiments/${id}/model-receipts`);const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download=`evolution-model-receipts-${id}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(error){$('evolutionCaptureStatus').textContent='凭据导出未完成：'+error.message;}}
+async function loadEvolutionReviewUsers(){try{const data=await api('/api/self-evolution/review-users');$('evolutionReviewUser').replaceChildren(...data.users.map(user=>{const option=document.createElement('option');option.value=user.id;option.textContent=`${user.name} · ${user.id.slice(0,8)}`;return option;}));$('evolutionGrantStatus').textContent=data.users.length?'已加载会话用户，请核对人员并选择实验角色。':'尚无协作会话用户，请先通过文档协作邀请加入。';}catch(error){$('evolutionGrantStatus').textContent=error.message;}}
+async function grantEvolutionReview(){try{const user=$('evolutionReviewUser').value;if(!user)throw Error('请选择会话用户。');await api(`/api/self-evolution/experiments/${evolutionReviewId()}/review-grants`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user,role:$('evolutionReviewRole').value})});$('evolutionGrantStatus').textContent='实验授权已保存；既有评分与裁决记录保留。';}catch(error){$('evolutionGrantStatus').textContent='授权未完成：'+error.message;}}
+async function copyEvolutionReviewLink(){try{const url=new URL(`/evolution-review?experiment=${evolutionReviewId()}`,location.origin).href;await navigator.clipboard.writeText(url);$('evolutionGrantStatus').textContent='评审链接已复制。协作者需在已登录协作会话的浏览器打开。';}catch(error){$('evolutionGrantStatus').textContent='复制未完成：'+error.message;}}
+async function loadEvolutionReviewSummary(){try{const data=await api(`/api/self-evolution/experiments/${evolutionReviewId()}/review/summary`);renderEvolutionReviewSummary(data.summary);}catch(error){$('evolutionReviewStatus').textContent='结果读取未完成：'+error.message;}}
 
 async function exportEvolutionReview(kind) {
   try {

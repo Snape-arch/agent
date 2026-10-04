@@ -538,6 +538,39 @@ class MemoryStore:
                     created_at TEXT DEFAULT (datetime('now')),
                     PRIMARY KEY(experiment_id,reviewer)
                 );
+                CREATE TABLE IF NOT EXISTS evolution_model_jobs (
+                    experiment_id INTEGER PRIMARY KEY REFERENCES evolution_experiments(id),
+                    token TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    lease_until REAL NOT NULL,
+                    specification TEXT NOT NULL,
+                    message TEXT NOT NULL DEFAULT ''
+                );
+                CREATE TABLE IF NOT EXISTS evolution_model_receipts (
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_experiments(id),
+                    case_id TEXT NOT NULL,
+                    variant TEXT NOT NULL,
+                    receipt TEXT NOT NULL,
+                    receipt_digest TEXT NOT NULL,
+                    PRIMARY KEY(experiment_id,case_id,variant)
+                );
+                CREATE TABLE IF NOT EXISTS evolution_review_grants (
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_review_packets(experiment_id),
+                    user_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    granted_by TEXT NOT NULL,
+                    PRIMARY KEY(experiment_id,user_id)
+                );
+                CREATE TABLE IF NOT EXISTS evolution_adjudications (
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_review_packets(experiment_id),
+                    entry_id TEXT NOT NULL,
+                    review_set_digest TEXT NOT NULL,
+                    adjudicator TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    decision_digest TEXT NOT NULL,
+                    PRIMARY KEY(experiment_id,entry_id,review_set_digest)
+                );
                 CREATE TABLE IF NOT EXISTS policy_groups (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,

@@ -18,15 +18,27 @@ from services.learning_product_service import LearningProductService
 def main():
     parser = argparse.ArgumentParser(description="Isolated Academy preview")
     parser.add_argument("--models", action="store_true", help="Use the existing configured provider only on explicit model actions")
+    parser.add_argument('--local-provider-url',help='Explicit loopback OpenAI-compatible QA endpoint; no config credentials loaded')
     parser.add_argument("--port", type=int, default=18897)
     parser.add_argument("--session", help="Persistent QA session name under ignored output/learning-preview")
     args = parser.parse_args()
+    if args.local_provider_url:
+        from urllib.parse import urlparse
+        endpoint=urlparse(args.local_provider_url)
+        if (endpoint.scheme!='http' or endpoint.hostname not in ('127.0.0.1','::1')
+                or endpoint.username or endpoint.password or endpoint.query or endpoint.fragment or endpoint.path!='/v1'):
+            parser.error('local provider must be an explicit credential-free loopback HTTP /v1 URL')
     @asynccontextmanager
     async def preview_lifespan(app):
-        if args.models:
-            server.config = server.load_config(server.CONFIG_PATH)
-            server.g_routing_provider = server.create_model_provider(server.config.get("routing", {}))
-            async with httpx.AsyncClient(timeout=75) as client:
+        if args.models or args.local_provider_url:
+            async with httpx.AsyncClient(timeout=75,trust_env=False) as client:
+                if args.local_provider_url:
+                    response=await client.get(args.local_provider_url+'/models'); response.raise_for_status()
+                    model=response.json()['data'][0]['id']
+                    server.g_routing_provider=server.create_model_provider({'provider':'qwen','base_url':args.local_provider_url,'model':model})
+                else:
+                    server.config = server.load_config(server.CONFIG_PATH)
+                    server.g_routing_provider = server.create_model_provider(server.config.get("routing", {}))
                 server.http_client = client
                 yield
             server.http_client = None
@@ -74,11 +86,11 @@ def main():
         app = FastAPI(lifespan=preview_lifespan)
         @app.get('/api/qa/environment')
         def qa_environment():
-            return dict(isolated=True,session=args.session,models_enabled=args.models)
+            return dict(isolated=True,session=args.session,models_enabled=bool(args.models or args.local_provider_url))
         app.middleware('http')(server.no_cache_static_shell)
         app.middleware('http')(server.workbench_access)
         for route in server.app.routes:
-            if route.path.startswith(("/api/academy/learning/", "/api/academy/paper/", "/api/documents", "/academy", '/api/collaboration','/api/data-lab','/api/meeting-workbench','/api/feishu','/api/architecture','/api/workspace/meetings', '/api/history/','/api/self-evolution/','/api/artifacts/','/api/workspace/research/learning-analysis')) or route.path in ('/','/product','/data-lab','/meetings','/console','/api/sessions'):
+            if route.path.startswith(("/api/academy/learning/", "/api/academy/paper/", "/api/documents", "/academy", '/api/collaboration','/api/data-lab','/api/meeting-workbench','/api/feishu','/api/architecture','/api/workspace/meetings', '/api/history/','/api/self-evolution/','/api/evolution-review/','/api/artifacts/','/api/workspace/research/learning-analysis')) or route.path in ('/','/product','/data-lab','/meetings','/console','/evolution-review','/api/sessions'):
                 app.router.routes.append(route)
         app.mount("/static", StaticFiles(directory=server.STATIC_DIR), name="static")
         app.mount("/assets", StaticFiles(directory=server.STATIC_DIR / "assets"), name="assets")

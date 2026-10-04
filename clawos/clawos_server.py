@@ -2993,6 +2993,121 @@ async def api_evolution_review_get(experiment_id: int, kind: str):
     return JSONResponse({kind: result})
 
 
+@app.get('/api/self-evolution/experiments/{experiment_id}/model-capture')
+async def api_evolution_capture_plan(experiment_id:int):
+    from services.evolution_capture import EvolutionModelCapture
+    if not g_memory_store: raise HTTPException(503,'MemoryOS not initialized')
+    service=EvolutionModelCapture(g_memory_store)
+    try: return {'plan':service.plan(experiment_id),'capture':service.state(experiment_id)}
+    except ValueError as exc: raise HTTPException(400,str(exc))
+
+
+@app.post('/api/self-evolution/experiments/{experiment_id}/model-capture')
+async def api_evolution_capture_execute(experiment_id:int,request:Request):
+    from services.evolution_capture import EvolutionModelCapture
+    if not g_memory_store: raise HTTPException(503,'MemoryOS not initialized')
+    data=await _evolution_json(request)
+    try:
+        return await EvolutionModelCapture(g_memory_store).capture(experiment_id,g_routing_provider,http_client=http_client,
+            max_calls=data.get('max_calls',80),max_tokens=data.get('max_tokens',256),timeout=data.get('timeout',30))
+    except (ValueError,asyncio.TimeoutError) as exc:
+        raise HTTPException(409,'capture not completed: '+str(exc)[:200])
+
+
+@app.post('/api/self-evolution/experiments/{experiment_id}/model-capture/pause')
+async def api_evolution_capture_pause(experiment_id:int):
+    from services.evolution_capture import EvolutionModelCapture
+    if not g_memory_store: raise HTTPException(503,'MemoryOS not initialized')
+    try: return {'capture':EvolutionModelCapture(g_memory_store).control(experiment_id)}
+    except ValueError as exc: raise HTTPException(409,str(exc))
+
+
+@app.get('/api/self-evolution/experiments/{experiment_id}/model-receipts')
+async def api_evolution_capture_receipts(experiment_id:int):
+    from services.evolution_capture import EvolutionModelCapture
+    if not g_memory_store: raise HTTPException(503,'MemoryOS not initialized')
+    try: return {'receipts':EvolutionModelCapture(g_memory_store).receipts(experiment_id)}
+    except ValueError as exc: raise HTTPException(409,str(exc))
+
+
+@app.get('/api/self-evolution/review-users')
+async def api_evolution_review_users():
+    if not g_memory_store: raise HTTPException(503,'MemoryOS not initialized')
+    _collaboration()
+    with g_memory_store._conn() as conn:
+        users=[dict(row) for row in conn.execute("SELECT id,name FROM collaboration_users WHERE id!='local-user' ORDER BY name LIMIT 100")]
+    return {'users':users,'boundary':'server-issued session users; not real-person or professional identity verification'}
+
+
+@app.post('/api/self-evolution/experiments/{experiment_id}/review-grants')
+async def api_evolution_review_grant(experiment_id:int,request:Request):
+    if not g_memory_store: raise HTTPException(503,'MemoryOS not initialized')
+    from services.evolution_review import EvolutionReviewService
+    data=await _evolution_json(request); _collaboration()
+    try: return {'grant':EvolutionReviewService(g_memory_store).grant(experiment_id,data.get('user_id'),data.get('role'))}
+    except (ValueError,TypeError) as exc: raise HTTPException(400,str(exc))
+
+
+@app.get('/evolution-review')
+async def evolution_review_page(): return FileResponse(STATIC_DIR/'evolution-review.html')
+
+
+def _evolution_review_access(experiment_id,request,role=None):
+    if not g_memory_store: raise HTTPException(503,'MemoryOS not initialized')
+    from services.evolution_review import EvolutionReviewService
+    identity=_collaboration().identity(request)
+    service=EvolutionReviewService(g_memory_store)
+    try: assigned=service.require_grant(experiment_id,identity['id'],role)
+    except PermissionError as exc: raise HTTPException(403,str(exc))
+    return service,identity,assigned
+
+
+@app.get('/api/evolution-review/{experiment_id}/packet')
+async def api_evolution_assigned_packet(experiment_id:int,request:Request):
+    service,identity,role=_evolution_review_access(experiment_id,request)
+    packet=service.packet(experiment_id)
+    summary=service.summary(experiment_id)
+    packet['instructions']='Score both options independently with reasons. Identity is bound to the assigned server session. Submitted judgments are immutable.'
+    if role=='adjudicator':
+        issues=set(summary['authenticated_adjudication_required'])|{row['entry_id'] for row in summary['authenticated_critical_errors']}
+        packet['entries']=[entry for entry in packet['entries'] if entry['entry_id'] in issues]
+        evidence=service.evidence(experiment_id)
+        packet['prior_ratings']=[{'reviewer':index+1,'ratings':[rating for rating in review['ratings'] if rating['entry_id'] in issues]} for index,review in enumerate(evidence['reviews'])
+                                 if review.get('authentication')]
+    # Reviewers must not see other scores or control/candidate aggregates before
+    # submitting their own judgment. Adjudicators see only assigned conflicts.
+    with g_memory_store._conn() as conn:
+        own=conn.execute('SELECT submission FROM evolution_reviews WHERE experiment_id=? AND reviewer=?',
+                         (experiment_id,'session:'+identity['id'])).fetchone()
+        submitted=bool(own)
+        if role=='reviewer' and own:
+            packet['own_ratings']=json.loads(own['submission'])['ratings']
+    safe_summary={key:summary[key] for key in ('authenticated_reviewer_count','authenticated_review_set_digest',
+                  'authenticated_resolved_entries','provider_execution_verified','real_person_independence_verified')}
+    safe_summary['submitted']=submitted
+    return {'packet':packet,'viewer':identity,'role':role,'summary':safe_summary}
+
+
+@app.post('/api/evolution-review/{experiment_id}/ratings')
+async def api_evolution_assigned_ratings(experiment_id:int,request:Request):
+    service,identity,_=_evolution_review_access(experiment_id,request,'reviewer')
+    data=await _evolution_json(request)
+    try: return {'summary':await asyncio.to_thread(service.submit,experiment_id,data,authenticated_uid=identity['id'],
+        authorization_check=lambda:_collaboration().identity(request)['id']==identity['id'])}
+    except PermissionError as exc: raise HTTPException(403,str(exc))
+    except (ValueError,TypeError,AttributeError) as exc: raise HTTPException(400,str(exc))
+
+
+@app.post('/api/evolution-review/{experiment_id}/adjudication')
+async def api_evolution_assigned_adjudication(experiment_id:int,request:Request):
+    service,identity,_=_evolution_review_access(experiment_id,request,'adjudicator')
+    data=await _evolution_json(request)
+    try: return {'summary':await asyncio.to_thread(service.adjudicate,experiment_id,data,identity['id'],
+        authorization_check=lambda:_collaboration().identity(request)['id']==identity['id'])}
+    except PermissionError as exc: raise HTTPException(403,str(exc))
+    except (ValueError,TypeError,AttributeError) as exc: raise HTTPException(400,str(exc))
+
+
 @app.post("/api/self-evolution/runs")
 async def api_self_evolution_create_run(request: Request):
     if not g_memory_store:
@@ -5120,7 +5235,7 @@ async def workbench_access(request: Request, call_next):
     if path.startswith(('/api/','/v1/')) and path not in ('/api/collaboration/join','/api/feishu/events'):
         try:
             uid = 'local-user' if direct_owner(request) else await run_in_threadpool(lambda: _collaboration().identity(request)['id'])
-            if uid != 'local-user' and not path.startswith(('/api/collaboration/','/api/academy/learning/documents')):
+            if uid != 'local-user' and not path.startswith(('/api/collaboration/','/api/academy/learning/documents','/api/evolution-review/')):
                 raise HTTPException(403, '协作会话仅允许访问授权文档')
         except HTTPException as e:
             return JSONResponse({'detail':e.detail},status_code=e.status_code)

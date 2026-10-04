@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>独立评审 · ClawOS</title><link rel="stylesheet" href="/static/assets/evolution-review.css?v=1"><script src="/static/assets/evolution-review.js?v=1" defer></script></head>
+<body><a class="skip" href="#question">跳到当前问题</a><header><a href="/product" class="brand">ClawOS <span>策略实验室</span></a><p id="identity">正在核对会话与实验权限</p></header>
+<main><div class="intro"><div><span class="eyebrow">INDEPENDENT REVIEW</span><h1>把判断建立在答案上</h1><p>逐题比较匿名答案，留下评分依据。提交后的判断永久保留；分歧由另一位已授权会话用户裁决。</p></div><button id="refresh" type="button">重新核对权限</button></div>
+<p id="status" role="status" aria-live="polite">正在加载评审任务…</p>
+<p class="boundary">会话认证确认的是当前账户凭据；真人身份、专业资格及评审者是否独立，仍需组织者核验。结果不自动发布策略。</p>
+<section id="workspace" hidden><div class="toolbar"><label>当前题目<select id="navigator"></select></label><p id="progress"></p></div>
+<section class="question"><span class="eyebrow" id="mode">成对盲评</span><h2 id="question" tabindex="-1"></h2><details id="prior" hidden><summary>查看原始评审意见</summary><div id="priorContent"></div></details></section>
+<form id="ratingForm"><div class="answers">
+<fieldset><legend>答案 A</legend><pre id="answerA" tabindex="0" role="region" aria-label="答案 A 正文"></pre><div class="grading"><label>答案 A 评分（0 到 1）<input id="scoreA" type="number" min="0" max="1" step="0.01" required></label><label>答案 A 评分依据<textarea id="rationaleA" maxlength="2000" rows="4" required placeholder="说明正确性、证据、遗漏或错误"></textarea></label><label class="check"><input id="criticalA" type="checkbox">答案 A 存在严重错误</label></div></fieldset>
+<fieldset><legend>答案 B</legend><pre id="answerB" tabindex="0" role="region" aria-label="答案 B 正文"></pre><div class="grading"><label>答案 B 评分（0 到 1）<input id="scoreB" type="number" min="0" max="1" step="0.01" required></label><label>答案 B 评分依据<textarea id="rationaleB" maxlength="2000" rows="4" required placeholder="说明正确性、证据、遗漏或错误"></textarea></label><label class="check"><input id="criticalB" type="checkbox">答案 B 存在严重错误</label></div></fieldset>
+</div><div class="actions"><button id="previous" type="button">上一题</button><button id="next" type="button">保存草稿并下一题</button><button id="submit" type="submit" class="primary">提交整份评审</button></div></form>
+<p class="boundary">草稿仅保留在当前页面内存，刷新或关闭页面会丢失。正式提交需覆盖全部题目和两个答案；裁决按题提交并绑定当前评审版本。</p></section></main></body></html>
