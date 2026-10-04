@@ -131,8 +131,19 @@ class AutonomousSubagentService:
                 raise ValueError("subagent dependency graph is cyclic or blocked")
             async def launch(spec: SubagentRoleSpec):
                 async with semaphore:
-                    return await self._run_role(objective, spec, completed, shared_evidence or [], confirmed, ledger, budget, events, budget_lock)
-            results = await asyncio.gather(*(launch(item) for item in ready))
+                    result = await self._run_role(objective, spec, completed, shared_evidence or [], confirmed, ledger, budget, events, budget_lock)
+                    completed[spec.role_id] = result
+                    self._write_checkpoint(root, run_id, objective, specs, completed, ledger, events,
+                                           review_cycle=review_state, evidence_digest=evidence_digest)
+                    return result
+            tasks = [asyncio.create_task(launch(item)) for item in ready]
+            try:
+                results = await asyncio.gather(*tasks)
+            finally:
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
             stop = False
             for spec, result in zip(ready, results):
                 completed[spec.role_id] = result
@@ -402,7 +413,9 @@ class AutonomousSubagentService:
     async def _execute_tool(self, name: str, arguments: dict[str, Any], context: dict[str, Any]) -> Any:
         if not self.tool_executor:
             return {"error": "tool executor unavailable"}
-        result = self.tool_executor(name, arguments, context)
+        if asyncio.iscoroutinefunction(self.tool_executor):
+            return await self.tool_executor(name, arguments, context)
+        result = await asyncio.to_thread(self.tool_executor, name, arguments, context)
         return await result if asyncio.iscoroutine(result) else result
 
     def _arbitrate(self, specs: list[SubagentRoleSpec], completed: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -498,9 +511,8 @@ class AutonomousSubagentService:
 
     def _write_checkpoint(self, root: Path, run_id: str, objective: str, specs: list[SubagentRoleSpec], completed: dict[str, Any], ledger: dict[str, Any], events: list[dict[str, Any]], arbitration: dict[str, Any] | None = None, review_cycle: dict[str, Any] | None = None, evidence_digest: str = '') -> None:
         payload = {"schema": "clawos.subagent-checkpoint.v1", "run_id": run_id, "objective": objective, "roles": [asdict(item) for item in specs], "completed": completed, "ledger": ledger, "events": events, "arbitration": arbitration or {}, "review_cycle": review_cycle or {}, "evidence_digest": evidence_digest, "updated_at": now_iso()}
-        temporary = root / ".checkpoint.tmp"
-        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        temporary.replace(root / "checkpoint.json")
+        from .file_transactions import write_text
+        write_text(root / "checkpoint.json", json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
     def _save_run(self, payload: dict[str, Any], actor: str) -> None:
         if not self.store:

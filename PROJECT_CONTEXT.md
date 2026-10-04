@@ -1,5 +1,17 @@
 # Project Context
 
+## 最新：可靠多代理编码协作与真实模型验收（2026-10-04）
+
+继续42e798e。新增ReliableCollaborationService，模型动态生成最多8节点的有界DAG；冻结基线、每次尝试独立Git工作树、依赖实际祖先提交和并发工作者。工作者只见本任务授权文件及只读依赖，协调器校验提案/语法/写入范围；真实Git合并冲突限定文件交模型修复，重复已应用补丁跳过，调用方测试失败有界修复并保留失败轮次，独立请求评审不能覆盖失败测试。进程级内核锁、原子落盘、逐任务提交及模型回答凭据支持实际死亡后显式恢复，拒绝活跃所有者、请求/模型/源代码漂移、损坏凭据和已接受提交漂移；共享调用/token/超时预算跨恢复累计。不是分布式租约或无限中途扩图。原角色服务取消/并行完成记录修复，但其任意工具不继承编码隔离保证。
+
+POST /api/subagents/run及autonomous_subagents新增team_profile=reliable_coding，确认、repo_path、allowed_paths、test_commands和resume_run；GET /api/subagents/collaboration/{run_id}查记录/所有者状态。最终工具新旧路径均遵守CLAWOS_OUTPUT_DIR，运行产物隔离。结果仍需人工释放独立工作区改动。
+
+最终全量隔离Python **832/832，654.066秒**（output/regression/b4cd67d1194a421eb3de4ce488f49be8）；机制21/21、原服务9/9、Node17/17。全量发现后最后调整工具output绑定，另行入口 **2/2，0.306秒**，不是单次834全量。真实本地Qwen两个最终同源码用例通过：动态3任务/并行峰值2/15断言与os._exit(17)后复用真实完成提交 **96.594秒、6调用、2358计费token**；同函数实际Git冲突/模型限定修复/5断言 **55.281秒、5调用、1633token**。初始真实planner格式、工作者越界、review格式失败保留；收窄工作者上下文和有界格式重试，不放松写入或测试门禁。历史真实模型失败记录不改写。
+
+验收clawos/benchmarks/RELIABLE_MULTI_AGENT_ACCEPTANCE.md，忽略证据output/reliable-collaboration-verified-{recovery,conflict}-20261004。最终9源码bundle **2bc3e66ca0230f86b6c1b012a22ddf98ab5ac96c925c4b9dbca64e24febce7a0**；两个live报告绑定4核心源码且加载后未变。日常DB仍8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543；本轮自有模型18926已关闭，未重启生产/既有预览。观察到兼容Job Object有进程/内存限制，但文件系统和不可绕过socket隔离均未成立，production_sandbox_ready=false；严格模式继续fail closed。
+
+仅证明小型合成库、单主机显式恢复的机制；尚无大开源库成功率、多机器调度、多天并发、独立评审质量或CC/Codex等效证据。下一阶段应扩大真实任务/隐藏断言/多次失败注入与并发负载，并验收严格沙箱。沿用已授权指定远程/分支提交推送，只交相关源码/测试/文档，排除tools/权重/凭据/DB/output及原skill_registry.jsonl改动，不强推或合并master。以下保留历史。
+
 ## 最新：统一暖白色系，保留封面（2026-10-04）
 
 按用户确认的微暖设计方向，15个HTML外壳同步加载共享assets/color-system.css，涵盖首页/产品页、工作空间与独立评审。纸白#FBFAF5、面板#FFFEFB、侧栏/表头#F5F3EC、暖炭灰#292824和低饱和深绿#3F5D50；product-system.css原蓝灰主色改为共享变量，浏览器/manifest主题色一致。补齐阅读器二级导航/导写编号、数学/代码背景与会议处理结果残留冷色。保留错误提醒、图表/批注/成员颜色语义。没有改JS、后端、图片；独立评审中文字体对齐。

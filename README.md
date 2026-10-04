@@ -28,6 +28,11 @@ cd <your-cloned-agent-repo>
 双架构仍为 ClawOS 工作台/MemoryOS → MTClaw 函数路由 → 受限工具桥 → 请求级证据。
 本轮验收及未完成的真实租户/长期并发部分见 `clawos/benchmarks/COLLABORATION_DATA_MTCLAW_ACCEPTANCE.md`。
 
+编码协作新增 `autonomous_subagents` 的 `reliable_coding` 模式：模型按授权文件拆分任务，
+独立 Git 工作区并行修改，依赖任务接收真实提交，统一集成、冲突处理、测试与评审。
+检查点支持核对已完成提交后恢复；源仓库不自动应用或推送。
+接口、复现和验收边界见 `clawos/benchmarks/RELIABLE_MULTI_AGENT_ACCEPTANCE.md`。
+
 论文报告支持全窗口阅读、实验条件/原文引用及 Markdown、PDF、JSON 下载，重新生成保留旧文件；
 工作台历史支持完整归档分页、全文查询、导出和会话恢复。文本工具支持预览、仅创建与 SHA-256 冲突保护。
 自进化候选绑定当前策略版本并支持受所有权保护的回滚。CodingWorkflowService 可用

@@ -5673,6 +5673,20 @@ async def api_coding_workflow(request: Request):
 @app.post("/api/subagents/run")
 async def api_autonomous_subagents(request: Request):
     data = await request.json()
+    if not isinstance(data, dict):
+        raise HTTPException(400,"request must be an object")
+    if data.get("team_profile") == "reliable_coding":
+        try:
+            result = await get_reliable_collaboration_service().run(
+                data.get("repo_path", ""), data.get("objective", ""),
+                allowed_paths=data.get("allowed_paths") or [],
+                test_commands=data.get("test_commands") or [],
+                confirmed=data.get("confirmed") is True,
+                resume_run=data.get("resume_run", ""),
+                actor=data.get("actor", "coordinator"), limits=data.get("limits") or None)
+        except (ValueError, PermissionError, RuntimeError, TimeoutError) as exc:
+            raise HTTPException(409 if isinstance(exc, (PermissionError, TimeoutError)) else 400, str(exc))
+        return JSONResponse(result)
     roles = data.get("roles") or []
     if data.get("team_profile") == "advanced_data_analysis" and not roles:
         roles = [asdict(item) for item in get_autonomous_subagent_service().advanced_data_team(data.get("objective", ""), source_description=data.get("source_description", "tabular dataset"))]
@@ -5691,6 +5705,15 @@ async def api_autonomous_subagents(request: Request):
         )
     except (ValueError, PermissionError, RuntimeError) as exc:
         raise HTTPException(409 if isinstance(exc, PermissionError) else 400, str(exc))
+    return JSONResponse(result)
+
+
+@app.get("/api/subagents/collaboration/{run_id}")
+async def api_collaboration_progress(run_id: str):
+    try:
+        result = await asyncio.to_thread(get_reliable_collaboration_service().inspect, run_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     return JSONResponse(result)
 
 
@@ -6678,6 +6701,14 @@ def get_autonomous_subagent_service() -> AutonomousSubagentService:
         checkpoint_root=OUTPUT_ROOT / "subagents",
         max_concurrency=3,
     )
+
+
+def get_reliable_collaboration_service():
+    from services.reliable_collaboration import ReliableCollaborationService
+    if not g_upstream_provider:
+        raise HTTPException(503, "model provider is not initialized")
+    return ReliableCollaborationService(lambda _spec: g_upstream_provider,
+        root=OUTPUT_ROOT / "collaboration-runs", store=g_memory_store, max_concurrency=3)
 
 
 def _academy_project_item_summary(run: dict[str, Any]) -> dict[str, Any]:

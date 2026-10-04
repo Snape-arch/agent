@@ -1865,6 +1865,7 @@ def autonomous_subagents(payload):
     from memoryos.memory_store import MemoryStore
     from providers import create_model_provider
     from services.autonomous_subagent_service import AutonomousSubagentService
+    output_root = Path(os.environ.get("CLAWOS_OUTPUT_DIR") or (Path(BASE_DIR).parent / "output"))
     provider = create_model_provider({
         "provider": os.environ.get("MODEL_PROVIDER", "qwen"),
         "base_url": os.environ.get("MODEL_BASE_URL", "http://127.0.0.1:8000/v1"),
@@ -1872,7 +1873,15 @@ def autonomous_subagents(payload):
         "api_key": os.environ.get("MODEL_API_KEY", ""),
         "requires_api_key": os.environ.get("MODEL_REQUIRES_API_KEY", "false").lower() == "true",
     })
-    service = AutonomousSubagentService(lambda _spec: provider, store=MemoryStore(_memory_db_path()), checkpoint_root=Path(BASE_DIR).parent / "output" / "subagents")
+    if payload.get("team_profile") == "reliable_coding":
+        from services.reliable_collaboration import ReliableCollaborationService
+        service = ReliableCollaborationService(lambda _spec: provider,
+            store=MemoryStore(_memory_db_path()), root=output_root / "collaboration-runs")
+        return asyncio.run(service.run(payload.get("repo_path", ""), payload.get("objective", ""),
+            allowed_paths=payload.get("allowed_paths") or [], test_commands=payload.get("test_commands") or [],
+            confirmed=payload.get("confirmed") is True, resume_run=payload.get("resume_run", ""),
+            actor=payload.get("actor", "coordinator"), limits=payload.get("limits") or None))
+    service = AutonomousSubagentService(lambda _spec: provider, store=MemoryStore(_memory_db_path()), checkpoint_root=output_root / "subagents")
     return asyncio.run(service.run(payload.get("objective", ""), payload.get("roles") or [], shared_evidence=payload.get("shared_evidence") or [], confirmed_side_effect_tools=payload.get("confirmed_tools") or [], run_budget=payload.get("budget") or {}, resume_checkpoint=payload.get("resume_checkpoint", ""), actor=payload.get("actor", "coordinator")))
 
 
