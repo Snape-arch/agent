@@ -3,9 +3,9 @@
 :root {
   --product-font: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", "Segoe UI", sans-serif;
   --product-mono: Consolas, "SFMono-Regular", "Microsoft YaHei UI", monospace;
-  --product-ink: #202b3b; --product-muted: #5e6b7a; --product-green: #335caa;
-  --product-line: #dfe4eb; --product-paper: #f6f7f9; --product-radius: 10px;
-  --product-soft: #edf2fb; --workspace-height: 56px;
+  --product-ink: var(--claw-ink); --product-muted: var(--claw-muted); --product-green: var(--claw-accent);
+  --product-line: var(--claw-line); --product-paper: var(--claw-paper); --product-radius: 10px;
+  --product-soft: var(--claw-accent-soft); --workspace-height: 56px;
 }
 body.workspace-linked {
   --workspace-ink: var(--product-ink); --workspace-muted: var(--product-muted);
@@ -24,55 +24,55 @@ body.workspace-linked {
 .workspace-linked :is(.eyebrow,.doc-kicker,.academy-kicker,.kicker,.rail-caption) { font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--product-muted); }
 .workspace-linked :is(.hint,.muted,.small) { font-size: 13px; line-height: 1.7; color: var(--product-muted); }
 .workspace-linked :is(button,a.button,.pill) { border-radius: 7px; min-height: 34px; font-weight: 500; }
-.workspace-linked :is(.primary,.pill.solid) { color: #fff; background: #335caa; border-color: #335caa; }
-.workspace-linked :focus-visible { outline: 2px solid #335caa; outline-offset: 3px; }
-.workspace-linked input::placeholder,.workspace-linked textarea::placeholder { color: #6b7788; opacity: 1; }
+.workspace-linked :is(.primary,.pill.solid) { color: #fff; background: var(--claw-accent); border-color: var(--claw-accent); }
+.workspace-linked :focus-visible { outline: 2px solid var(--claw-accent); outline-offset: 3px; }
+.workspace-linked input::placeholder,.workspace-linked textarea::placeholder { color: var(--claw-muted); opacity: 1; }
 .workspace-linked :is(pre,code) { font-family: var(--product-mono); font-size: 13px; line-height: 1.75; }
 .workspace-nav { height: 56px; padding: 0 24px; gap: 36px; font-family: var(--product-font); border-color: var(--product-line); }
 .workspace-brand { font-weight: 600; }
 .workspace-links { gap: 8px; scrollbar-width: none; }
 .workspace-links::-webkit-scrollbar { display: none; }
 .workspace-links a { padding: 10px 14px; font-size: 14px; font-weight: 500; border-radius: 6px; }
-.workspace-links a[aria-current=page] { background: var(--product-soft); color: #284e91; }
-.workspace-links a:hover { background: #f1f4f8; }
+.workspace-links a[aria-current=page] { background: var(--product-soft); color: var(--claw-accent); }
+.workspace-links a:hover { background: var(--claw-sidebar); }
 /* Tables keep their semantic layout. Horizontal movement belongs to the table,
    never to the page; long titles remain readable instead of one-glyph columns. */
 .workspace-table-scroll { max-width: 100%; min-width: 0; overflow: auto; border: 1px solid var(--product-line); border-radius: 8px; scrollbar-width: thin; }
 .workspace-linked .workspace-table-scroll:focus-visible { outline-offset: 2px; }
 .workspace-linked :is(.workspace-table-scroll,.table-scroll:not(.doc-block .table-scroll),.feishu-status-scroll) table {
   width: 100%; min-width: 0 !important; border: 0 !important; border-radius: 0;
-  border-collapse: collapse; table-layout: auto; background: #fff; font-size: 13px;
+  border-collapse: collapse; table-layout: auto; background: var(--claw-surface); font-size: 13px;
 }
 .workspace-linked .workspace-table-scroll table[data-wide=true] { min-width: 680px !important; }
 .workspace-linked :is(.workspace-table-scroll,.table-scroll:not(.doc-block .table-scroll),.feishu-status-scroll) :is(th,td) {
   font-family: var(--product-font); padding: 12px 16px !important; font-size: 13px !important;
   line-height: 1.65 !important; color: var(--product-ink) !important; text-align: left;
-  font-weight: 400; vertical-align: top; border-bottom: 1px solid #e8ecf1;
+  font-weight: 400; vertical-align: top; border-bottom: 1px solid var(--claw-line);
   white-space: normal !important; word-break: normal; overflow-wrap: anywhere;
   min-width: 80px; max-width: 360px; font-variant-numeric: tabular-nums;
 }
 .workspace-linked :is(.workspace-table-scroll,.table-scroll:not(.doc-block .table-scroll),.feishu-status-scroll) th {
-  background: #f5f7fa !important; color: #526073 !important; font-weight: 500;
+  background: var(--claw-sidebar) !important; color: var(--claw-muted) !important; font-weight: 500;
   white-space: nowrap !important; position: sticky; top: 0;
 }
 .workspace-linked :is(.workspace-table-scroll,.table-scroll:not(.doc-block .table-scroll)) tr:last-child td { border-bottom: 0; }
-.workspace-linked :is(.workspace-table-scroll,.table-scroll:not(.doc-block .table-scroll)) tbody tr:hover td { background: #f8faff !important; }
+.workspace-linked :is(.workspace-table-scroll,.table-scroll:not(.doc-block .table-scroll)) tbody tr:hover td { background: var(--claw-paper) !important; }
 .workspace-linked .table-empty { text-align: center !important; padding: 24px !important; color: var(--product-muted) !important; }
 .workspace-linked .cell-details { max-width: 320px; }
-.workspace-linked .cell-details summary { cursor: pointer; color: #335caa; font-size: 13px; }
+.workspace-linked .cell-details summary { cursor: pointer; color: var(--claw-accent); font-size: 13px; }
 .workspace-linked .cell-details pre { margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .workspace-linked .ui-action-label { display: inline-block; white-space: nowrap; font-family: var(--product-font); font-size: 12px; line-height: 1.4; }
 .workspace-linked :is(.tool-button,.icon-button):has(.ui-action-label) { width: auto; min-width: 34px; padding-inline: 8px; }
 /* Console: its header participates in layout so it cannot cover section titles. */
 body.workspace-linked.aether-console {
-  --c-bg: var(--product-paper); --c-panel: #fff; --c-text: var(--product-ink);
+  --c-bg: var(--product-paper); --c-panel: var(--claw-surface); --c-text: var(--product-ink);
   --c-muted: var(--product-muted); --c-faint: var(--product-muted); --c-line: var(--product-line);
-  --c-blue: #335caa; --c-blue-soft: var(--product-soft); font-size: 14px;
+  --c-blue: var(--claw-accent); --c-blue-soft: var(--product-soft); font-size: 14px;
 }
 .workspace-linked.aether-console .console-head {
   position: sticky; top: var(--workspace-height); inset-inline: auto; margin-left: 224px;
   height: auto; min-height: 84px; padding: 16px 28px; display: flex; justify-content: space-between;
-  background: #fff !important; backdrop-filter: none; gap: 20px;
+  background: var(--claw-surface) !important; backdrop-filter: none; gap: 20px;
 }
 .workspace-linked.aether-console .console-head h1 { font-size: 22px; font-weight: 600; line-height: 1.5; letter-spacing: 0; }
 .workspace-linked.aether-console .console-head p { font-size: 13px; line-height: 1.6; margin-top: 3px; }
@@ -83,13 +83,13 @@ body.workspace-linked.aether-console {
 .workspace-linked.aether-console .section-block h3 { font-size: 16px; font-weight: 600; }
 .workspace-linked.aether-console :is(button,input,select,textarea) { font-size: 13px; font-weight: 500; }
 .workspace-linked.aether-console :is(input,textarea) { font-weight: 400; }
-.workspace-linked.aether-console .side { padding: 20px 14px; background: #fff !important; }
+.workspace-linked.aether-console .side { padding: 20px 14px; background: var(--claw-surface) !important; }
 .workspace-linked.aether-console .side-brand b { font-size: 14px; font-weight: 600; line-height: 1.5; }
 .workspace-linked.aether-console .side-brand small { font-size: 12px; font-weight: 400; letter-spacing: 0; }
 .workspace-linked.aether-console .side-collapse { width: 36px; min-width: 36px; padding: 0; }
 .workspace-linked.aether-console :is(.side-label,.recent-label) { font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--product-muted) !important; }
 .workspace-linked.aether-console .side-nav button { font-size: 14px; font-weight: 500; padding: 10px 12px; }
-.workspace-linked.aether-console .side-nav button.on { color: #284e91 !important; background: var(--product-soft) !important; box-shadow: none !important; }
+.workspace-linked.aether-console .side-nav button.on { color: var(--claw-accent) !important; background: var(--product-soft) !important; box-shadow: none !important; }
 .workspace-linked.aether-console .session b { font-size: 13px; font-weight: 500; }
 .workspace-linked.aether-console .side-bottom button { font-size: 13px; font-weight: 500; }
 .workspace-linked.aether-console .health { font-size: 12px; }
@@ -107,9 +107,9 @@ body.workspace-linked.aether-console {
 .workspace-linked.aether-console #view-chat .workbench-chat { overflow: auto !important; }
 .workspace-linked.aether-console #view-chat .workbench-empty { min-height: 240px !important; justify-content: center; }
 .workspace-linked.aether-console #view-chat .workbench-empty>b { font-size: 22px; font-weight: 500; }
-.workspace-linked.aether-console .workbench-quick button { background: #f8f9fb !important; text-align: left; }
+.workspace-linked.aether-console .workbench-quick button { background: var(--claw-sidebar) !important; text-align: left; }
 .workspace-linked.aether-console .workbench-quick button b { font-weight: 500; }
-.workspace-linked.aether-console .composer { background: #fff !important; }
+.workspace-linked.aether-console .composer { background: var(--claw-surface) !important; }
 .workspace-linked.aether-console #view-chat .compose-inner { display: grid; grid-template-columns: 38px minmax(0,1fr) auto 68px auto; gap: 8px; }
 .workspace-linked.aether-console .composer-help { font-size: 12px; text-align: left !important; }
 .workspace-linked.aether-console .skill-detail label { display: grid; gap: 8px; margin: 16px 0; font-size: 13px; }
@@ -123,20 +123,20 @@ body.workspace-linked.aether-console {
 .workspace-linked .brand small { font-size: 12px; font-weight: 400; letter-spacing: 0; }
 .workspace-linked .rail-caption { margin-top: 32px; }
 .workspace-linked .rail nav a { font-weight: 500; padding: 10px 12px; gap: 0; }
-.workspace-linked .rail nav a.active { background: var(--product-soft); color: #284e91; }
-.workspace-linked .topbar { background: #fff; letter-spacing: 0; font-size: 13px; height: 64px; }
+.workspace-linked .rail nav a.active { background: var(--product-soft); color: var(--claw-accent); }
+.workspace-linked .topbar { background: var(--claw-surface); letter-spacing: 0; font-size: 13px; height: 64px; }
 .workspace-linked .page-head { margin-bottom: 24px; }
 .workspace-linked :is(.card,.wb-card,.code-studio,.quiz-studio,.ingest-studio) { border-radius: 10px; border-color: var(--product-line); box-shadow: none; }
-.workspace-linked .hero { border: 1px solid var(--product-line); border-radius: 10px; background: #fff; color: var(--product-ink); }
+.workspace-linked .hero { border: 1px solid var(--product-line); border-radius: 10px; background: var(--claw-surface); color: var(--product-ink); }
 .workspace-linked .hero :is(h1,h2,h3) { color: var(--product-ink); }
 .workspace-linked .hero h2 { font-size: 24px; }
 .workspace-linked .hero :is(p,.eyebrow,.small) { color: var(--product-muted) !important; }
-.workspace-linked .hero-side { background: #f8f9fb; border-color: var(--product-line); }
-.workspace-linked .hero-side :is(ol,h3) { color: #43536a; }
-.workspace-linked .hero .text-button { color: #335caa; }
-.workspace-linked .mint { background: #335caa; color: white; border-color: #335caa; }
+.workspace-linked .hero-side { background: var(--claw-sidebar); border-color: var(--product-line); }
+.workspace-linked .hero-side :is(ol,h3) { color: var(--claw-ink); }
+.workspace-linked .hero .text-button { color: var(--claw-accent); }
+.workspace-linked .mint { background: var(--claw-accent); color: white; border-color: var(--claw-accent); }
 .workspace-linked .track { border-top: 1px solid var(--product-line); }
-.workspace-linked .track.selected { border-color: #7898cf; box-shadow: none; }
+.workspace-linked .track.selected { border-color: var(--claw-accent-line); box-shadow: none; }
 .workspace-linked .card .number { letter-spacing: 0; font-size: 12px; margin-bottom: 16px; }
 .workspace-linked .card p { font-size: 14px; }
 .workspace-linked .meta { font-size: 12px; }
@@ -149,48 +149,48 @@ body.workspace-linked.aether-console {
 .workspace-linked.academy-reader-page .reader-titlebar h1 { font-size: 28px; line-height: 1.5; letter-spacing: 0; margin: 6px 0; }
 .workspace-linked .reader-titlebar p { font-size: 14px; }
 .workspace-linked :is(.paper-reader-workspace,.reader-document-bar) { border-radius: 10px; box-shadow: none; }
-.workspace-linked .reader-document-bar { background: #fff; }
+.workspace-linked .reader-document-bar { background: var(--claw-surface); }
 .workspace-linked .reader-outline .icon-button:has(.ui-action-label) { min-width: 0; padding: 4px 2px; }
-.workspace-linked .reader-notes-pane { border-radius: 0; box-shadow: none; background: #fff; }
+.workspace-linked .reader-notes-pane { border-radius: 0; box-shadow: none; background: var(--claw-surface); }
 .workspace-linked .reader-notes-pane :is(input,textarea) { font-size: 14px; font-weight: 400; }
 .workspace-linked .reader-pane-head>div>span { font-size: 12px; letter-spacing: 0; }
 .workspace-linked .reader-pane-head b { font-size: 16px; font-weight: 600; }
-.workspace-linked .paper-empty-state { background: #f0f2f6; }
+.workspace-linked .paper-empty-state { background: var(--claw-sidebar); }
 .workspace-linked.reader-window .academy-reader-main { padding: 0 !important; }
 /* Documents: quiet page, comfortable CJK line height; preserve math/code fonts. */
 .workspace-linked .doc-rail { width: 218px; padding: 24px 16px; }
 .workspace-linked .doc-shell { margin-left: 218px; }
 .workspace-linked .doc-brand { font-size: 17px; font-weight: 600; letter-spacing: 0; }
-.workspace-linked .doc-rail nav button.active { background: var(--product-soft); color: #284e91; }
+.workspace-linked .doc-rail nav button.active { background: var(--product-soft); color: var(--claw-accent); }
 .workspace-linked .doc-topbar { padding: 14px 24px; }
-.workspace-linked .doc-actions #docCollab { background: var(--product-soft); border-color: #dbe5f5; color: #284e91; }
+.workspace-linked .doc-actions #docCollab { background: var(--product-soft); border-color: var(--claw-accent-line); color: var(--claw-accent); }
 .workspace-linked .doc-toolbar { padding: 8px 24px; }
-.workspace-linked .doc-toolbar #docInsert { background: var(--product-soft); border-color: #dbe5f5; color: #284e91; }
+.workspace-linked .doc-toolbar #docInsert { background: var(--product-soft); border-color: var(--claw-accent-line); color: var(--claw-accent); }
 .workspace-linked .doc-workspace { padding: 32px 32px 72px; }
 .workspace-linked .doc-page { border-radius: 6px; box-shadow: none; border-color: var(--product-line); padding: 48px 56px; }
 .workspace-linked :is(.doc-title,#docReadTitle) { font-size: 32px; font-weight: 600; letter-spacing: 0; line-height: 1.5; }
-.workspace-linked .block-edit { font-family: var(--product-font); font-size: 16px; line-height: 1.85; letter-spacing: 0; color: #303b4c; background: transparent; }
+.workspace-linked .block-edit { font-family: var(--product-font); font-size: 16px; line-height: 1.85; letter-spacing: 0; color: var(--claw-ink); background: transparent; }
 .workspace-linked .doc-block.heading .block-edit { font-size: 22px; font-weight: 600; line-height: 1.6; }
 .workspace-linked .doc-block.heading[data-level="1"] .block-edit { font-size: 27px; }
 .workspace-linked .doc-block.heading[data-level="3"] .block-edit { font-size: 18px; }
-.workspace-linked .doc-block.selected { background: #f5f8fd; }
-.workspace-linked .doc-block.quote { background: #f8f9fb; border-color: #b4c1d4; }
-.workspace-linked .doc-block.callout { background: #edf2fb; border-color: #6e8dbf; }
-.workspace-linked .doc-block th,.workspace-linked .doc-block tr:first-child td { background: #f3f6fa; }
-.workspace-linked .block-tools>summary { font-size: 12px; color: #5e6b7a; }
+.workspace-linked .doc-block.selected { background: var(--claw-accent-soft); }
+.workspace-linked .doc-block.quote { background: var(--claw-sidebar); border-color: var(--claw-line); }
+.workspace-linked .doc-block.callout { background: var(--claw-accent-soft); border-color: var(--claw-accent); }
+.workspace-linked .doc-block th,.workspace-linked .doc-block tr:first-child td { background: var(--claw-sidebar); }
+.workspace-linked .block-tools>summary { font-size: 12px; color: var(--claw-muted); }
 .workspace-linked .doc-block .table-scroll { border: 0; max-width: 100%; overflow: auto; }
 .workspace-linked .doc-block table { min-width: 480px; table-layout: auto; width: 100%; }
 .workspace-linked .doc-block :is(th,td) { padding: 0; min-width: 160px; }
 .workspace-linked .table-cell { font-family: var(--product-font); font-size: 14px; line-height: 1.75; padding: 12px 14px; }
-.workspace-linked .doc-block :is(.block-edit a,.table-cell a) { color: #335caa; }
+.workspace-linked .doc-block :is(.block-edit a,.table-cell a) { color: var(--claw-accent); }
 /* Data and meetings share the same header, field alignment and numeric rhythm. */
 .workspace-linked .wb-rail .kicker { font-size: 12px; letter-spacing: 0; }
 .workspace-linked .wb-rail h2 { font-size: 20px; }
 .workspace-linked .wb-intro h1 { font-size: 26px; }
 .workspace-linked .wb-layout .kicker { font-size: 12px; letter-spacing: 0; color: var(--product-muted); }
-.workspace-linked .wb-layout .wb-rail nav button.active { background: var(--product-soft); color: #284e91; }
-.workspace-linked .workflow button { background: #eef1f6; color: #526073; font-size: 13px; }
-.workspace-linked .workflow button[aria-current=step] { background: var(--product-soft); color: #284e91; box-shadow: inset 0 -2px #335caa; }
+.workspace-linked .wb-layout .wb-rail nav button.active { background: var(--product-soft); color: var(--claw-accent); }
+.workspace-linked .workflow button { background: var(--claw-sidebar); color: var(--claw-muted); font-size: 13px; }
+.workspace-linked .workflow button[aria-current=step] { background: var(--product-soft); color: var(--claw-accent); box-shadow: inset 0 -2px var(--claw-accent); }
 .workspace-linked .metric b { font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .workspace-linked .metric span { font-size: 13px; }
 .workspace-linked .wb-card h2 { font-size: 19px; }
@@ -199,9 +199,9 @@ body.workspace-linked.aether-console {
 .workspace-linked .table-scroll { border: 1px solid var(--product-line); border-radius: 8px; }
 .workspace-linked .table-scroll:not(.doc-block .table-scroll) td { min-width: 96px; }
 .workspace-linked .table-scroll:not(.doc-block .table-scroll) td.numeric { text-align: right; }
-.workspace-linked .table-scroll table[data-wide=true] :is(th,td):first-child { position: sticky; left: 0; background: #fff; z-index: 1; }
-.workspace-linked .table-scroll table[data-wide=true] th:first-child { background: #f5f7fa; z-index: 2; }
-.workspace-linked #wbStatus { background: #fff; color: #526073; border-top: 1px solid var(--product-line); font-size: 13px; }
+.workspace-linked .table-scroll table[data-wide=true] :is(th,td):first-child { position: sticky; left: 0; background: var(--claw-surface); z-index: 1; }
+.workspace-linked .table-scroll table[data-wide=true] th:first-child { background: var(--claw-sidebar); z-index: 2; }
+.workspace-linked #wbStatus { background: var(--claw-surface); color: var(--claw-muted); border-top: 1px solid var(--product-line); font-size: 13px; }
 .workspace-linked .meeting-editor { font-family: var(--product-font); font-size: 14px; }
 .workspace-linked .recipe-step { font-size: 13px; }
 .workspace-linked .feishu-readiness { background: var(--product-soft); }
