@@ -6,6 +6,7 @@ No source checkout writes, remote Git operations or model-selected commands occu
 from __future__ import annotations
 
 import asyncio
+import ast
 from dataclasses import asdict
 import hashlib
 import json
@@ -22,6 +23,12 @@ from .coding_workspace_service import CodingWorkspaceService
 from .coding_workflow_service import CodingWorkflowService
 from .file_transactions import _file_lock, write_text
 from .runtime_records import RunRecord, now_iso
+
+
+class ModelFormatError(ValueError):
+    def __init__(self, error, content):
+        super().__init__(str(error))
+        self.content = content[:16000]
 
 
 class ReliableCollaborationService:
@@ -60,9 +67,11 @@ class ReliableCollaborationService:
     def safe_path(value):
         text = str(value)
         path = PurePosixPath(text)
-        if (not text or "\\" in text or ":" in text or path.is_absolute()
-                or any(part in {"..", ".git", "tools", ".aws", ".codex"}
-                       or part.startswith(".env") for part in path.parts)
+        if (not text or any(ord(c) < 32 or c in '\\:<>"|?*' for c in text) or path.is_absolute()
+                or any(part.casefold() in {"..", ".git", "tools", ".aws", ".codex"}
+                       or part.casefold().startswith(".env") or part.endswith((' ', '.'))
+                       or re.fullmatch(r'(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?', part)
+                       for part in path.parts)
                 or str(path) != text):
             raise ValueError("invalid or sensitive collaboration path")
         return text
@@ -116,6 +125,10 @@ class ReliableCollaborationService:
 
     def save(self, state):
         state["updated_at"] = now_iso()
+        if state.get('delivery'):
+            for index, item in enumerate(state.get('delivery_attempts', [])):
+                if item['id'] == state['delivery']['id']:
+                    state['delivery_attempts'][index] = dict(state['delivery'])
         payload = {"state": state, "sha256": self.digest(state)}
         write_text(self.root / state["run_id"] / "checkpoint.json",
                    json.dumps(payload, ensure_ascii=False, indent=2))
@@ -172,7 +185,8 @@ class ReliableCollaborationService:
         except TimeoutError:
             owner_active=True
         return self.public(state) | {"coordinator_active":owner_active,
-            "needs_recovery":not owner_active and state["status"] in {"running","interrupted"}}
+            "needs_recovery":not owner_active and (state["status"] in {"running","interrupted"}
+                or (state.get('delivery') or {}).get('status') == 'preparing')}
 
     def verify_receipts(self,state):
         root=self.root/state["run_id"]
@@ -202,6 +216,8 @@ class ReliableCollaborationService:
             raise ValueError("invalid collaboration request types")
         repo = CodingWorkspaceService._repo(repo_path)
         paths = sorted({self.safe_path(p) for p in allowed_paths})
+        if os.name == 'nt' and len({p.casefold() for p in paths}) != len(paths):
+            raise ValueError('Windows paths must not alias each other by case')
         if not 1 <= len(paths) <= 24 or not str(objective).strip() or len(objective) > 8000:
             raise ValueError("a bounded objective and 1..24 authorized paths are required")
         commands = [CodingWorkflowService._validate_command(c) for c in test_commands]
@@ -289,13 +305,17 @@ class ReliableCollaborationService:
                 state["ledger"]["elapsed_seconds"] += round(time.monotonic() - started, 3)
                 self.save(state)
             result = self.public(state)
-            if self.store:
-                run = RunRecord(run_id=run_id, run_type="autonomous_subagents", title=objective,
-                    status=state["status"], actor=actor, scenario="project", completed_at=now_iso(),
-                    inputs={"plan": state["nodes"]}, outputs={"collaboration": result},
-                    metrics=state["ledger"], workflow={"scheduler": "model_planned_dag"})
-                self.store.save_run_record(run.to_dict())
+            self.persist(state)
             return result
+
+    def persist(self, state):
+        if self.store:
+            run = RunRecord(run_id=state['run_id'], run_type='autonomous_subagents',
+                title=state['request']['objective'], status=state['status'],
+                actor=state['request']['actor'], scenario='project', completed_at=now_iso(),
+                inputs={'plan':state['nodes']}, outputs={'collaboration':self.public(state)},
+                metrics=state['ledger'], workflow={'scheduler':'model_planned_dag'})
+            self.store.save_run_record(run.to_dict())
 
     async def model(self, state, role, instruction, packet):
         policy = state["request"]["limits"]
@@ -346,7 +366,10 @@ class ReliableCollaborationService:
             fence = re.fullmatch(r"```(?:json)?\s*(\{[\s\S]*\})\s*```", content)
             if fence:
                 content = fence.group(1)
-            output = json.loads(content)
+            try:
+                output = json.loads(content)
+            except json.JSONDecodeError as exc:
+                raise ModelFormatError(exc, content) from exc
             if not isinstance(output, dict) or ledger["tokens"] > policy["max_tokens"]:
                 raise ValueError("invalid JSON object or provider exceeded token budget")
             self.event(state, "model_completed", role=role, provider=response.get("provider"),
@@ -374,7 +397,9 @@ class ReliableCollaborationService:
                 'Split the objective into minimal concrete edit tasks. Independent tasks have no dependencies. '
                 'Use schema {"nodes":[{"id":"task_id","objective":"specific requirement",'
                 '"write_paths":["authorized/path"],"depends_on":[]}]}. '
-                'Assign only supplied paths. Use dependencies when a task needs another task\'s implementation.')
+                'Assign only supplied paths. Preserve each exact interface contract in its task objective: '
+                'input coercion, validation, output shape and cross-module imports. '
+                'Use dependencies when a task needs another task\'s implementation.')
             packet = {"objective": state["request"]["objective"], "authorized_files": files}
             for attempt in range(2):
                 try:
@@ -416,6 +441,21 @@ class ReliableCollaborationService:
             state["status"] = "failed"
             return
         await self.integrate(state)
+
+    async def worker_patch(self, state, key, instruction, packet):
+        try:
+            return await self.model(state, key, instruction, packet)
+        except ModelFormatError as exc:
+            # An actual provider request repairs serialization. Never silently
+            # fix JSON, accept Python literals or bypass patch/syntax validation.
+            event='worker_format_rejected' if key in {n['id'] for n in state['nodes']} else 'patch_format_rejected'
+            self.event(state, event, node=key, error=str(exc))
+            return await self.model(state, key + '_format', instruction +
+                ' The previous public answer was invalid JSON. Correct its serialization '
+                'and Python syntax, preserving this assignment and write scope. '
+                'Use escaped newlines in JSON code strings; close the changes array and outer object. '
+                'Do not copy punctuation errors from the previous answer.',
+                packet | {'previous_invalid_answer':exc.content, 'format_error':str(exc)})
 
     def ancestors(self, state, node):
         wanted = set(node["depends_on"])
@@ -472,12 +512,14 @@ class ReliableCollaborationService:
                     conflicts = await asyncio.to_thread(self.pick, repo, state["results"][dep["id"]]["commit"])
                     if conflicts:
                         raise ValueError("dependency patch conflict: " + ", ".join(conflicts))
-                patch = await self.model(state, key,
+                patch = await self.worker_patch(state, key,
                     'You are ONE worker, not the project coordinator. Other workers implement the other tasks. '
                     'Implement ONLY the supplied assignment and write_paths. Dependency files are READ ONLY. Return '
                     '{"summary":"what changed","changes":[{"path":"authorized/path",'
                     '"operation":"replace","old_text":"exact unique text", "new_text":"replacement"}]}. '
-                    'Use operation=create with content for a missing file. Never overwrite a whole existing file.',
+                    'Use operation=create with content for a missing file. Never overwrite a whole existing file. '
+                    'Satisfy every clause of the assignment, including input conversions and output containers. '
+                    'Symbols defined in dependency modules are not globals; add explicit Python imports when used.',
                     {"assignment": node["objective"], "write_paths": node["write_paths"],
                      "files": self.read_files(repo, sorted(set(node["write_paths"]) | {
                          p for dep in self.ancestors(state,node) for p in dep["write_paths"]})),
@@ -531,7 +573,7 @@ class ReliableCollaborationService:
                     conflicts.append(conflict)
                     break
                 try:
-                    proposal = await self.model(state, "conflict_resolver",
+                    proposal = await self.worker_patch(state, "conflict_resolver",
                         'Resolve the supplied three-way conflict preserving BOTH assignments. '
                         'Return {"summary":"resolution","changes":[{"path":"conflicting/path",'
                         '"operation":"replace","old_text":"exact current text","new_text":"merged text"}]}. '
@@ -566,17 +608,46 @@ class ReliableCollaborationService:
             if all(t["exit_code"] == 0 for t in tests) or round_no == 2:
                 break
             try:
-                proposal = await self.model(state, "repairer",
-                    'Repair the actual integrated test failure without changing the caller-selected tests. '
+                proposal = self.local_import_repair(repo, state['request']['paths'], tests)
+                if proposal:
+                    await asyncio.to_thread(self.apply_proposal, repo, proposal, state['request']['paths'], 'verified local imports')
+                    self.event(state,'coordinator_import_repair',round=round_no,
+                        diagnostics=proposal['diagnostics'], patch_digest=self.digest(proposal),
+                        origin='deterministic_ast_and_actual_traceback', model_generated=False)
+                    continue
+            except (ValueError,RuntimeError,SyntaxError) as exc:
+                self.event(state,'coordinator_import_repair_rejected',error=str(exc))
+            repaired=False
+            packet = {"objective": state["request"]["objective"],
+                "files": self.read_files(repo, state["request"]["paths"]),
+                "tests": [{k: t.get(k) for k in ("command","exit_code","stdout","stderr")} for t in tests]}
+            for proposal_attempt in range(2):
+                proposal=None
+                try:
+                    proposal = await self.worker_patch(state, "repairer",
+                    'Repair ALL actual integrated test failures without changing the caller-selected tests. '
+                    'Review every supplied file against the objective for related input/output and import defects, '
+                    'so fixing the first traceback does not leave the other requirements broken. '
+                    'For a Python NameError, add the explicit imports for referenced dependency modules/symbols. '
+                    'Every replacement must actually change the existing text; never return identical old/new text. '
+                    'Use a short exact anchor for insertions, not a copy of the whole function. '
+                    'Generic example (placeholder names, choose actual authorized names): '
+                    '{"summary":"import dependency","changes":[{"path":"entry.py","operation":"replace",'
+                    '"old_text":"def build(data):","new_text":"import helper\\n\\ndef build(data):"}]}. '
                     'Return {"summary":"repair","changes":[{"path":"authorized/path",'
                     '"operation":"replace","old_text":"exact current text","new_text":"correct text"}]}.',
-                    {"objective": state["request"]["objective"],
-                     "files": self.read_files(repo, state["request"]["paths"]),
-                     "tests": [{k: t.get(k) for k in ("command","exit_code","stdout","stderr")} for t in tests]})
-                await asyncio.to_thread(self.apply_proposal, repo, proposal, state["request"]["paths"], "integrated repair")
-                self.event(state, "integrated_repair", round=round_no, patch_digest=self.digest(proposal))
-            except Exception as exc:
-                self.event(state, "integrated_repair_failed", error=f"{type(exc).__name__}: {exc}")
+                    packet)
+                    await asyncio.to_thread(self.apply_proposal, repo, proposal, state["request"]["paths"], "integrated repair")
+                    self.event(state, "integrated_repair", round=round_no, patch_digest=self.digest(proposal))
+                    repaired=True
+                    break
+                except Exception as exc:
+                    failure=f"{type(exc).__name__}: {exc}"
+                    self.event(state, "integrated_repair_failed", round=round_no, attempt=proposal_attempt+1, error=failure)
+                    packet['previous_failure']=failure
+                    packet['previous_proposal']=proposal
+                    packet['files']=self.read_files(repo,state['request']['paths'])
+            if not repaired:
                 break
         diff = self.git(repo, "diff", "--binary", state["baseline"]["baseline_commit"]).stdout
         state["integration"].update(tests=tests, diff_digest=self.digest(diff))
@@ -616,6 +687,76 @@ class ReliableCollaborationService:
         self.event(state, "review_completed", approved=approved,
                    integrated_diff_digest=state["integration"]["diff_digest"])
 
+    def local_import_repair(self, repo, allowed, tests):
+        """Mechanical namespace wiring only; never infer a semantic repair.
+
+        A real failed traceback selects an authorized Python file. We import
+        only unbound module namespaces whose referenced functions actually exist
+        in another authorized root-level file. No package/third-party guessing.
+        """
+        candidates={Path(p).stem:p for p in allowed if p.endswith('.py') and '/' not in p
+                    and Path(p).stem.isidentifier()}
+        files=self.read_files(repo,allowed)
+        failures=set()
+        for test in tests:
+            if test.get('exit_code') == 0:
+                continue
+            frames=[]
+            for line in str(test.get('stderr','')).splitlines():
+                match=re.match(r'\s*File "([^"]+)", line (\d+)',line)
+                if match:
+                    frames.append((match.group(1),int(match.group(2))))
+                error=re.match(r"NameError: name '([A-Za-z_]\w*)' is not defined",line)
+                if error and frames:
+                    path,number=frames[-1]
+                    try:
+                        rel=Path(path).resolve().relative_to(Path(repo).resolve()).as_posix()
+                    except ValueError:
+                        continue
+                    if rel in allowed and rel.endswith('.py'):
+                        failures.add((rel,number,error.group(1)))
+                    frames=[]
+        changes=[]; diagnostics=[]
+        for rel in sorted({p for p,_,_ in failures}):
+            text=files[rel]
+            if text is None:
+                continue
+            tree=ast.parse(text)
+            # Conservatively reject all names bound anywhere in this file.
+            bound=set()
+            for node in ast.walk(tree):
+                if isinstance(node,ast.Name) and isinstance(node.ctx,ast.Store):bound.add(node.id)
+                if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)):bound.add(node.name)
+                if isinstance(node,ast.arg):bound.add(node.arg)
+                if isinstance(node,(ast.Import,ast.ImportFrom)):
+                    bound.update(a.asname or a.name.split('.')[0] for a in node.names)
+            missing=set()
+            for node in ast.walk(tree):
+                if not isinstance(node,ast.Attribute) or not isinstance(node.value,ast.Name):continue
+                name=node.value.id
+                if name in bound or name not in candidates or candidates[name]==rel:continue
+                module=files[candidates[name]]
+                if module is None:continue
+                exports={n.name for n in ast.parse(module).body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))}
+                if node.attr in exports:missing.add(name)
+            # Require the reported failing line to contain one of these proven
+            # namespace loads; a printed or unrelated NameError is insufficient.
+            if not missing or not any(isinstance(n,ast.Name) and n.id in missing and
+                    (rel,n.lineno,n.id) in failures for n in ast.walk(tree)):
+                continue
+            header=0
+            for index,node in enumerate(tree.body):
+                if (index==0 and isinstance(node,ast.Expr) and isinstance(node.value,ast.Constant)
+                        and isinstance(node.value.value,str)) or (isinstance(node,ast.ImportFrom) and node.module=='__future__'):
+                    header=node.end_lineno
+                else:break
+            lines=text.splitlines(keepends=True)
+            content=''.join(lines[:header])+''.join('import '+name+'\n' for name in sorted(missing))+'\n'+''.join(lines[header:])
+            changes.append(dict(path=rel,operation='replace',old_text=text,new_text=content))
+            diagnostics.append(dict(path=rel,names=sorted(missing),modules=[candidates[n] for n in sorted(missing)],
+                                    trace_lines=sorted({number for p,number,_ in failures if p==rel})))
+        return dict(summary='verified missing local namespace imports',changes=changes,diagnostics=diagnostics) if changes else None
+
     def apply_proposal(self, repo, proposal, allowed, message):
         changes = proposal.get("changes")
         if not isinstance(changes, list) or not changes or len(changes) > 24 or any(
@@ -623,6 +764,9 @@ class ReliableCollaborationService:
             c.get("operation") not in {"replace", "create", "hunks"} for c in changes):
             raise ValueError("resolution exceeds its write scope")
         normalized = self.workflow._normalize_changes(repo, changes)
+        if all((Path(repo)/item['path']).is_file() and
+               (Path(repo)/item['path']).read_text(encoding='utf-8') == item['content'] for item in normalized):
+            raise ValueError('proposal makes no changes; return an effective correction, not identical old/new text')
         for item in normalized:
             if len(item["content"].encode()) > 128000:
                 raise ValueError("resolution too large")
@@ -643,4 +787,5 @@ class ReliableCollaborationService:
             "source_mutated": None if "source_preserved" not in state else not state["source_preserved"],
             "source_verification":"tracked Git state and authorized files", "human_release_required": True,
             "recovery": "process-lock-and-verified-commits",
+            "delivery": state.get('delivery'), "delivery_attempts": state.get('delivery_attempts', []),
             "model_quality_proven": False}

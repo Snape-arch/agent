@@ -5711,9 +5711,41 @@ async def api_autonomous_subagents(request: Request):
 @app.get("/api/subagents/collaboration/{run_id}")
 async def api_collaboration_progress(run_id: str):
     try:
-        result = await asyncio.to_thread(get_reliable_collaboration_service().inspect, run_id)
+        result = await asyncio.to_thread(get_reliable_collaboration_service(require_model=False).inspect, run_id)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    return JSONResponse(result)
+
+
+@app.api_route("/api/subagents/collaboration/{run_id}/delivery", methods=["GET", "POST"])
+async def api_collaboration_delivery(run_id: str, request: Request):
+    from services.collaboration_delivery import CollaborationDelivery
+    service = CollaborationDelivery(get_reliable_collaboration_service(require_model=False))
+    try:
+        if request.method == 'GET':
+            result = await asyncio.to_thread(service.inspect, run_id)
+        else:
+            data = await request.json()
+            if not isinstance(data, dict):
+                raise ValueError('request must be an object')
+            result = await service.prepare(run_id, confirmed=data.get('confirmed') is True)
+    except (ValueError, PermissionError, RuntimeError, TimeoutError, OSError) as exc:
+        raise HTTPException(409 if isinstance(exc, (PermissionError, TimeoutError)) else 400, str(exc))
+    return JSONResponse(result)
+
+
+@app.post("/api/subagents/collaboration/{run_id}/delivery/approve")
+async def api_collaboration_delivery_approve(run_id: str, request: Request):
+    from services.collaboration_delivery import CollaborationDelivery
+    try:
+        data = await request.json()
+        if not isinstance(data, dict):
+            raise ValueError('request must be an object')
+        result = await asyncio.to_thread(CollaborationDelivery(get_reliable_collaboration_service(require_model=False)).approve,
+            run_id, manifest_digest=data.get('manifest_digest'), actor=data.get('actor'),
+            confirmed=data.get('confirmed') is True)
+    except (ValueError, PermissionError, RuntimeError, TimeoutError, OSError) as exc:
+        raise HTTPException(409 if isinstance(exc, (PermissionError, TimeoutError)) else 400, str(exc))
     return JSONResponse(result)
 
 
@@ -6703,9 +6735,9 @@ def get_autonomous_subagent_service() -> AutonomousSubagentService:
     )
 
 
-def get_reliable_collaboration_service():
+def get_reliable_collaboration_service(*, require_model=True):
     from services.reliable_collaboration import ReliableCollaborationService
-    if not g_upstream_provider:
+    if require_model and not g_upstream_provider:
         raise HTTPException(503, "model provider is not initialized")
     return ReliableCollaborationService(lambda _spec: g_upstream_provider,
         root=OUTPUT_ROOT / "collaboration-runs", store=g_memory_store, max_concurrency=3)

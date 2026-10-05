@@ -85,6 +85,29 @@ class CollaborationTests(unittest.IsolatedAsyncioTestCase):
     def kwargs(self, **overrides):
         return dict(allowed_paths=["a.py", "b.py"], test_commands=[[sys.executable, "check.py"]], confirmed=True, **overrides)
 
+    async def test_worker_invalid_json_uses_bounded_actual_provider_format_repair(self):
+        calls=[]
+        class FormatProvider(Provider):
+            async def complete(self,messages,options):
+                calls.append(self.role)
+                if self.role=='a':
+                    return {'ok':True,'provider':'fixture','model':'fixture','content':'{"changes": [broken',
+                            'usage':{'total_tokens':50},'raw':{'choices':[{'finish_reason':'stop'}]}}
+                if self.role=='a_format':
+                    packet=json.loads(messages[1]['content'])
+                    self_outer.assertEqual(packet['write_paths'],['a.py'])
+                    self_outer.assertIn('broken',packet['previous_invalid_answer'])
+                    self.role='a'
+                return await super().complete(messages,options)
+        self_outer=self
+        svc=ReliableCollaborationService(lambda spec:FormatProvider(spec.role_id),root=self.root)
+        result=await svc.run(self.repo,'Fix arithmetic',**self.kwargs())
+        self.assertEqual(result['status'],'passed',result)
+        self.assertEqual(calls.count('a_format'),1)
+        self.assertEqual(len(result['attempts']['a']),1)
+        self.assertTrue(any(e['event']=='worker_format_rejected' for e in result['events']))
+        self.assertEqual(result['ledger']['model_calls'],5)
+
     async def test_dynamic_parallel_plan_real_worktrees_source_preserved_and_replay(self):
         arrived = set()
         both = asyncio.Event()
@@ -209,6 +232,73 @@ class CollaborationTests(unittest.IsolatedAsyncioTestCase):
         rounds = result["integration"]["test_rounds"]
         self.assertNotEqual(rounds[0]["tests"][0]["exit_code"], 0)
         self.assertEqual(rounds[1]["tests"][0]["exit_code"], 0)
+
+    async def test_noop_repair_gets_explicit_feedback_then_effective_bounded_patch(self):
+        proposals=[]
+        def handler(role,packet):
+            if role=='b':
+                result=answer('b');result['changes'][0]['new_text']='return a - b';return result
+            if role=='repairer':
+                proposals.append(packet)
+                if len(proposals)==1:
+                    return {'changes':[{'path':'b.py','operation':'replace','old_text':'return a - b','new_text':'return a - b'}]}
+                self.assertIn('no changes',packet['previous_failure'])
+                self.assertEqual(packet['previous_proposal']['changes'][0]['new_text'],'return a - b')
+                return {'changes':[{'path':'b.py','operation':'replace','old_text':'return a - b','new_text':'return a * b'}]}
+            return answer(role)
+        result=await self.service(handler).run(self.repo,'Fix arithmetic',**self.kwargs())
+        self.assertEqual(result['status'],'passed',result)
+        self.assertEqual(len(proposals),2)
+        self.assertTrue(any(e['event']=='integrated_repair_failed' and 'no changes' in e['error'] for e in result['events']))
+
+    async def test_malformed_integrated_repair_keeps_receipt_and_uses_format_provider(self):
+        def handler(role,packet):
+            if role=='b':
+                result=answer('b');result['changes'][0]['new_text']='return a - b';return result
+            if role=='repairer_format':
+                self.assertIn('broken',packet['previous_invalid_answer'])
+                return {'changes':[{'path':'b.py','operation':'replace','old_text':'return a - b','new_text':'return a * b'}]}
+            return answer(role)
+        class RepairProvider(Provider):
+            async def complete(self,messages,options):
+                if self.role=='repairer':
+                    return {'ok':True,'provider':'fixture','model':'fixture','content':'{"changes":[broken',
+                            'usage':{'total_tokens':50},'raw':{'choices':[{'finish_reason':'stop'}]}}
+                return await super().complete(messages,options)
+        svc=ReliableCollaborationService(lambda spec:RepairProvider(spec.role_id,handler),root=self.root)
+        result=await svc.run(self.repo,'Fix arithmetic',**self.kwargs())
+        self.assertEqual(result['status'],'passed',result)
+        self.assertTrue(any(e['event']=='patch_format_rejected' and e['node']=='repairer' for e in result['events']))
+
+    async def test_actual_nameerror_only_repairs_proven_authorized_local_modules(self):
+        (self.repo/'report.py').write_text('def total(x,y):\n    return 0\n')
+        (self.repo/'check.py').write_text('from report import total\nassert total(3,2)==11\n')
+        git(self.repo,'add','report.py','check.py')
+        git(self.repo,'-c','user.name=Fixture','-c','user.email=fixture@local','commit','-m','composition')
+        def handler(role,packet):
+            if role=='planner':
+                result=answer(role)
+                result['nodes'].append(dict(id='compose',objective='compose actual functions',write_paths=['report.py'],depends_on=['a','b']))
+                return result
+            if role=='compose':
+                return dict(changes=[dict(path='report.py',operation='replace',old_text='return 0',new_text='return a.add(x,y)+b.mul(x,y)')])
+            return answer(role)
+        result=await self.service(handler).run(self.repo,'Fix composition',allowed_paths=['a.py','b.py','report.py'],
+            test_commands=[[sys.executable,'check.py']],confirmed=True)
+        self.assertEqual(result['status'],'passed',result)
+        events=[e for e in result['events'] if e['event']=='coordinator_import_repair']
+        self.assertEqual(len(events),1)
+        self.assertEqual(events[0]['diagnostics'][0]['names'],['a','b'])
+        self.assertFalse(events[0]['model_generated'])
+        self.assertEqual(result['integration']['test_rounds'][0]['tests'][0]['exit_code'],1)
+        self.assertEqual(result['integration']['test_rounds'][1]['tests'][0]['exit_code'],0)
+
+    def test_import_repair_never_guesses_third_party_or_unrelated_names(self):
+        (self.repo/'report.py').write_text('def total(x,y):\n    return missing.solve(x,y)\n')
+        stderr='  File "'+str(self.repo/'report.py')+'", line 2\nNameError: name \'missing\' is not defined'
+        self.assertIsNone(self.service().local_import_repair(self.repo,['a.py','b.py','report.py'],[dict(exit_code=1,stderr=stderr)]))
+        (self.repo/'report.py').write_text('def total(x,y):\n    return a.add(x,y)\n')
+        self.assertIsNone(self.service().local_import_repair(self.repo,['a.py','report.py'],[dict(exit_code=1,stderr=stderr)]))
 
     async def test_failed_tests_cannot_be_overridden_by_reviewer(self):
         calls = []

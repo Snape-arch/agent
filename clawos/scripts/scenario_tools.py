@@ -1866,17 +1866,32 @@ def autonomous_subagents(payload):
     from providers import create_model_provider
     from services.autonomous_subagent_service import AutonomousSubagentService
     output_root = Path(os.environ.get("CLAWOS_OUTPUT_DIR") or (Path(BASE_DIR).parent / "output"))
-    provider = create_model_provider({
-        "provider": os.environ.get("MODEL_PROVIDER", "qwen"),
-        "base_url": os.environ.get("MODEL_BASE_URL", "http://127.0.0.1:8000/v1"),
-        "model": os.environ.get("MODEL_NAME", "Qwen3.5-9B-Q4_K_M"),
-        "api_key": os.environ.get("MODEL_API_KEY", ""),
-        "requires_api_key": os.environ.get("MODEL_REQUIRES_API_KEY", "false").lower() == "true",
-    })
+    provider = None
+    if payload.get('team_profile') != 'reliable_coding' or payload.get('action', 'run') == 'run':
+        provider = create_model_provider({
+            "provider": os.environ.get("MODEL_PROVIDER", "qwen"),
+            "base_url": os.environ.get("MODEL_BASE_URL", "http://127.0.0.1:8000/v1"),
+            "model": os.environ.get("MODEL_NAME", "Qwen3.5-9B-Q4_K_M"),
+            "api_key": os.environ.get("MODEL_API_KEY", ""),
+            "requires_api_key": os.environ.get("MODEL_REQUIRES_API_KEY", "false").lower() == "true",
+        })
     if payload.get("team_profile") == "reliable_coding":
         from services.reliable_collaboration import ReliableCollaborationService
         service = ReliableCollaborationService(lambda _spec: provider,
             store=MemoryStore(_memory_db_path()), root=output_root / "collaboration-runs")
+        action = payload.get('action', 'run')
+        if action != 'run':
+            from services.collaboration_delivery import CollaborationDelivery
+            delivery = CollaborationDelivery(service)
+            run_id = payload.get('run_id', '')
+            if action == 'prepare_delivery':
+                return asyncio.run(delivery.prepare(run_id, confirmed=payload.get('confirmed') is True))
+            if action == 'inspect_delivery':
+                return delivery.inspect(run_id)
+            if action == 'approve_delivery':
+                return delivery.approve(run_id, manifest_digest=payload.get('manifest_digest'),
+                    actor=payload.get('actor'), confirmed=payload.get('confirmed') is True)
+            raise ValueError('unknown reliable collaboration action')
         return asyncio.run(service.run(payload.get("repo_path", ""), payload.get("objective", ""),
             allowed_paths=payload.get("allowed_paths") or [], test_commands=payload.get("test_commands") or [],
             confirmed=payload.get("confirmed") is True, resume_run=payload.get("resume_run", ""),

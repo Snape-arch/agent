@@ -38,5 +38,24 @@ class EntryTests(unittest.TestCase):
     def test_reliable_tool_routes_to_isolated_root(self):self.check_entry(True)
     def test_legacy_tool_uses_the_same_output_override(self):self.check_entry(False)
 
+    def test_delivery_actions_keep_frozen_ids_digests_and_confirmation(self):
+        captured=[]
+        class Delivery:
+            def __init__(self,service):pass
+            async def prepare(self,run_id,**kwargs):captured.append(('prepare',run_id,kwargs));return {'status':'ready'}
+            def inspect(self,run_id):captured.append(('inspect',run_id,{}));return {'status':'ready'}
+            def approve(self,run_id,**kwargs):captured.append(('approve',run_id,kwargs));return {'status':'approved'}
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.dict(os.environ,CLAWOS_OUTPUT_DIR=folder,CLAWOS_MEMORY_DB=str(Path(folder)/'isolated.db')),\
+                 patch('providers.create_model_provider',side_effect=AssertionError('handoff must not initialize a model')),\
+                 patch('memoryos.memory_store.MemoryStore',return_value=object()),\
+                 patch('services.collaboration_delivery.CollaborationDelivery',Delivery):
+                body=dict(team_profile='reliable_coding',run_id='frozen-run',manifest_digest='exact-digest',actor='owner',confirmed=True)
+                for action in ['prepare_delivery','inspect_delivery','approve_delivery']:
+                    scenario.autonomous_subagents(body|{'action':action})
+                with self.assertRaises(ValueError):scenario.autonomous_subagents(body|{'action':'invalid'})
+        self.assertEqual([x[1] for x in captured],['frozen-run']*3)
+        self.assertEqual(captured[2][2],dict(manifest_digest='exact-digest',actor='owner',confirmed=True))
+
 
 if __name__=="__main__":unittest.main()

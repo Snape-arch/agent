@@ -32,6 +32,9 @@ cd <your-cloned-agent-repo>
 独立 Git 工作区并行修改，依赖任务接收真实提交，统一集成、冲突处理、测试与评审。
 检查点支持核对已完成提交后恢复；源仓库不自动应用或推送。
 接口、复现和验收边界见 `clawos/benchmarks/RELIABLE_MULTI_AGENT_ACCEPTANCE.md`。
+通过后可在新工作区重放补丁并复验测试，冻结交付清单与差异，再按精确摘要确认。
+交付确认不自动应用源仓库；脏草稿、源码漂移和证据损坏均有独立门禁。
+本阶段接口与证据见 `clawos/benchmarks/RELIABLE_MULTI_AGENT_CLOSURE_ACCEPTANCE.md`。
 
 论文报告支持全窗口阅读、实验条件/原文引用及 Markdown、PDF、JSON 下载，重新生成保留旧文件；
 工作台历史支持完整归档分页、全文查询、导出和会话恢复。文本工具支持预览、仅创建与 SHA-256 冲突保护。
