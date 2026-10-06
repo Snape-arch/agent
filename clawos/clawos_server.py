@@ -5683,7 +5683,8 @@ async def api_autonomous_subagents(request: Request):
                 test_commands=data.get("test_commands") or [],
                 confirmed=data.get("confirmed") is True,
                 resume_run=data.get("resume_run", ""),
-                actor=data.get("actor", "coordinator"), limits=data.get("limits") or None)
+                actor=data.get("actor", "coordinator"), limits=data.get("limits") or None,
+                requirements=data.get('requirements'))
         except (ValueError, PermissionError, RuntimeError, TimeoutError) as exc:
             raise HTTPException(409 if isinstance(exc, (PermissionError, TimeoutError)) else 400, str(exc))
         return JSONResponse(result)

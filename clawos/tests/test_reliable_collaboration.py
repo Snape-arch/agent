@@ -143,6 +143,21 @@ class CollaborationTests(unittest.IsolatedAsyncioTestCase):
         result = await self.service(handler).run(self.repo, "Fix arithmetic", **self.kwargs())
         self.assertEqual(result["status"], "passed", result)
 
+    async def test_planner_paraphrase_cannot_remove_original_worker_contract(self):
+        objective='Fix arithmetic; retain exact types and reject int subclasses in the relevant task.'
+        observed=set()
+        def handler(role,packet):
+            if role in {'a','b'}:
+                self.assertEqual(packet['original_objective'],objective)
+                self.assertNotIn('subclasses',packet['assignment'])
+                self.assertEqual(packet['write_paths'],[role+'.py'])
+                self.assertEqual(set(packet['files']),{role+'.py'})
+                observed.add(role)
+            return answer(role)
+        result=await self.service(handler).run(self.repo,objective,**self.kwargs())
+        self.assertEqual(result['status'],'passed',result)
+        self.assertEqual(observed,{'a','b'})
+
     async def test_write_scope_failure_retried_without_running_dependents(self):
         calls = []
         def handler(role, packet):

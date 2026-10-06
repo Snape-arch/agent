@@ -1895,7 +1895,8 @@ def autonomous_subagents(payload):
         return asyncio.run(service.run(payload.get("repo_path", ""), payload.get("objective", ""),
             allowed_paths=payload.get("allowed_paths") or [], test_commands=payload.get("test_commands") or [],
             confirmed=payload.get("confirmed") is True, resume_run=payload.get("resume_run", ""),
-            actor=payload.get("actor", "coordinator"), limits=payload.get("limits") or None))
+            actor=payload.get("actor", "coordinator"), limits=payload.get("limits") or None,
+            requirements=payload.get('requirements')))
     service = AutonomousSubagentService(lambda _spec: provider, store=MemoryStore(_memory_db_path()), checkpoint_root=output_root / "subagents")
     return asyncio.run(service.run(payload.get("objective", ""), payload.get("roles") or [], shared_evidence=payload.get("shared_evidence") or [], confirmed_side_effect_tools=payload.get("confirmed_tools") or [], run_budget=payload.get("budget") or {}, resume_checkpoint=payload.get("resume_checkpoint", ""), actor=payload.get("actor", "coordinator")))
 

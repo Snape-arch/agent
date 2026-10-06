@@ -35,6 +35,9 @@ cd <your-cloned-agent-repo>
 通过后可在新工作区重放补丁并复验测试，冻结交付清单与差异，再按精确摘要确认。
 交付确认不自动应用源仓库；脏草稿、源码漂移和证据损坏均有独立门禁。
 本阶段接口与证据见 `clawos/benchmarks/RELIABLE_MULTI_AGENT_CLOSURE_ACCEPTANCE.md`。
+调用方可附加 `requirements`，将冻结需求绑定到授权路径及原测试命令索引；规划、工作者、恢复与交付均保留这些绑定。
+测试失败时先读取实际失败上下文并诊断目标，再限定范围修复；明确声明的类型规则机械修复单独记录为非模型生成。
+真实项目切片及连续两次退出恢复证据见 `clawos/benchmarks/CODING_RELIABILITY_STAGE1_ACCEPTANCE.md`，不代表公开基准成功率。
 
 论文报告支持全窗口阅读、实验条件/原文引用及 Markdown、PDF、JSON 下载，重新生成保留旧文件；
 工作台历史支持完整归档分页、全文查询、导出和会话恢复。文本工具支持预览、仅创建与 SHA-256 冲突保护。

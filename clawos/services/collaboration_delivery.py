@@ -18,6 +18,7 @@ import uuid
 from .coding_workflow_service import CodingWorkflowService
 from .file_transactions import _file_lock, write_text
 from .runtime_records import now_iso
+from .coding_contracts import CodingContracts
 
 
 class CollaborationDelivery:
@@ -32,6 +33,12 @@ class CollaborationDelivery:
                 or any(t.get('exit_code') != 0 for t in state['integration']['tests'])):
             raise ValueError('only a passed, tested and reviewed collaboration can be delivered')
         svc.verify_receipts(state)
+        requirements = state['request'].get('requirements', [])
+        if requirements:
+            expected = CodingContracts.results(requirements, state['integration']['tests'], svc.digest)
+            if (state.get('requirement_results') != expected or not all(r['passed'] for r in expected)
+                    or state.get('requirement_owners') != CodingContracts.bind_plan(requirements, state['nodes'])):
+                raise ValueError('caller requirement verification or task ownership changed')
         base = svc.owned_workspace(state, state['baseline'])
         if (svc.git(base, 'rev-parse', 'HEAD').stdout.strip() != state['baseline']['baseline_commit']
                 or svc.git(base, 'status', '--porcelain').stdout.strip()):
@@ -80,6 +87,11 @@ class CollaborationDelivery:
                 or manifest['evidence_digest'] != svc.digest({'nodes':state['nodes'], 'results':state['results'],
                        'receipts':[e for e in state['events'] if e['event']=='model_receipt']})):
             raise ValueError('delivery packet evidence changed')
+        requirements = state['request'].get('requirements', [])
+        if requirements and (manifest.get('requirements') != requirements
+                or manifest.get('requirements_digest') != svc.digest(requirements)
+                or manifest.get('requirement_results') != CodingContracts.results(requirements, manifest['tests'], svc.digest)):
+            raise ValueError('delivery requirement bindings changed')
         svc.verify_commit(state, manifest['replay'])
         repo = svc.owned_workspace(state, manifest['replay']['workspace'])
         replay_diff = svc.git(repo, 'diff', '--binary', manifest['baseline_commit'], 'HEAD').stdout
@@ -190,6 +202,9 @@ class CollaborationDelivery:
                     patch_sha256=hashlib.sha256(diff.encode('utf-8')).hexdigest(),
                     integrated_commit=state['integration']['commit'], replay=replay,
                     test_commands=state['request']['test_commands'], tests=tests, review=state['review'],
+                    requirements=state['request'].get('requirements', []),
+                    requirements_digest=svc.digest(state['request'].get('requirements', [])),
+                    requirement_results=CodingContracts.results(state['request'].get('requirements', []), tests, svc.digest),
                     evidence_digest=svc.digest({'nodes':state['nodes'], 'results':state['results'],
                                                 'receipts':[e for e in state['events'] if e['event']=='model_receipt']}),
                     created_at=now_iso(), source_mutated=False, remote_mutation=False,
