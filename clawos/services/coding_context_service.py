@@ -65,6 +65,10 @@ class CodingContextService:
 
     SCHEMA = "clawos.coding-context.v1"
 
+    def build_execution(self, repo_path, objective, **options):
+        from .coding_execution_context import CodingExecutionContext
+        return CodingExecutionContext.build(self, repo_path, objective, **options)
+
     def __init__(self, cache_path: str | Path | None = None):
         self._cache_path = (
             Path(cache_path).expanduser().resolve() if cache_path else None

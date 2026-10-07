@@ -104,10 +104,14 @@ class CodingContracts:
                                  and n.lineno <= lineno <= n.end_lineno]
                     node = min(functions, key=lambda n: n.end_lineno - n.lineno) if functions else None
                     lines = text.splitlines()
-                    start, end = (node.lineno, min(node.end_lineno, node.lineno + 100)) if node else (max(1, lineno-8), lineno+8)
+                    if not 1 <= lineno <= len(lines):
+                        continue
+                    start = max(node.lineno, lineno-50) if node else max(1, lineno-8)
+                    end = min(node.end_lineno, start+100) if node else lineno+8
                     snippet = '\n'.join(lines[start-1:end])[:6000]
                     calls = sorted({n.func.id if isinstance(n.func, ast.Name) else n.func.attr
                                     for n in ast.walk(node or tree) if isinstance(n, ast.Call)
+                                    and start <= n.lineno <= end
                                     and isinstance(n.func, (ast.Name, ast.Attribute))})
                     result.append(dict(test_index=index, path=rel, line=lineno, start_line=start,
                                        symbol=node.name if node else '', snippet=snippet, called_symbols=calls,

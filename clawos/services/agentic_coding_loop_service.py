@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import fnmatch
 import json
 from pathlib import Path
 from typing import Any
 
 from .coding_context_service import CodingContextService
+from .coding_execution_context import CodingExecutionContext
 from .coding_diagnostics_service import CodingEvidenceGate
 from .coding_trace_service import CodingTraceService
 from .lsp_semantic_graph_service import LSPSemanticGraphService
@@ -77,10 +79,8 @@ class AgenticCodingLoopService:
                 )
             except (OSError, RuntimeError, TimeoutError, ValueError):
                 semantic_workspace = {}
-        manifest = self.context.build(
-            repo, objective, focus_paths=focus_paths, diagnostics=diagnostics,
-            semantic_graph=semantic_workspace,
-        )
+        manifest = self.context.build_execution(repo, objective, focus_paths=focus_paths,
+            failure_context=diagnostics, semantic_graph=semantic_workspace)
         governed.gate("after_context", {
             "task_id": task_id, "context_digest": manifest["context_digest"],
         })
@@ -92,19 +92,21 @@ class AgenticCodingLoopService:
         observations: list[dict[str, Any]] = [{
             "type": "repository_context",
             "digest": manifest["context_digest"],
-            "repo_map": manifest.get("repo_map"),
+            "execution_context": manifest,
+            "repo_map": {'files':[{'path':r['path'], 'symbols':r['symbols'], 'dependencies':r['imports']}
+                                  for r in manifest['code_evidence']]},
             "ranked_files": [
                 item.get("path") for item in (manifest.get("code_evidence") or [])[:30]
             ],
             "diagnostics": manifest.get("diagnostics") or [],
             "semantic_graph": {
-                "available": bool((manifest.get("semantic_graph") or {}).get("available")),
-                "metrics": (manifest.get("semantic_graph") or {}).get("metrics") or {},
+                "available": bool(semantic_workspace.get('graphs')),
+                "metrics": semantic_workspace.get('metrics') or {},
             },
             "repository_intelligence": manifest.get("repository_intelligence") or {},
             "task_context": {
                 "digest": (manifest.get("task_context") or {}).get("digest"),
-                "selected_files": (manifest.get("task_context") or {}).get("selected_files") or [],
+                "selected_files": manifest['scope']['read_paths'],
                 "nodes": (manifest.get("task_context") or {}).get("nodes") or [],
                 "edges": (manifest.get("task_context") or {}).get("edges") or [],
             },
@@ -155,6 +157,10 @@ class AgenticCodingLoopService:
         for turn in range(1, max(2, min(int(max_turns), 20)) + 1):
             governed.budget.consume(model_calls=1)
             governed.gate("before_model", {"task_id": task_id, "turn": turn})
+            try:
+                CodingExecutionContext.verify(repo, manifest)
+            except ValueError as exc:
+                return self._fail(run['id'], attempts, observations, str(exc), governed)
             response = await self.provider.complete(
                 messages, {
                     "temperature": 0.0,
@@ -229,7 +235,7 @@ class AgenticCodingLoopService:
                     "task_id": task_id, "tool": action_name, "turn": turn,
                 })
                 try:
-                    observation = self._observe(repo, manifest, action)
+                    observation = self._observe(repo, manifest, action, semantic_workspace=semantic_workspace)
                 except (OSError, ValueError) as exc:
                     observation = {
                         "type": "tool_error", "tool": action_name,
@@ -322,6 +328,8 @@ class AgenticCodingLoopService:
                 "acceptance_criteria": action.get("acceptance_criteria") or [],
             }
             try:
+                CodingExecutionContext.verify(repo, manifest)
+                CodingExecutionContext.assert_changes(manifest, proposal['changes'])
                 plan = self.workflow.plan(
                     repo, objective, proposal["changes"],
                     proposal["test_commands"],
@@ -442,6 +450,13 @@ class AgenticCodingLoopService:
                 "acceptance": result.get("acceptance") or {},
             }
             observations.append(observation)
+            failed_tests = [test for round_item in result.get('rounds', []) for test in round_item.get('tests', [])]
+            manifest = self.context.build_execution(repo, objective, write_paths=manifest['scope']['write_paths'],
+                failure_context=CodingExecutionContext.failure_context(repo, failed_tests))
+            semantic_workspace = {}  # Initial LSP evidence is stale after an edit attempt.
+            observation['execution_context'] = manifest
+            self.trace.step(run['id'], 'context', status='refreshed', output_value=manifest['context_digest'],
+                metadata={'turn':turn, 'source_fingerprint':manifest['source_fingerprint']})
             messages.extend([
                 {"role": "assistant", "content": content},
                 {"role": "user", "content": json.dumps(
@@ -521,20 +536,21 @@ class AgenticCodingLoopService:
             return False
 
     def _observe(
-        self, repo: Path, manifest: dict[str, Any], action: dict[str, Any]
+        self, repo: Path, manifest: dict[str, Any], action: dict[str, Any], *, semantic_workspace=None
     ) -> dict[str, Any]:
         name = action["action"]
+        CodingExecutionContext.verify(repo, manifest)
         if name == "search":
             query = str(action.get("query") or "").lower()
             glob = str(action.get("glob") or "*")
             matches = []
-            for path in repo.rglob(glob):
-                if not path.is_file() or ".git" in path.parts:
-                    continue
-                rel = path.relative_to(repo).as_posix()
+            for rel in manifest['scope']['read_paths']:
+                if not fnmatch.fnmatch(rel, glob):continue
+                data = CodingExecutionContext.read(repo, rel)
+                if data is None:continue
                 try:
                     for number, line in enumerate(
-                        path.read_text(encoding="utf-8", errors="replace").splitlines(),
+                        data.decode('utf-8-sig').splitlines(),
                         1,
                     ):
                         if query in line.lower():
@@ -549,8 +565,11 @@ class AgenticCodingLoopService:
                     break
             return {"type": "search", "query": query, "matches": matches}
         if name == "semantic":
-            workspace = manifest.get("semantic_graph") or {}
+            workspace = self.context._semantic_context(semantic_workspace or {},
+                [{'path':p} for p in manifest['scope']['read_paths']])
             requested_path = str(action.get("path") or "").replace("\\", "/").strip("/")
+            if requested_path not in manifest['scope']['read_paths']:
+                raise ValueError('semantic path outside execution context')
             requested_symbol = str(action.get("symbol") or "")
             depth = max(0, min(int(action.get("depth") or 2), 5))
             merged_nodes, merged_edges, seeds = [], [], []
@@ -569,6 +588,8 @@ class AgenticCodingLoopService:
                 "available": bool((workspace.get("graphs") or [])),
             }
         rel = str(action.get("path") or "").replace("\\", "/").strip("/")
+        if rel not in manifest['scope']['read_paths']:
+            raise ValueError('observation path outside execution context')
         path = (repo / rel).resolve()
         try:
             path.relative_to(repo)
@@ -577,17 +598,15 @@ class AgenticCodingLoopService:
         if name == "read":
             if not path.is_file():
                 raise ValueError("read path does not exist")
-            lines = path.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines()
+            lines = CodingExecutionContext.read(repo, rel).decode('utf-8-sig').splitlines()
             start = max(1, int(action.get("start_line") or 1))
-            end = min(len(lines), max(start, int(action.get("end_line") or start + 199)))
+            end = min(len(lines), start + 239, max(start, int(action.get("end_line") or start + 199)))
             return {
                 "type": "read", "path": rel, "start_line": start,
-                "end_line": end, "content": "\n".join(lines[start - 1:end]),
+                "end_line": end, "content": "\n".join(lines[start - 1:end])[:12000],
             }
         symbols = []
-        for item in (manifest.get("repo_map") or {}).get("files") or []:
+        for item in manifest.get('code_evidence') or []:
             if item.get("path") == rel:
                 symbols = item.get("symbols") or []
                 break

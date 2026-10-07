@@ -92,6 +92,9 @@ class CollaborationDelivery:
                 or manifest.get('requirements_digest') != svc.digest(requirements)
                 or manifest.get('requirement_results') != CodingContracts.results(requirements, manifest['tests'], svc.digest)):
             raise ValueError('delivery requirement bindings changed')
+        if state.get('context_policy') and (manifest.get('context_policy') != state['context_policy']
+                or manifest.get('contexts') != state.get('contexts', {})):
+            raise ValueError('delivery execution context evidence changed')
         svc.verify_commit(state, manifest['replay'])
         repo = svc.owned_workspace(state, manifest['replay']['workspace'])
         replay_diff = svc.git(repo, 'diff', '--binary', manifest['baseline_commit'], 'HEAD').stdout
@@ -205,6 +208,7 @@ class CollaborationDelivery:
                     requirements=state['request'].get('requirements', []),
                     requirements_digest=svc.digest(state['request'].get('requirements', [])),
                     requirement_results=CodingContracts.results(state['request'].get('requirements', []), tests, svc.digest),
+                    context_policy=state.get('context_policy'), contexts=state.get('contexts', {}),
                     evidence_digest=svc.digest({'nodes':state['nodes'], 'results':state['results'],
                                                 'receipts':[e for e in state['events'] if e['event']=='model_receipt']}),
                     created_at=now_iso(), source_mutated=False, remote_mutation=False,

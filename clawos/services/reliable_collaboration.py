@@ -24,6 +24,8 @@ from .coding_workflow_service import CodingWorkflowService
 from .file_transactions import _file_lock, write_text
 from .runtime_records import RunRecord, now_iso
 from .coding_contracts import CodingContracts
+from .coding_context_service import CodingContextService
+from .coding_execution_context import CodingExecutionContext, LOADED_POLICY
 
 
 class ModelFormatError(ValueError):
@@ -48,6 +50,7 @@ class ReliableCollaborationService:
         self.concurrency = max(1, min(int(max_concurrency), 4))
         self.workspaces = CodingWorkspaceService()
         self.workflow = CodingWorkflowService(artifact_root=self.root / "coding-evidence")
+        self.context = CodingContextService()
 
     @staticmethod
     def digest(value):
@@ -191,7 +194,25 @@ class ReliableCollaborationService:
 
     def verify_receipts(self,state):
         root=self.root/state["run_id"]
+        for digest, record in state.get('contexts', {}).items():
+            try:
+                if not re.fullmatch(r'[a-f0-9]{64}', digest) or record['artifact'] != 'contexts/' + digest + '.json':
+                    raise ValueError('unexpected context artifact identity')
+                path = root / record['artifact']
+                if (path.is_symlink() or path.parent.is_symlink()
+                        or (hasattr(path.parent, 'is_junction') and path.parent.is_junction())):
+                    raise ValueError('context artifact outside owned evidence directory')
+                packet = json.loads(path.read_text(encoding='utf-8'))
+                CodingExecutionContext.verify_packet(packet)
+                if (packet['context_digest'] != digest or packet['source_fingerprint'] != record['source_fingerprint']
+                        or packet['policy'] != state['context_policy']):
+                    raise ValueError('frozen execution context changed')
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise ValueError('context artifact missing or changed; recovery rejected') from exc
+        started = {}
         for event in state["events"]:
+            if event['event'] == 'model_started':
+                started[event['role']] = event
             if event["event"]!="model_receipt":
                 continue
             try:
@@ -200,7 +221,11 @@ class ReliableCollaborationService:
                 captured=json.loads(path.read_text(encoding="utf-8"))
                 if (captured["role"]!=event["role"] or
                         self.digest(captured["content"])!=event["content_digest"] or
-                        captured["content_digest"]!=event["content_digest"]):
+                        captured["content_digest"]!=event["content_digest"]
+                        or captured['prompt_digest'] != started[event['role']]['prompt_digest']
+                        or captured.get('context_digest') != event.get('context_digest')
+                        or captured.get('context_digest') != started[event['role']].get('context_digest')
+                        or (event.get('context_digest') and event['context_digest'] not in state.get('contexts', {}))):
                     raise ValueError("model receipt changed")
             except (ValueError,KeyError,OSError,TypeError) as exc:
                 raise ValueError("model receipt missing or changed; recovery rejected") from exc
@@ -217,6 +242,8 @@ class ReliableCollaborationService:
             raise ValueError("invalid collaboration request types")
         repo = CodingWorkspaceService._repo(repo_path)
         paths = sorted({self.safe_path(p) for p in allowed_paths})
+        for path in paths:
+            CodingExecutionContext.safe_path(path)
         if os.name == 'nt' and len({p.casefold() for p in paths}) != len(paths):
             raise ValueError('Windows paths must not alias each other by case')
         if not 1 <= len(paths) <= 24 or not str(objective).strip() or len(objective) > 8000:
@@ -251,6 +278,8 @@ class ReliableCollaborationService:
                 state = self.load(run_id)
                 if state["request"] != request:
                     raise ValueError("checkpoint or frozen request changed")
+                if state.get('context_policy') and state['status'] != 'passed' and state['context_policy'] != LOADED_POLICY:
+                    raise ValueError('context policy source changed; unfinished run cannot resume')
                 if await asyncio.to_thread(self.source_stamp,repo,paths) != state["source_stamp"]:
                     raise ValueError("source checkout changed; inspect the frozen task before starting a new run")
                 await asyncio.to_thread(self.verify_receipts,state)
@@ -283,7 +312,8 @@ class ReliableCollaborationService:
                 state = dict(schema="clawos.reliable-collaboration.v1", run_id=run_id,
                     request=request, baseline=baseline, source_stamp=source_stamp, status="running", nodes=[],
                     results={}, attempts={}, events=[], integration_history=[], provider_specs={}, ledger={"model_calls": 0, "tokens": 0,
-                    "reserved_tokens": 0, "elapsed_seconds": 0}, integration={}, review={})
+                    "reserved_tokens": 0, "elapsed_seconds": 0}, integration={}, review={},
+                    context_policy=dict(LOADED_POLICY), contexts={})
                 self.event(state, "baseline_captured", source_head=baseline["source_head"])
             started = time.monotonic()
             state["active_since"] = time.time()
@@ -323,6 +353,12 @@ class ReliableCollaborationService:
 
     async def model(self, state, role, instruction, packet):
         policy = state["request"]["limits"]
+        view = packet.get('execution_context')
+        context_digest = view['context_digest'] if view else None
+        if view:
+            CodingExecutionContext.verify_packet(view)
+            if context_digest not in state.get('contexts', {}):
+                raise ValueError('model context has no frozen artifact')
         messages = [{"role": "system", "content": instruction +
                     " Return exactly one JSON object. Never claim unexecuted tests passed."},
                     {"role": "user", "content": json.dumps(packet, ensure_ascii=False)}]
@@ -333,7 +369,7 @@ class ReliableCollaborationService:
             raise RuntimeError("shared model/token budget exhausted")
         ledger["model_calls"] += 1
         ledger["reserved_tokens"] += reserve
-        self.event(state, "model_started", role=role, prompt_digest=self.digest(messages))
+        self.event(state, "model_started", role=role, prompt_digest=self.digest(messages), context_digest=context_digest)
         started = time.monotonic()
         accounted = False
         try:
@@ -359,13 +395,13 @@ class ReliableCollaborationService:
             content = str(response.get("content") or "").strip()
             receipt = self.root / state["run_id"] / "receipts" / (role + "-" + uuid.uuid4().hex + ".json")
             captured={"role":role,"content":content,"prompt_digest":self.digest(messages),
-                      "content_digest":self.digest(content)}
+                      "content_digest":self.digest(content), 'context_digest':context_digest}
             # Freeze the normalized public answer once, including malformed JSON.
             write_text(receipt,json.dumps(captured,ensure_ascii=False),create_only=True)
             self.event(state, "model_receipt", role=role, provider=response.get("provider"),
                 model=response.get("model"), content_digest=self.digest(content), content_chars=len(content),
                 receipt=str(receipt.relative_to(self.root / state["run_id"])),
-                tokens=tokens, finish_reason=choices[0].get("finish_reason"))
+                tokens=tokens, finish_reason=choices[0].get("finish_reason"), context_digest=context_digest)
             # Accept a single JSON code fence, never JSON embedded in arbitrary prose.
             fence = re.fullmatch(r"```(?:json)?\s*(\{[\s\S]*\})\s*```", content)
             if fence:
@@ -387,6 +423,27 @@ class ReliableCollaborationService:
             ledger["reserved_tokens"] -= reserve
             self.save(state)
 
+    async def execution_context(self, state, repo, role, paths, *, reads=None, frames=None):
+        if not state.get('context_policy'):
+            return None  # Explicitly recovered legacy runs keep their old protocol.
+        if state['context_policy'] != LOADED_POLICY:
+            raise ValueError('frozen context policy differs from loaded builder')
+        view = await asyncio.to_thread(self.context.build_execution, repo, state['request']['objective'],
+            write_paths=paths, read_only_paths=reads, failure_context=frames, max_chars=6000)
+        CodingExecutionContext.verify(repo, view)
+        digest = view['context_digest']
+        path = self.root / state['run_id'] / 'contexts' / (digest + '.json')
+        if path.exists():
+            if json.loads(path.read_text(encoding='utf-8')) != view:
+                raise ValueError('immutable context artifact changed')
+        else:
+            write_text(path, json.dumps(view, ensure_ascii=False, separators=(',', ':')), create_only=True)
+        state['contexts'][digest] = dict(artifact=path.relative_to(self.root/state['run_id']).as_posix(),
+            source_fingerprint=view['source_fingerprint'], revision=view['revision'])
+        self.event(state, 'context_captured', role=role, context_digest=digest,
+                   source_fingerprint=view['source_fingerprint'], revision=view['revision'])
+        return view
+
     async def execute(self, state):
         # Reservations left by a dead process stay charged conservatively on recovery.
         if state["ledger"]["reserved_tokens"]:
@@ -405,6 +462,8 @@ class ReliableCollaborationService:
                 'input coercion, validation, output shape and cross-module imports. '
                 'Use dependencies when a task needs another task\'s implementation.')
             packet = {"objective": state["request"]["objective"], "authorized_files": files}
+            view = await self.execution_context(state, base, 'planner', state['request']['paths'])
+            if view:packet['execution_context'] = view
             for attempt in range(2):
                 try:
                     if state['request'].get('requirements'):
@@ -520,6 +579,9 @@ class ReliableCollaborationService:
                     conflicts = await asyncio.to_thread(self.pick, repo, state["results"][dep["id"]]["commit"])
                     if conflicts:
                         raise ValueError("dependency patch conflict: " + ", ".join(conflicts))
+                ancestors = self.ancestors(state, node)
+                view = await self.execution_context(state, repo, key, node['write_paths'],
+                    reads=sorted({p for dep in ancestors for p in dep['write_paths']}))
                 patch = await self.worker_patch(state, key,
                     'You are ONE worker, not the project coordinator. Other workers implement the other tasks. '
                     'Implement ONLY the supplied assignment and write_paths. Dependency files are READ ONLY. Return '
@@ -534,6 +596,7 @@ class ReliableCollaborationService:
                     {"assignment": node["objective"], "original_objective": state["request"]["objective"],
                      "requirements": CodingContracts.select(state['request'].get('requirements', []), node['write_paths']),
                      "write_paths": node["write_paths"],
+                     **({'execution_context':view} if view else {}),
                      "files": self.read_files(repo, sorted(set(node["write_paths"]) | {
                          p for dep in self.ancestors(state,node) for p in dep["write_paths"]})),
                      "dependency_commits": {n["id"]: state["results"][n["id"]]["commit"] for n in self.ancestors(state,node)},
@@ -586,6 +649,7 @@ class ReliableCollaborationService:
                     conflicts.append(conflict)
                     break
                 try:
+                    view = await self.execution_context(state, repo, 'conflict_resolver', paths)
                     proposal = await self.worker_patch(state, "conflict_resolver",
                         'Resolve the supplied three-way conflict preserving BOTH assignments. '
                         'Return {"summary":"resolution","changes":[{"path":"conflicting/path",'
@@ -594,6 +658,7 @@ class ReliableCollaborationService:
                         {"objective": state["request"]["objective"], "plan": state["nodes"],
                          "base": self.read_files(state["baseline"]["workspace"], paths),
                          "ours": self.read_files(repo, paths),
+                         **({'execution_context':view} if view else {}),
                          "theirs": self.read_files(state["results"][node["id"]]["workspace"]["workspace"], paths)})
                     await asyncio.to_thread(self.apply_proposal, repo, proposal, paths, "conflict resolution")
                     conflict["resolution_digest"] = self.digest(proposal)
@@ -622,7 +687,7 @@ class ReliableCollaborationService:
             self.save(state)
             if all(t["exit_code"] == 0 for t in tests) or round_no == 2:
                 break
-            failure_context = await asyncio.to_thread(CodingContracts.failure_context, repo, tests, self.safe_path, self.git)
+            failure_context = await asyncio.to_thread(CodingExecutionContext.failure_context, repo, tests)
             state['integration'].setdefault('failure_contexts', []).append(dict(round=round_no, frames=failure_context))
             try:
                 declared = CodingContracts.exact_type_repair(repo, state['request'].get('requirements', []),
@@ -650,6 +715,8 @@ class ReliableCollaborationService:
                 "requirements": state['request'].get('requirements', []),
                 "read_only_failure_context": failure_context,
                 "tests": [{k: t.get(k) for k in ("command","exit_code","stdout","stderr")} for t in tests]}
+            view = await self.execution_context(state, repo, 'diagnostician', state['request']['paths'], frames=failure_context)
+            if view:packet['execution_context'] = view
             # Declared requirements opt into diagnosis before editing. Old runs
             # retain their bounded protocol and remain explicitly resumable.
             if state['request'].get('requirements'):
@@ -677,6 +744,8 @@ class ReliableCollaborationService:
                         elif not re.search(r'\b'+re.escape(target['symbol'])+r'\b', source):
                             raise ValueError('diagnosis target symbol missing')
                     packet['files'] = {p: packet['files'][p] for p in sorted({t['path'] for t in targets})}
+                    view = await self.execution_context(state, repo, 'repairer', list(packet['files']), frames=failure_context)
+                    if view:packet['execution_context'] = view
                     self.event(state, 'repair_diagnosed', round=round_no, diagnosis=diagnosis)
                 except (ValueError, RuntimeError) as exc:
                     self.event(state, 'repair_diagnosis_rejected', error=str(exc))
@@ -709,6 +778,8 @@ class ReliableCollaborationService:
                     packet['previous_failure']=failure
                     packet['previous_proposal']=proposal
                     packet['files']=self.read_files(repo,list(packet['files']))
+                    view = await self.execution_context(state, repo, 'repairer', list(packet['files']), frames=failure_context)
+                    if view:packet['execution_context'] = view
             if not repaired:
                 break
         diff = self.git(repo, "diff", "--binary", state["baseline"]["baseline_commit"]).stdout
@@ -726,6 +797,8 @@ class ReliableCollaborationService:
         packet = {"objective": state["request"]["objective"], "plan": state["nodes"],
              "files": self.read_files(repo, state["request"]["paths"]), "diff": diff,
              "tests": [{k: t.get(k) for k in ("command","exit_code","stdout","stderr")} for t in tests]}
+        view = await self.execution_context(state, repo, 'reviewer', state['request']['paths'])
+        if view:packet['execution_context'] = view
         for attempt in range(2):
             try:
                 review = await self.model(state, "reviewer", instruction, packet)
@@ -853,4 +926,5 @@ class ReliableCollaborationService:
             "requirements_digest": self.digest(state['request']['requirements']) if state['request'].get('requirements') else None,
             "requirement_owners": state.get('requirement_owners', {}),
             "requirement_results": state.get('requirement_results', []),
+            "context_policy": state.get('context_policy'), "contexts": state.get('contexts', {}),
             "model_quality_proven": False}

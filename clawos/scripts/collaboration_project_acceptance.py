@@ -55,7 +55,9 @@ REQUIREMENTS = [
 ]
 SOURCE_FILES = [ROOT / p for p in (
     'services/reliable_collaboration.py', 'services/collaboration_delivery.py',
-    'services/coding_contracts.py', 'services/coding_workflow_service.py', 'services/os_sandbox.py')]+[Path(__file__)]
+    'services/coding_contracts.py', 'services/coding_workflow_service.py', 'services/os_sandbox.py',
+    'services/coding_execution_context.py', 'services/coding_context_service.py',
+    'services/autonomous_coding_service.py', 'services/agentic_coding_loop_service.py')]+[Path(__file__)]
 LOADED = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in SOURCE_FILES}
 
 PUBLIC = '''import copy,sys,unittest
@@ -335,6 +337,10 @@ def main():
         and all(r['passed'] for r in result.get('requirement_results', []))
         and delivery.get('manifest',{}).get('requirements_digest')==result.get('requirements_digest')
         and bool(result.get('requirements_digest')))
+    checks['execution_context_bound'] = (bool(result.get('contexts')) and bool(result.get('context_policy'))
+        and all(e.get('context_digest') in result['contexts'] for e in result.get('events', [])
+                if e['event'] in {'model_started','model_receipt'})
+        and delivery.get('manifest',{}).get('contexts') == result.get('contexts'))
     report=dict(schema='clawos.project-collaboration-acceptance.v1',passed=all(checks.values()),
         live_model=True,internal_project_slice=True,independent_public_benchmark=False,
         holdout_exposed_to_workers=False,holdout_feedback_to_model=False,
