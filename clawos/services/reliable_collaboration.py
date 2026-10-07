@@ -161,10 +161,13 @@ class ReliableCollaborationService:
             raise ValueError("completed worker patch evidence changed")
 
     def provider_signature(self, provider):
-        return self.digest({"class": type(provider).__module__ + "." + type(provider).__qualname__,
+        identity={"class": type(provider).__module__ + "." + type(provider).__qualname__,
             "provider": getattr(provider, "name", ""), "model": getattr(provider, "model", ""),
             "endpoint": getattr(provider, "base_url", ""),
-            "template": getattr(provider, "chat_template_kwargs", None)})
+            "template": getattr(provider, "chat_template_kwargs", None)}
+        if hasattr(provider,'upstream_signature'):
+            identity['upstream_signature']=provider.upstream_signature
+        return self.digest(identity)
 
     def load(self, run_id):
         if not re.fullmatch(r"collab-[a-f0-9]{32}", run_id):

@@ -1,5 +1,15 @@
 # Project Context
 
+## 最新：编码协作收益与真实失败候选（2026-10-07）
+
+继续3c6c58d，新增CodingStrategyService/CodingEvidenceService、`/api/workspace/coding/strategy`和隔离状态CLI。冻结决策、源范围/原命令/模型/预算；没有已发布策略时用显式single/multi基线，运行中策略变化拒收。任务簇等权成本收益、1000次bootstrap双模式校正、至少30个成对任务簇且收益下界>0.02才建议；重复不增加样本，imported和selected-only不训练，建议不自动生效。分桶只是文件数/语言/需求/命令数，语义独立性仍需审查。计费与回答摘要覆盖追加后的实际提示，多代理原生上下文/回答绑定也核验；报告被修改即拒收。
+
+失败分类后幂等反思卡、静态白名单提示候选，保留环境/预算/未知传输负例，不新增质量信号。SelfEvolutionManager对coding.proposal/coding.strategy.*加入coding_execution缺失门禁，通用配置回归不能证明编码收益；专门基线/候选rollout评估器尚未实现，候选未发布。真实历史阶段4报告导入仅诊断。新Qwen小型finite-numbers task两模式均FAILED：single2调用/2734token/87.015秒，格式修复后仍JSON非法；multi4调用/5027token/140.281秒，公开4项/内部模型评审通过但新工作区后置5项有1项int子类失败，外层拒收；机械代码修复0、源快照未变，不是2worker并行或一般项目成功率。共4失败观察/3张反思卡；保留旧格式候选#1，新格式#2含2个task_group，测试#3含1个；全部candidate、运行策略0、晋升质量信号0。
+
+真实运行14个选择性见证保持稳定。随后修正候选计数跨namespace去重，同任务跨模型/预算只算1；因此最终见证namespace不同，原版本原簇有效样本1、收益-0.007732、无建议，最终版本匹配样本0，不能沿用旧实验自动学习。机制测试第一轮17项1错（查询列trigger误用，已改trigger_type），第二轮20/20（145.318秒），最终新增同task_group跨namespace测试并纳入全量。8源码编译通过，bundle91ce573f04e59da0e3b3dda5afba51fc34675e475d4df6da2b56a3d5e6a1dc3f。最终隔离全量913/913（1563.131秒），output/regression/5d1b1b8e92d644fda13caeb33bc2edea；含最终21项新机制测试及原892项兼容回归。源码指纹执行前后一致，旧弃用/openpyxl/asyncio慢回调警告不阻断。
+
+证据clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md，真实报告SHA256 5d251f664f33e221def8257a6a8dfcec11f7e26370ccc9e9c6357868b99c0210、output/cs/8a87a3311f与output/cs5-20261007/audit.json。自有18932/PID71472按exe/UTC ticks精确核对14:01:06Z退出，生产与原预览不动；日常DB复核仍8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543。下一步：专门真实编码候选rollout评估器和独立任务扩充，再讨论策略发布；前端工作台、第二模型、语义聚类、严格OS隔离与多天验收未完成。沿用授权origin/codex/coding-agent-competitive-p0-p2提交推送，排除tools/权重/凭据/DB/output及原skill_registry.jsonl，保留其他改动，不强推/合并master。以下保留历史。
+
 ## 最新：编码能力第四项——冻结任务与预算的单/多代理比较（2026-10-07）
 
 继续45927e2，按用户选择只做本地Qwen3.5-9B单/多链路比较，同时提供最多4个显式本地模型的工厂/CLI入口。CodingComparisonService冻结干净快照、完整目标、授权范围、需求、原测试/后置命令、模型身份、实现见证和预声明顺序；同限额24调用/50,000计费token/1800秒、请求与命令300秒、输出1800token、3次编辑尝试。两次重复按单→多、多→单顺序，始终保留失败；n=2是一个内部任务的重复，不是两个独立样本。统一外层预算记录全部消息UTF8保守预留、实际usage或未知请求预留计费，记录/回答/补丁独立校验；不把报告完成当任务通过，零调用或预算超限不得标为execution_comparable。

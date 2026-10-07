@@ -76,6 +76,10 @@ class ComparisonCapture:
             async def complete(self, messages, options):
                 if not capture.stable():
                     raise RuntimeError('comparison implementation source changed')
+                messages = copy.deepcopy(messages)
+                prepare = getattr(provider, 'prepare_messages', None)
+                if prepare is not None:
+                    messages = prepare(messages)
                 left = capture.limits['max_wall_seconds'] - (capture.clock()-capture.started)
                 options = dict(options, max_tokens=capture.limits['max_output_tokens'], temperature=0,
                     response_format={'type':'json_object'})
@@ -306,7 +310,7 @@ class CodingComparisonService:
             if digest(value)!=reference['digest'] or digest(value['content'])!=value['content_digest']:
                 raise ValueError('completed comparison receipt changed')
 
-    async def run(self, cases, models, *, limits=None, confirmed=False, repetitions=1):
+    async def run(self, cases, models, *, limits=None, confirmed=False, repetitions=1, binding=None):
         if confirmed is not True:raise PermissionError('explicit owned-workspace execution authorization required')
         if not isinstance(cases,list) or not 1<=len(cases)<=8:raise ValueError('1..8 explicit cases required')
         if not isinstance(models,list) or not 1<=len(models)<=4:raise ValueError('1..4 explicit model factories required')
@@ -335,6 +339,7 @@ class CodingComparisonService:
         plan=dict(schema=self.SCHEMA,cases=cases,models=[{k:v for k,v in m.items() if k!='factory'} for m in models],
             limits=limits,arms=planned,implementation_witness=self.witness,
             repetitions=repetitions,order_policy='sequential; mode order alternates by case/repetition; no cold-cache control')
+        if binding is not None:plan['strategy_binding']=copy.deepcopy(binding)
         plan['plan_digest']=digest(plan);save(self.root/'plan.json',plan,immutable=True)
         rows=[]
         for index,arm in enumerate(planned):

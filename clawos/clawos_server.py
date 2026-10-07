@@ -5670,6 +5670,43 @@ async def api_coding_workflow(request: Request):
     return JSONResponse(result)
 
 
+@app.post("/api/workspace/coding/strategy")
+async def api_coding_strategy(request: Request):
+    if not g_memory_store:
+        raise HTTPException(503, "MemoryOS not initialized")
+    from services.coding_strategy_service import CodingStrategyService
+    data = await request.json()
+    if not isinstance(data, dict):
+        raise HTTPException(400, "request must be an object")
+    service = CodingStrategyService(g_memory_store, OUTPUT_ROOT)
+    action = data.get('action', 'preview')
+    try:
+        if action == 'ingest':
+            result = await asyncio.to_thread(service.evidence.ingest, data.get('folder', ''))
+        elif action == 'failures':
+            result = await asyncio.to_thread(service.evidence.failures)
+        elif action == 'nominate_failure':
+            result = await asyncio.to_thread(service.evidence.nominate_failures, data.get('category', 'format'))
+        elif action == 'nominate_routing':
+            result = await asyncio.to_thread(service.nominate_routing, data.get('decision_id', ''))
+        elif action in {'preview', 'run', 'compare'}:
+            if not g_upstream_provider:
+                raise HTTPException(503, "model provider is not initialized")
+            factory = lambda _role: g_upstream_provider
+            options = dict(limits=data.get('limits'), baseline_mode=data.get('baseline_mode', 'single'))
+            if action == 'preview':
+                result = await asyncio.to_thread(service.preview, data.get('case'), factory, **options)
+            else:
+                result = await service.run(data.get('case'), factory, **options,
+                    confirmed=data.get('confirmed') is True, paired=action == 'compare',
+                    repetitions=data.get('repetitions', 1))
+        else:
+            raise ValueError('unknown coding strategy action')
+    except (ValueError, KeyError, TypeError, OSError, PermissionError, RuntimeError) as exc:
+        raise HTTPException(409 if isinstance(exc, PermissionError) else 400, str(exc))
+    return JSONResponse(result)
+
+
 @app.post("/api/subagents/run")
 async def api_autonomous_subagents(request: Request):
     data = await request.json()

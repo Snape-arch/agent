@@ -1,5 +1,10 @@
 # Agent / ClawOS Workspace
 
+编码策略工作台新增 `/api/workspace/coding/strategy` 和 `clawos/scripts/coding_strategy.py`：
+冻结单／多代理执行、记录成本收益建议，并将核验后的真实失败转成反思卡和未发布提示候选。
+重复任务不增加独立样本，外部导入仅用于诊断；策略建议不会自动生效。
+接口、复现与发布边界见 [编码策略验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md)。
+
 ClawOS 是一个 Windows 本地个人 Agent OS 原型，围绕 observe-plan-execute-reflect-memory-improve 闭环组织模型路由、工具调用、任务状态、记忆和反思审查。
 
 ## 接手先读

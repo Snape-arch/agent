@@ -88,6 +88,15 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         evidence = self._normalize_benchmarks(benchmarks or run.get("benchmarks") or {})
         gate = self._evaluate_gate(evidence)
+        if run['target_key']=='coding.proposal' or run['target_key'].startswith('coding.strategy.'):
+            # Generic config materialization proves neither coding behavior nor
+            # improvement. These nominations remain held for a dedicated,
+            # provider-executed baseline/candidate rollout evaluator.
+            gate['checks'].append(dict(benchmark='coding_execution',metric='coding_behavior_verified',
+                direction='required_true',baseline=False,candidate=False,passed=False))
+            gate['required_benchmarks'].append('coding_execution')
+            gate['missing_benchmarks'].append('coding_execution')
+            gate['passed']=False
         passed = bool(gate["passed"])
         return self._store.update_self_evolution_run(
             run_id,
