@@ -58,6 +58,36 @@ class CodingContracts:
         return copy.deepcopy([r for r in requirements if set(r['paths']) & set(paths)])
 
     @staticmethod
+    def diagnosis_targets(repo, frames, paths):
+        """Bound Python targets to executed frames/calls, not every authorized file."""
+        cited = set()
+        for frame in frames:
+            # A displayed function can also contain earlier passing calls. Use
+            # calls spanning the actual failing line when that location exists.
+            line = frame.get('line')
+            found = None
+            if type(line) is int:
+                path = (Path(repo)/frame['path']).resolve()
+                path.relative_to(Path(repo).resolve())
+                tree = ast.parse(path.read_text(encoding='utf-8'))
+                found = {n.func.id if isinstance(n.func,ast.Name) else n.func.attr
+                    for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,(ast.Name,ast.Attribute))
+                    and n.lineno<=line<=n.end_lineno}
+            cited.update(found if found is not None else frame.get('called_symbols', []))
+        targets = []
+        for path in paths:
+            if not path.endswith('.py'):
+                continue
+            source = (Path(repo) / path).read_text(encoding='utf-8')
+            own_symbols = {f.get('symbol') for f in frames if f.get('path') == path}
+            for node in ast.walk(ast.parse(source)):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in cited | own_symbols:
+                    target = dict(path=path, symbol=node.name)
+                    if target not in targets:
+                        targets.append(target)
+        return targets
+
+    @staticmethod
     def bind_plan(requirements, nodes):
         owners = {r['id']: [n['id'] for n in nodes if set(r['paths']) & set(n['write_paths'])] for r in requirements}
         for requirement in requirements:

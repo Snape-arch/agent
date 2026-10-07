@@ -73,7 +73,10 @@ def write_text(path, content, *, append=False, expected_sha256="", create_only=F
         if preview:
             return dict(result, written=False, exists=exists)
         target.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, name = tempfile.mkstemp(prefix="." + target.name + ".", suffix=".tmp", dir=target.parent)
+        # A digest-named target can fit Windows MAX_PATH while copying its
+        # entire basename into the temporary name exceeds it. The random
+        # sibling is already unique; replacement still occurs on one volume.
+        descriptor, name = tempfile.mkstemp(prefix=".claw-", suffix=".tmp", dir=target.parent)
         temporary = Path(name)
         try:
             with os.fdopen(descriptor, "wb") as handle:

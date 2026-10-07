@@ -285,6 +285,50 @@ class CodingExecutionContext:
             raise ValueError('execution context evidence changed')
 
     @classmethod
+    def present(cls, manifest, supplied_files):
+        """Reference excerpts already supplied in full; preserve frozen evidence."""
+        cls.verify_packet(manifest)
+        view = copy.deepcopy(manifest)
+        references = []
+        for row in view['code_evidence']:
+            text = supplied_files.get(row['path'])
+            excerpt = row['content']
+            if not isinstance(text, str) or not excerpt or excerpt not in text:
+                continue
+            references.append(dict(path=row['path'], offset=text.index(excerpt), length=len(excerpt),
+                text_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest()))
+            row['content'] = ''
+        if not references:
+            return view
+        result = dict(schema='clawos.coding-context-presentation.v1', context_digest=manifest['context_digest'],
+            view=view, references=references,
+            instruction='Referenced code excerpts are in the supplied source file fields at offset/length; do not treat an empty excerpt as an empty file.')
+        result['presentation_digest'] = cls.digest(result)
+        encoded = lambda value: json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+        return result if len(encoded(result)) < len(encoded(manifest)) else copy.deepcopy(manifest)
+
+    @classmethod
+    def restore_presentation(cls, presentation, supplied_files):
+        if presentation.get('schema') == cls.SCHEMA:
+            cls.verify_packet(presentation)
+            return copy.deepcopy(presentation)
+        body = copy.deepcopy(presentation)
+        digest = body.pop('presentation_digest', None)
+        if body.get('schema') != 'clawos.coding-context-presentation.v1' or digest != cls.digest(body):
+            raise ValueError('context presentation changed')
+        view = body['view']
+        for reference in body['references']:
+            text = supplied_files[reference['path']]
+            if hashlib.sha256(text.encode('utf-8')).hexdigest() != reference['text_sha256']:
+                raise ValueError('referenced source text changed')
+            row = next(r for r in view['code_evidence'] if r['path'] == reference['path'])
+            row['content'] = text[reference['offset']:reference['offset'] + reference['length']]
+        cls.verify_packet(view)
+        if view['context_digest'] != body['context_digest']:
+            raise ValueError('context presentation identity changed')
+        return view
+
+    @classmethod
     def assert_changes(cls, manifest, changes):
         for change in changes:
             if change.get('path') not in manifest['scope']['write_paths']:

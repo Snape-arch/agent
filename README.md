@@ -41,6 +41,12 @@ cd <your-cloned-agent-repo>
 单代理提案、迭代编辑与可靠协作共用版本化源码视图：授权写路径、只读依赖、行号/符号、实际失败帧及字节摘要；编辑前核对源码，协作恢复和交付核对上下文凭据。
 Python本地依赖有界解析；大仓库任务需明确收窄路径。实现及验收边界见 `clawos/benchmarks/SHARED_CODING_CONTEXT_ACCEPTANCE.md`。
 
+`clawos/scripts/compare_coding_pipelines.py` 可在同一冻结快照、授权范围、需求、测试和预算下，
+比较单代理与可靠协作完整链路；预先声明重复次数，交替执行顺序，保留失败及实际调用凭据。
+支持显式配置多个本地模型；当前真实验收只使用本地 Qwen3.5-9B，不能当作跨模型质量排名。
+报告区分记录完整、实际执行可比较、预算合规和任务通过；完成报告不等于编码成功。
+协议、复现及真实负例见 `clawos/benchmarks/CODING_PIPELINE_COMPARISON_ACCEPTANCE.md`。
+
 论文报告支持全窗口阅读、实验条件/原文引用及 Markdown、PDF、JSON 下载，重新生成保留旧文件；
 工作台历史支持完整归档分页、全文查询、导出和会话恢复。文本工具支持预览、仅创建与 SHA-256 冲突保护。
 自进化候选绑定当前策略版本并支持受所有权保护的回滚。CodingWorkflowService 可用

@@ -216,9 +216,9 @@ class CollaborationTests(unittest.IsolatedAsyncioTestCase):
             return answer(role)
         service = self.service(handler)
         task = asyncio.create_task(service.run(self.repo, "Fix arithmetic", **self.kwargs()))
-        await asyncio.wait_for(waiting.wait(), 30)
-        state = json.loads(next(self.root.glob("*/checkpoint.json")).read_text())["state"]
         try:
+            await asyncio.wait_for(waiting.wait(), 30)
+            state = json.loads(next(self.root.glob("*/checkpoint.json")).read_text())["state"]
             with self.assertRaises(TimeoutError):
                 await self.service().run(self.repo, "Fix arithmetic", **self.kwargs(resume_run=state["run_id"]))
         finally:
