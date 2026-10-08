@@ -24,6 +24,7 @@ from .coding_workflow_service import CodingWorkflowService
 from .file_transactions import _file_lock, write_text
 from .runtime_records import RunRecord, now_iso
 from .coding_contracts import CodingContracts
+from . import coding_structured_output as structured
 from .coding_context_service import CodingContextService
 from .coding_execution_context import CodingExecutionContext, LOADED_POLICY
 
@@ -396,9 +397,16 @@ class ReliableCollaborationService:
             for field in ('files', 'authorized_files', 'ours'):
                 supplied.update({p: text for p, text in (packet.get(field) or {}).items() if isinstance(text, str)})
             prompt_packet['execution_context'] = CodingExecutionContext.present(view, supplied)
+        requirements = prompt_packet.get('requirements', state['request'].get('requirements', []))
+        if requirements:prompt_packet['contract_checklist'] = CodingContracts.checklist(requirements)
         messages = [{"role": "system", "content": instruction +
-                    " Return exactly one JSON object. Never claim unexecuted tests passed."},
+                    " Check every caller contract clause, including exact input types, invalid cases, output shape, ordering and mutation."
+                    " Return exactly one JSON object. Never claim unexecuted tests passed." +
+                    CodingContracts.prompt_guidance(requirements)},
                     {"role": "user", "content": json.dumps(prompt_packet, ensure_ascii=False, separators=(',', ':'))}]
+        output_schema = structured.schema_for(role, prompt_packet.get('write_paths') or
+            list(prompt_packet.get('files', {})) or state['request']['paths'],
+            grounded_targets=prompt_packet.get('grounded_targets'))
         ledger = state["ledger"]
         reserve = len(messages[1]["content"]) + 1800  # Conservative admission; no unknown free usage.
         if (ledger["model_calls"] >= policy["max_model_calls"] or
@@ -419,7 +427,7 @@ class ReliableCollaborationService:
             state["provider_specs"].setdefault(role, {"spec": asdict(spec), "fingerprint": fingerprint})
             self.save(state)
             response = await asyncio.wait_for(provider.complete(messages,
-                {"temperature": 0, "max_tokens": 1800, "response_format": {"type": "json_object"}}),
+                {"temperature": 0, "max_tokens": 1800, "response_format": structured.response_format(role, output_schema)}),
                 timeout=policy["timeout_seconds"])
             tokens = int((response.get("usage") or {}).get("total_tokens") or reserve)
             if tokens < 0:
@@ -444,8 +452,8 @@ class ReliableCollaborationService:
             if fence:
                 content = fence.group(1)
             try:
-                output = json.loads(content)
-            except json.JSONDecodeError as exc:
+                output = structured.parse(content, output_schema)
+            except ValueError as exc:
                 raise ModelFormatError(exc, content) from exc
             if not isinstance(output, dict) or ledger["tokens"] > policy["max_tokens"]:
                 raise ValueError("invalid JSON object or provider exceeded token budget")
@@ -720,7 +728,7 @@ class ReliableCollaborationService:
                 tests.append(result)
                 self.event(state, "integration_test", round=round_no, exit_code=result["exit_code"], command=command)
             state["integration"].setdefault("test_rounds", []).append({"round": round_no, "tests": tests})
-            state['requirement_results'] = CodingContracts.results(state['request'].get('requirements', []), tests, self.digest)
+            state['requirement_results'] = CodingContracts.results(state['request'].get('requirements', []), tests, self.digest, repo=repo)
             self.save(state)
             if all(t["exit_code"] == 0 for t in tests) or round_no == 2:
                 break
@@ -830,6 +838,10 @@ class ReliableCollaborationService:
             state["status"] = "test_failed"
             state["integration"]["status"] = "test_failed"
             self.save(state)
+            return
+        if not all(r['passed'] for r in state.get('requirement_results', [])):
+            state['status'] = state['integration']['status'] = 'contract_failed'
+            self.event(state, 'integration_contract_failed', results=state['requirement_results'])
             return
         instruction = (
             'Independently review the objective, complete integrated files, patch and actual test evidence. '

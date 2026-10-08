@@ -8,6 +8,7 @@ import re
 
 from .coding_comparison_service import CodingComparisonService, digest
 from .coding_execution_context import CodingExecutionContext
+from .coding_contracts import CodingContracts
 
 
 def features(case):
@@ -129,6 +130,15 @@ class CodingEvidenceService:
                 if patch.stat().st_size>16*1024*1024:raise ValueError('replay patch exceeds read limit')
                 if patch.stat().st_size!=validation['patch_bytes'] or hashlib.sha256(patch.read_bytes()).hexdigest()!=validation['patch_sha256']:
                     raise ValueError('replay patch digest mismatch')
+                if any(r.get('clauses') or r.get('interface') for r in case['requirements']):
+                    replay = self.path(validation['workspace']['workspace'], base=folder)
+                    replay.relative_to(self.path(str(Path(row['artifact']).parent), base=folder))
+                    expected = CodingContracts.results(case['requirements'],
+                        [t for t in tests if t['phase']=='test_commands'], digest, repo=replay)
+                    if validation.get('requirements') != expected:
+                        raise ValueError('replay contract clause/interface evidence changed')
+                    if validation['passed'] and not all(r['passed'] for r in expected):
+                        raise ValueError('passing replay omitted declared contract')
             if row['mode']=='multi' and row['result'].get('run_id'):
                 run_id=row['result']['run_id']
                 if not re.fullmatch(r'collab-[a-f0-9]{32}',run_id):raise ValueError('invalid native run identity')

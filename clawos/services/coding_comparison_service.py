@@ -24,7 +24,8 @@ from .reliable_collaboration import ReliableCollaborationService
 
 CORE_FILES = ['autonomous_coding_service.py','coding_execution_context.py','coding_context_service.py',
     'coding_contracts.py','coding_workflow_service.py','coding_workspace_service.py',
-    'reliable_collaboration.py','collaboration_delivery.py','os_sandbox.py','file_transactions.py','coding_comparison_service.py']
+    'reliable_collaboration.py','collaboration_delivery.py','os_sandbox.py','file_transactions.py','coding_comparison_service.py',
+    'coding_structured_output.py']
 LOADED_WITNESS = {str(Path(__file__).with_name(p)):hashlib.sha256(Path(__file__).with_name(p).read_bytes()).hexdigest()
     for p in CORE_FILES}
 
@@ -82,7 +83,7 @@ class ComparisonCapture:
                     messages = prepare(messages)
                 left = capture.limits['max_wall_seconds'] - (capture.clock()-capture.started)
                 options = dict(options, max_tokens=capture.limits['max_output_tokens'], temperature=0,
-                    response_format={'type':'json_object'})
+                    response_format=options.get('response_format') or {'type':'json_object'})
                 reservation = len(json.dumps(messages, ensure_ascii=False, separators=(',', ':')).encode('utf-8')) + options['max_tokens']
                 ledger = capture.ledger
                 if (left <= 0 or ledger['calls'] >= capture.limits['max_model_calls'] or
@@ -241,10 +242,11 @@ class CodingComparisonService:
                     row = await operation(CodingWorkflowService._run_command,replay,command,
                         min(remaining,capture.limits['timeout_seconds']))
                 rows.append(dict(row,phase=phase,index=index,command=command))
-        return dict(passed=bool(patch) and all(t['exit_code']==0 for t in rows),tests=rows,
+        requirement_results = CodingContracts.results(case['requirements'],
+            [t for t in rows if t['phase']=='test_commands'],digest,repo=replay)
+        return dict(passed=bool(patch) and all(t['exit_code']==0 for t in rows) and all(r['passed'] for r in requirement_results),tests=rows,
             patch_sha256=hashlib.sha256(patch).hexdigest(),patch_bytes=len(patch),workspace=meta,
-            post_feedback_to_model=False, requirements=CodingContracts.results(case['requirements'],
-                [t for t in rows if t['phase']=='test_commands'],digest))
+            post_feedback_to_model=False, requirements=requirement_results)
 
     async def arm(self, case, model, mode, limits, number, repetition):
         folder=self.root/f'arm-{number:02d}';folder.mkdir()

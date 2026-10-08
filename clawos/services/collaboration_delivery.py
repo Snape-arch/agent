@@ -35,7 +35,8 @@ class CollaborationDelivery:
         svc.verify_receipts(state)
         requirements = state['request'].get('requirements', [])
         if requirements:
-            expected = CodingContracts.results(requirements, state['integration']['tests'], svc.digest)
+            expected = CodingContracts.results(requirements, state['integration']['tests'], svc.digest,
+                repo=svc.owned_workspace(state, state['integration']['workspace']))
             if (state.get('requirement_results') != expected or not all(r['passed'] for r in expected)
                     or state.get('requirement_owners') != CodingContracts.bind_plan(requirements, state['nodes'])):
                 raise ValueError('caller requirement verification or task ownership changed')
@@ -90,7 +91,8 @@ class CollaborationDelivery:
         requirements = state['request'].get('requirements', [])
         if requirements and (manifest.get('requirements') != requirements
                 or manifest.get('requirements_digest') != svc.digest(requirements)
-                or manifest.get('requirement_results') != CodingContracts.results(requirements, manifest['tests'], svc.digest)):
+                or manifest.get('requirement_results') != CodingContracts.results(requirements, manifest['tests'], svc.digest,
+                    repo=svc.owned_workspace(state, manifest['replay']['workspace']))):
             raise ValueError('delivery requirement bindings changed')
         if state.get('context_policy') and (manifest.get('context_policy') != state['context_policy']
                 or manifest.get('contexts') != state.get('contexts', {})):
@@ -207,7 +209,7 @@ class CollaborationDelivery:
                     test_commands=state['request']['test_commands'], tests=tests, review=state['review'],
                     requirements=state['request'].get('requirements', []),
                     requirements_digest=svc.digest(state['request'].get('requirements', [])),
-                    requirement_results=CodingContracts.results(state['request'].get('requirements', []), tests, svc.digest),
+                    requirement_results=CodingContracts.results(state['request'].get('requirements', []), tests, svc.digest, repo=repo),
                     context_policy=state.get('context_policy'), contexts=state.get('contexts', {}),
                     evidence_digest=svc.digest({'nodes':state['nodes'], 'results':state['results'],
                                                 'receipts':[e for e in state['events'] if e['event']=='model_receipt']}),

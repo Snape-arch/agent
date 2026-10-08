@@ -1,5 +1,10 @@
 # Agent / ClawOS Workspace
 
+编码提案及协作各角色使用授权范围内的 JSON Schema 输出，并在本地严格复核字段、类型、编辑操作和诊断目标。
+`requirements` 可附加逐条 `clauses` 和显式 Python `interface`；写前、集成、独立重放及交付检查原契约。
+条款绑定测试与静态签名检查有各自的证据边界，不能把 JSON 合法或示例测试通过当作语义正确。
+实现与真实模型验收见 [结构化输出与契约验收](clawos/benchmarks/STRUCTURED_CODING_CONTRACT_ACCEPTANCE.md)。
+
 编码策略工作台新增 `/api/workspace/coding/strategy` 和 `clawos/scripts/coding_strategy.py`：
 冻结单／多代理执行、记录成本收益建议，并将核验后的真实失败转成反思卡和未发布提示候选。
 重复任务不增加独立样本，外部导入仅用于诊断；策略建议不会自动生效。

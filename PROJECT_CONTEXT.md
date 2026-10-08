@@ -1,5 +1,19 @@
 # Project Context
 
+## 最新：结构化代码输出与完整契约（2026-10-08）
+
+接续f6c97b0。修复比较捕获器覆盖response_format；单代理提案及协作规划/编辑/诊断/评审使用授权范围JSON Schema，本地再次拒绝重复键、非有限数、未知字段、越界路径、混用编辑字段及无依据诊断。真实首轮复杂Schema被llama.cpp语法上限拒绝，解码Schema保留结构/类型/路径/分支，完整文本/数组/数值上限继续在本地强制；提供方拒绝时不降级自由文本。
+
+requirements可附clauses与Python interface；全角色保留调用者逐条清单，静态签名在单代理写前、多代理集成、独立重放、交付与证据复核检查。测试条款凭据只是调用者绑定命令退出码，签名只证明静态接口；均不证明任意自然语言语义。共享Python语义提示明确isinstance接受子类及bool/int关系，仅依调用者约束提示精确类型、容器/元素、异常、顺序和非变异；不推断新约束，不机械生成答案，不向模型泄露后置反馈。
+
+前两轮真实负例保留：bf0726acdb四变体HTTP400、6调用、保守扣账56,370、27.220秒；0ce0f23e7a单/多均0/2、10调用/22,089token/4837.500秒，精确类型遗漏及超时/预算失败，budget_conformant和execution_comparable均false，不作速度比较。最终新轮ss\b06cba9cec：single 2/2、2调用/4562计费token/150.172秒；multi 2/2、7调用/14768计费token/389.734秒。协议完整=True、预算合规=True、可比较=True、全部任务解决=True。两项均复用维护者内部任务，原公开4+后置5方法不变；finite多代理1工作者，projection有2个同文件依赖工作者串行交接，不称新多人并发/故障恢复/外部盲测或通用成功率。
+
+独立证据复核通过，9回答均携带json_schema；原快照/8变更源码和12核心选择性见证稳定，策略执行另有5见证共17。报告SHA256 d64bcdcad43e5c580096321f5d4b9dadba03f5f40746e1f29d7ba8f0c858fada；8文件bundle 48032ef38be88eb09747adda3c583f3080298b1529944ecde3e5fb83802fad91。最终机制11/11（44.217秒），原契约7/7（39.619秒），产品兼容11/11（27.941秒）；最终隔离全量942/942（1889.786秒），output/regression/ef4379114b7f45d8adffa51ca8cbf6bf。Python编译与diff检查通过；旧弃用/openpyxl/asyncio慢回调警告不阻断。
+
+工具注册functions.jsonl同步补齐clauses/interface，SHA256 d308187d0d5d08eda90cd9111a4f6f0d3e11cd7eb1b9a3668791311183389966；69条JSON/2新契约字段及服务校验通过（非完整Schema引擎/新模型重复）。该注册声明在全量运行中补齐，8个Python源码保持冻结；新增声明后的子代理9/9（0.528秒）和MTClaw路由6/6（1.501秒）兼容通过。
+
+证据clawos/benchmarks/STRUCTURED_CODING_CONTRACT_ACCEPTANCE.md及output/structured-guidance-20261008/audit.json；日常DB仍8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543。自有18935/PID68760按exe和UTC ticks核对关闭，生产未重启。沿用origin/codex/coding-agent-competitive-p0-p2提交推送授权，排除tools/权重/凭据/DB/output与原registry脏改。没有策略发布或实时质量信号。下一步扩充至少30个真实独立任务，再进行新鲜shadow/canary；严格OS隔离、第二模型、跨语言接口、属性覆盖、读屏和多天验收仍未完成。以下保留历史。
+
 ## 最新：真实编码候选专门评估与拒绝闭环（2026-10-08）
 
 继续a1b1c96，新增CodingRolloutService及API/CLI rollout、rollout_evidence。冻结未发布提示／模式候选与基线版本、原Git快照/授权/需求/公开及后置命令、模型/实现/预算、AB/BA顺序；调用原CodingStrategyService实际执行，提示追加先于计费／摘要，模式候选限匹配namespace。不写正式策略，不应用业务补丁，不创建实时质量信号；native-experiment不混入单/多收益训练。并发锁、版本/候选payload漂移、完整计划/子报告/上下文/回答/补丁核验；文件修改、旧执行器、跨模型预算或冲突输入拒绝。父实验中断保留partial，无自动恢复，显式新轮。
