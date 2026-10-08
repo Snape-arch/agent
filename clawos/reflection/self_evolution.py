@@ -89,14 +89,14 @@ class SelfEvolutionManager:
         evidence = self._normalize_benchmarks(benchmarks or run.get("benchmarks") or {})
         gate = self._evaluate_gate(evidence)
         if run['target_key']=='coding.proposal' or run['target_key'].startswith('coding.strategy.'):
-            # Generic config materialization proves neither coding behavior nor
-            # improvement. These nominations remain held for a dedicated,
-            # provider-executed baseline/candidate rollout evaluator.
+            from services.coding_rollout_service import coding_gate
+            coding=coding_gate(self._store,run_id)
             gate['checks'].append(dict(benchmark='coding_execution',metric='coding_behavior_verified',
-                direction='required_true',baseline=False,candidate=False,passed=False))
+                direction='required_true',baseline=False,candidate=coding['passed'],passed=coding['passed']))
             gate['required_benchmarks'].append('coding_execution')
-            gate['missing_benchmarks'].append('coding_execution')
-            gate['passed']=False
+            if not coding['passed']:gate['missing_benchmarks'].append('coding_execution')
+            gate['coding_execution']=coding
+            gate['passed']=gate['passed'] and coding['passed']
         passed = bool(gate["passed"])
         return self._store.update_self_evolution_run(
             run_id,
@@ -117,6 +117,7 @@ class SelfEvolutionManager:
             raise ValueError("self-evolution run has not passed the regression gate")
         if run.get("status") not in {"validated", "shadow"}:
             raise ValueError("self-evolution run must be validated before shadow release")
+        self._assert_coding_regression(run)
         return self._store.update_self_evolution_run(
             run_id,
             status="shadow",
@@ -136,6 +137,7 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         if run.get("status") not in {"shadow", "canary"}:
             raise ValueError("self-evolution run must be in shadow before canary")
+        self._assert_coding_regression(run)
         if self._paired_quality_sample_count(run["id"]) < self.MIN_CANARY_SAMPLES:
             raise ValueError(
                 f"canary requires at least {self.MIN_CANARY_SAMPLES} runtime quality samples"
@@ -162,6 +164,7 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         if run.get("status") != "canary":
             raise ValueError("self-evolution run must complete canary before activation")
+        self._assert_coding_regression(run)
         if self._paired_quality_sample_count(run["id"]) < self.MIN_ACTIVATION_SAMPLES:
             raise ValueError(
                 f"activation requires at least {self.MIN_ACTIVATION_SAMPLES} runtime quality samples"
@@ -385,6 +388,12 @@ class SelfEvolutionManager:
         if not run:
             raise ValueError("self-evolution run not found")
         return run
+
+    def _assert_coding_regression(self, run):
+        if run['target_key']=='coding.proposal' or run['target_key'].startswith('coding.strategy.'):
+            from services.coding_rollout_service import coding_gate
+            if not coding_gate(self._store,run['id'])['passed']:
+                raise ValueError('coding regression evidence is missing, stale, or insufficient')
 
     @classmethod
     def _assert_allowed_target(cls, target_type):

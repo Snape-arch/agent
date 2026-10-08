@@ -58,6 +58,33 @@ class ReliableCollaborationService:
                                         separators=(",", ":")).encode()).hexdigest()
 
     @staticmethod
+    async def owned_thread(fn, *args, **kwargs):
+        """Drain native work before propagating cancellation or releasing ownership."""
+        task = asyncio.create_task(asyncio.to_thread(fn, *args, **kwargs))
+        return await ReliableCollaborationService.drain_task(task)
+
+    @staticmethod
+    async def drain_task(task, *, cancel_inner=False):
+        cancelled = None
+        while True:
+            try:
+                result = await asyncio.shield(task)
+                break
+            except asyncio.CancelledError as exc:
+                if task.cancelled():
+                    raise
+                if cancelled is None and cancel_inner and not task.done():
+                    task.cancel()
+                cancelled = exc
+            except Exception:
+                if cancelled is not None:
+                    raise cancelled
+                raise
+        if cancelled is not None:
+            raise cancelled
+        return result
+
+    @staticmethod
     def git(repo, *args, check=True):
         result = subprocess.run(["git", "-c", "core.hooksPath=" + os.devnull,
                                 "-c", "commit.gpgsign=false", "-c", "rerere.enabled=false", *args], cwd=repo,
@@ -283,9 +310,9 @@ class ReliableCollaborationService:
                     raise ValueError("checkpoint or frozen request changed")
                 if state.get('context_policy') and state['status'] != 'passed' and state['context_policy'] != LOADED_POLICY:
                     raise ValueError('context policy source changed; unfinished run cannot resume')
-                if await asyncio.to_thread(self.source_stamp,repo,paths) != state["source_stamp"]:
+                if await self.owned_thread(self.source_stamp,repo,paths) != state["source_stamp"]:
                     raise ValueError("source checkout changed; inspect the frozen task before starting a new run")
-                await asyncio.to_thread(self.verify_receipts,state)
+                await self.owned_thread(self.verify_receipts,state)
                 if state["run_id"] != run_id:
                     raise ValueError("checkpoint run identity changed")
                 for binding in state["provider_specs"].values():
@@ -300,17 +327,17 @@ class ReliableCollaborationService:
                             attempt.update(status="interrupted", error="previous coordinator exited before completion")
                 for item in state["results"].values():
                     if item["status"] == "passed":
-                        await asyncio.to_thread(self.verify_commit, state, item)
+                        await self.owned_thread(self.verify_commit, state, item)
                 if state["status"] == "passed":
-                    await asyncio.to_thread(self.verify_commit, state, state["integration"])
+                    await self.owned_thread(self.verify_commit, state, state["integration"])
                     return self.public(state)
                 self.event(state, "coordinator_recovered")
             else:
                 # Capture once. All workers derive from the same immutable baseline.
-                source_stamp=await asyncio.to_thread(self.source_stamp,repo,paths)
-                baseline = await asyncio.to_thread(self.workspaces.create_task, repo,
+                source_stamp=await self.owned_thread(self.source_stamp,repo,paths)
+                baseline = await self.owned_thread(self.workspaces.create_task, repo,
                     folder / "workspaces", "baseline", confirmed=True)
-                if await asyncio.to_thread(self.source_stamp,repo,paths) != source_stamp:
+                if await self.owned_thread(self.source_stamp,repo,paths) != source_stamp:
                     raise ValueError("source checkout changed during baseline capture")
                 state = dict(schema="clawos.reliable-collaboration.v1", run_id=run_id,
                     request=request, baseline=baseline, source_stamp=source_stamp, status="running", nodes=[],
@@ -325,8 +352,9 @@ class ReliableCollaborationService:
             try:
                 if remaining <= 0:
                     raise TimeoutError("cumulative run wall budget exhausted")
-                await asyncio.wait_for(self.execute(state), timeout=remaining)
-                state["source_preserved"] = await asyncio.to_thread(self.source_stamp,repo,paths)==state["source_stamp"]
+                execution = asyncio.create_task(asyncio.wait_for(self.execute(state), timeout=remaining))
+                await self.drain_task(execution, cancel_inner=True)
+                state["source_preserved"] = await self.owned_thread(self.source_stamp,repo,paths)==state["source_stamp"]
                 if not state["source_preserved"]:
                     state["status"]="source_changed"
                     self.event(state,"source_changed_during_run")
@@ -437,7 +465,7 @@ class ReliableCollaborationService:
             return None  # Explicitly recovered legacy runs keep their old protocol.
         if state['context_policy'] != LOADED_POLICY:
             raise ValueError('frozen context policy differs from loaded builder')
-        view = await asyncio.to_thread(self.context.build_execution, repo, state['request']['objective'],
+        view = await self.owned_thread(self.context.build_execution, repo, state['request']['objective'],
             write_paths=paths, read_only_paths=reads, failure_context=frames, max_chars=6000)
         CodingExecutionContext.verify(repo, view)
         digest = view['context_digest']
@@ -578,14 +606,14 @@ class ReliableCollaborationService:
             attempts.append(record)
             self.event(state, "worker_started", node=key, attempt=record["number"])
             try:
-                meta = await asyncio.to_thread(self.workspaces.create_task,
+                meta = await self.owned_thread(self.workspaces.create_task,
                     state["baseline"]["workspace"], self.root / state["run_id"] / "workspaces",
                     key, confirmed=True)
                 record["workspace"] = meta
                 self.save(state)
                 repo = self.owned_workspace(state, meta)
                 for dep in self.ancestors(state, node):
-                    conflicts = await asyncio.to_thread(self.pick, repo, state["results"][dep["id"]]["commit"])
+                    conflicts = await self.owned_thread(self.pick, repo, state["results"][dep["id"]]["commit"])
                     if conflicts:
                         raise ValueError("dependency patch conflict: " + ", ".join(conflicts))
                 ancestors = self.ancestors(state, node)
@@ -618,7 +646,7 @@ class ReliableCollaborationService:
                     raise ValueError("invalid edit path/operation; authorized paths=" + json.dumps(node["write_paths"]) +
                         "; received=" + json.dumps([{k:c.get(k) for k in ("path","operation")} if isinstance(c,dict) else str(type(c)) for c in changes]) +
                         "; each change requires path, operation=replace, old_text and new_text")
-                accepted = await asyncio.to_thread(self.apply_proposal, repo, patch, node["write_paths"], key)
+                accepted = await self.owned_thread(self.apply_proposal, repo, patch, node["write_paths"], key)
                 commit = accepted["commit"]
                 record.update(status="passed", commit=commit, completed_at=now_iso())
                 state["results"][key] = dict(status="passed", commit=commit, workspace=meta,
@@ -640,14 +668,14 @@ class ReliableCollaborationService:
     async def integrate(self, state):
         if state["integration"]:
             state["integration_history"].append(state["integration"])
-        meta = await asyncio.to_thread(self.workspaces.create_task, state["baseline"]["workspace"],
+        meta = await self.owned_thread(self.workspaces.create_task, state["baseline"]["workspace"],
             self.root / state["run_id"] / "workspaces", "integration", confirmed=True)
         repo = self.owned_workspace(state, meta)
         state["integration"] = {"status": "running", "workspace": meta}
         self.event(state, "integration_started")
         conflicts = []
         for node in self.ordered(state):
-            paths = await asyncio.to_thread(self.pick, repo, state["results"][node["id"]]["commit"])
+            paths = await self.owned_thread(self.pick, repo, state["results"][node["id"]]["commit"])
             if paths:
                 conflict = {"node": node["id"], "paths": paths,
                             "worker_commit": state["results"][node["id"]]["commit"]}
@@ -669,7 +697,7 @@ class ReliableCollaborationService:
                          "ours": self.read_files(repo, paths),
                          **({'execution_context':view} if view else {}),
                          "theirs": self.read_files(state["results"][node["id"]]["workspace"]["workspace"], paths)})
-                    await asyncio.to_thread(self.apply_proposal, repo, proposal, paths, "conflict resolution")
+                    await self.owned_thread(self.apply_proposal, repo, proposal, paths, "conflict resolution")
                     conflict["resolution_digest"] = self.digest(proposal)
                     state["integration"].setdefault("resolutions", []).append(conflict)
                     self.event(state, "conflict_resolved", **conflict)
@@ -686,7 +714,7 @@ class ReliableCollaborationService:
         for round_no in range(3):
             tests = []
             for command in state["request"]["test_commands"]:
-                result = await asyncio.to_thread(CodingWorkflowService._run_command, repo, command,
+                result = await self.owned_thread(CodingWorkflowService._run_command, repo, command,
                                                 state["request"]["limits"]["timeout_seconds"])
                 result = dict(result, command=list(command))
                 tests.append(result)
@@ -696,13 +724,13 @@ class ReliableCollaborationService:
             self.save(state)
             if all(t["exit_code"] == 0 for t in tests) or round_no == 2:
                 break
-            failure_context = await asyncio.to_thread(CodingExecutionContext.failure_context, repo, tests)
+            failure_context = await self.owned_thread(CodingExecutionContext.failure_context, repo, tests)
             state['integration'].setdefault('failure_contexts', []).append(dict(round=round_no, frames=failure_context))
             try:
                 declared = CodingContracts.exact_type_repair(repo, state['request'].get('requirements', []),
                     tests, failure_context, self.read_files)
                 if declared:
-                    await asyncio.to_thread(self.apply_proposal, repo, declared, state['request']['paths'], 'caller-declared exact type guard')
+                    await self.owned_thread(self.apply_proposal, repo, declared, state['request']['paths'], 'caller-declared exact type guard')
                     self.event(state, 'coordinator_contract_repair', round=round_no, diagnostics=declared['diagnostics'],
                         patch_digest=self.digest(declared), origin='caller_declared_rule_and_actual_failed_assertion', model_generated=False)
                     continue
@@ -711,7 +739,7 @@ class ReliableCollaborationService:
             try:
                 proposal = self.local_import_repair(repo, state['request']['paths'], tests)
                 if proposal:
-                    await asyncio.to_thread(self.apply_proposal, repo, proposal, state['request']['paths'], 'verified local imports')
+                    await self.owned_thread(self.apply_proposal, repo, proposal, state['request']['paths'], 'verified local imports')
                     self.event(state,'coordinator_import_repair',round=round_no,
                         diagnostics=proposal['diagnostics'], patch_digest=self.digest(proposal),
                         origin='deterministic_ast_and_actual_traceback', model_generated=False)
@@ -782,7 +810,7 @@ class ReliableCollaborationService:
                     'Return {"summary":"repair","changes":[{"path":"authorized/path",'
                     '"operation":"replace","old_text":"exact current text","new_text":"correct text"}]}.',
                     packet)
-                    await asyncio.to_thread(self.apply_proposal, repo, proposal, list(packet['files']), "integrated repair")
+                    await self.owned_thread(self.apply_proposal, repo, proposal, list(packet['files']), "integrated repair")
                     self.event(state, "integrated_repair", round=round_no, patch_digest=self.digest(proposal))
                     repaired=True
                     break

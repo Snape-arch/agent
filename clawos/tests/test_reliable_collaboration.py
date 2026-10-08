@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -224,6 +225,42 @@ class CollaborationTests(unittest.IsolatedAsyncioTestCase):
         finally:
             task.cancel()
             with self.assertRaises(asyncio.CancelledError): await task
+
+    async def test_repeated_cancel_drains_native_clone_before_owner_release(self):
+        entered, released, exited = threading.Event(), threading.Event(), threading.Event()
+        service = self.service()
+        original = service.workspaces.create_task
+        def blocked(*args, **kwargs):
+            meta = original(*args, **kwargs)
+            if args[2] == 'b':
+                entered.set()
+                if not released.wait(30):raise TimeoutError('test did not release native clone')
+                exited.set()
+            return meta
+        async def handler(role, packet):
+            if role == 'a':await asyncio.Event().wait()
+            return answer(role)
+        service.factory = lambda spec:Provider(spec.role_id, handler)
+        with patch.object(service.workspaces, 'create_task', side_effect=blocked):
+            task = asyncio.create_task(service.run(self.repo, 'Fix arithmetic', **self.kwargs()))
+            try:
+                self.assertTrue(await asyncio.to_thread(entered.wait, 30))
+                state = json.loads(next(self.root.glob('*/checkpoint.json')).read_text())['state']
+                task.cancel()
+                await asyncio.sleep(.05)
+                task.cancel()
+                await asyncio.sleep(.05)
+                self.assertFalse(task.done(), 'owner returned before native clone drained')
+                with self.assertRaises(TimeoutError):
+                    await self.service().run(self.repo, 'Fix arithmetic', **self.kwargs(resume_run=state['run_id']))
+                released.set()
+                with self.assertRaises(asyncio.CancelledError):await task
+                self.assertTrue(exited.is_set())
+                self.assertEqual(service.load(state['run_id'])['status'], 'interrupted')
+            finally:
+                released.set()
+                if not task.done():task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
 
     async def test_changed_request_and_completed_workspace_rejected(self):
         service = self.service()

@@ -17,7 +17,7 @@ from services.coding_strategy_service import CodingStrategyService
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('action',choices=('ingest','failures','nominate_failure','nominate_routing','preview','run','compare'))
+    parser.add_argument('action',choices=('ingest','failures','nominate_failure','nominate_routing','preview','run','compare','rollout','rollout_evidence'))
     parser.add_argument('--workspace',type=Path,required=True,help='Owned evidence state under clawos/output')
     parser.add_argument('--folder',type=Path,help='Comparison report folder under clawos/output')
     parser.add_argument('--case',type=Path,help='Frozen case JSON with repo/objective/scope/commands/requirements')
@@ -25,7 +25,7 @@ def main():
     parser.add_argument('--baseline-mode',choices=('single','multi'),default='single')
     parser.add_argument('--repetitions',type=int,choices=(1,2,3),default=1)
     parser.add_argument('--category',choices=('format','test','pipeline'),default='format')
-    parser.add_argument('--decision-id');args=parser.parse_args()
+    parser.add_argument('--decision-id');parser.add_argument('--run-id',type=int);args=parser.parse_args()
     output=(ROOT/'output').resolve();workspace=args.workspace.resolve()
     try:workspace.relative_to(output)
     except ValueError:parser.error('workspace must be inside clawos/output')
@@ -40,6 +40,9 @@ def main():
     elif args.action=='failures':result=service.evidence.failures()
     elif args.action=='nominate_failure':result=service.evidence.nominate_failures(args.category)
     elif args.action=='nominate_routing':result=service.nominate_routing(args.decision_id)
+    elif args.action=='rollout_evidence':
+        from services.coding_rollout_service import CodingRolloutService
+        result=CodingRolloutService(store,output).verified(args.run_id)
     else:
         if not args.case or not args.url or not args.model:parser.error('--case, --url and --model required')
         url=urlparse(args.url)
@@ -52,7 +55,12 @@ def main():
         if args.action=='preview':result=service.preview(case,factory,**options)
         else:
             if not args.execute:parser.error('execution requires --execute')
-            result=asyncio.run(service.run(case,factory,confirmed=True,paired=args.action=='compare',repetitions=args.repetitions,**options))
+            if args.action=='rollout':
+                from services.coding_rollout_service import CodingRolloutService
+                result=asyncio.run(CodingRolloutService(store,output).run(args.run_id,case,factory,
+                    confirmed=True,repetitions=args.repetitions,**options))
+            else:
+                result=asyncio.run(service.run(case,factory,confirmed=True,paired=args.action=='compare',repetitions=args.repetitions,**options))
     print(json.dumps(result,ensure_ascii=False,indent=2))
     return 0
 

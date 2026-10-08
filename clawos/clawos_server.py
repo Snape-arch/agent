@@ -5689,6 +5689,16 @@ async def api_coding_strategy(request: Request):
             result = await asyncio.to_thread(service.evidence.nominate_failures, data.get('category', 'format'))
         elif action == 'nominate_routing':
             result = await asyncio.to_thread(service.nominate_routing, data.get('decision_id', ''))
+        elif action in {'rollout','rollout_evidence'}:
+            from services.coding_rollout_service import CodingRolloutService
+            rollout=CodingRolloutService(g_memory_store,OUTPUT_ROOT)
+            if action=='rollout_evidence':
+                result=await asyncio.to_thread(rollout.verified,data.get('run_id'))
+            else:
+                if not g_upstream_provider:raise HTTPException(503,'model provider is not initialized')
+                result=await rollout.run(data.get('run_id'),data.get('cases'),lambda _role:g_upstream_provider,
+                    confirmed=data.get('confirmed') is True,limits=data.get('limits'),
+                    baseline_mode=data.get('baseline_mode','single'),repetitions=data.get('repetitions',1))
         elif action in {'preview', 'run', 'compare'}:
             if not g_upstream_provider:
                 raise HTTPException(503, "model provider is not initialized")
@@ -5702,8 +5712,8 @@ async def api_coding_strategy(request: Request):
                     repetitions=data.get('repetitions', 1))
         else:
             raise ValueError('unknown coding strategy action')
-    except (ValueError, KeyError, TypeError, OSError, PermissionError, RuntimeError) as exc:
-        raise HTTPException(409 if isinstance(exc, PermissionError) else 400, str(exc))
+    except (ValueError, KeyError, TypeError, OSError, PermissionError, RuntimeError, TimeoutError) as exc:
+        raise HTTPException(409 if isinstance(exc, (PermissionError,TimeoutError)) else 400, str(exc))
     return JSONResponse(result)
 
 

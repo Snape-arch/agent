@@ -1,5 +1,19 @@
 # Project Context
 
+## 最新：真实编码候选专门评估与拒绝闭环（2026-10-08）
+
+继续a1b1c96，新增CodingRolloutService及API/CLI rollout、rollout_evidence。冻结未发布提示／模式候选与基线版本、原Git快照/授权/需求/公开及后置命令、模型/实现/预算、AB/BA顺序；调用原CodingStrategyService实际执行，提示追加先于计费／摘要，模式候选限匹配namespace。不写正式策略，不应用业务补丁，不创建实时质量信号；native-experiment不混入单/多收益训练。并发锁、版本/候选payload漂移、完整计划/子报告/上下文/回答/补丁核验；文件修改、旧执行器、跨模型预算或冲突输入拒绝。父实验中断保留partial，无自动恢复，显式新轮。
+
+替换coding_execution永久缺失门禁：服务拥有的实际记录至少30 task_group、全部pair可用、候选成功率>=0.8且不低于基线、任务簇等权成本收益1000次bootstrap下界>=-0.02；同基线候选payload家族Bonferroni校正，重复不增独立样本。通用回归继续必需，evaluate/start_shadow/promote_canary/activate重读实际证据，缓存passed或调用方提供指标不能放行。离线编码回归不能替代原实时shadow/canary支持。语义独立性仍需人工审核。
+
+最终专门机制17/17（247.122秒），此前14项/251.188秒1失败（重复读取误建必须新目录，已修）、14/14（196.479秒）、家族校正15/15（197.657秒）。本轮真实Qwen仅2内部任务，四变体全FAILED：finite baseline2调用/2703token/90.406秒、candidate2/2868/102.813均格式失败；projection candidate3/5278/217.156测试失败、baseline3/5437/130.906最终格式失败。10真实调用/16,286token/合计541.281秒，原源码未变，16见证稳定，actual single串行；不称多代理并行/新恢复验收或大库/外部盲测。专门样本2、baseline/candidate均0/2，收益-0.001376236、下界-0.002077833；门禁FAILED。
+
+通用实际基线/候选Frozen30、Core4、Retrieval5、物化1场景都通过，但不是30个真实编码任务；自动评估只因coding_execution拒绝，候选#1=rejected，再次shadow被阻断。复核1父实验/5包（imported1+native-experiment4）/6反思卡，运行策略0、实时质量信号0。证据clawos/benchmarks/CODING_CANDIDATE_ROLLOUT_ACCEPTANCE.md、output/cr/376a778358、output/cr6-20261008/audit.json，报告SHA256 0aac6a6093fc64613230599b3a889e90bfca596958f525dab38818b5d9144b9c；以上为首轮历史。
+
+首次全量930项/1747.670秒ERROR1：旧所有权测试取消后原生线程仍占用repo，Windows清理失败。修复ReliableCollaborationService全部自有原生操作与DAG取消排空，连续取消也保持锁直至收尾；不忽略清理错误。多代理28/28（276.531秒）通过。当前见证正确拒绝首轮旧凭据，独立新state重跑旧finite任务：baseline2/2703/86.235秒、candidate2/2868/80.750秒均格式FAILED；4调用/5571token/166.985秒，独立簇1，0/1对0/1。当前版本审计及通用回归再次通过，编码门禁拒绝、shadow阻断、策略/实时质量信号0。新报告output/cr/b27fabc914，SHA256 73f9df6c62265c2000fc5a7489503d42a32d62a983b749a29d99e7d1aaf4e93b，审计output/cr6d-20261008/audit.json。8源码编译通过，最终bundle295e691bec5c4d998647ec893e7a0af53724d2e08c4cd75e6cc3e83f98e07928；最终隔离全量931/931（1654.448秒），output/regression/54f6c78147c84622a6cf3565d8f90daf，指纹未变；旧弃用/openpyxl/asyncio慢回调警告不阻断，原失败保留。新18933/PID71992精确核对08:46:43Z退出；原生收尾可能超出协程软墙钟，非强制OS隔离。
+
+自有18933/PID41940按exe/UTC ticks核对08:04:14Z退出，生产/原预览不动，日常DB仍8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543。下一步先改善结构化代码输出与完整类型契约候选，再扩充真实独立任务，达到30后仍要新鲜实时shadow/canary；不把本轮拒绝闭环当能力提升。第二模型、图形策略工作台、严格沙箱、语义独立性识别与多天负载未验收。沿用origin/codex/coding-agent-competitive-p0-p2提交推送授权，保留原registry修改，排除tools/权重/凭据/DB/output，不强推/合并master。以下保留历史。
+
 ## 最新：编码协作收益与真实失败候选（2026-10-07）
 
 继续3c6c58d，新增CodingStrategyService/CodingEvidenceService、`/api/workspace/coding/strategy`和隔离状态CLI。冻结决策、源范围/原命令/模型/预算；没有已发布策略时用显式single/multi基线，运行中策略变化拒收。任务簇等权成本收益、1000次bootstrap双模式校正、至少30个成对任务簇且收益下界>0.02才建议；重复不增加样本，imported和selected-only不训练，建议不自动生效。分桶只是文件数/语言/需求/命令数，语义独立性仍需审查。计费与回答摘要覆盖追加后的实际提示，多代理原生上下文/回答绑定也核验；报告被修改即拒收。

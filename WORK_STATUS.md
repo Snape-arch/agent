@@ -1,4 +1,12 @@
-# ClawOS 当前工作状态（2026-10-07）
+# ClawOS 当前工作状态（2026-10-08）
+
+## 最新开发块：编码候选专门执行评估（2026-10-08）
+
+CodingRolloutService及API/CLI rollout、rollout_evidence已接通真实基线／候选执行、冻结版本/模型/预算/命令/ABBA、独立重放、并发锁、变动拒收与服务拥有的实验注册。至少30独立任务簇、全部pair可用、候选成功率>=0.8且不低于基线、成本收益置信下界>=-0.02，候选家族校正；重复/导入/离线记录不冒充实时晋升信号。SelfEvolutionManager新增原始编码证据复核，通用探针或缓存passed不能放行。
+
+真实Qwen两个内部任务/四变体全FAILED（baseline0/2、candidate0/2），10调用/16,286token/541.281秒，代码输出非法JSON及测试失败仍在。通用Frozen30/Core4/Retrieval5/物化1对照都通过，但这些不是30编码任务；候选被自动标为rejected，shadow阻断，策略/新增实时质量信号0。验收达到的是提名→实际执行→证据复核→拒绝无效候选，不是能力提升。源码未应用生成补丁，16见证稳定，18933自有helper已精确核对退出；日常DB仍8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543。
+
+机制最终17/17（247.122秒）。首次全量930项/1747.670秒ERROR1：旧所有权测试取消后原生线程未排空导致Windows目录占用。修复协调者全部自有原生操作/DAG连续取消排空，28/28（276.531秒）通过；收尾完成前保持锁，不忽略清理错误。首轮旧见证凭据保留并正确过期；最终版本新state复验旧finite任务，基线2/2703/86.235秒、候选2/2868/80.750秒均格式失败，独立簇1、0/1对0/1，审计/通用回归再次通过，编码门禁仍reject，无发布。新report cr/b27fabc914 SHA25673f9df6c62265c2000fc5a7489503d42a32d62a983b749a29d99e7d1aaf4e93b；output/cr6d-20261008/audit.json，8源码编译通过，最终隔离全量931/931（1654.448秒），output/regression/54f6c78147c84622a6cf3565d8f90daf，指纹未变，原失败保留；bundle295e691bec5c4d998647ec893e7a0af53724d2e08c4cd75e6cc3e83f98e07928。新18933/PID71992核对退出。详见clawos/benchmarks/CODING_CANDIDATE_ROLLOUT_ACCEPTANCE.md。下一步优先结构化输出/完整类型契约候选，随后独立任务扩充及实时shadow/canary；第二模型/前端/严格OS边界/多天负载未补齐，历史48小时FAILED不变。tools/权重/DB/output/原skill_registry.jsonl继续排除，沿用指定origin/codex分支提交推送授权。
 
 ## 最新开发块：编码策略工作台与失败候选（2026-10-07）
 

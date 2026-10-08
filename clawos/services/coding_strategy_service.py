@@ -16,7 +16,9 @@ from .learning_governance import THRESHOLDS
 
 LOADED_WITNESS = {str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (
     Path(__file__),Path(__file__).with_name('coding_evidence_service.py'),
-    Path(__file__).parents[1]/'reflection/evolution_runtime.py')}
+    Path(__file__).with_name('coding_rollout_service.py'),
+    Path(__file__).parents[1]/'reflection/evolution_runtime.py',
+    Path(__file__).parents[1]/'reflection/self_evolution.py')}
 
 
 def utility(row):
@@ -68,12 +70,20 @@ class CodingStrategyService:
             raise RuntimeError('loaded coding strategy implementation changed')
         return CodingComparisonService(folder,witness=LOADED_WITNESS)
 
-    def _prepare(self, case, factory, limits, baseline_mode):
+    def _prepare(self, case, factory, limits, baseline_mode, experiment=None):
         if baseline_mode not in {'single','multi'}:raise ValueError('baseline mode must be single or multi')
         runner=self._runner();case=runner.case(case);limits=runner.limits(limits)
         controller=RuntimePolicyController(self.store);identity=case['task_group_digest']
         prompt=controller.resolve('prompt_policy','coding.proposal',identity)
-        prompt_digest=digest(prompt)
+        applied_prompt=copy.deepcopy(prompt)
+        if experiment:
+            from .coding_rollout_service import check_experiment
+            run=check_experiment(self.store,experiment)
+            if run['target_type']=='prompt_policy':
+                if prompt['payload']!=run['baseline_payload']:
+                    raise ValueError('live prompt differs from frozen coding baseline')
+                applied_prompt['payload']=copy.deepcopy(run[experiment['variant']+'_payload'])
+        prompt_digest=digest(applied_prompt)
         guard={'prompt':prompt,'route':None,'key':None}
         def guarded_factory(role):
             raw=factory(role)
@@ -82,13 +92,14 @@ class CodingStrategyService:
                 chat_template_kwargs=getattr(raw,'chat_template_kwargs',None)
                 upstream_signature=runner.svc.provider_signature(raw)
                 def prepare_messages(_,messages):
+                    if experiment:check_experiment(self.store,experiment)
                     if controller.resolve('prompt_policy','coding.proposal',identity)!=guard['prompt']:
                         raise RuntimeError('coding prompt policy changed during execution')
                     if controller.resolve('routing_policy',guard['key'],identity)!=guard['route']:
                         raise RuntimeError('coding routing policy changed during execution')
                     messages=copy.deepcopy(messages)
                     if messages:
-                        messages[0]['content']=controller.apply_prompt(messages[0]['content'],prompt)
+                        messages[0]['content']=controller.apply_prompt(messages[0]['content'],applied_prompt)
                     return messages
                 async def complete(_,messages,options):
                     return await raw.complete(messages,options)
@@ -96,18 +107,26 @@ class CodingStrategyService:
         prototype=guarded_factory('comparison_identity')
         fingerprint=runner.svc.provider_signature(prototype)
         namespace=digest(dict(model=fingerprint,executor=digest(runner.witness),limits=limits,
-            features=features(case),prompt_digest=prompt_digest))
+            features=features(case),prompt_digest=digest(prompt)))
         target='coding.strategy.'+namespace
         route=controller.resolve('routing_policy',target,identity);guard.update(route=route,key=target)
         payload=route['payload'];mode=payload.get('coding_mode',baseline_mode)
         if mode not in {'single','multi'} or (payload and payload.get('namespace')!=namespace):
             raise ValueError('active coding mode policy does not match this namespace')
+        if experiment and run['target_type']=='routing_policy':
+            if run['target_key']!=target or payload!=run['baseline_payload']:
+                raise ValueError('coding routing experiment namespace/baseline mismatch')
+            variant_payload=run[experiment['variant']+'_payload']
+            mode=variant_payload.get('coding_mode',baseline_mode)
+            if mode not in {'single','multi'} or (variant_payload and variant_payload.get('namespace')!=namespace):
+                raise ValueError('coding routing candidate namespace mismatch')
         stats=paired_benefit(self.evidence.bundles(),namespace)
         decision=dict(id=uuid.uuid4().hex,namespace=namespace,target_key=target,case_digest=case['case_digest'],
             task_group_digest=identity,features=features(case),limits=limits,baseline_mode=baseline_mode,
             selected_mode=mode,prompt_policy=prompt,routing_policy=route,benefit=stats,
             selection_source='governed_runtime_policy' if 'coding_mode' in payload else 'explicit_baseline',
             strategy_recommendation_applied=False,automatic_publication=False)
+        if experiment:decision['experiment']=copy.deepcopy(experiment)
         save(runner.root/'decision.json',decision,immutable=True)
         with self.store.transaction() as c:
             c.execute('INSERT INTO coding_decisions VALUES (?,?,?)',
@@ -115,16 +134,20 @@ class CodingStrategyService:
         model=dict(id='configured',factory=guarded_factory,fingerprint=fingerprint,
             actual_provider=prototype.name,actual_model=prototype.model)
         binding=dict(prompt_digest=prompt_digest,namespace=namespace,decision_digest=digest(decision))
+        if experiment:binding['experiment']=copy.deepcopy(experiment)
         return runner,case,model,decision,binding
 
     def preview(self, case, factory, *, limits=None, baseline_mode='single'):
         return self._prepare(case,factory,limits,baseline_mode)[3]
 
-    async def run(self, case, factory, *, confirmed=False, limits=None, baseline_mode='single',paired=False,repetitions=1):
+    async def run(self, case, factory, *, confirmed=False, limits=None, baseline_mode='single',paired=False,repetitions=1,_experiment=None):
         if confirmed is not True:raise PermissionError('owned-workspace execution authorization required')
         if type(paired) is not bool or type(repetitions) is not int or not 1<=repetitions<=3:
             raise ValueError('invalid paired mode/repetitions')
-        runner,case,model,decision,binding=self._prepare(case,factory,limits,baseline_mode)
+        if _experiment and paired:raise ValueError('candidate rollout uses separately frozen variants')
+        if _experiment:
+            from .coding_rollout_service import check_experiment
+        runner,case,model,decision,binding=self._prepare(case,factory,limits,baseline_mode,_experiment)
         # Runtime source witnesses are checked by the same capture wrapper.
         # Freeze the original case contract, not its derived stamp fields.
         original={k:case[k] for k in ('id','repo','objective','paths','test_commands','post_commands','requirements')}
@@ -146,7 +169,8 @@ class CodingStrategyService:
         if (controller.resolve('prompt_policy','coding.proposal',decision['task_group_digest'])!=decision['prompt_policy'] or
                 controller.resolve('routing_policy',decision['target_key'],decision['task_group_digest'])!=decision['routing_policy']):
             raise RuntimeError('runtime policy changed before evidence admission')
-        evidence=self.evidence._record(runner.root,'native-paired' if paired else 'native-selected')
+        if _experiment:check_experiment(self.store,_experiment)
+        evidence=self.evidence._record(runner.root,'native-experiment' if _experiment else 'native-paired' if paired else 'native-selected')
         return dict(decision=decision,report=report,evidence=evidence,
             folder=str(runner.root.relative_to(self.root)),source_checkout_applied=False)
 
