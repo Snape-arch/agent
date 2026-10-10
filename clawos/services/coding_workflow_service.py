@@ -462,11 +462,13 @@ class CodingWorkflowService:
                                 command, repo, timeout_seconds=timeout_seconds,
                                 confirmed_acl=True,
                             )
+                            if not result.get('sandbox', {}).get('strict_boundary_verified'):
+                                raise RuntimeError('parent-attested strict boundary is required')
                             result["sandbox"]["egress"] = {
                                 "policy": "deny-direct-network",
                                 "broker_required": True,
                                 "network_capabilities": [],
-                                "direct_socket_non_bypass_enforced": True,
+                                "direct_socket_non_bypass_enforced": result['sandbox'].get('direct_socket_non_bypass_enforced') is True,
                             }
                             return result
                         except (OSError, RuntimeError, ValueError, TimeoutError) as exc:

@@ -173,6 +173,37 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([r['status'] for r in result['format_attempts']],['rejected','parsed'])
         self.assertEqual((self.repo/'a.py').read_text(),'def add(a, b):\n    return a - b\n')
 
+    async def test_exact_anchor_rejection_is_bounded_charged_and_never_writes(self):
+        for recovered in (True, False):
+            calls=[]; budget=ExecutionBudget(max_model_calls=2,max_tokens=10000)
+            before={path:(self.repo/path).read_bytes() for path in ('a.py','b.py')}
+            class Anchors(Provider):
+                async def complete(_,messages,options):
+                    calls.append(copy.deepcopy(messages))
+                    self.assertEqual({path:(self.repo/path).read_bytes() for path in before},before)
+                    value=proposal()
+                    if len(calls)==1 or not recovered:
+                        value['changes'][0]['old_text']='return a-b'
+                    return dict(ok=True,content=json.dumps(value),usage={'total_tokens':73},
+                        raw={'choices':[{'finish_reason':'stop'}]})
+            workflow=CodingWorkflowService(artifact_root=self.root/('anchors-'+str(recovered)))
+            service=AutonomousCodingService(Anchors(),workflow=workflow)
+            with patch.object(workflow,'execute') as execute:
+                if recovered:
+                    result=await service.propose(self.repo,'Fix arithmetic',focus_paths=['a.py','b.py'],budget=budget,
+                        test_commands=self.case()['test_commands'],requirements=self.case()['requirements'])
+                    self.assertEqual(result['effective_test_commands'],self.case()['test_commands'])
+                    self.assertEqual([r['status'] for r in result['format_attempts']],['rejected','parsed'])
+                    self.assertFalse(result['writes_performed'])
+                else:
+                    with self.assertRaisesRegex(ValueError,'bounded format repair'):
+                        await service.propose(self.repo,'Fix arithmetic',focus_paths=['a.py','b.py'],budget=budget,
+                            test_commands=self.case()['test_commands'],requirements=self.case()['requirements'])
+                execute.assert_not_called()
+            self.assertEqual(budget.model_calls,2); self.assertEqual(budget.tokens,146)
+            self.assertIn('old_text must match exactly once',calls[1][-1]['content'])
+            self.assertEqual({path:(self.repo/path).read_bytes() for path in before},before)
+
     def test_context_presentation_roundtrip_byte_integrity_and_grounded_diagnosis(self):
         text='def add(a, b):\n'+''.join(f'    # Evidence detail {i} '+ 'abcd '*14+'\n' for i in range(30))+'    return a - b\n'
         (self.repo/'a.py').write_text(text)

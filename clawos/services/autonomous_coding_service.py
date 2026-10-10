@@ -140,6 +140,14 @@ class AutonomousCodingService:
             try:
                 proposal = structured.parse(content, output_schema)
                 self._validate_proposal(proposal)
+                CodingExecutionContext.assert_changes(manifest, proposal['changes'])
+                # Validate exact anchors before accepting a proposal. Planning
+                # is read-only; a rejected anchor may use the existing bounded
+                # format/schema repair without applying or guessing a patch.
+                plan = self.workflow.plan(
+                    repo_path, objective, proposal['changes'],
+                    frozen_commands if frozen_commands is not None else proposal['test_commands'],
+                )
                 interface_checks = []
                 if any(r.get('interface') for r in contracts):
                     normalized = self.workflow._normalize_changes(Path(repo_path).resolve(), proposal['changes'])
@@ -155,7 +163,7 @@ class AutonomousCodingService:
                 if format_attempt:
                     raise ValueError('model response is not strict JSON or a valid proposal after bounded format repair') from exc
                 messages = messages + [{'role':'assistant','content':content[:16000]},
-                    {'role':'user','content':'Correct JSON serialization, the required proposal schema and caller-declared signatures. '
+                    {'role':'user','content':'Correct JSON serialization, the required proposal schema, caller-declared signatures and exact edit anchors. '
                      'Preserve the complete original objective, exact source anchors and authorized paths. '
                      'Escape newlines in strings and close each object/array. Return one complete JSON object. '
                      'Previous format/schema error: ' + str(exc)[:500]}]
@@ -167,12 +175,7 @@ class AutonomousCodingService:
         })
         if not after_model["allowed"]:
             raise PermissionError("after_model policy hook denied the response")
-        plan = self.workflow.plan(
-            repo_path,
-            objective,
-            proposal["changes"],
-            frozen_commands if frozen_commands is not None else proposal["test_commands"],
-        )
+        CodingExecutionContext.verify(repo_path, manifest)
         return {
             "schema": "clawos.autonomous-coding-proposal.v1",
             "proposal": proposal,

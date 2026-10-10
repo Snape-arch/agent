@@ -1,5 +1,45 @@
 # Project Context
 
+## 最新：严格执行验收与真实失败闭环（2026-10-10）
+
+接续f3fbdab。Windows编码执行改为父进程核验LPAC令牌/能力、挂起后入Job、每命令唯一容器与专属撤权删除；私有Python标准库运行时、无网络能力、三管道句柄、1进程/512MiB、超时/输出限额。GitControlSeal封存worktree指针并在普通异常后恢复DACL；原可写Git数据库执行被拒。提案精确锚点进入只读plan与现有最多两次完整计费修复，不猜锚点、不写被拒提案。
+
+最终隔离全量955/955（2344.648秒），output/regression/14863eec05fe493788253a4c5cb3f631；比较器15/15（187.821秒）、边界/语料12/12（15.245秒）。富文本后置覆盖七标记5040排列、类型名升序、不同文本拼接及非变异；错误排序负控公开0/后置1。新版92b0e5604b94控制26/26、38控制/41唯一SID通过；最终模型轮e78fd9cf1c60再次完成这些控制。
+
+加强契约的富文本真实对照两种模式均1/1：single 1调用/3000计费token/187.031秒；multi 5调用/16449/591.203秒，首轮公开集成exit1→诊断→修复→第二轮exit0→评审→独立公开/后置均0。协议完整、预算合规、执行可比较和全部任务解决均True；一个实际工作者，复用任务不增独立任务数，不代表多人并行/普遍模式收益。独立核验20见证、回答/账本/补丁/重放绑定，控制41+模型执行7合计48不同SID与专属清理。报告SHA97179783cc1905c152b9939f30489b4851ef995efd216694292cec16a83406b8，规范比较摘要ac768df0eb8468656e3cf8fbae1f8c2ad35fc3c3f8b8b0d788296e421e8af381。18938/PID16360按exe/ticks639272328472913663核对后于12:56:22Z关闭，生产未动。
+
+原六任务564e0b97ab1a结果保留：旧有限检查single1/6、multi0/6，预算/可比较性False；learning多代理38753.172秒异常墙钟原因未核验，不作持续负载或速度证据。六个可用真实失败在独立DB成反思卡，重复导入不增量；四请求未核实、一预算异常不作可用训练样本。未发布策略，也未自动应用任务参考修复到业务模块。
+
+14个Python源码解析及diff检查通过，源码bundle2fb76e21a8df2c6e5067074e260ef107f05418a8801f9ae06d5465a05a6d0189，全量与模型结束后指纹不变；日常DB仍8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543。验收文档clawos/benchmarks/STRICT_SANDBOX_TASKBANK_ACCEPTANCE.md。沿用已授权origin/codex/coding-agent-competitive-p0-p2正常提交推送，18个本轮源码/测试/文档；tools/权重/凭据/DB/output与原registry修改排除。提交状态以Git为准，下方均为历史。
+
+production_sandbox_ready=false。下一步先产品化默认私有运行时部署及强杀父进程后的控制面恢复，再完善其余五任务语义/请求失败，扩充至少30个独立任务；跨文件并行、更多语言/模型和长期并发仍须真实验收，未达到发布策略的门槛。
+
+## 历史：严格隔离与任务库重新验收（2026-10-09）
+
+补齐成功 null-DACL 改动后的 Git 指针锁定和异常恢复正控。新版控制轮 output/taskbank/67963adf0d7b：系统26/26、六项任务36次原实现/参考/过拟合控制符合预期；独立核对共39次原生命令、39个不同SID、父进程证明与自有profile/ACL清理、源码稳定。报告SHA256 18a5686fddda6f6571c59edd347176c5fb0107d6a8c3a9e57873b84f8a7c1cd4。
+
+首个完整回归953项/1458.666秒/1失败，保留output/regression/32aac78646b64968b767949b414a635e。失败为旧restricted-token后端测试依赖宿主profile安装状态；只固定测试后端选择，继续实际执行旧受限进程，产品缺私有运行时拒绝降级保持。旧后端10/10（15.871秒）、新版机制12/12（8.121秒），新增已安装但缺runtime必须exit126的回归。run_regression支持--verbose，第二个完整回归进行中：output/strict-taskbank-regression-20261009-final.log，未计通过。
+
+最终隔离全量954/954（1449.933秒），output/regression/6b083702b24140888ecdf0ce97f4406a，完整日志strict-taskbank-regression-20261009-final.log；DB摘要不变。随后启动专属18937 helper：PID17828、UTC ticks639271548577496067，身份/权重摘要记录output/strict-taskbank-helper-20261009/owned-process.json；不得误停其他进程。新鲜真实六任务单/多比较进行中output/taskbank/564e0b97ab1a，计划8b6a55b6ec789c014e9d0b3b912f2a3c67261a018d99ea58d18c08f3119c423c，6任务/12变体/20源码见证，尚无最终模型结论；统一24调用/50k token/1800秒墙钟/300秒请求/1800输出/3尝试。
+
+生产就绪仍false，强杀父进程后的完整权限恢复未证明；六个内部维护者任务不足30独立样本，策略未发布。原registry改动保留并排除。尚未提交推送；已授权远程/分支及排除项不变。完成模型轮后独立核对全部凭据与实际LPAC执行、精确身份关闭helper，更新最终验收再提交推送。详情clawos/benchmarks/STRICT_SANDBOX_TASKBANK_ACCEPTANCE.md。以下保留先前中断记录。
+
+## 历史：严格隔离与任务库第一批（2026-10-09，中断交接）
+
+接续 f3fbdab，本轮代码与文档仍为未提交改动。实现父进程核验 LPAC SID/registryRead 能力、挂起后加入 Job Object、每命令唯一 profile 与撤权删除；私有 Python stdlib 运行时 RX、工作区 M/低完整性、reparse/hardlink/嵌套拒绝、三句柄继承、1进程/512MiB、整个 Job 超时与2MiB输出终止。仍 production_sandbox_ready=false，不把 profile 存在当验收，不给非 Python/第三方依赖降级。
+
+初始系统矩阵20/20及六个维护者内部任务控制通过：固定 f3fbdab 实际模块，原实现公开/后置1/1、参考0/0、公开样例过拟合负控0/1，共36个旧版 LPAC 命令。随后额外合成测试发现 .git 指针可写（output/strict-git-canary/c14bc8cc-report.json，control_unchanged=false）。立刻停止继续模型采样并修复：父进程持有不可写/删除共享的 Git 指针句柄、保存并恢复原 DACL，拒绝直接执行可写 .git 数据库目录；任务控制改用真实隔离 worktree。
+
+修复后原生26/26通过（output/strict-sandbox/5f6a4973f926/report.json），包括.git写/删除/重命名/改ACL后写入均被拒，指针不变；实际客体改ACL返回5，因此成功改ACL后的恢复还需增加宿主强制null-DACL正控。自有profile与权限清理成功。最终机制10/10（19.512秒）；较早9/9（12.238秒）、比较器14/14（165.234秒）、文件/历史/进化20/20（7.713秒）均保留。10个Python源码语法解析通过。
+
+旧真实Qwen轮 output/taskbank/50718ba57bff 只完成2/12变体：richtext single失败（2调用/21502保守计费token/562.875秒，修复请求超时），multi通过（5调用/15962token/758.000秒，1名工作者、公开与后置重放）。第二任务仅部分进行；没有完整汇总，不称6任务通过，不代表当前Git封存版本验收。该轮最初与全量并行，有明显资源竞争（总32189MB、余量1946MB、调度24秒），不能作纯速度比较。全量9dbf4eba89794cc68a3ef02b17099633主动终止，不计通过。
+
+自有18936 helper PID77168按exe及UTC ticks639270714439517473核对关闭；旧实验唯一Bank profile按runtime精确SID授权核对后撤权并删除，记录output/taskbank/50718ba57bff/owned-profiles-stop.json。已核对相关回归进程62208/46404和helper均不再运行；生产未动。日常DB仍8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543。没有策略发布或新实时质量信号。
+
+待继续：先补成功null-DACL恢复与Git控制面异常收尾验收，重跑新版6任务有效性控制；在不与模型竞争资源时完成全量，再进行新鲜真实单/多对照。达到至少30独立任务前不晋升策略。指针句柄/DACL实现尚不证明强制结束父进程时所有控制面恢复，保持非生产就绪。验收完成后按既有授权提交推送origin/codex/coding-agent-competitive-p0-p2，排除tools/权重/凭据/DB/output及原registry修改，不强推或合并master。
+
+证据文档clawos/benchmarks/STRICT_SANDBOX_TASKBANK_ACCEPTANCE.md；当前10源指纹与未完成状态保存output/strict-taskbank-handoff-20261009/audit.json。以下保留历史。
+
 ## 最新：结构化代码输出与完整契约（2026-10-08）
 
 接续f6c97b0。修复比较捕获器覆盖response_format；单代理提案及协作规划/编辑/诊断/评审使用授权范围JSON Schema，本地再次拒绝重复键、非有限数、未知字段、越界路径、混用编辑字段及无依据诊断。真实首轮复杂Schema被llama.cpp语法上限拒绝，解码Schema保留结构/类型/路径/分支，完整文本/数组/数值上限继续在本地强制；提供方拒绝时不降级自由文本。

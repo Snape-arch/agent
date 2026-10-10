@@ -1,4 +1,42 @@
-# ClawOS 当前工作状态（2026-10-08）
+# ClawOS 当前工作状态（2026-10-10）
+
+## 最新：严格执行验收与真实失败闭环（2026-10-10）
+
+接续f3fbdab。Windows编码执行改为父进程核验LPAC令牌/能力、挂起后入Job、每命令唯一容器与专属撤权删除；私有Python标准库运行时、无网络能力、三管道句柄、1进程/512MiB、超时/输出限额。GitControlSeal封存worktree指针并在普通异常后恢复DACL；原可写Git数据库执行被拒。提案精确锚点进入只读plan与现有最多两次完整计费修复，不猜锚点、不写被拒提案。
+
+最终隔离全量955/955（2344.648秒），output/regression/14863eec05fe493788253a4c5cb3f631；比较器15/15（187.821秒）、边界/语料12/12（15.245秒）。富文本后置覆盖七标记5040排列、类型名升序、不同文本拼接及非变异；错误排序负控公开0/后置1。新版92b0e5604b94控制26/26、38控制/41唯一SID通过；最终模型轮e78fd9cf1c60再次完成这些控制。
+
+加强契约的富文本真实对照两种模式均1/1：single 1调用/3000计费token/187.031秒；multi 5调用/16449/591.203秒，首轮公开集成exit1→诊断→修复→第二轮exit0→评审→独立公开/后置均0。协议完整、预算合规、执行可比较和全部任务解决均True；一个实际工作者，复用任务不增独立任务数，不代表多人并行/普遍模式收益。独立核验20见证、回答/账本/补丁/重放绑定，控制41+模型执行7合计48不同SID与专属清理。报告SHA97179783cc1905c152b9939f30489b4851ef995efd216694292cec16a83406b8，规范比较摘要ac768df0eb8468656e3cf8fbae1f8c2ad35fc3c3f8b8b0d788296e421e8af381。18938/PID16360按exe/ticks639272328472913663核对后于12:56:22Z关闭，生产未动。
+
+原六任务564e0b97ab1a结果保留：旧有限检查single1/6、multi0/6，预算/可比较性False；learning多代理38753.172秒异常墙钟原因未核验，不作持续负载或速度证据。六个可用真实失败在独立DB成反思卡，重复导入不增量；四请求未核实、一预算异常不作可用训练样本。未发布策略，也未自动应用任务参考修复到业务模块。
+
+14个Python源码解析及diff检查通过，源码bundle2fb76e21a8df2c6e5067074e260ef107f05418a8801f9ae06d5465a05a6d0189，全量与模型结束后指纹不变；日常DB仍8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543。验收文档clawos/benchmarks/STRICT_SANDBOX_TASKBANK_ACCEPTANCE.md。沿用已授权origin/codex/coding-agent-competitive-p0-p2正常提交推送，18个本轮源码/测试/文档；tools/权重/凭据/DB/output与原registry修改排除。提交状态以Git为准，下方均为历史。
+
+production_sandbox_ready=false。下一步先产品化默认私有运行时部署及强杀父进程后的控制面恢复，再完善其余五任务语义/请求失败，扩充至少30个独立任务；跨文件并行、更多语言/模型和长期并发仍须真实验收，未达到发布策略的门槛。
+
+## 历史：严格隔离与任务库重新验收（2026-10-09）
+
+成功null-DACL恢复正控已完成。新版系统26/26、六任务36次有效性控制通过；独立审计共39次原生执行、39个不同SID、父进程证明和专属撤权删除，output/taskbank/67963adf0d7b。机制12/12（8.121秒），旧后端10/10（15.871秒）。首次全量953项/1458.666秒/1失败，旧后端测试受已有宿主profile影响；已固定此测试的后端选择并添加已安装/无私有runtime拒绝降级检查，生产规则未放宽，失败记录保留。
+
+最终隔离全量954/954（1449.933秒），output/regression/6b083702b24140888ecdf0ce97f4406a；DB摘要不变。模型轮随后独立启动：output/taskbank/564e0b97ab1a，6任务/12变体、20源码见证，计划8b6a55b6ec789c014e9d0b3b912f2a3c67261a018d99ea58d18c08f3119c423c，仍在运行，尚无最终通过结论。自有18937 helper PID17828/ticks639271548577496067，身份记录output/strict-taskbank-helper-20261009/owned-process.json，结束按身份核对关闭。
+
+尚未提交推送，原registry改动排除；production_sandbox_ready=false，强杀父进程的完整收尾和至少30独立任务仍待验收，策略未发布。模型结束后独立核对凭据/源码/实际LPAC回执，更新最终文档，按已有授权提交推送。下方历史状态不代表本轮最终结论。
+
+## 历史：严格隔离与任务库第一批（2026-10-09，中断交接）
+
+接续 f3fbdab，本轮代码与文档仍为未提交改动。实现父进程核验 LPAC SID/registryRead 能力、挂起后加入 Job Object、每命令唯一 profile 与撤权删除；私有 Python stdlib 运行时 RX、工作区 M/低完整性、reparse/hardlink/嵌套拒绝、三句柄继承、1进程/512MiB、整个 Job 超时与2MiB输出终止。仍 production_sandbox_ready=false，不把 profile 存在当验收，不给非 Python/第三方依赖降级。
+
+初始系统矩阵20/20及六个维护者内部任务控制通过：固定 f3fbdab 实际模块，原实现公开/后置1/1、参考0/0、公开样例过拟合负控0/1，共36个旧版 LPAC 命令。随后额外合成测试发现 .git 指针可写（output/strict-git-canary/c14bc8cc-report.json，control_unchanged=false）。立刻停止继续模型采样并修复：父进程持有不可写/删除共享的 Git 指针句柄、保存并恢复原 DACL，拒绝直接执行可写 .git 数据库目录；任务控制改用真实隔离 worktree。
+
+修复后原生26/26通过（output/strict-sandbox/5f6a4973f926/report.json），包括.git写/删除/重命名/改ACL后写入均被拒，指针不变；实际客体改ACL返回5，因此成功改ACL后的恢复还需增加宿主强制null-DACL正控。自有profile与权限清理成功。最终机制10/10（19.512秒）；较早9/9（12.238秒）、比较器14/14（165.234秒）、文件/历史/进化20/20（7.713秒）均保留。10个Python源码语法解析通过。
+
+旧真实Qwen轮 output/taskbank/50718ba57bff 只完成2/12变体：richtext single失败（2调用/21502保守计费token/562.875秒，修复请求超时），multi通过（5调用/15962token/758.000秒，1名工作者、公开与后置重放）。第二任务仅部分进行；没有完整汇总，不称6任务通过，不代表当前Git封存版本验收。该轮最初与全量并行，有明显资源竞争（总32189MB、余量1946MB、调度24秒），不能作纯速度比较。全量9dbf4eba89794cc68a3ef02b17099633主动终止，不计通过。
+
+自有18936 helper PID77168按exe及UTC ticks639270714439517473核对关闭；旧实验唯一Bank profile按runtime精确SID授权核对后撤权并删除，记录output/taskbank/50718ba57bff/owned-profiles-stop.json。已核对相关回归进程62208/46404和helper均不再运行；生产未动。日常DB仍8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543。没有策略发布或新实时质量信号。
+
+待继续：先补成功null-DACL恢复与Git控制面异常收尾验收，重跑新版6任务有效性控制；在不与模型竞争资源时完成全量，再进行新鲜真实单/多对照。达到至少30独立任务前不晋升策略。指针句柄/DACL实现尚不证明强制结束父进程时所有控制面恢复，保持非生产就绪。验收完成后按既有授权提交推送origin/codex/coding-agent-competitive-p0-p2，排除tools/权重/凭据/DB/output及原registry修改，不强推或合并master。
+
+证据文档clawos/benchmarks/STRICT_SANDBOX_TASKBANK_ACCEPTANCE.md；当前10源指纹与未完成状态保存output/strict-taskbank-handoff-20261009/audit.json。以下保留历史。
 
 ## 最新：结构化代码输出与完整契约（2026-10-08）
 

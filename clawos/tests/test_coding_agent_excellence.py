@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import os
 import json
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -204,16 +205,23 @@ class CodingAgentExcellenceTests(unittest.TestCase):
             )
             workspace = Path(task["workspace"])
             workflow = CodingWorkflowService(artifact_root=root / "artifacts")
-            result = workflow.execute(
-                workspace,
-                "fix addition in isolated sandbox",
-                [{
-                    "path": "calc.py", "operation": "replace",
-                    "old_text": "return a - b", "new_text": "return a + b",
-                }],
-                [["python", "-m", "unittest", "test_calc.py"]],
-                confirmed=True,
-            )
+            # This test exercises the actual legacy restricted-token backend.
+            # Installed profiles and strict-mode settings on the host must not
+            # silently select a different backend for this regression.
+            with patch.dict(os.environ, {"CLAWOS_REQUIRE_OS_SANDBOX": "0"}), patch(
+                "services.coding_workflow_service.WindowsAppContainerBoundary.status",
+                return_value={"installed": False},
+            ):
+                result = workflow.execute(
+                    workspace,
+                    "fix addition in isolated sandbox",
+                    [{
+                        "path": "calc.py", "operation": "replace",
+                        "old_text": "return a - b", "new_text": "return a + b",
+                    }],
+                    [["python", "-m", "unittest", "test_calc.py"]],
+                    confirmed=True,
+                )
             self.assertEqual(result["status"], "passed", result)
             sandbox = result["rounds"][0]["tests"][0]["sandbox"]
             if os.name == "nt":
