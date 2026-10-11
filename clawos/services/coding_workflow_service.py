@@ -453,8 +453,12 @@ class CodingWorkflowService:
                     and metadata.get("isolated") is True
                 ):
                     appcontainer = WindowsAppContainerBoundary(
-                        os.environ.get("CLAWOS_APPCONTAINER_PROFILE", "ClawOS.CodingSandbox")
+                        os.environ.get("CLAWOS_APPCONTAINER_PROFILE") or "ClawOS.CodingSandbox"
                     )
+                    if not os.environ.get('CLAWOS_APPCONTAINER_RUNTIME') and not os.environ.get('CLAWOS_APPCONTAINER_PROFILE'):
+                        from .sandbox_runtime import SandboxRuntime
+                        managed = SandboxRuntime().resolve()
+                        if managed is not None: appcontainer = managed
                     appcontainer_status = appcontainer.status()
                     if appcontainer_status.get("installed"):
                         try:

@@ -26,7 +26,7 @@ CORE_FILES = ['autonomous_coding_service.py','coding_execution_context.py','codi
     'coding_contracts.py','coding_workflow_service.py','coding_workspace_service.py',
     'reliable_collaboration.py','collaboration_delivery.py','os_sandbox.py','file_transactions.py','coding_comparison_service.py',
     'coding_structured_output.py', 'windows_appcontainer_boundary.py', 'appcontainer_process.py',
-    'strict_sandbox_acceptance.py']
+    'strict_sandbox_acceptance.py', 'sandbox_runtime.py', 'sandbox_supervisor.py']
 LOADED_WITNESS = {str(Path(__file__).with_name(p)):hashlib.sha256(Path(__file__).with_name(p).read_bytes()).hexdigest()
     for p in CORE_FILES}
 

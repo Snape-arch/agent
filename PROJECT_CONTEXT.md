@@ -1,5 +1,19 @@
 # Project Context
 
+## 最新：默认运行时与调用者退出收尾（2026-10-11）
+
+接续ce14f8a。新增services/sandbox_runtime.py部署CLI、逐文件完整性与中断阶段记录、并发激活锁；未显式配置runtime/profile的CodingWorkflowService默认发现自有stdlib部署，损坏拒绝降级。新增sandbox_supervisor.py宿主监督者，用实际进程句柄/创建时间检测调用者退出，保留Job/Git封存与清理所有权。客体外请求/回执绑定摘要，未知状态隔离；CodingWorkspaceService的删除/回滚/过期清理与请求/执行共享互斥。核心比较见证17个，任务库附加5个；本轮没有新模型验收。
+
+当前原生监督15/15（output/supervision/a3a51ac31144），当前系统矩阵26/26与六任务38次控制/41不同命令SID（taskbank/0f7fbcbc8afe）；实际默认应用入口supervision-default-20261011/3e7f8cf86d2b通过。独立复核44条受保护请求/清理回执、唯一SID及实际profile删除。新增8/8（0.081秒），工作区19/19（10.819秒）；初始7项1失败为空profile环境变量，已修复并保留失败记录。最终隔离全量963/963（1533.946秒），output/regression/74c582129c5d4a4e958dc0a40e84e6d8；CLI追加5项单独计数。
+
+默认部署已实际安装在output/sandbox/deployment，runtime-81432b9a58454494a52d6839b07c14d3/profile ClawOS.Runtime.27c8d69f5c5d474f92f7fa58519c2340，发现profile有意保留；临时实验profile已删除。新加载的服务入口验证通过，生产进程未重启，不声称已有进程热更新。11源码原始字节bundle9c637111e275e9d88b74d73bbfb9c18d96121ee80b7e6f5d8d5d619ab2e26bfb；日常DB仍8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543。
+
+全量启动后补齐隔离检查CLI的摘要不匹配/损坏记录输出及非零退出码；独立5/5（0.053秒），执行核心9见证未变。最终12源码bundle113da87bb70a1ca7ff40b01298af340e407bb316ce89521ade843e9d0e0ee0cf，source-audit-current.json与独立44凭据复核再次通过。全量未包含新CLI5项，须分别计数。
+
+production_sandbox_ready=false。硬终止验收只覆盖调用者退出且监督者存活，整个进程树/监督者被杀、断电自动恢复和自动解除隔离未完成；stdlib Python之外无降级。历史六任务总体失败保留，当前执行器改变使旧模型证据不能复用；下一步新鲜修复/对照其余五任务，扩充至少30独立任务，再验证跨文件多人并行、第二模型、长期并发。没有策略发布或日常DB写入。
+
+证据与操作见clawos/benchmarks/SANDBOX_RUNTIME_SUPERVISION_ACCEPTANCE.md，独立审计在output/supervision-handoff-20261011。沿用指定origin/codex分支提交推送授权；全量结束后12源码与日常DB指纹复核不变，44凭据再次独立通过；准备提交源码/测试/文档，最终状态以Git为准，排除tools/权重/凭据/DB/output及原registry改动。下方均为历史记录。
+
 ## 最新：严格执行验收与真实失败闭环（2026-10-10）
 
 接续f3fbdab。Windows编码执行改为父进程核验LPAC令牌/能力、挂起后入Job、每命令唯一容器与专属撤权删除；私有Python标准库运行时、无网络能力、三管道句柄、1进程/512MiB、超时/输出限额。GitControlSeal封存worktree指针并在普通异常后恢复DACL；原可写Git数据库执行被拒。提案精确锚点进入只读plan与现有最多两次完整计费修复，不猜锚点、不写被拒提案。

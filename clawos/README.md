@@ -9,6 +9,8 @@ A self-evolving personal AI agent operating system based on the observe-plan-exe
 
 ## 快速开始
 
+Windows 编码任务可部署独立的 Python 标准库运行时。从仓库根目录执行 `clawos/.venv/Scripts/python.exe clawos/scripts/sandbox_runtime.py setup --confirmed`，之后用 `status` 核验、`quarantine` 查看未确认收尾的任务。未指定运行时/profile环境变量时，编码服务会自动发现并校验该部署；损坏或未知清理状态拒绝执行。当前仅覆盖 Python 标准库与调用者退出后监督者存活的收尾场景，仍非生产就绪。部署与验收详见 [默认运行时与监督验收](benchmarks/SANDBOX_RUNTIME_SUPERVISION_ACCEPTANCE.md)。
+
 ### 1. 克隆或复制项目
 
 将本目录完整复制到目标机器。

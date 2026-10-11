@@ -68,8 +68,9 @@ print(json.dumps(result))
 
 
 def fingerprint():
-    names = ('appcontainer_process.py', 'windows_appcontainer_boundary.py',
-             'strict_sandbox_acceptance.py', 'coding_workflow_service.py', 'os_sandbox.py')
+    names = ('sandbox_runtime.py', 'sandbox_supervisor.py', 'appcontainer_process.py', 'windows_appcontainer_boundary.py',
+             'strict_sandbox_acceptance.py', 'coding_workflow_service.py', 'os_sandbox.py',
+             'coding_workspace_service.py', 'file_transactions.py')
     return {name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in names}
 
 

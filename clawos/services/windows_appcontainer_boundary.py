@@ -157,6 +157,16 @@ class WindowsAppContainerBoundary:
 
     def run_command(self, command: list[str], workspace: str | Path, *,
                     timeout_seconds: float = 180, confirmed_acl: bool = False) -> dict[str, Any]:
+        if confirmed_acl is not True:
+            raise PermissionError('confirmed=true required for sandbox workspace ACL')
+        if self.runtime_dir is None:
+            raise ValueError('strict sandbox requires a private copied Python runtime')
+        from .sandbox_supervisor import run_supervised
+        return run_supervised(command, Path(workspace), self.runtime_dir, timeout_seconds)
+
+    def _run_owned_command(self, command: list[str], workspace: str | Path, *,
+                    timeout_seconds: float = 180, confirmed_acl: bool = False,
+                    cancelled=None, journal=None) -> dict[str, Any]:
         from .appcontainer_process import launch, safe_tree, validate_python_command, GitControlSeal
         if confirmed_acl is not True:
             raise PermissionError("confirmed=true required for sandbox workspace ACL")
@@ -174,12 +184,18 @@ class WindowsAppContainerBoundary:
             scoped = WindowsAppContainerBoundary('ClawOS.Exec.' + uuid.uuid4().hex, runtime_dir=runtime)
             installed = None
             try:
+                if cancelled is not None and cancelled.is_set(): raise RuntimeError('caller exited before grants')
                 installed = scoped.install(confirmed=True)
                 if not installed.get('created'):
                     raise RuntimeError('refusing to reuse a command profile')
+                if journal: journal(dict(profile=scoped.profile_name,sid=installed['sid'],workspace=str(cwd),runtime=str(runtime),cleaned=False))
                 scoped.grant_runtime(confirmed=True)
                 acl = scoped.grant_workspace(cwd, confirmed=True)
-                result = launch(scoped, command, cwd, runtime, max(.1, min(float(timeout_seconds), 900)))
+                def started(pid):
+                    if journal: journal(dict(profile=scoped.profile_name,sid=installed['sid'],workspace=str(cwd),
+                                             runtime=str(runtime),child_pid=pid,cleaned=False))
+                result = launch(scoped, command, cwd, runtime, max(.1, min(float(timeout_seconds), 900)),
+                                cancelled=cancelled, on_start=started)
                 result['sandbox'].update(workspace_acl=acl, ephemeral_profile=True,
                     git_control_pointer_sealed=sealed.handle is not None)
             finally:
@@ -196,6 +212,8 @@ class WindowsAppContainerBoundary:
                         removed = scoped.uninstall(confirmed=True)
                         if not all(cleanup) or not removed.get('deleted'):
                             raise RuntimeError('command profile or ACL cleanup failed; boundary not accepted')
+                    if journal: journal(dict(profile=scoped.profile_name,workspace=str(cwd),runtime=str(runtime),
+                                             cleaned=sealed.handle is None or sealed.restored))
             result['sandbox']['profile_and_grants_removed'] = True
             return result
 

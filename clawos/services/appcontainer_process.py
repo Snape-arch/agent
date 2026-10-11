@@ -98,7 +98,7 @@ def validate_python_command(command):
         raise ValueError('interpreter isolation flags are owned by the launcher')
 
 
-def launch(boundary, command: list[str], cwd: Path, runtime: Path, timeout: float):
+def launch(boundary, command: list[str], cwd: Path, runtime: Path, timeout: float, *, cancelled=None, on_start=None):
     if os.name != 'nt':
         raise RuntimeError('LPAC requires Windows')
     validate_python_command(command)
@@ -244,6 +244,7 @@ def launch(boundary, command: list[str], cwd: Path, runtime: Path, timeout: floa
         finally:
             boundary._local_free(sid_string)
         # The process remains suspended until all parent-owned checks are complete.
+        if on_start: on_start(pi.pid)
         for handle in (pipes[0][0], pipes[0][1], pipes[1][1], pipes[2][1]):
             k.CloseHandle(handle); handles.remove(handle)
 
@@ -261,12 +262,19 @@ def launch(boundary, command: list[str], cwd: Path, runtime: Path, timeout: floa
         for index, pair in enumerate(pipes[1:]):
             thread = threading.Thread(target=drain, args=(pair[0], index), daemon=True)
             thread.start(); threads.append(thread)
+        if cancelled is not None and cancelled.is_set():
+            raise RuntimeError('caller exited before child resume')
         if k.ResumeThread(pi.thread) == 0xFFFFFFFF:
             raise OSError(c.get_last_error(), 'ResumeThread failed')
-        wait = k.WaitForSingleObject(pi.process, max(1, int(timeout * 1000)))
-        if wait not in (0, 258):
-            raise OSError(c.get_last_error(), 'WaitForSingleObject failed')
-        timed_out = wait == 258
+        deadline, caller_cancelled = time.monotonic() + timeout, False
+        while True:
+            wait = k.WaitForSingleObject(pi.process, 100)
+            if wait not in (0, 258): raise OSError(c.get_last_error(), 'WaitForSingleObject failed')
+            if wait == 0: break
+            if cancelled is not None and cancelled.is_set(): caller_cancelled=True; break
+            if time.monotonic() >= deadline: break
+        timed_out = wait == 258 and not caller_cancelled
+        if caller_cancelled: checked(k.TerminateJobObject(job, 130), 'TerminateJobObject on caller exit')
         if timed_out:
             checked(k.TerminateJobObject(job, 124), 'TerminateJobObject')
         checked(k.WaitForSingleObject(pi.process, 10000) == 0, 'process termination')
@@ -276,10 +284,10 @@ def launch(boundary, command: list[str], cwd: Path, runtime: Path, timeout: floa
             raise RuntimeError('output drain did not finish')
         exit_code = w.DWORD()
         checked(k.GetExitCodeProcess(pi.process, c.byref(exit_code)), 'GetExitCodeProcess')
-        return {'command': command, 'exit_code': 125 if overflow.is_set() else (124 if timed_out else exit_code.value),
+        return {'command': command, 'exit_code': 125 if overflow.is_set() else (130 if caller_cancelled else (124 if timed_out else exit_code.value)),
             'stdout': streams[0].decode('utf-8', errors='replace')[-8000:],
             'stderr': streams[1].decode('utf-8', errors='replace')[-4000:],
-            'timed_out': timed_out, 'output_limit_exceeded': overflow.is_set(), 'output_bytes': count[0],
+            'timed_out': timed_out, 'caller_cancelled': caller_cancelled, 'output_limit_exceeded': overflow.is_set(), 'output_bytes': count[0],
             'duration_ms': round((time.perf_counter() - started) * 1000, 2),
             'sandbox': {'backend': 'windows-lpac-job', 'os_enforced': True, 'parent_token_verified': True,
                 'profile_sid': sid_text, 'network_capabilities': [], 'capabilities': ['registryRead'], 'lpac_attribute_applied': True,

@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from .sandbox_supervisor import cleanup_lease
 
 
 BRANCH_RE = re.compile(r"^codex/[a-z0-9][a-z0-9._/-]{0,80}$")
@@ -289,20 +290,21 @@ class CodingWorkspaceService:
         for candidate in candidates:
             metadata_path = Path(candidate["metadata_path"]).resolve()
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            archive = self._archive_task(metadata, archive_root) if candidate["dirty"] else None
             source = self._repo(str(metadata.get("source_repo") or ""))
             workspace = self._repo(str(metadata.get("workspace") or ""))
-            registered = any(
-                Path(str(item.get("worktree") or "")).resolve() == workspace
-                for item in self.status(source)["worktrees"]
-            )
-            if not registered:
-                continue
-            self._git(source, "worktree", "remove", "--force", str(workspace))
-            shutil.rmtree(metadata_path.parent, ignore_errors=True)
-            removed.append(candidate["id"])
-            if archive:
-                archives.append(archive)
+            with cleanup_lease(workspace):
+                archive = self._archive_task(metadata, archive_root) if candidate["dirty"] else None
+                registered = any(
+                    Path(str(item.get("worktree") or "")).resolve() == workspace
+                    for item in self.status(source)["worktrees"]
+                )
+                if not registered:
+                    continue
+                self._git(source, "worktree", "remove", "--force", str(workspace))
+                shutil.rmtree(metadata_path.parent, ignore_errors=True)
+                removed.append(candidate["id"])
+                if archive:
+                    archives.append(archive)
         return {
             "schema": "clawos.task-workspace-prune.v1",
             "dry_run": False, "candidates": candidates,
@@ -325,56 +327,57 @@ class CodingWorkspaceService:
         workspace = self._repo(str(metadata.get("workspace") or ""))
         if metadata_path != task_root / "workspace.json" or workspace.parent != task_root:
             raise ValueError("workspace metadata path does not match task root")
-        source = self._repo(str(metadata.get("source_repo") or ""))
-        registered = any(
-            Path(str(item.get("worktree") or "")).resolve() == workspace
-            for item in self.status(source)["worktrees"]
-        )
-        if not registered:
-            raise ValueError("task workspace is not a registered worktree")
-        baseline = str(metadata.get("baseline_commit") or "")
-        self._git(workspace, "cat-file", "-e", f"{baseline}^{{commit}}")
-        recovery = task_root / "recovery" / uuid.uuid4().hex
-        recovery.mkdir(parents=True, exist_ok=False)
-        patch = self._git_bytes(workspace, "diff", "--binary", baseline)
-        if patch:
-            (recovery / "tracked.diff").write_bytes(patch)
-        untracked = [
-            item.decode("utf-8", errors="strict")
-            for item in self._git_bytes(
-                workspace, "ls-files", "--others", "--exclude-standard", "-z"
-            ).split(b"\0") if item
-        ]
-        for rel in untracked:
-            source_path = (workspace / rel).resolve()
-            destination = (recovery / "untracked" / rel).resolve()
-            try:
-                source_path.relative_to(workspace)
-                destination.relative_to(recovery / "untracked")
-            except ValueError as exc:
-                raise ValueError(f"recovery path escapes task workspace: {rel}") from exc
-            if source_path.is_symlink():
-                raise ValueError(f"cannot safely recover symbolic link: {rel}")
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_path, destination)
-        recovery_manifest = {
-            "schema": "clawos.task-workspace-recovery.v1",
-            "workspace": str(workspace), "baseline_commit": baseline,
-            "tracked_patch": str(recovery / "tracked.diff") if patch else "",
-            "untracked_files": untracked,
-        }
-        (recovery / "recovery.json").write_text(
-            json.dumps(recovery_manifest, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        self._git(workspace, "reset", "--hard", baseline)
-        self._git(workspace, "clean", "-fd")
-        return {
-            "rolled_back": True, "workspace": str(workspace),
-            "baseline_commit": baseline,
-            "recovery_manifest": str(recovery / "recovery.json"),
-            "recoverable": True, "source_mutated": False,
-        }
+        with cleanup_lease(workspace):
+            source = self._repo(str(metadata.get("source_repo") or ""))
+            registered = any(
+                Path(str(item.get("worktree") or "")).resolve() == workspace
+                for item in self.status(source)["worktrees"]
+            )
+            if not registered:
+                raise ValueError("task workspace is not a registered worktree")
+            baseline = str(metadata.get("baseline_commit") or "")
+            self._git(workspace, "cat-file", "-e", f"{baseline}^{{commit}}")
+            recovery = task_root / "recovery" / uuid.uuid4().hex
+            recovery.mkdir(parents=True, exist_ok=False)
+            patch = self._git_bytes(workspace, "diff", "--binary", baseline)
+            if patch:
+                (recovery / "tracked.diff").write_bytes(patch)
+            untracked = [
+                item.decode("utf-8", errors="strict")
+                for item in self._git_bytes(
+                    workspace, "ls-files", "--others", "--exclude-standard", "-z"
+                ).split(b"\0") if item
+            ]
+            for rel in untracked:
+                source_path = (workspace / rel).resolve()
+                destination = (recovery / "untracked" / rel).resolve()
+                try:
+                    source_path.relative_to(workspace)
+                    destination.relative_to(recovery / "untracked")
+                except ValueError as exc:
+                    raise ValueError(f"recovery path escapes task workspace: {rel}") from exc
+                if source_path.is_symlink():
+                    raise ValueError(f"cannot safely recover symbolic link: {rel}")
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_path, destination)
+            recovery_manifest = {
+                "schema": "clawos.task-workspace-recovery.v1",
+                "workspace": str(workspace), "baseline_commit": baseline,
+                "tracked_patch": str(recovery / "tracked.diff") if patch else "",
+                "untracked_files": untracked,
+            }
+            (recovery / "recovery.json").write_text(
+                json.dumps(recovery_manifest, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            self._git(workspace, "reset", "--hard", baseline)
+            self._git(workspace, "clean", "-fd")
+            return {
+                "rolled_back": True, "workspace": str(workspace),
+                "baseline_commit": baseline,
+                "recovery_manifest": str(recovery / "recovery.json"),
+                "recoverable": True, "source_mutated": False,
+            }
 
     def _archive_task(
         self, metadata: dict[str, Any], archive_root: Path,
@@ -504,21 +507,17 @@ class CodingWorkspaceService:
             raise PermissionError("confirmed=true is required to remove a worktree")
         repo = self._repo(repo_path)
         target = Path(workspace_path).expanduser().resolve()
-        worktrees = self.status(repo)["worktrees"]
-        registered = next(
-            (
-                item for item in worktrees
-                if Path(str(item.get("worktree") or "")).resolve() == target
-            ),
-            None,
-        )
-        if not registered:
-            raise ValueError("workspace is not a registered worktree")
-        target_repo = self._repo(target)
-        dirty = self._git(target_repo, "status", "--porcelain").strip()
-        if dirty:
-            raise ValueError("refusing to remove a dirty worktree")
-        self._git(repo, "worktree", "remove", str(target))
+        with cleanup_lease(target):
+            worktrees = self.status(repo)["worktrees"]
+            registered = next(
+                (item for item in worktrees
+                 if Path(str(item.get("worktree") or "")).resolve() == target), None,
+            )
+            if not registered: raise ValueError("workspace is not a registered worktree")
+            target_repo = self._repo(target)
+            dirty = self._git(target_repo, "status", "--porcelain").strip()
+            if dirty: raise ValueError("refusing to remove a dirty worktree")
+            self._git(repo, "worktree", "remove", str(target))
         return {
             "removed": True,
             "workspace": str(target),
