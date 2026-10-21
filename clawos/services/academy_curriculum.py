@@ -145,6 +145,10 @@ PROJECTS = [
 ]
 
 
+from services.academy_curriculum_extension import extend
+extend(lesson, LESSONS, RESOURCES, TRACKS, PAPERS)
+
+
 def track_nodes(track):
     by_id = {row["id"]: row for row in LESSONS}
     selected = set()

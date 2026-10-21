@@ -1880,6 +1880,9 @@ NO_CACHE_STATIC_PATHS = {
     "/academy/code",
     "/academy/notes",
     "/academy/materials",
+    "/academy/lab",
+    "/assets/academy-lab.js",
+    "/assets/academy-lab.css",
     "/academy/ingest",
     "/academy/quiz",
     "/console",
@@ -5203,6 +5206,17 @@ async def _academy_material_model(messages, tools):
 
 from services.academy_material_api import materials_router
 app.include_router(materials_router(_academy_materials, _academy_material_model))
+from services.academy_learning_lab import AcademyLearningLab
+from services.academy_lab_api import lab_router
+
+def _academy_lab():
+    return AcademyLearningLab(_academy_materials())
+
+app.include_router(lab_router(_academy_lab, _academy_material_model))
+
+@app.get('/academy/lab')
+async def academy_lab_page():
+    return FileResponse(STATIC_DIR / 'academy-lab.html')
 
 from services.academy_documents import AcademyDocuments, documents_router
 from starlette.concurrency import run_in_threadpool
@@ -5232,10 +5246,10 @@ app.include_router(meeting_router(lambda: _workbench_service('meeting'), _collab
 @app.middleware('http')
 async def workbench_access(request: Request, call_next):
     path = request.url.path
-    if path.startswith(('/api/','/v1/')) and path not in ('/api/collaboration/join','/api/feishu/events'):
+    if path.startswith(('/api/','/v1/')) and path not in ('/api/collaboration/join','/api/academy/learning/lab/join','/api/academy/learning/lab/logout','/api/feishu/events'):
         try:
             uid = 'local-user' if direct_owner(request) else await run_in_threadpool(lambda: _collaboration().identity(request)['id'])
-            if uid != 'local-user' and not path.startswith(('/api/collaboration/','/api/academy/learning/documents','/api/evolution-review/')):
+            if uid != 'local-user' and not path.startswith(('/api/collaboration/','/api/academy/learning/documents','/api/evolution-review/','/api/academy/learning/lab/')):
                 raise HTTPException(403, '协作会话仅允许访问授权文档')
         except HTTPException as e:
             return JSONResponse({'detail':e.detail},status_code=e.status_code)

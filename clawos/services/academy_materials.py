@@ -154,6 +154,22 @@ class AcademyMaterials:
         return chapters
 
     def chapter(self, mid, chapter_id, learner='local-user'):
+        if isinstance(chapter_id,str) and chapter_id.startswith('book:'):
+            doc=self.document(mid,learner)
+            from services.textbook_learning_graph import book_index
+            with self.store._conn() as conn:
+                exists=conn.execute("SELECT 1 FROM sqlite_master WHERE name='academy_book_indexes'").fetchone()
+                row=conn.execute('SELECT * FROM academy_book_indexes WHERE material_id=?',(mid,)).fetchone() if exists else None
+            valid=bool(row and row['revision']==doc['payload']['revision'])
+            index=json.loads(row['payload']) if valid else book_index(doc)
+            chapter=next((c for c in index['chapters'] if c['id']==chapter_id[5:]),None)
+            if not chapter or chapter['review_required']:raise ValueError('整书章节不存在或原文待复核')
+            passages={p['id']:p for p in doc['payload']['passages']}
+            chunks=[passages[s['citation']]['text'][s['start']:s['end']] for s in chapter['sources']]
+            if sum(map(len,chunks))>40000:raise ValueError('教学题组原文超过40000字符，请先在整书目录中细化章节')
+            first=chapter['sources'][0]
+            return dict(chapter,id=chapter_id,text='\n'.join(chunks),source_texts=chunks,revision=doc['payload']['revision'],
+                        citation=first['citation'],source_url=first['source_url'],page=first.get('page'),book_index_version=row['version'] if valid else 0)
         state = self.state(mid,learner)
         chapter = next((c for c in state['chapters'] if c['id']==chapter_id), None)
         if not chapter or chapter['review_required']:

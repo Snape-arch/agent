@@ -27,9 +27,15 @@ class AcademyTeachingQuality:
             r=c.execute("SELECT id,payload FROM academy_material_events WHERE material_id=? AND kind='teacher_calibration_bank' ORDER BY id DESC LIMIT 1",(mid,)).fetchone()
         if not r:return None
         value=json.loads(r['payload'])
+        if value.get('book_index_version') is not None:
+            with self.store._conn() as c:
+                exists=c.execute("SELECT 1 FROM sqlite_master WHERE name='academy_book_indexes'").fetchone()
+                row=c.execute('SELECT version,revision FROM academy_book_indexes WHERE material_id=?',(mid,)).fetchone() if exists else None
+            current=row['version'] if row and row['revision']==doc['payload'].get('revision') else 0
+            if value['book_index_version']!=current:return None
         return dict(id=r['id'],**value) if value['revision']==doc['payload'].get('revision') else None
 
-    def import_bank(self,mid,value,learner='local-user'):
+    def import_bank(self,mid,value,learner='local-user',conn=None):
         doc=self.m.document(mid,learner)
         if not isinstance(value,dict) or len(json.dumps(value,ensure_ascii=False).encode())>1024*1024:
             raise ValueError('教师标注需为小于 1 MB 的 JSON 对象')
@@ -42,16 +48,18 @@ class AcademyTeachingQuality:
         except (TypeError,ValueError):raise ValueError('人工复核日期无效或在未来')
         if not isinstance(rows,list) or not 9<=len(rows)<=60:
             raise ValueError('需至少 3 个量尺示例和 6 个独立验收样本，最多 60 个')
-        cases=[];ids=set()
+        cases=[];ids=set();index_versions=set()
         for row in rows:
             if not isinstance(row,dict) or row.get('split') not in ('anchor','holdout'):raise ValueError('请标明 anchor 或 holdout')
             cid=row.get('id')
             if not isinstance(cid,str) or not 1<=len(cid)<=80 or cid in ids:raise ValueError('样本标识无效或重复')
             ids.add(cid)
             chapter=self.m.chapter(mid,row.get('chapter'),learner)
+            if 'book_index_version' in chapter:index_versions.add(chapter['book_index_version'])
             questions=row.get('questions');answers=row.get('answers');scores=row.get('scores')
             if not isinstance(questions,list) or len(questions)!=3 or any(not isinstance(q,dict) or q.get('dimension')!=d or not isinstance(q.get('criterion'),str) or len(q['criterion'])<4 or not isinstance(q.get('question'),str) or len(q['question'])<4 or not isinstance(q.get('quote'),str) or len(q['quote'])<4 or q['quote'] not in chapter['text'] for q,d in zip(questions,DIMS)):
                 raise ValueError('标注题目需完整且逐题定位原文')
+            if any(not any(q['quote'] in block for block in chapter.get('source_texts',[chapter['text']])) for q in questions):raise ValueError('题目引用不能跨拼接片段伪造连续原句')
             if not isinstance(answers,list) or len(answers)!=3 or any(not isinstance(a,str) or not 4<=len(a)<=4000 for a in answers):raise ValueError('样本需包含三个实际回答')
             if not isinstance(scores,dict) or set(scores)!=set(DIMS) or any(type(s) is not int or s not in (0,1,2) for s in scores.values()):raise ValueError('教师评分需要三个 0/1/2 整数')
             reason=row.get('reason')
@@ -65,8 +73,13 @@ class AcademyTeachingQuality:
         # Equal answers in training and holdout would make the acceptance result misleading.
         if {digest(r['answers']) for r in anchors}&{digest(r['answers']) for r in holdout}:
             raise ValueError('量尺示例与独立验收回答不可重复')
-        return self.m.event(mid,'teacher_calibration_bank',dict(teacher=name,reviewed_at=date,revision=doc['payload']['revision'],rubric=RUBRIC,cases=cases,
-            boundary='署名及人工标注由提交者声明，本地单用户模式不能认证教师身份。'))
+        data=dict(teacher=name,reviewed_at=date,revision=doc['payload']['revision'],rubric=RUBRIC,cases=cases,
+            boundary='署名及人工标注由提交者声明，本地单用户模式不能认证教师身份。')
+        if len(index_versions)>1:raise ValueError('目录版本在量尺复核期间发生变化')
+        if index_versions:data['book_index_version']=next(iter(index_versions))
+        if conn is None:return self.m.event(mid,'teacher_calibration_bank',data)
+        cursor=conn.execute('INSERT INTO academy_material_events(material_id,kind,payload) VALUES (?,?,?)',(mid,'teacher_calibration_bank',json.dumps(data,ensure_ascii=False)))
+        return dict(id=cursor.lastrowid,kind='teacher_calibration_bank',data=data)
 
     def anchors(self,mid,learner='local-user'):
         bank=self.bank(mid,learner)
@@ -79,7 +92,7 @@ class AcademyTeachingQuality:
         cases=[r for r in bank['cases'] if r['split']=='holdout']
         return bank,[(r,critic,review_messages(self.m.chapter(mid,r['chapter'],learner)['text'],r['questions'],r['answers'],critic,self.anchors(mid,learner))) for r in cases for critic in (False,True)]
 
-    def save_calibration(self,mid,bank_id,predictions,learner='local-user'):
+    def save_calibration(self,mid,bank_id,predictions,learner='local-user',conn=None):
         bank=self.bank(mid,learner)
         if not bank or bank['id']!=bank_id:raise ValueError('校准样本已变化，结果未保存')
         tests=[r for r in bank['cases'] if r['split']=='holdout']
@@ -95,16 +108,20 @@ class AcademyTeachingQuality:
                     if type(s) is not int or s not in (0,1,2):raise ValueError('校准预测评分无效')
                     if any(not isinstance(row.get(k),str) or (row[k] and row[k] not in src) or (s>0 and len(row[k])<3) for k,src in [('student_quote',case['answers'][j]),('source_quote',chapter['text'])]):
                         raise ValueError('校准预测引用无效')
+                    if row['source_quote'] and not any(row['source_quote'] in block for block in chapter.get('source_texts',[chapter['text']])):raise ValueError('校准引用不可跨拼接片段伪造连续原句')
                     exact+=s==expected;errors+=abs(s-expected);matrix[expected][s]+=1
                 predicted_pass=all(scores[d]['score']==2 for d in DIMS)
                 false_passes+=predicted_pass and any(case['scores'][d]!=2 for d in DIMS)
                 comparisons.append(dict(case_id=case['id'],role='reviewer' if role else 'teacher',expected=case['scores'],actual={d:scores[d]['score'] for d in DIMS}))
         n=len(predictions)*3;accuracy=exact/n;mae=errors/n
         passed=accuracy>=.85 and mae<=.25 and false_passes==0
-        return self.m.event(mid,'teacher_calibration_result',dict(bank_id=bank_id,revision=bank['revision'],profile=self.profile,rubric=RUBRIC,
+        data=dict(bank_id=bank_id,revision=bank['revision'],profile=self.profile,rubric=RUBRIC,
             status='passed' if passed else 'needs_calibration',exact_agreement=round(accuracy,4),mean_absolute_error=round(mae,4),false_passes=false_passes,
             confusion_matrix=matrix,predictions=comparisons,dimensions=n,holdout_cases=len(tests),
-            boundary='只代表当前路由、量尺及本材料的独立样本；不能外推到其他学科或模型。'))
+            boundary='只代表当前路由、量尺及本材料的独立样本；不能外推到其他学科或模型。')
+        if conn is None:return self.m.event(mid,'teacher_calibration_result',data)
+        cursor=conn.execute('INSERT INTO academy_material_events(material_id,kind,payload) VALUES (?,?,?)',(mid,'teacher_calibration_result',json.dumps(data,ensure_ascii=False)))
+        return dict(id=cursor.lastrowid,kind='teacher_calibration_result',data=data)
 
     def status(self,mid,learner='local-user'):
         bank=self.bank(mid,learner)

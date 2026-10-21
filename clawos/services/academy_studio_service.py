@@ -19,8 +19,10 @@ class AcademyStudioService:
             self.course_id = conn.execute("SELECT id FROM learning_courses WHERE course_key=?", (COURSE_KEY,)).fetchone()["id"]
             for index, row in enumerate(LESSONS):
                 source = next(r["url"] for r in RESOURCES if r["id"] == row["resource"])
-                conn.execute("""INSERT OR IGNORE INTO learning_course_topics
-                    (course_id,topic_key,title,prerequisite_keys,source_ref,position) VALUES (?,?,?,?,?,?)""",
+                conn.execute("""INSERT INTO learning_course_topics
+                    (course_id,topic_key,title,prerequisite_keys,source_ref,position) VALUES (?,?,?,?,?,?)
+                    ON CONFLICT(course_id,topic_key) DO UPDATE SET title=excluded.title,
+                    prerequisite_keys=excluded.prerequisite_keys,source_ref=excluded.source_ref,position=excluded.position""",
                     (self.course_id, row["id"], row["title"], json.dumps(row["prerequisites"]), source, index))
                 prompts = [
                     f"围绕「{row['title']}」，解释：{row['why']} 请用一个具体例子说明方法与失效条件。",
@@ -30,6 +32,15 @@ class AcademyStudioService:
                     conn.execute("""INSERT OR IGNORE INTO learning_questions
                         (course_id,topic_key,prompt,expected_concepts,cognitive_level,source_ref)
                         VALUES (?,?,?,?,'apply',?)""", (self.course_id, row["id"], prompt, json.dumps(row["concepts"], ensure_ascii=False), source))
+            # Existing enrollments receive new curriculum items without resetting evidence.
+            enrollments=conn.execute('SELECT goal_id FROM learning_enrollments WHERE course_id=?',(self.course_id,)).fetchall()
+            for enrollment in enrollments:
+                goal=enrollment['goal_id']
+                known={r['topic_key'] for r in conn.execute('SELECT m.topic_key FROM learning_item_models m JOIN learning_items i ON i.id=m.item_id WHERE i.goal_id=?',(goal,))}
+                for row in LESSONS:
+                    if row['id'] in known:continue
+                    cursor=conn.execute("INSERT INTO learning_items(goal_id,topic,next_review_at) VALUES (?,?,datetime('now'))",(goal,row['title']))
+                    conn.execute('INSERT INTO learning_item_models(item_id,topic_key,algorithm_version) VALUES (?,?,?)',(cursor.lastrowid,row['id'],self.learning.ALGORITHM_VERSION))
 
     def state(self, learner_id="local-user"):
         with self.store._conn() as conn:
@@ -44,7 +55,7 @@ class AcademyStudioService:
                     lessons=LESSONS, papers=PAPERS, resources=RESOURCES, projects=PROJECTS,
                     tracks=[dict(t, nodes=track_nodes(t)) for t in TRACKS], records=records, materials=materials,
                     active=active, dashboard=dashboard if active else None,
-                    active_course=dashboard["course"]["title"], checked_at="2026-09-10")
+                    active_course=dashboard["course"]["title"], checked_at="2026-10-11")
 
     def save(self, key, payload, learner_id="local-user"):
         if not isinstance(payload, dict):

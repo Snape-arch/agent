@@ -85,6 +85,11 @@ class AcademyStudioTests(unittest.TestCase):
         for key in ["rag", "missing"]:
             with self.assertRaisesRegex(ValueError, "unlocked"):
                 self.learning.next_quiz(topic_key=key)
+        with self.assertRaisesRegex(ValueError,'unlocked'):
+            self.learning.next_quiz(topic_key='python')
+        self.assertEqual(self.learning.next_quiz(topic_key='computing')['question']['topic_key'],'computing')
+        # Synthetic prerequisite evidence only, to isolate the existing quiz rotation contract.
+        self.seed_prerequisite_fixture(['computing','logic'])
         quiz = self.learning.next_quiz(topic_key="python")
         qid = quiz["question"]["id"]
         self.assertEqual(quiz["question"]["topic_key"], "python")
@@ -113,11 +118,33 @@ class AcademyStudioTests(unittest.TestCase):
                 await server.api_academy_studio_save("paper:attention", request({"record": {"method": "注意力与位置"}}))
                 state = json.loads((await server.api_academy_studio()).body)
                 self.assertEqual(state["records"]["paper:attention"]["method"], "注意力与位置")
+                self.seed_prerequisite_fixture(['numeracy'])
                 quiz = json.loads((await server.api_academy_learning_quiz(topic_key="linear")).body)
                 self.assertEqual(quiz["question"]["topic_key"], "linear")
                 for handler in [server.academy_page, server.academy_path_page]:
                     self.assertEqual(Path((await handler()).path).name, "academy-studio.html")
         asyncio.run(exercise())
+
+    def seed_prerequisite_fixture(self,keys):
+        with self.store._conn() as c:
+            for key in keys:
+                c.execute('UPDATE learning_item_models SET p_known=.99 WHERE topic_key=?',(key,))
+                c.execute('UPDATE learning_items SET evidence_count=2 WHERE id IN (SELECT item_id FROM learning_item_models WHERE topic_key=?)',(key,))
+
+    def test_existing_enrollment_gets_new_foundations_without_reset(self):
+        self.studio.start('builder')
+        self.seed_prerequisite_fixture(['statistics'])
+        before=self.learning.dashboard()['enrollment']
+        with self.store._conn() as c:
+            ids=[r['item_id'] for r in c.execute("SELECT item_id FROM learning_item_models WHERE topic_key='computing'")]
+            for item in ids:
+                c.execute('DELETE FROM learning_item_models WHERE item_id=?',(item,))
+                c.execute('DELETE FROM learning_items WHERE id=?',(item,))
+        AcademyStudioService(self.learning)
+        after=self.learning.dashboard()
+        self.assertEqual(before,after['enrollment'])
+        self.assertTrue(next(t for t in after['topics'] if t['topic_key']=='statistics')['mastered'])
+        self.assertEqual(next(t for t in after['topics'] if t['topic_key']=='computing')['evidence_count'],0)
 
 
 if __name__ == "__main__":
