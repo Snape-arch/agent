@@ -23,13 +23,45 @@ def fixture(folder, same_file=False):
     repo = folder / "source"
     repo.mkdir()
     git(repo, "init")
+    # Follow-up commits must work on a clean CI host without a global identity.
+    git(repo, "config", "user.name", "Fixture")
+    git(repo, "config", "user.email", "fixture@local")
     (repo / ".gitignore").write_text("__pycache__/\n.clawos-sandbox/\n", encoding="utf-8")
     (repo / "a.py").write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
     (repo / "b.py").write_text("def mul(a, b):\n    return a + b\n", encoding="utf-8")
     (repo / "check.py").write_text("from a import add\nfrom b import mul\nassert add(3, 2) == 5\nassert mul(3, 2) == 6\n", encoding="utf-8")
     git(repo, "add", ".")
-    git(repo, "-c", "user.name=Fixture", "-c", "user.email=fixture@local", "commit", "-m", "fixture")
+    git(repo, "commit", "-m", "fixture")
     return repo
+
+
+class FixtureIsolationTests(unittest.TestCase):
+    def test_git_diff_retains_crlf_for_exact_index_replay(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repo=fixture(Path(folder))
+            git(repo,'config','core.autocrlf','false')
+            sample=repo/'a.py';sample.write_bytes(b'value=1\r\n')
+            git(repo,'add','.');git(repo,'commit','-m','CRLF baseline')
+            sample.write_bytes(b'value=2\r\n')
+            # git() trims trailing whitespace for most fixture calls; use the
+            # production transport directly for an exact patch byte stream.
+            diff=ReliableCollaborationService.git(repo,'diff','--binary','HEAD').stdout
+            self.assertIn('-value=1\r\n',diff)
+            git(repo,'checkout','--','a.py')
+            result=subprocess.run(['git','apply','--index','-'],cwd=repo,input=diff.encode('utf-8'),capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr.decode())
+            self.assertEqual(sample.read_bytes(),b'value=2\r\n')
+
+    def test_followup_commit_without_global_identity(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);config=root/'empty-gitconfig';config.write_text('')
+            with patch.dict(os.environ, {'GIT_CONFIG_GLOBAL': str(config), 'GIT_CONFIG_NOSYSTEM': '1'}):
+                for name in ('GIT_AUTHOR_NAME','GIT_AUTHOR_EMAIL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL'):
+                    os.environ.pop(name, None)
+                repo=fixture(root)
+                (repo/'a.py').write_text('value=1\n')
+                git(repo,'add','a.py');git(repo,'commit','-m','follow-up')
+                self.assertEqual(git(repo,'log','-1','--format=%an <%ae>'), 'Fixture <fixture@local>')
 
 
 def plan():

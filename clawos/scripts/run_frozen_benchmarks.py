@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 import time
+import subprocess
 from pathlib import Path
 
 
@@ -45,6 +46,20 @@ def _write_fixtures(fixtures: list[dict], variables: dict[str, str]) -> None:
             path.write_bytes(bytes.fromhex(str(fixture["bytes_hex"])))
         else:
             path.write_text(str(fixture.get("content", "")), encoding="utf-8")
+
+
+def _git_fixture(root: Path) -> Path:
+    """Git cases own their pending change; never depend on the user's dirt."""
+    root.mkdir()
+    def git(*args):
+        subprocess.run(['git', '-c', 'core.hooksPath='+os.devnull, '-c', 'commit.gpgsign=false',
+                        '-c', 'user.name=Frozen Fixture', '-c', 'user.email=fixture@local', *args],
+                       cwd=root, check=True, capture_output=True, timeout=20)
+    git('init', '-q')
+    sample=root/'sample.txt';sample.write_text('baseline\n', encoding='utf-8')
+    git('add', 'sample.txt');git('commit', '-qm', 'Owned benchmark baseline')
+    sample.write_text('pending benchmark change\n', encoding='utf-8')
+    return root
 
 
 def _run_tool(
@@ -146,6 +161,8 @@ def main() -> int:
         "repo_root": str(REPO_ROOT),
         "clawos_root": str(ROOT),
     }
+    if '${git_repo}' in json.dumps(suite['cases']):
+        variables['git_repo'] = str(_git_fixture(temp_path/'git-fixture'))
     old_memory_db = os.environ.get("CLAWOS_MEMORY_DB")
     os.environ["CLAWOS_MEMORY_DB"] = db_path
 

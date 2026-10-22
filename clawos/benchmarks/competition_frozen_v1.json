@@ -219,7 +219,7 @@
       "tool": "git_workspace",
       "args": {
         "action": "snapshot",
-        "path": "${repo_root}"
+        "path": "${git_repo}"
       },
       "expected": {
         "ok": true,
@@ -235,7 +235,7 @@
       "tool": "git_workspace",
       "args": {
         "action": "commit_plan",
-        "path": "${repo_root}",
+        "path": "${git_repo}",
         "message": "Frozen benchmark dry run"
       },
       "expected": {
@@ -253,7 +253,7 @@
       "tool": "git_workspace",
       "args": {
         "action": "request_commit",
-        "path": "${repo_root}",
+        "path": "${git_repo}",
         "message": "Frozen benchmark change request",
         "created_by": "frozen-runner"
       },

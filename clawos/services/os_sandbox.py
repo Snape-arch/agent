@@ -496,7 +496,8 @@ class WindowsRestrictedTokenSandbox:
             environment=environment,
         )
         if not report_path.is_file():
-            raise RuntimeError("restricted command did not produce a result")
+            raise RuntimeError("restricted command did not produce a result; bootstrap exit="
+                               + str(process.get('exit_code')))
         payload = json.loads(report_path.read_text(encoding="utf-8"))
         report_path.unlink(missing_ok=True)
         try:
@@ -665,7 +666,9 @@ class WindowsRestrictedTokenSandbox:
                 getattr(sys, "_base_executable", "") or sys.executable
             )
             command = ctypes.create_unicode_buffer(
-                subprocess.list2cmdline([interpreter, "-c", script])
+                # The host bootstrap only needs stdlib. User site hooks and
+                # inherited Python settings must not run under the low token.
+                subprocess.list2cmdline([interpreter, "-I", "-S", "-B", "-c", script])
             )
             child_environment = {
                 "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
@@ -685,7 +688,7 @@ class WindowsRestrictedTokenSandbox:
             startup.cb = ctypes.sizeof(startup)
             created = advapi.CreateProcessAsUserW(
                 restricted, None, command, None, None, False,
-                self.CREATE_UNICODE_ENVIRONMENT, environment_buffer,
+                self.CREATE_UNICODE_ENVIRONMENT | 0x08000000, environment_buffer,
                 str(cwd), ctypes.byref(startup), ctypes.byref(process_info),
             )
             backend = "CreateProcessAsUserW"
@@ -693,7 +696,7 @@ class WindowsRestrictedTokenSandbox:
                 create_with_token = getattr(advapi, "CreateProcessWithTokenW")
                 created = create_with_token(
                     restricted, 0, None, command,
-                    self.CREATE_UNICODE_ENVIRONMENT, environment_buffer,
+                    self.CREATE_UNICODE_ENVIRONMENT | 0x08000000, environment_buffer,
                     str(cwd), ctypes.byref(startup), ctypes.byref(process_info),
                 )
                 backend = "CreateProcessWithTokenW"

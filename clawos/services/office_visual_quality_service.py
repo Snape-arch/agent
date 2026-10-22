@@ -191,7 +191,29 @@ class OfficeVisualQualityService:
         explicit = Path(os.environ.get("CLAWOS_POPPLER_BIN", "")) / "pdftoppm.exe" if os.environ.get("CLAWOS_POPPLER_BIN") else None
         executable = str(explicit) if explicit and explicit.is_file() else (shutil.which("pdftoppm.exe") or shutil.which("pdftoppm"))
         if not executable:
-            return {"available": False, "engine": "", "pages": 0, "images": []}
+            # PyMuPDF is a declared dependency; a clean host need not have a
+            # separately installed Poppler executable to render a real PDF.
+            try:
+                import fitz
+            except ImportError:
+                return {"available": False, "engine": "", "pages": 0, "images": []}
+            root = Path(tempfile.mkdtemp(prefix="clawos-pdf-render-"))
+            images = []
+            try:
+                with fitz.open(path) as document:
+                    if len(document) > 20:
+                        raise ValueError('PDFs over 20 pages require Poppler for full visual audit')
+                    for index, page in enumerate(document):
+                        width, height = page.rect.width, page.rect.height
+                        if width <= 0 or height <= 0 or width * height > 4000000:
+                            raise ValueError('PDF page geometry exceeds the preview limit')
+                        image = root / f"page-{index + 1:06d}.png"
+                        scale = min(2, 1800 / max(width, height))
+                        page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False).save(image)
+                        images.append(str(image))
+                return {"available": bool(images), "engine": "pymupdf", "pages": len(images), "images": images, "pdf": str(path)}
+            except Exception as exc:
+                return {"available": False, "engine": "pymupdf", "pages": 0, "images": [], "stderr": str(exc)[-1000:]}
         root = Path(tempfile.mkdtemp(prefix="clawos-pdf-render-")); prefix = root / "page"
         result = subprocess.run([executable, "-png", "-r", "144", str(path), str(prefix)], capture_output=True, text=True, timeout=120)
         images = sorted(str(item) for item in root.glob("page-*.png"))

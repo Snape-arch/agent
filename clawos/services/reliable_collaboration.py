@@ -89,8 +89,12 @@ class ReliableCollaborationService:
     def git(repo, *args, check=True):
         result = subprocess.run(["git", "-c", "core.hooksPath=" + os.devnull,
                                 "-c", "commit.gpgsign=false", "-c", "rerere.enabled=false", *args], cwd=repo,
-                                capture_output=True, text=True, encoding="utf-8",
-                                errors="replace", timeout=60)
+                                capture_output=True, timeout=60)
+        # Text-mode subprocess decoding changes CRLF inside Git patch hunks.
+        # Preserve the exact line endings so --index replay works with either
+        # core.autocrlf setting, including a pristine Windows CI host.
+        result.stdout = result.stdout.decode('utf-8', errors='replace')
+        result.stderr = result.stderr.decode('utf-8', errors='replace')
         if check and result.returncode:
             raise RuntimeError((result.stderr or result.stdout)[-2000:])
         return result

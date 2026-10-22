@@ -1,14 +1,32 @@
 import tempfile
 import unittest
 import importlib.util
+import os
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
+from unittest.mock import patch
 
 from services.office_productivity_service import OfficeProductivityService
 
 
 class OfficeProductivityServiceTests(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec('fitz'), 'PyMuPDF unavailable')
+    def test_fallback_render_refuses_unbounded_page_count(self):
+        import fitz
+        from services.office_visual_quality_service import OfficeVisualQualityService
+        with tempfile.TemporaryDirectory() as folder:
+            source=Path(folder)/'large.pdf'
+            with fitz.open() as document:
+                for _ in range(21): document.new_page()
+                document.save(source)
+            with patch('services.office_visual_quality_service.shutil.which', return_value=None), \
+                 patch.dict(os.environ, {'CLAWOS_POPPLER_BIN': ''}):
+                report=OfficeVisualQualityService._render_pdf(source)
+            self.assertFalse(report['available'])
+            self.assertEqual(report['pages'],0)
+            self.assertIn('20 pages',report['stderr'])
+
     def test_create_and_reopen_professional_formats(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -98,6 +116,14 @@ class OfficeProductivityServiceTests(unittest.TestCase):
             pdf_quality = service.quality_audit(pdf["path"], strict_visual=True)
             self.assertEqual(pdf_quality["quality_gate"], "pass", pdf_quality)
             self.assertGreaterEqual(pdf_quality["render"]["pages"], 1)
+
+            with patch('services.office_visual_quality_service.shutil.which', return_value=None), \
+                 patch.dict(os.environ, {'CLAWOS_POPPLER_BIN': ''}):
+                fallback = service.quality_audit(pdf['path'], strict_visual=True)
+            self.assertEqual(fallback['quality_gate'], 'pass', fallback)
+            self.assertEqual(fallback['render']['engine'], 'pymupdf')
+            for image in fallback['render']['images']:
+                self.assertTrue(Path(image).read_bytes().startswith(b'\x89PNG\r\n\x1a\n'))
 
             rows = [
                 {"region": "East", "revenue": 120.0, "cost": 70.0},

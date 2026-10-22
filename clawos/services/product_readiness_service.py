@@ -184,7 +184,10 @@ class ProductReadinessService:
         package_value = self._json(package)
         return {
             "hosted_ci_contract": bool(
-                "unittest discover" in workflow_text
+                "run_regression.py" in workflow_text
+                and "--shard-count 4" in workflow_text
+                and "needs: test-shards" in workflow_text
+                and "fail-fast: false" in workflow_text
                 and "node --check" in workflow_text
                 and "requirements-test.txt" in workflow_text
             ),
