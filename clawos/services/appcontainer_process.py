@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ctypes as c
+import hashlib
 from ctypes import wintypes as w
 import os
 from pathlib import Path
@@ -11,6 +12,13 @@ import threading
 import time
 
 from .os_sandbox import WindowsJobSandbox
+
+
+def dacl_policy(sddl):
+    # Windows can set AUTO_INHERITED on restoration. Preserve exact ACEs and
+    # protection/null-ACL semantics; only ignore these OS-maintained flags.
+    head,separator,aces=sddl.partition('(')
+    return head.replace('AI','').replace('AR','')+separator+aces
 
 
 class GitControlSeal:
@@ -60,6 +68,57 @@ class GitControlSeal:
             code = self.advapi.SetSecurityInfo(self.handle,1,4 | self.protection,None,None,self.dacl,None)
             if code: raise OSError(code,'Git pointer ACL restore failed')
             self.restored = True
+
+    def snapshot(self, path):
+        """Host journal written before granting a fresh command SID any access."""
+        if not self.handle:
+            return {'exists': False}
+        convert = self.advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW
+        convert.argtypes = [c.c_void_p,w.DWORD,w.DWORD,c.POINTER(w.LPWSTR),c.POINTER(w.DWORD)]
+        convert.restype = w.BOOL
+        value = w.LPWSTR()
+        if not convert(self.descriptor,1,4,c.byref(value),None):
+            raise OSError(c.get_last_error(),'Git DACL serialization failed')
+        try:
+            info = path.stat()
+            return dict(exists=True,device=info.st_dev,inode=info.st_ino,
+                        sha256=hashlib.sha256(path.read_bytes()).hexdigest(),sddl=value.value)
+        finally:self.kernel.LocalFree(c.cast(value,c.c_void_p))
+
+    @classmethod
+    def restore_snapshot(cls, path, saved):
+        if saved == {'exists': False}:
+            if path.exists():raise ValueError('Git pointer appeared after journal snapshot')
+            return
+        with cls(path) as sealed:
+            current = sealed.snapshot(path)
+            if not current.get('exists') or any(current.get(k)!=saved.get(k) for k in ('device','inode','sha256')):
+                raise ValueError('Git pointer identity or bytes changed; quarantine remains')
+            convert = sealed.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW
+            convert.argtypes = [w.LPCWSTR,w.DWORD,c.POINTER(c.c_void_p),c.POINTER(w.DWORD)]
+            convert.restype = w.BOOL
+            descriptor,dacl = c.c_void_p(),c.c_void_p()
+            if not convert(saved['sddl'],1,c.byref(descriptor),None):
+                raise OSError(c.get_last_error(),'Saved Git DACL is invalid')
+            try:
+                # Use the saved descriptor's protection, never the interrupted DACL's.
+                get_acl = sealed.advapi.GetSecurityDescriptorDacl
+                get_acl.argtypes = [c.c_void_p,c.POINTER(w.BOOL),c.POINTER(c.c_void_p),c.POINTER(w.BOOL)]
+                get_acl.restype = w.BOOL
+                present,defaulted,control,revision = w.BOOL(),w.BOOL(),w.WORD(),w.DWORD()
+                if not get_acl(descriptor,c.byref(present),c.byref(dacl),c.byref(defaulted)) or not present.value:
+                    raise ValueError('Saved Git DACL is missing')
+                if not sealed.advapi.GetSecurityDescriptorControl(descriptor,c.byref(control),c.byref(revision)):
+                    raise OSError(c.get_last_error(),'Saved Git DACL control unavailable')
+                protection = 0x80000000 if control.value & 0x1000 else 0x20000000
+                code = sealed.advapi.SetSecurityInfo(sealed.handle,1,4|protection,None,None,dacl,None)
+                if code:raise OSError(code,'Saved Git DACL restore failed')
+                sealed.restored = True
+            finally:sealed.kernel.LocalFree(descriptor)
+        with cls(path) as verified:
+            actual=verified.snapshot(path)
+            if any(actual.get(k)!=saved.get(k) for k in ('exists','device','inode','sha256')) or dacl_policy(actual['sddl'])!=dacl_policy(saved['sddl']):
+                raise RuntimeError('Restored Git DACL verification failed')
 
     def close(self):
         if self.descriptor:
@@ -188,10 +247,10 @@ def launch(boundary, command: list[str], cwd: Path, runtime: Path, timeout: floa
             checked(k.SetHandleInformation(handle, 1, 0), 'SetHandleInformation')
         inherited = (w.HANDLE * 3)(pipes[0][0], pipes[1][1], pipes[2][1])
         size = c.c_size_t()
-        k.InitializeProcThreadAttributeList(None, 3, 0, c.byref(size))
+        k.InitializeProcThreadAttributeList(None, 4, 0, c.byref(size))
         buffer = c.create_string_buffer(size.value)
         attributes = c.cast(buffer, c.c_void_p)
-        checked(k.InitializeProcThreadAttributeList(attributes, 3, 0, c.byref(size)), 'InitializeProcThreadAttributeList')
+        checked(k.InitializeProcThreadAttributeList(attributes, 4, 0, c.byref(size)), 'InitializeProcThreadAttributeList')
         initialized = True
         checked(derive('registryRead', c.byref(capability_groups),
             c.byref(group_count), c.byref(capability_sids), c.byref(capability_count)), 'DeriveCapabilitySidsFromName')
@@ -208,6 +267,8 @@ def launch(boundary, command: list[str], cwd: Path, runtime: Path, timeout: floa
         limits.BasicLimitInformation.ActiveProcessLimit = 1
         limits.ProcessMemoryLimit = 512 * 1024 * 1024
         checked(k.SetInformationJobObject(job, 9, c.byref(limits), c.sizeof(limits)), 'SetInformationJobObject')
+        jobs = (w.HANDLE * 1)(job)
+        checked(k.UpdateProcThreadAttribute(attributes,0,0x2000D,c.byref(jobs),c.sizeof(jobs),None,None), 'Assign Job at process creation')
         startup = SIX(); startup.si.cb = c.sizeof(startup); startup.si.flags = 0x100
         startup.si.stdin, startup.si.stdout, startup.si.stderr = inherited
         startup.attributes = attributes
@@ -219,7 +280,7 @@ def launch(boundary, command: list[str], cwd: Path, runtime: Path, timeout: floa
         environment = c.create_unicode_buffer('\0'.join(f'{key}={value}' for key, value in sorted(env.items())) + '\0\0')
         checked(k.CreateProcessW(str(executable), line, None, None, True,
             0x80000 | 0x8000000 | 0x400 | 4, environment, str(cwd), c.byref(startup.si), c.byref(pi)), 'CreateProcessW')
-        checked(k.AssignProcessToJobObject(job, pi.process), 'AssignProcessToJobObject'); assigned = True
+        assigned = True  # JOB_LIST binds the child before CreateProcessW returns.
         checked(a.OpenProcessToken(pi.process, 8, c.byref(token)), 'OpenProcessToken')
 
         def information(kind):
@@ -292,7 +353,7 @@ def launch(boundary, command: list[str], cwd: Path, runtime: Path, timeout: floa
             'sandbox': {'backend': 'windows-lpac-job', 'os_enforced': True, 'parent_token_verified': True,
                 'profile_sid': sid_text, 'network_capabilities': [], 'capabilities': ['registryRead'], 'lpac_attribute_applied': True,
                 'filesystem_isolated': True, 'network_isolated': True, 'direct_socket_non_bypass_enforced': True,
-                'job_max_processes': 1, 'job_memory_mb': 512, 'inherited_handle_count': 3,
+                'job_max_processes': 1, 'job_memory_mb': 512, 'inherited_handle_count': 3, 'job_assigned_at_creation': True,
                 'strict_boundary_verified': True, 'production_sandbox_ready': False,
                 'runtime': str(runtime), 'workspace': str(cwd)}}
     finally:

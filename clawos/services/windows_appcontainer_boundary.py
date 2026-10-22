@@ -166,7 +166,7 @@ class WindowsAppContainerBoundary:
 
     def _run_owned_command(self, command: list[str], workspace: str | Path, *,
                     timeout_seconds: float = 180, confirmed_acl: bool = False,
-                    cancelled=None, journal=None) -> dict[str, Any]:
+                    cancelled=None, journal=None, command_profile=None) -> dict[str, Any]:
         from .appcontainer_process import launch, safe_tree, validate_python_command, GitControlSeal
         if confirmed_acl is not True:
             raise PermissionError("confirmed=true required for sandbox workspace ACL")
@@ -181,19 +181,29 @@ class WindowsAppContainerBoundary:
             raise ValueError('strict execution requires a Git worktree pointer, not a writable Git database')
         with GitControlSeal(control) as sealed:
             # A fresh SID prevents concurrent tasks from gaining each other's grants.
-            scoped = WindowsAppContainerBoundary('ClawOS.Exec.' + uuid.uuid4().hex, runtime_dir=runtime)
+            scoped = WindowsAppContainerBoundary(command_profile or 'ClawOS.Exec.' + uuid.uuid4().hex, runtime_dir=runtime)
             installed = None
             try:
                 if cancelled is not None and cancelled.is_set(): raise RuntimeError('caller exited before grants')
+                if scoped.status().get('installed'):raise RuntimeError('command profile already exists before intent')
+                if journal:
+                    info, runtime_info = cwd.stat(),runtime.stat()
+                    journal(dict(phase='prepared',profile=scoped.profile_name,profile_absent_verified=True,job_assigned_at_creation=True,
+                                 workspace=str(cwd),runtime=str(runtime),git_control=sealed.snapshot(control),
+                                 workspace_identity=[info.st_dev,info.st_ino],runtime_identity=[runtime_info.st_dev,runtime_info.st_ino],cleaned=False))
                 installed = scoped.install(confirmed=True)
                 if not installed.get('created'):
                     raise RuntimeError('refusing to reuse a command profile')
-                if journal: journal(dict(profile=scoped.profile_name,sid=installed['sid'],workspace=str(cwd),runtime=str(runtime),cleaned=False))
+                if journal: journal(dict(phase='grants_pending',profile=scoped.profile_name,sid=installed['sid'],workspace=str(cwd),runtime=str(runtime),cleaned=False))
                 scoped.grant_runtime(confirmed=True)
                 acl = scoped.grant_workspace(cwd, confirmed=True)
                 def started(pid):
+                    from .sandbox_supervisor import ProcessIdentity
+                    child = ProcessIdentity(pid)
+                    try:creation=child.creation
+                    finally:child.close()
                     if journal: journal(dict(profile=scoped.profile_name,sid=installed['sid'],workspace=str(cwd),
-                                             runtime=str(runtime),child_pid=pid,cleaned=False))
+                                             runtime=str(runtime),child_pid=pid,child_creation=creation,phase='child_suspended',cleaned=False))
                 result = launch(scoped, command, cwd, runtime, max(.1, min(float(timeout_seconds), 900)),
                                 cancelled=cancelled, on_start=started)
                 result['sandbox'].update(workspace_acl=acl, ephemeral_profile=True,
@@ -212,7 +222,9 @@ class WindowsAppContainerBoundary:
                         removed = scoped.uninstall(confirmed=True)
                         if not all(cleanup) or not removed.get('deleted'):
                             raise RuntimeError('command profile or ACL cleanup failed; boundary not accepted')
-                    if journal: journal(dict(profile=scoped.profile_name,workspace=str(cwd),runtime=str(runtime),
+                    else:
+                        raise RuntimeError('profile installation outcome unknown; host recovery required')
+                    if journal: journal(dict(phase='cleaned',profile=scoped.profile_name,workspace=str(cwd),runtime=str(runtime),
                                              cleaned=sealed.handle is None or sealed.restored))
             result['sandbox']['profile_and_grants_removed'] = True
             return result

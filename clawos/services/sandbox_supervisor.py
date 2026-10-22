@@ -52,6 +52,16 @@ def save(path, data):
     write_text(path, json.dumps(data, ensure_ascii=False, sort_keys=True))
 
 
+def host_lock(target, timeout=10):
+    # Supervisor TEMP is intentionally private. Locks must not depend on TEMP.
+    folder=sandbox_storage()/'locks'
+    parent=Path(target).absolute().parent
+    if folder==parent or folder in parent.parents or parent in folder.parents:
+        raise ValueError('host locks must remain outside the leased tree')
+    folder.mkdir(parents=True,exist_ok=True);safe_tree(folder)
+    return _file_lock(target,timeout=timeout,lock_dir=folder)
+
+
 def unresolved(root, workspace):
     for request in root.glob('*/request.json'):
         try:
@@ -72,21 +82,23 @@ def run_supervised(command, workspace, runtime, timeout):
         raise ValueError('runtime must be separate from writable workspace')
     if (workspace/'.git').is_dir(): raise ValueError('strict execution requires a Git worktree pointer')
     root = sandbox_storage() / 'commands'; root.mkdir(parents=True, exist_ok=True); safe_tree(root)
-    if any(root == p or root in p.parents or p in root.parents for p in (workspace,runtime)):
+    if any(control==p or control in p.parents or p in control.parents
+           for control in (root,sandbox_storage()/'locks') for p in (workspace,runtime)):
         raise ValueError('supervisor receipts must be outside sandbox workspace/runtime')
-    with _file_lock(workspace/'.clawos-supervisor',timeout=10):
+    with host_lock(workspace/'.clawos-supervisor',timeout=10):
         safe_tree(workspace)
         unresolved(root,workspace)
         owner = ProcessIdentity(os.getpid())
         try: creation = owner.creation
         finally: owner.close()
         folder = root / uuid.uuid4().hex; folder.mkdir()
-        request = dict(schema='clawos.sandbox-command.v1', owner_pid=os.getpid(), owner_creation=creation,
+        request = dict(schema='clawos.sandbox-command.v2', owner_pid=os.getpid(), owner_creation=creation,
+                       command_profile='ClawOS.Exec.'+folder.name,
                        workspace=str(workspace), runtime=str(runtime), command=command,
                        timeout=max(.1,min(float(timeout),900)))
         save(folder/'request.json',request)
     env = {key:os.environ[key] for key in ('SYSTEMROOT','LOCALAPPDATA') if key in os.environ}
-    env.update(TEMP=str(folder),TMP=str(folder))
+    env.update(TEMP=str(folder),TMP=str(folder),CLAWOS_OUTPUT_DIR=str(root.parent.parent))
     with (folder/'host.log').open('wb') as log:
         process = subprocess.Popen([sys.executable,'-E','-s','-S','-B',str(Path(__file__).resolve()),
                                     str(folder/'request.json')],env=env,stdin=subprocess.DEVNULL,
@@ -114,7 +126,7 @@ def run_supervised(command, workspace, runtime, timeout):
 @contextmanager
 def cleanup_lease(workspace):
     workspace = Path(workspace).absolute()
-    with _file_lock(workspace/'.clawos-supervisor',timeout=2):
+    with host_lock(workspace/'.clawos-supervisor',timeout=2):
         unresolved(sandbox_storage()/'commands',workspace)
         yield
 
@@ -123,7 +135,8 @@ def serve(request_path):
     request_path = Path(request_path).absolute(); folder = request_path.parent
     safe_tree(folder)
     request = json.loads(request_path.read_text(encoding='utf-8'))
-    if request.get('schema') != 'clawos.sandbox-command.v1': raise ValueError('invalid host request')
+    if request.get('schema') != 'clawos.sandbox-command.v2': raise ValueError('invalid host request')
+    if request.get('command_profile') != 'ClawOS.Exec.'+folder.name:raise ValueError('command profile not bound to host request')
     workspace, runtime = safe_tree(Path(request['workspace'])), safe_tree(Path(request['runtime']))
     if any(folder == p or folder in p.parents or p in folder.parents for p in (workspace,runtime)):
         raise ValueError('host request overlaps guest grants')
@@ -141,13 +154,19 @@ def serve(request_path):
         watcher = threading.Thread(target=monitor,daemon=True); watcher.start()
         if owner.exited(): cancel.set()
         from .windows_appcontainer_boundary import WindowsAppContainerBoundary
+        supervisor = ProcessIdentity(os.getpid())
+        try:supervisor_creation = supervisor.creation
+        finally:supervisor.close()
+        state = dict(schema='clawos.sandbox-recovery.v1', request_digest=receipt['request_digest'],
+                     supervisor_pid=os.getpid(),supervisor_creation=supervisor_creation,
+                     owner_pid=request['owner_pid'],owner_creation=request['owner_creation'])
         def journal(value):
-            save(folder/'state.json', dict(value, supervisor_pid=os.getpid(),
-                                           owner_pid=request['owner_pid'], owner_creation=request['owner_creation']))
-        with _file_lock(workspace/'.clawos-supervisor', timeout=10):
+            state.update(value)
+            save(folder/'state.json',state)
+        with host_lock(workspace/'.clawos-supervisor', timeout=10):
             result = WindowsAppContainerBoundary(runtime_dir=runtime)._run_owned_command(
                 request['command'], workspace, timeout_seconds=request['timeout'], confirmed_acl=True,
-                cancelled=cancel, journal=journal)
+                cancelled=cancel, journal=journal, command_profile=request['command_profile'])
             receipt.update(result=result,cleanup_verified=True,caller_exited=owner.exited())
     except BaseException as exc:
         receipt['error'] = type(exc).__name__+': '+str(exc)

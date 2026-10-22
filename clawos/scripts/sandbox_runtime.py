@@ -38,11 +38,16 @@ def inspect_quarantine():
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('operation',choices=['setup','status','quarantine'])
+    parser.add_argument('operation',choices=['setup','status','quarantine','recover'])
+    parser.add_argument('--command-id',help='Exact host command journal ID; never a path or PID')
     parser.add_argument('--confirmed',action='store_true',help='authorize owned runtime/profile creation')
     args=parser.parse_args()
     if args.operation=='setup': result=SandboxRuntime().prepare(confirmed=args.confirmed)
     elif args.operation=='status': result=SandboxRuntime().status()
+    elif args.operation=='recover':
+        from services.sandbox_recovery import recover_command
+        if not args.command_id:parser.error('--command-id is required for recovery')
+        result=recover_command(args.command_id,confirmed=args.confirmed)
     else: result=inspect_quarantine()
     print(json.dumps(result,ensure_ascii=False))
     return 1 if result.get('error') or result.get('unresolved') or result.get('setup_pending') else 0

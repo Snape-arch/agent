@@ -1802,6 +1802,10 @@ async def lifespan(app: FastAPI):
     g_scenario_benchmark = FrozenScenarioBenchmark(g_memory_store)
     from reflection.evolution_runtime import RuntimePolicyController
     g_runtime_policy_controller = RuntimePolicyController(g_memory_store)
+    from services.sandbox_recovery import recover_pending
+    sandbox_recovery = await asyncio.to_thread(recover_pending)
+    logger.info('Sandbox restart recovery | recovered=%s blocked=%s active=%s',
+                len(sandbox_recovery['recovered']),len(sandbox_recovery['blocked']),len(sandbox_recovery['active']))
     recovered = g_memory_store.recover_interrupted_tasks(actor_id="lifespan_startup")
     if recovered.get("count"):
         logger.info("Recovered interrupted tasks | count=%s ids=%s", recovered["count"], recovered["recovered"])
