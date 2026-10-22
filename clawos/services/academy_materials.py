@@ -317,10 +317,12 @@ class AcademyMaterials:
                     page = 1
                 cid = f'{mid}:{index}'
                 passages.append(dict(id=cid, text=chunk['content'], page=page, paragraph=index,
-                    review_required=bool(chunk.get("review_required") or page in metadata.get("ocr_review_pages", [])),
+                    review_required=bool(chunk.get("review_required") or page in metadata.get("ocr_review_pages", []) or re.search(r'{%\s*include\b',chunk['content'])),
                     heading=chunk['content'].splitlines()[0][:100],
                     source_url=f'/api/academy/learning/materials/{mid}/source' + (f'#page={page}' if page else '')))
             warnings = []
+            if re.search(r'{%\s*include\b',text):
+                warnings.append('存在未展开的教材 include 指令，示例代码或正文可能缺失。请导入出版后的完整文件或人工补齐；相关区段暂停提取与出题，不自动访问指令中的链接。')
             if metadata.get('ocr_required'):
                 warnings.append('部分页面仍需 OCR，请先核查原文；这些内容可能不完整。')
             if metadata.get('ocr_review_pages'):
@@ -328,6 +330,7 @@ class AcademyMaterials:
             revision = digest(passages)
             passages = [evidence(p, revision) for p in passages]
             payload = dict(passages=passages, extractor=metadata.get('extractor'), warnings=warnings,
+                           book_index_algorithm='markdown-chapters.v2' if Path(doc['filename']).suffix.lower() in {'.md','.markdown'} else 'headings.v1',
                            sections=(metadata.get('structure') or {}).get('sections', []),
                            page_count=metadata.get('page_count', 0), revision=revision)
             status = 'ready'

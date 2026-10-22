@@ -10,6 +10,7 @@ from services.academy_curriculum import LESSONS, TRACKS, RESOURCES, track_nodes
 from services.academy_materials import digest
 from services.academy_teaching_quality import AcademyTeachingQuality
 from services.runtime_records import RunRecord, now_iso
+from services.academy_model_contracts import graph_contract,review_contract,options
 
 
 def strict_reply(reply):
@@ -27,7 +28,7 @@ def strict_reply(reply):
     return value
 
 
-def lab_router(factory,model):
+def lab_router(factory,model,*,clock=time.perf_counter):
     router=APIRouter(prefix='/api/academy/learning/lab')
 
     def actor(request):return factory().identities.identity(request)['id']
@@ -98,15 +99,39 @@ def lab_router(factory,model):
             prompts=[row[2] for row in items];snapshot=None
         revision=lab.materials.document(mid,owner)['payload']['revision']
         run=RunRecord(run_id='academy-lab-'+uuid.uuid4().hex,run_type='academy_teaching',title=action,status='running',actor=uid,scenario='education',inputs=dict(material_id=mid,revision=revision),workflow=dict(mode='shared_router_role_prompts',trace=[]))
-        lab.store.save_run_record(run.to_dict());started=time.perf_counter();replies=[]
+        lab.store.save_run_record(run.to_dict());started=clock();replies=[]
         try:
             for index,prompt in enumerate(prompts):
-                step=dict(role='graph_proposer' if snapshot else 'reviewer' if index%2 else 'teacher',prompt_digest=digest(prompt),status='running')
-                run.workflow['trace'].append(step)
-                try:reply=await asyncio.wait_for(model(prompt,[]),75)
-                except Exception:
-                    step['status']='failed';raise HTTPException(502,'模型未完成；已保存资料保留，本次不计为通过')
-                step.update(response_digest=digest(reply),status='completed');replies.append(strict_reply(reply))
+                request_options=options(graph_contract(snapshot) if snapshot else review_contract(),'academy_graph' if snapshot else 'academy_review')
+                messages=prompt
+                # One bounded repair for a graph contract failure. CAS/ACL/save
+                # failures are outside this loop and never retried or overwritten.
+                for attempt in range(2 if snapshot else 1):
+                    step=dict(role='graph_proposer' if snapshot else 'reviewer' if index%2 else 'teacher',prompt_digest=digest(messages),options_digest=digest(request_options),attempt=attempt+1,status='running')
+                    run.workflow['trace'].append(step)
+                    call_started=clock()
+                    try:
+                        reply=await asyncio.wait_for(model(messages,[],**request_options),180)
+                        step.update(response_digest=digest(reply),model=reply.get('clawos_model',{}),elapsed_ms=round((clock()-call_started)*1000,2))
+                        # A suspended machine may resume the response callback
+                        # before asyncio's expired timer. Reject that late result.
+                        if clock()-call_started>180:raise TimeoutError()
+                    except Exception as exc:
+                        code='timeout' if isinstance(exc,TimeoutError) else str(exc) if str(exc) in ('incomplete_output','timeout','provider_http_400','content_filtered','empty_final_answer','network_error') else 'transport_error'
+                        step.update(status='failed',failure_code=code)
+                        raise HTTPException(502,'模型输出达到限额，未保存；请减少所选章节后重试' if code=='incomplete_output' else '模型未完成或不支持结构化输出；已保存资料保留，本次不计为通过')
+                    step.update(response_digest=digest(reply),model=reply.get('clawos_model',{}),status='received')
+                    try:
+                        value=strict_reply(reply)
+                        if snapshot:await call(lab.graph.validate_proposal,mid,uid,snapshot,value)
+                    except (ValueError,TypeError,KeyError,IndexError,HTTPException) as exc:
+                        if isinstance(exc,HTTPException) and exc.status_code!=400:raise
+                        step.update(status='contract_rejected',validation_error=str(getattr(exc,'detail',exc))[:500])
+                        if not snapshot or attempt:raise HTTPException(400,'模型输出未通过原文或结构校验；图谱未修改：'+step['validation_error'])
+                        raw=reply['choices'][0]['message'].get('content','')
+                        messages=prompt+[dict(role='assistant',content=raw[:24000]),dict(role='user',content='上次输出未保存。校验错误：'+step['validation_error']+'。依据原始提供的片段重新返回完整本批JSON，逐字引用、不复用已有ID、不增加字段。')]
+                        continue
+                    step['status']='completed';replies.append(value);break
             if snapshot:result=await call(lab.graph.merge_proposal,mid,uid,snapshot,replies[0])
             else:
                 def persist():
@@ -117,11 +142,15 @@ def lab_router(factory,model):
                         return quality.save_calibration(mid,bank['id'],replies,owner,conn=c)
                 result=await call(persist)
             run.status='completed';run.outputs=dict(evidence_validated=True,learning_effect_verified=False)
-            return dict(result=result,run_id=run.run_id)
-        except (ValueError,TypeError,KeyError,IndexError) as exc:raise HTTPException(400,str(exc))
+            return dict(result=result,run_id=run.run_id,model_calls=len(run.workflow['trace']),contract_repairs=sum(s['status']=='contract_rejected' for s in run.workflow['trace']))
+        except HTTPException as exc:
+            exc.headers=dict(exc.headers or {},**{'X-Academy-Run-Id':run.run_id});raise
+        except (ValueError,TypeError,KeyError,IndexError) as exc:raise HTTPException(400,str(exc),headers={'X-Academy-Run-Id':run.run_id})
         finally:
             if run.status=='running':run.status='failed'
-            run.completed_at=now_iso();run.metrics=dict(model_calls=len(run.workflow['trace']),duration_ms=round((time.perf_counter()-started)*1000,2))
+            for step in run.workflow['trace']:
+                if step['status'] in ('running','received'):step['status']='cancelled'
+            run.completed_at=now_iso();run.metrics=dict(model_calls=len(run.workflow['trace']),duration_ms=round((clock()-started)*1000,2))
             lab.store.save_run_record(run.to_dict())
 
     @router.post('/books/{mid}/{action}')

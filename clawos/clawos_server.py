@@ -5200,7 +5200,13 @@ def _academy_materials():
     return AcademyMaterials(_learning_product().store, OUTPUT_ROOT / "academy-materials", profile)
 
 
-async def _academy_material_model(messages, tools):
+async def _academy_material_model(messages, tools, **options):
+    if options:
+        result=await call_model_with_fallback('routing',messages,dict(options,tools=tools))
+        if not result['ok']:raise RuntimeError(result['error'])
+        raw=dict(result['raw'])
+        raw['clawos_model']={k:result.get(k) for k in ('provider','model','usage','duration_ms','fallback_attempts')}
+        return raw
     return await call_routing_llm(messages, tools)
 
 

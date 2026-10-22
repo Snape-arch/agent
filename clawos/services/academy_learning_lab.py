@@ -99,7 +99,7 @@ class AcademyLearningLab:
             with self.store._conn() as c:row=query(c)
         else:row=query(conn)
         current=document['payload']['revision']
-        value=json.loads(row['payload']) if row and row['revision']==current else book_index(document)
+        value=json.loads(row['payload']) if row and row['revision']==current else book_index(document,algorithm=document['payload'].get('book_index_algorithm','headings.v1'))
         starts=[dict(citation=c['sources'][0]['citation'],offset=c['sources'][0]['start'],title=c['title']) for c in value['chapters']]
         if starts:starts[0]['offset']=0
         return dict(value,version=row['version'] if row else 0,manual=bool(row and row['revision']==current),stale=bool(row and row['revision']!=current),starts=starts)

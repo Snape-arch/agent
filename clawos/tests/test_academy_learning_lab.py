@@ -21,12 +21,14 @@ class EducationLabTests(unittest.TestCase):
         result=self.m.upload('book.md',b'# Evidence\nEvidence supports conclusions.\n# Conditions\nMissing evidence requires refusal.')
         self.mid=result['document']['id'];self.chapters=result['chapters'];self.now=[1000000.]
         self.lab=AcademyLearningLab(self.m,clock=lambda:self.now[0]);self.g=self.lab.graph.state(self.mid,'local-user')
-        self.calls=[];self.provider_hook=None
-        async def model(messages,tools):
-            self.calls.append(messages)
+        self.calls=[];self.model_options=[];self.proposals=[];self.provider_hook=None
+        async def model(messages,tools,**options):
+            self.calls.append(messages);self.model_options.append(options)
             if self.provider_hook:self.provider_hook()
-            return {'choices':[{'message':{'content':json.dumps(self.proposal)}}]}
-        app=FastAPI();app.include_router(lab_router(lambda:self.lab,model))
+            value=self.proposals.pop(0) if self.proposals else self.proposal
+            return {'choices':[{'message':{'content':json.dumps(value)}}]}
+        self.model_clock=[0.]
+        app=FastAPI();app.include_router(lab_router(lambda:self.lab,model,clock=lambda:self.model_clock[0]))
         self.client=TestClient(app,client=('127.0.0.1',4455));self.addCleanup(self.client.close)
         self.teacher,self.ttoken=self.join('teacher');self.teacher2,self.t2token=self.join('teacher');self.student,self.stoken=self.join('learner')
 
@@ -107,6 +109,109 @@ class EducationLabTests(unittest.TestCase):
         self.assertEqual(response.status_code,200,response.text);self.assertEqual(len(self.calls),1)
         self.assertTrue(response.json()['run_id'].startswith('academy-lab-'))
         self.assertEqual(response.json()['result']['edges'][0]['status'],'proposed')
+
+    def test_graph_schema_and_bounded_source_repair(self):
+        bad=self.graph_value();bad['nodes'][0]['source']['quote']='A fabricated quotation.'
+        self.proposal=self.graph_value();self.proposals=[bad,self.proposal]
+        response=self.client.post('/api/academy/learning/lab/books/'+self.mid+'/graph-propose',json={'chapters':[c['id'] for c in self.g['index']['chapters']]})
+        self.assertEqual(response.status_code,200,response.text);self.assertEqual(len(self.calls),2)
+        self.assertEqual(response.json()['result']['version'],1)
+        self.assertIn('校验错误',self.calls[1][-1]['content'])
+        for options in self.model_options:
+            self.assertEqual(options['max_tokens'],2800)
+            schema=options['response_format']['json_schema']['schema']
+            self.assertFalse(schema['additionalProperties'])
+            self.assertEqual(schema['properties']['nodes']['maxItems'],6)
+            self.assertEqual(schema['properties']['edges']['maxItems'],4)
+            branches=schema['properties']['nodes']['items']['anyOf']
+            self.assertEqual([b['properties']['chapter']['enum'][0] for b in branches],[c['id'] for c in self.g['index']['chapters']])
+            for branch in branches:
+                chapter=branch['properties']['chapter']['enum'][0]
+                sources=branch['properties']['source']['anyOf']
+                for source in sources:
+                    citation=source['properties']['citation']['enum'][0]
+                    allowed=[r for r in self.lab.graph.prompt(self.mid,'local-user',[chapter])[0]['quote_choices'] if r['citation']==citation]
+                    self.assertTrue(allowed)
+                    for quote in source['properties']['quote']['enum']:self.assertTrue(any(quote in r['quotes'] for r in allowed))
+
+    def test_graph_two_bad_replies_preserve_graph(self):
+        self.proposal=self.graph_value();self.proposal['nodes'][0]['source']['quote']='Not in the book.'
+        response=self.client.post('/api/academy/learning/lab/books/'+self.mid+'/graph-propose',json={'chapters':[c['id'] for c in self.g['index']['chapters']]})
+        self.assertEqual(response.status_code,400);self.assertEqual(len(self.calls),2)
+        self.assertTrue(response.headers['x-academy-run-id'].startswith('academy-lab-'))
+        after=self.lab.graph.state(self.mid,'local-user')
+        self.assertEqual(after['version'],0);self.assertEqual(after['nodes'],[])
+
+    def test_model_transport_failure_is_recorded_and_does_not_retry_freely(self):
+        def fail():raise RuntimeError('incomplete_output')
+        self.provider_hook=fail
+        response=self.client.post('/api/academy/learning/lab/books/'+self.mid+'/graph-propose',json={'chapters':[c['id'] for c in self.g['index']['chapters']]})
+        self.assertEqual(response.status_code,502);self.assertEqual(len(self.calls),1)
+        run=self.lab.store.get_run_record(response.headers['x-academy-run-id'])
+        self.assertEqual(run['status'],'failed')
+        self.assertEqual(run['workflow']['trace'][0]['failure_code'],'incomplete_output')
+        self.assertEqual(self.lab.graph.state(self.mid,'local-user')['version'],0)
+
+    def test_late_reply_after_host_pause_is_rejected_before_write(self):
+        self.proposal=self.graph_value()
+        self.provider_hook=lambda:self.model_clock.__setitem__(0,181.)
+        response=self.client.post('/api/academy/learning/lab/books/'+self.mid+'/graph-propose',json={'chapters':[c['id'] for c in self.g['index']['chapters']]})
+        self.assertEqual(response.status_code,502);self.assertEqual(len(self.calls),1)
+        run=self.lab.store.get_run_record(response.headers['x-academy-run-id'])
+        self.assertEqual(run['workflow']['trace'][0]['failure_code'],'timeout')
+        self.assertEqual(run['workflow']['trace'][0]['elapsed_ms'],181000.)
+        self.assertEqual(self.lab.graph.state(self.mid,'local-user')['version'],0)
+
+    def test_graph_save_conflict_is_not_retried(self):
+        self.proposal=self.graph_value();self.provider_hook=lambda:self.save_graph()
+        response=self.client.post('/api/academy/learning/lab/books/'+self.mid+'/graph-propose',json={'chapters':[c['id'] for c in self.g['index']['chapters']]})
+        self.assertEqual(response.status_code,400);self.assertEqual(len(self.calls),1)
+        self.assertEqual(self.lab.graph.state(self.mid,'local-user')['version'],1)
+
+    def test_non_teaching_chapter_can_return_empty_without_invented_concepts(self):
+        self.proposal=dict(nodes=[],edges=[],covered_chapters=[])
+        response=self.client.post('/api/academy/learning/lab/books/'+self.mid+'/graph-propose',json={'chapters':[self.g['index']['chapters'][0]['id']]})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['result']['covered_chapters'],[])
+
+    def test_markdown_directory_ignores_fences_and_inner_sections_across_chunks(self):
+        text='# Basics\n## Comments\n```python\n# Not a chapter\nprint(1)\n```\n## Variables\nA name binds an object.\n# Functions\n~~~python\n# Not a chapter either\n~~~\n## Return\nA function returns a value.'
+        overlap=text[24:64]
+        doc=dict(payload=dict(revision='r',passages=[dict(id='p1',text=text[:64],source_url='/1'),dict(id='p2',text=overlap+text[64:],source_url='/2')]))
+        index=book_index(doc,algorithm='markdown-chapters.v2')
+        self.assertEqual([c['title'] for c in index['chapters']],['Basics','Functions'])
+        for c in index['chapters']:
+            for span in c['sources']:
+                p=next(p for p in doc['payload']['passages'] if p['id']==span['citation'])
+                self.assertGreater(span['end'],span['start']);self.assertLessEqual(span['end'],len(p['text']))
+        # Books already parsed with the old algorithm retain chapter IDs, so
+        # frozen studies and confirmed prerequisite edges are not reinterpreted.
+        self.assertIn('Not a chapter',[c['title'] for c in book_index(doc)['chapters']])
+
+    def test_new_markdown_uses_v2_but_legacy_payload_keeps_v1(self):
+        mid=self.m.upload('fences.md',b'# Basics\n```python\n# Example comment\n```\n## Inner\nText.\n# Functions\nReturn values.')['document']['id']
+        self.assertEqual([c['title'] for c in self.lab.graph.state(mid,'local-user')['index']['chapters']],['Basics','Functions'])
+        with self.lab.store._conn() as c:
+            payload=json.loads(c.execute('SELECT payload FROM academy_materials WHERE id=?',(mid,)).fetchone()['payload']);payload.pop('book_index_algorithm')
+            c.execute('UPDATE academy_materials SET payload=? WHERE id=?',(json.dumps(payload),mid))
+        self.assertIn('Example comment',[c['title'] for c in self.lab.graph.state(mid,'local-user')['index']['chapters']])
+
+    def test_unresolved_book_includes_flag_missing_source_without_fetching(self):
+        result=self.m.upload('unresolved.md',b'# Functions\nAn example follows.\n<pre><code>{% include "./programs/example.py" %}</code></pre>')
+        doc=result['document'];self.assertEqual(doc['status'],'ready')
+        self.assertTrue(doc['payload']['warnings']);self.assertTrue(doc['payload']['passages'][0]['review_required'])
+        graph=self.lab.graph.state(doc['id'],'local-user')
+        with self.assertRaisesRegex(ValueError,'待复核'):self.lab.graph.prompt(doc['id'],'local-user',[graph['index']['chapters'][0]['id']])
+
+    def test_decoder_quote_pairs_are_locally_enforced_and_keep_source_newlines(self):
+        mid=self.m.upload('wrapped.md',b'# Functions\n\nParameters are specified in parentheses, separated by\ncommas.\n') ['document']['id']
+        graph,prompt=self.lab.graph.prompt(mid,'local-user',['ch0001'])
+        choices=graph['quote_choices'];self.assertIn('separated by\ncommas.',choices[0]['quotes'][0])
+        quote=choices[0]['quotes'][0];citation=choices[0]['citation']
+        proposal=dict(nodes=[dict(id='p',title='Parameters',chapter='ch0001',explanation='Parameters are separated by commas.',source=dict(citation=citation,quote=quote))],edges=[],covered_chapters=['ch0001'])
+        self.lab.graph.validate_proposal(mid,'local-user',graph,proposal)
+        proposal['nodes'][0]['source']['quote']=quote.replace('\n',' ')
+        with self.assertRaisesRegex(ValueError,'逐字'):self.lab.graph.validate_proposal(mid,'local-user',graph,proposal)
 
     def test_strict_json_rejects_duplicate_and_nonfinite(self):
         for raw in ('{"nodes":[],"nodes":[]}','{"value":NaN}','[]'):
