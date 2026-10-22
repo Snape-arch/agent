@@ -36,6 +36,10 @@ ClawOS 是一个 Windows 本地个人 Agent OS 原型，围绕 observe-plan-exec
 
 ## Windows 本地启动
 
+P0 新增独立应用依赖环境：锁定 Windows x64 / CPython 3.12 的 135 个依赖及 wheel 摘要，
+安装与导入验证通过后，启动器自动选择；校验失败会停止启动。
+准备命令、外部模型/Office/OCR边界见 [部署说明](clawos/deployment/README.md)。
+
 从任意 clone 路径进入仓库根目录：
 
 ```powershell

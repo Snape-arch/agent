@@ -1,5 +1,17 @@
 # Project Context
 
+## 当前开发：P0独立部署与恢复故障闭环（2026-10-23）
+
+继续master。新增Windows x64/CPython3.12应用环境：135个精确wheel摘要/来源锁，禁系统包，真实导入/CPU张量/pip check后原子激活；启动器默认核验，实际--check-runtime通过且不启动服务/读.env。仍依赖外部基础CPython/Office/权重，不是便携解释器；可选PaddleOCR未装，ASR只验导入。恢复先落进度标记，数据库复制纳入失败边界，刷盘/原子回执，启动/健康拒绝未完成目录。部署7/7、恢复12/12、HTTP慢编码并行读取2/2，独立部署解释器原生部分写入退出73及ENOSPC/EACCES注入19/19分别通过，不累加模型成功率。
+
+完整真实HTTP末轮f48cdf4357ea4d919675fcdc7208aac7：32/32、28.515秒，两次lifespan，实际Chroma/Qwen无回退；知识、PDF/富文本代码表格公式笔记、三格式报告/下载、真实持久任务、引用/阅读检查点、教材图谱路线及重启持久化通过。真实CLI拒绝未完成恢复且不建库、独占bind核验端口释放。合成输入/生成模型0，不冒充浏览器、真人学习、语义或多天负载。
+
+三轮180秒超时保留：数值线程限制未单独解决；堆栈停SciPy，驱动stdin监控改停止文件后同预算完成，具体CRT锁未证明。另两轮因关闭探针ConnectTimeout/自定义Uvicorn失败退出0而整体失败保留，末轮用实际独占bind/真实应用CLI。浏览器导航失败且错误页受工具策略阻断，无绕过。只读重盘275历史缺失（11报告/264轨迹），52,306文件名得8同名候选但原记录0预期摘要、0可信匹配，不重造/删记录/盲绑。
+
+首轮本地全量1054项四分片在独立部署解释器运行；第1组冻基准统计超过4秒（4185.289ms）而失败。默认统计误读备份/二进制，已限源码扩展/排除备份权重及symlink，新增1/1和基准专项7/7（7.187秒）通过，未放宽时限。原全量早于该增量，不作终版冻结全量证明；最终云端或新冻结全量必须另验。证据output/p0-deployment-20261022、output/p0-business、output/recovery-faults，详见clawos/benchmarks/P0_DEPLOYMENT_BUSINESS_ACCEPTANCE.md。
+
+P0仍余完整浏览器/真实模型业务、物理重启/断电与实际存储故障、历史产物可信恢复；production_sandbox_ready=false。生产未动，日常DB保持原摘要；原registry测试后按备份字节恢复。按授权master提交推送，排除tools/权重/凭据/DB/output及原registry脏改；最终计数/提交以后续终局为准。
+
 ## 当前交付：GitHub完整门禁通过（2026-10-22）
 
 源码d69764dac16f7a9385aa335984183e439a1c94e7的GitHub运行39805485256已完成，四个Windows分片与最终deterministic-tests均为completed/success，逐个head_sha一致。终版1042项分配304/186/201/351，分配完整无重叠；原始回执及逐组时长在clawos/output/ci-repair-20261022/final-cloud-result.json、verified-ci-summary.json。链接：https://github.com/Snape-arch/agent/actions/runs/39805485256 。历史失败/取消保留，不抹去红叉。

@@ -3,10 +3,40 @@ from __future__ import annotations
 from contextlib import closing
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import uuid
 from pathlib import Path
+
+
+def durable_json(path,value):
+    path=Path(path);temporary=path.with_name(path.name+'.'+uuid.uuid4().hex+'.tmp')
+    try:
+        with temporary.open('x',encoding='utf-8') as stream:
+            json.dump(value,stream,ensure_ascii=False,indent=2);stream.flush();os.fsync(stream.fileno())
+        os.replace(temporary,path)
+    finally:temporary.unlink(missing_ok=True)
+
+
+def flush_file(path):
+    # Windows FlushFileBuffers requires a writable handle. These are exclusively
+    # newly created snapshot/recovery files; originals are never opened here.
+    with Path(path).open('r+b') as stream:os.fsync(stream.fileno())
+
+
+def assert_workspace_complete(data_dir,db_path):
+    """Refuse interrupted recovery directories before SQLite can create/migrate files."""
+    for root in {Path(data_dir).resolve(),Path(db_path).resolve().parent}:
+        if any((root/name).exists() for name in ('RECOVERY_IN_PROGRESS.json','BUNDLE_IN_PROGRESS.json','INCOMPLETE.txt')):
+            raise ValueError('Workspace contains an incomplete backup/recovery; restore into a fresh directory')
+
+
+def mark_incomplete(root,message):
+    # ENOSPC can prevent even an error receipt. The pre-existing in-progress
+    # marker still rejects this workspace; never mask the original I/O failure.
+    try:(root/'INCOMPLETE.txt').write_text(message,encoding='utf-8')
+    except OSError:pass
 
 
 def sha(path):
@@ -80,10 +110,12 @@ class RecoveryBundle:
         target=self.ops.base_dir/'backups'/('bundle-'+uuid.uuid4().hex)
         target.mkdir(parents=True)
         try:
+            durable_json(target/'BUNDLE_IN_PROGRESS.json',dict(phase='snapshotting',schema=self.SCHEMA))
             # The shared store lock provides a single committed DB cut for in-process writes.
             with self.ops.store._lock:
                 snapshot=self.ops.backup_database(str(target),label)
                 db=Path(snapshot['path']);refs=self._sources(db)
+                flush_file(db)
                 registry={};registry_digest=''
                 if self.registry_path.exists():
                     registry_digest=sha(self.registry_path)
@@ -107,6 +139,7 @@ class RecoveryBundle:
                     if not relative:
                         relative='files/'+uuid.uuid4().hex+source.suffix.lower()
                         dest=inside(target,relative);dest.parent.mkdir(exist_ok=True);shutil.copyfile(source,dest)
+                        flush_file(dest)
                         if sha(dest)!=before or sha(source)!=before:raise ValueError('资料备份期间发生变化，请在写入结束后重试')
                         copied[str(source)]=relative
                     entries.append(dict(**ref,bundle_path=relative,sha256=before,bytes=source.stat().st_size))
@@ -116,17 +149,18 @@ class RecoveryBundle:
                     weights_included=False,missing_artifacts=missing_artifacts,
                     scope='Committed SQLite snapshot, referenced document/material originals, task checkpoint files and existing registered local run/download artifacts. Missing historical artifacts explicitly inventoried. Vectors rebuilt from canonical records. Stable file/registry snapshots are not a distributed atomic cut. Unregistered files, Git working trees, execution leases, credentials and model weights excluded; arbitrary execution resume is not certified.')
                 if registry_digest and sha(self.registry_path)!=registry_digest:raise ValueError('下载注册表在备份期间发生变化，请重试')
-                (target/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+                durable_json(target/'manifest.json',manifest)
+                (target/'BUNDLE_IN_PROGRESS.json').unlink()
             return dict(ok=True,status='degraded' if missing_artifacts else 'complete',path=str(target),source_files=len(entries),unique_files=len(copied),
                 missing_artifacts=len(missing_artifacts),complete_original_sources=True,scope=manifest['scope'],weights_included=False)
         except Exception:
             # Keep failed snapshots for diagnosis, never advertise them as complete.
-            (target/'INCOMPLETE.txt').write_text('Backup failed; do not restore this directory.',encoding='utf-8')
+            mark_incomplete(target,'Backup failed; do not restore this directory.')
             raise
 
     def verify(self,bundle):
         folder=Path(bundle).resolve()
-        if (folder/'INCOMPLETE.txt').exists():raise ValueError('备份未完成')
+        if (folder/'INCOMPLETE.txt').exists() or (folder/'BUNDLE_IN_PROGRESS.json').exists():raise ValueError('备份未完成')
         manifest=json.loads((folder/'manifest.json').read_text(encoding='utf-8'))
         if manifest.get('schema')!=self.SCHEMA or manifest.get('weights_included') is not False:raise ValueError('不支持的恢复包')
         db=inside(folder,manifest['database']['path'])
@@ -159,9 +193,12 @@ class RecoveryBundle:
         if allowed not in root.parents:raise ValueError('隔离恢复目录必须位于本项目 backups 内')
         if root.exists():raise ValueError('恢复目录必须是新目录，不能覆盖已有资料')
         root.mkdir(parents=True)
-        db=root/'memoryos.db';shutil.copyfile(inside(folder,manifest['database']['path']),db)
+        db=root/'memoryos.db'
         mapping={};restored_materials=root/'output'/'academy-materials'
         try:
+            durable_json(root/'RECOVERY_IN_PROGRESS.json',dict(phase='restoring',schema=self.SCHEMA))
+            shutil.copyfile(inside(folder,manifest['database']['path']),db)
+            flush_file(db)
             for ref in manifest['files']:
                 if ref['kind']=='material':
                     original=Path(ref['path'])
@@ -169,6 +206,7 @@ class RecoveryBundle:
                 else:destination=inside(root,'sources/'+ref['bundle_path'].split('/')[-1])
                 destination.parent.mkdir(parents=True,exist_ok=True)
                 shutil.copyfile(inside(folder,ref['bundle_path']),destination)
+                flush_file(destination)
                 if sha(destination)!=ref['sha256']:raise ValueError('恢复后的资料摘要不一致')
                 mapping[ref['path']]=str(destination)
             with closing(sqlite3.connect(db)) as c:
@@ -186,7 +224,7 @@ class RecoveryBundle:
                 if item['path'] in mapping:restored_registry[key]=dict(item,path=mapping[item['path']])
             registry_path=root/'output'/'artifact_delivery'/'index.json'
             registry_path.parent.mkdir(parents=True,exist_ok=True)
-            registry_path.write_text(json.dumps(restored_registry,ensure_ascii=False,indent=2),encoding='utf-8')
+            durable_json(registry_path,restored_registry)
             from memoryos.memory_store import MemoryStore
             from services.maintenance_service import MaintenanceService
             from memoryos.services.vector_store import MemoryVectorStore
@@ -199,7 +237,7 @@ class RecoveryBundle:
                 rows=[vector._store.get(row['id']) for row in vector._store.list_all()]
                 # Exact payload projection survives independently of backend binary formats.
                 portable=root/'vectors'/'projection.json';portable.parent.mkdir(exist_ok=True)
-                portable.write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+                durable_json(portable,rows)
                 health=ops.database_health()
                 if not health['ok']:raise ValueError('隔离恢复后的数据库或原文件检查失败')
                 result=dict(ok=True,status='degraded' if manifest.get('missing_artifacts') else 'complete',missing_artifacts=len(manifest.get('missing_artifacts',[])),
@@ -208,9 +246,12 @@ class RecoveryBundle:
                     execution_resume_verified=False,
                     vector=dict(provider=stats['provider'],embedding_provider=stats['embedding_provider'],count=stats['vector_count'],consistent=stats['consistent'],projection=str(portable)),
                     boundary='隔离恢复已验证原文件摘要、SQLite 及向量投影；默认使用离线 hash 后端。实际嵌入模型需复用外部权重并以 vector_factory 单独演练，未切换运行中的数据库。')
-                (root/'recovery-report.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
-                return result
             finally:vector.close()
+            for path in (db,Path(str(db)+'-wal')):
+                if path.exists():flush_file(path)
+            durable_json(root/'recovery-report.json',result)
+            (root/'RECOVERY_IN_PROGRESS.json').unlink()
+            return result
         except Exception:
-            (root/'INCOMPLETE.txt').write_text('Recovery failed; do not use this directory as a live workspace.',encoding='utf-8')
+            mark_incomplete(root,'Recovery failed; do not use this directory as a live workspace.')
             raise

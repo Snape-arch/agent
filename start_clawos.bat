@@ -13,7 +13,9 @@ set "QWEN_PORT=8000"
 set "MTCLAW_BASE_URL=http://127.0.0.1:%MTCLAW_PORT%"
 set "QWEN_BASE_URL=http://127.0.0.1:%QWEN_PORT%/v1"
 set "LOCAL_PROFILE="
+set "RUNTIME_CHECK_ONLY="
 if /I "%~1"=="--local" set "LOCAL_PROFILE=1"
+if /I "%~1"=="--check-runtime" set "RUNTIME_CHECK_ONLY=1"
 
 echo ============================================
 echo   ClawOS + MTClaw Windows Launcher
@@ -21,6 +23,7 @@ echo ============================================
 if defined LOCAL_PROFILE echo   Mode: local daily-use profile
 echo.
 
+if defined RUNTIME_CHECK_ONLY goto runtime_selection
 call :check_port %MTCLAW_PORT% MTClaw
 if errorlevel 1 (
     pause
@@ -33,6 +36,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
+:runtime_selection
 if defined CLAWOS_PYTHON (
     set "PYTHON=%CLAWOS_PYTHON%"
 ) else if exist "%VENV_PYTHON%" (
@@ -72,6 +76,30 @@ if errorlevel 1 (
     echo [ERROR] Selected Python runtime is not usable: %PYTHON%
     pause
     exit /b 1
+)
+
+rem A prepared application runtime takes precedence over the test/system fallback.
+rem An explicit CLAWOS_PYTHON remains an intentional development override.
+if not defined CLAWOS_PYTHON if exist "%CLAWOS_DIR%\output\app-runtimes\current.json" (
+    "%PYTHON%" -I "%CLAWOS_DIR%\scripts\application_runtime.py" selected --path-file "%CLAWOS_DIR%\output\app-runtimes\launcher-python.txt"
+    if errorlevel 1 (
+        echo [ERROR] Prepared application runtime failed verification. No fallback was started.
+        pause
+        exit /b 1
+    )
+    set /p "PYTHON="<"%CLAWOS_DIR%\output\app-runtimes\launcher-python.txt"
+)
+echo [INFO] Application Python: %PYTHON%
+if defined RUNTIME_CHECK_ONLY (
+    if defined CLAWOS_PYTHON (
+        "%PYTHON%" -I "%CLAWOS_DIR%\scripts\application_runtime.py" verify --python "%PYTHON%" >nul
+        if errorlevel 1 exit /b 1
+    ) else if not exist "%CLAWOS_DIR%\output\app-runtimes\current.json" (
+        echo [ERROR] No locked application runtime is prepared.
+        exit /b 1
+    )
+    echo [OK] Locked application runtime verified. No service was started.
+    exit /b 0
 )
 
 if defined LOCAL_PROFILE (

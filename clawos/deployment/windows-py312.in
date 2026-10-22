@@ -1,0 +1,15 @@
+# Windows x64 / CPython 3.12 application profile. Versions are deliberate inputs;
+# install the generated hash lock, never this input file in a deployment.
+-r ../requirements-test.txt
+pip==25.3
+chromadb==1.5.9
+sentence-transformers==5.6.0
+transformers==5.12.1
+torch==2.9.1
+lark-oapi==1.7.5
+faster-whisper==1.2.1
+tree-sitter-go==0.25.0
+tree-sitter-rust==0.24.2
+tree-sitter-c==0.24.2
+tree-sitter-cpp==0.23.4
+tree-sitter-c-sharp==0.23.5

@@ -1086,16 +1086,21 @@ def tool_code_stats():
     file_types = input_data.get("file_types", None)
     exclude = input_data.get("exclude_dirs", [
         "node_modules", ".git", "__pycache__", "venv", ".venv",
-        "output", "uploads", "tmp", ".cache", "dist", "build",
+        "output", "uploads", "tmp", ".cache", "dist", "build", "backups", "tools",
     ])
     if not os.path.isdir(path): print(json.dumps({"error": f"Not found: {path}"})); sys.exit(1)
     lang_map = {".py":"Python",".js":"JavaScript",".ts":"TypeScript",".tsx":"TSX",".jsx":"JSX",".html":"HTML",".css":"CSS",".json":"JSON",".md":"Markdown",".txt":"Text",".c":"C",".cpp":"C++",".h":"Header",".java":"Java",".go":"Go",".rs":"Rust",".sh":"Shell",".bat":"Batch",".yml":"YAML",".yaml":"YAML",".xml":"XML",".sql":"SQL",".ipynb":"Jupyter"}
+    lang_map.update({".toml":"TOML", ".ini":"INI", ".cfg":"Config", ".rst":"reStructuredText", ".ps1":"PowerShell"})
     stats = {}; total_l, total_f = 0, 0
     for root, dirs, files in os.walk(path):
-        dirs[:] = [d for d in dirs if d not in exclude]
+        dirs[:] = [d for d in dirs if d.casefold() not in {name.casefold() for name in exclude} and not os.path.islink(os.path.join(root,d))]
         for f in files:
             ext = os.path.splitext(f)[1].lower()
             if file_types and ext not in file_types: continue
+            # Source statistics must not decode databases, archives or weights.
+            # Explicit file_types can opt into another text extension.
+            if not file_types and ext not in lang_map: continue
+            if os.path.islink(os.path.join(root,f)): continue
             lang = lang_map.get(ext, ext[1:] if ext else "other")
             try:
                 with open(os.path.join(root, f), "r", encoding="utf-8", errors="replace") as fh:

@@ -7,6 +7,11 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any
 
+# Bound the default numerical thread pools before importing NumPy/SciPy/Torch.
+# Explicit operator settings are preserved. No machine/global environment edits.
+for _thread_variable in ('OPENBLAS_NUM_THREADS','OMP_NUM_THREADS','MKL_NUM_THREADS'):
+    os.environ.setdefault(_thread_variable,'2')
+
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
@@ -1711,6 +1716,8 @@ async def proxy_upstream(req_data: dict, stream: bool, tool_context: str = "") -
 # ---- LIFESPAN ----
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from services.recovery_bundle import assert_workspace_complete
+    assert_workspace_complete(DATA_DIR,MEMORY_DB)
     global config, tools_def, http_client, mtclaw_http_client, logger, g_routing_provider, g_upstream_provider
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     logger = logging.getLogger("clawos")
@@ -1973,6 +1980,8 @@ async def health():
     database_state = {"configured": False, "reachable": False, "status": "not_initialized"}
     if g_memory_store:
         try:
+            from services.recovery_bundle import assert_workspace_complete
+            assert_workspace_complete(DATA_DIR,MEMORY_DB)
             with g_memory_store._conn() as conn:
                 conn.execute("SELECT 1").fetchone()
             database_state = {
@@ -5974,7 +5983,7 @@ async def api_knowledge_save(request: Request):
         confidence=float(data.get("confidence", 0.7) or 0.7),
     )
     if g_vector_store:
-        g_vector_store.refresh()
+        await asyncio.to_thread(g_vector_store.refresh)
     return JSONResponse({"item": item, "saved": True})
 
 
@@ -6002,7 +6011,7 @@ async def api_knowledge_update(knowledge_id: int, request: Request):
     if not item:
         raise HTTPException(404, "Knowledge item not found")
     if g_vector_store:
-        g_vector_store.refresh()
+        await asyncio.to_thread(g_vector_store.refresh)
     return JSONResponse({"item": item, "updated": True})
 
 
@@ -6014,7 +6023,7 @@ async def api_knowledge_delete(knowledge_id: int):
     if not deleted:
         raise HTTPException(404, "Knowledge item not found")
     if g_vector_store:
-        g_vector_store.refresh()
+        await asyncio.to_thread(g_vector_store.refresh)
     return JSONResponse({"deleted": True, "id": knowledge_id})
 
 
@@ -6386,9 +6395,9 @@ async def api_document_upload(
             errors.append({"filename": file.filename, "error": "file too large; max 50MB"})
             continue
         target = UPLOAD_DIR / f"{int(time.time() * 1000)}_{safe_filename(file.filename or 'upload')}"
-        target.write_bytes(raw)
+        await asyncio.to_thread(target.write_bytes,raw)
         try:
-            doc = ingest_file(
+            doc = await asyncio.to_thread(ingest_file,
                 g_memory_store,
                 UPLOAD_DIR,
                 target,
@@ -6399,7 +6408,7 @@ async def api_document_upload(
         except Exception as exc:
             errors.append({"filename": file.filename, "error": str(exc)})
     if g_vector_store:
-        g_vector_store.refresh()
+        await asyncio.to_thread(g_vector_store.refresh)
     return JSONResponse({"documents": documents, "errors": errors, "count": len(documents)})
 
 

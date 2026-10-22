@@ -1,15 +1,17 @@
 import json
+import errno
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from memoryos.memory_store import MemoryStore
 from memoryos.document_ingestion import ingest_file
 from services.academy_materials import AcademyMaterials
 from services.academy_documents import AcademyDocuments
 from services.maintenance_service import MaintenanceService
-from services.recovery_bundle import RecoveryBundle,sha
+from services.recovery_bundle import RecoveryBundle,sha,assert_workspace_complete
 from memoryos.services.vector_store import MemoryVectorStore
 
 class RecoveryBundleTests(unittest.TestCase):
@@ -60,6 +62,36 @@ class RecoveryBundleTests(unittest.TestCase):
         Path(self.doc['file_path']).unlink()
         with self.assertRaises(ValueError):self.bundle.backup()
         self.assertTrue(list((self.root/'backups').glob('*/INCOMPLETE.txt')))
+
+    def test_partial_database_copy_cannot_be_opened_as_a_live_workspace(self):
+        out=self.bundle.backup();before=sha(self.db);target=self.root/'backups'/'disk-full'
+        def disk_full(source,destination):
+            Path(destination).write_bytes(b'partial sqlite')
+            raise OSError(errno.ENOSPC,'injected disk full')
+        with patch('services.recovery_bundle.shutil.copyfile',side_effect=disk_full):
+            with self.assertRaises(OSError):self.bundle.restore_isolated(out['path'],target)
+        self.assertTrue((target/'RECOVERY_IN_PROGRESS.json').exists())
+        self.assertFalse((target/'recovery-report.json').exists())
+        with self.assertRaisesRegex(ValueError,'incomplete'):
+            assert_workspace_complete(target,target/'memoryos.db')
+        self.assertEqual(before,sha(self.db))
+        fresh=self.bundle.restore_isolated(out['path'])
+        assert_workspace_complete(fresh['target'],fresh['database'])
+        self.assertTrue(fresh['ok'])
+
+    def test_failed_error_receipt_keeps_original_disk_error_and_progress_marker(self):
+        out=self.bundle.backup();target=self.root/'backups'/'no-error-receipt'
+        with patch('services.recovery_bundle.shutil.copyfile',side_effect=OSError(errno.EACCES,'copy denied')), \
+             patch.object(Path,'write_text',side_effect=OSError(errno.ENOSPC,'receipt disk full')):
+            with self.assertRaises(OSError) as caught:self.bundle.restore_isolated(out['path'],target)
+        self.assertEqual(errno.EACCES,caught.exception.errno)
+        self.assertTrue((target/'RECOVERY_IN_PROGRESS.json').exists())
+        with self.assertRaises(ValueError):assert_workspace_complete(target,target/'memoryos.db')
+
+    def test_in_progress_bundle_is_rejected_even_with_an_intact_manifest(self):
+        out=self.bundle.backup();folder=Path(out['path'])
+        (folder/'BUNDLE_IN_PROGRESS.json').write_text('{"phase":"snapshotting"}')
+        with self.assertRaisesRegex(ValueError,'备份未完成'):self.bundle.verify(folder)
     def test_restore_cannot_overwrite_or_escape(self):
         out=self.bundle.backup()
         with self.assertRaises(ValueError):self.bundle.restore_isolated(out['path'],self.root)
