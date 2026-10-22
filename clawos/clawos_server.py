@@ -43,6 +43,8 @@ from services.response_contract import SYSTEM_PROMPT, RESPONSE_STYLE, request_hi
 # ---- PATHS ----
 BASE_DIR = Path(__file__).parent.resolve()
 STATIC_DIR = BASE_DIR / "static"
+from services.runtime_release import RuntimeRelease, core_ready
+RUNTIME_RELEASE = RuntimeRelease(BASE_DIR)
 CONFIG_PATH = BASE_DIR / "config.json"
 SCRIPTS_DIR = BASE_DIR / "scripts"
 DATA_DIR = Path(os.environ.get("CLAWOS_DATA_DIR", str(BASE_DIR))).expanduser().resolve()
@@ -71,7 +73,8 @@ def load_local_env(env_path: Path) -> None:
             os.environ[key] = value
 
 
-load_local_env(ENV_PATH)
+if os.environ.get('CLAWOS_SKIP_LOCAL_ENV') != '1':
+    load_local_env(ENV_PATH)
 
 CONFIG_PATH = Path(os.environ.get("CLAWOS_CONFIG_PATH", str(CONFIG_PATH))).expanduser().resolve()
 MEMORY_DB = Path(os.environ.get("CLAWOS_MEMORY_DB", str(DATA_DIR / "memoryos.db"))).expanduser().resolve()
@@ -1982,9 +1985,21 @@ async def health():
                 "error": type(exc).__name__,
                 "engine": "sqlite",
             }
+    release = await asyncio.to_thread(RUNTIME_RELEASE.status)
+    vector_state = {'initialized': False, 'consistent': False}
+    if g_vector_store:
+        try:
+            stats = await asyncio.to_thread(g_vector_store.stats)
+            vector_state = {key: stats.get(key) for key in ('provider', 'requested_provider', 'embedding_provider', 'consistent', 'fallback_reason', 'outbox_pending', 'outbox_failed')}
+            vector_state['initialized'] = True
+        except Exception as exc:
+            vector_state['error'] = type(exc).__name__
     return {
         "status": "ok",
         "version": "1.0.0",
+        "release": release,
+        "core_ready": core_ready(database_state, g_workspace_services, release, vector_state),
+        "vector": vector_state,
         "tools": len(tools_def),
         "memory": bool(g_memory_store),
         "database": database_state,
@@ -2000,6 +2015,11 @@ async def health():
         "upstream_model": config.get("upstream", {}).get("model", ""),
         "mtclaw": mtclaw_state,
     }
+
+@app.get('/api/runtime/release')
+async def runtime_release():
+    return await asyncio.to_thread(RUNTIME_RELEASE.status)
+
 
 @app.get("/api/config/model")
 async def get_model_config():

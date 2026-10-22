@@ -33,7 +33,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if exist "%VENV_PYTHON%" (
+if defined CLAWOS_PYTHON (
+    set "PYTHON=%CLAWOS_PYTHON%"
+) else if exist "%VENV_PYTHON%" (
     set "PYTHON=%VENV_PYTHON%"
 ) else (
     where python >nul 2>nul
@@ -65,14 +67,17 @@ if not exist "%VENV_PYTHON%" (
 )
 
 echo [INFO] Python runtime: %PYTHON%
-%PYTHON% --version
+"%PYTHON%" --version
 if errorlevel 1 (
     echo [ERROR] Selected Python runtime is not usable: %PYTHON%
     pause
     exit /b 1
 )
 
-if not exist "%CLAWOS_DIR%\.env" (
+if defined LOCAL_PROFILE (
+    set "CLAWOS_SKIP_LOCAL_ENV=1"
+    echo [INFO] Local profile: skipping cloud environment file.
+) else if not exist "%CLAWOS_DIR%\.env" (
     echo [WARN] clawos\.env not found. Model calls may fail until local config is added.
     echo        Mock/offline checks still work without a real API key.
 ) else (
@@ -87,6 +92,12 @@ if not defined MODEL_API_KEY if defined DEEPSEEK_API_KEY (
 )
 
 if defined LOCAL_PROFILE (
+    "%PYTHON%" -c "import importlib.util,sys; missing=[n for n in ('chromadb','sentence_transformers','torch') if importlib.util.find_spec(n) is None]; print('Local retrieval dependencies missing: '+', '.join(missing)) if missing else None; sys.exit(bool(missing))"
+    if errorlevel 1 (
+        echo [ERROR] Install local retrieval dependencies in this runtime, or set CLAWOS_PYTHON to a prepared Python executable.
+        pause
+        exit /b 1
+    )
     set "CLAWOS_CONFIG_PATH=%CLAWOS_DIR%\config.local.json"
     set "MODEL_PROVIDER=qwen"
     set "MODEL_BASE_URL=%QWEN_BASE_URL%"
@@ -182,7 +193,7 @@ set "MTCLAW_BASE_URL=%MTCLAW_BASE_URL%"
 start "ClawOS Server" /D "%CLAWOS_DIR%" "%PYTHON%" "clawos_server.py" --host 127.0.0.1 --port %CLAWOS_PORT%
 
 echo [5/5] Waiting for ClawOS health check...
-"%PYTHON%" "%CLAWOS_DIR%\scripts\windows_health_check.py" --url "http://127.0.0.1:%CLAWOS_PORT%/health" --name ClawOS --timeout 45
+"%PYTHON%" "%CLAWOS_DIR%\scripts\windows_health_check.py" --url "http://127.0.0.1:%CLAWOS_PORT%/health" --name ClawOS --timeout 45 --require-ready
 if errorlevel 1 (
     echo [ERROR] ClawOS did not become healthy. Check the ClawOS window for details.
     pause

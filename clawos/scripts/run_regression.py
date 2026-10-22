@@ -15,7 +15,7 @@ def main():
     args=parser.parse_args()
     root=project/'output'/'regression'/uuid.uuid4().hex
     root.mkdir(parents=True)
-    env=dict(os.environ,CLAWOS_MEMORY_DB=str(root/'memoryos.db'),CLAWOS_OUTPUT_DIR=str(root/'artifacts'),PYTHONPATH=str(project)+os.pathsep+os.environ.get('PYTHONPATH',''))
+    env=dict(os.environ,CLAWOS_SKIP_LOCAL_ENV='1',CLAWOS_MEMORY_DB=str(root/'memoryos.db'),CLAWOS_OUTPUT_DIR=str(root/'artifacts'),PYTHONPATH=str(project)+os.pathsep+os.environ.get('PYTHONPATH',''))
     print('Isolated regression workspace: '+str(root),flush=True)
     command=[sys.executable,'-m','unittest','discover','-s',str(project/'tests'),'-p',args.pattern]
     if args.verbose:command.append('-v')

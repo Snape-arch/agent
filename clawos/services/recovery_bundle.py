@@ -52,8 +52,9 @@ class RecoveryBundle:
     def __init__(self,maintenance,material_root=None):
         self.ops=maintenance
         self.material_root=Path(material_root or maintenance.base_dir/'output'/'academy-materials').resolve()
+        self.registry_path=self.material_root.parent/'artifact_delivery'/'index.json'
 
-    def _sources(self,db):
+    def _sources(self,db,material_root=None,include_checkpoints=True):
         refs=[]
         with closing(sqlite3.connect(db)) as c:
             c.row_factory=sqlite3.Row
@@ -63,11 +64,16 @@ class RecoveryBundle:
                     refs.append(dict(kind='document',id=r['id'],path=r['file_path']))
             if 'academy_materials' in tables:
                 for r in c.execute('SELECT id,filename,digest FROM academy_materials'):
-                    refs.append(dict(kind='material',id=r['id'],path=str(inside(self.material_root,Path(r['id'])/r['filename'])),expected_sha=r['digest']))
+                    refs.append(dict(kind='material',id=r['id'],path=str(inside(material_root or self.material_root,Path(r['id'])/r['filename'])),expected_sha=r['digest']))
             if 'run_artifacts' in tables:
                 for r in c.execute("SELECT id,uri FROM run_artifacts WHERE uri<>''"):
                     if '://' not in r['uri'] and Path(r['uri']).is_absolute():
                         refs.append(dict(kind='artifact',id=r['id'],path=r['uri']))
+            if include_checkpoints and 'tasks' in tables:
+                for row in c.execute('SELECT id,metadata FROM tasks'):
+                    value=json.loads(row['metadata'] or '{}')
+                    for key,path in [('checkpoint_path',value.get('checkpoint_path')),('latest_checkpoint', (value.get('latest_checkpoint') or {}).get('uri'))]:
+                        if isinstance(path,str) and Path(path).is_absolute():refs.append(dict(kind='checkpoint',id=f'{row["id"]}:{key}',path=path))
         return refs
 
     def backup(self,label='complete'):
@@ -78,13 +84,21 @@ class RecoveryBundle:
             with self.ops.store._lock:
                 snapshot=self.ops.backup_database(str(target),label)
                 db=Path(snapshot['path']);refs=self._sources(db)
+                registry={};registry_digest=''
+                if self.registry_path.exists():
+                    registry_digest=sha(self.registry_path)
+                    registry=json.loads(self.registry_path.read_text(encoding='utf-8'))
+                    if not isinstance(registry,dict):raise ValueError('下载注册表损坏，备份未成立')
+                    for key,item in registry.items():
+                        if not isinstance(item,dict) or item.get('id')!=key or not Path(item.get('path','')).is_absolute():raise ValueError('下载注册表记录无效')
+                        refs.append(dict(kind='delivery',id=key,path=item['path'],expected_sha=item['sha256']))
                 entries=[];copied={};missing_artifacts=[]
                 for ref in refs:
                     source=Path(ref['path']).resolve()
-                    if any(p.lower()=='tools' for p in source.parts) or source.suffix.lower() in self.EXCLUDED:
+                    if any(p.lower()=='tools' for p in source.parts) or source.suffix.lower() in self.EXCLUDED or source.name.lower().startswith('.env') or source.suffix.lower() in {'.pem','.key'}:
                         raise ValueError('资料引用指向模型权重或 tools；完整资料备份拒绝包含该路径')
                     if not source.is_file():
-                        if ref['kind']=='artifact':
+                        if ref['kind'] in ('artifact','delivery'):
                             missing_artifacts.append(dict(**ref,reason='registered_file_missing'));continue
                         raise ValueError('资料原文件缺失，完整备份未成立：'+str(source))
                     before=sha(source)
@@ -97,9 +111,11 @@ class RecoveryBundle:
                         copied[str(source)]=relative
                     entries.append(dict(**ref,bundle_path=relative,sha256=before,bytes=source.stat().st_size))
                 manifest=dict(schema=self.SCHEMA,created_at=self.ops._now(),database=dict(path=db.name,sha256=sha(db)),files=entries,
+                    delivery_registry=registry,checkpoints_included=True,
                     material_root=str(self.material_root),vector_recovery='rebuild_from_canonical_sqlite',
                     weights_included=False,missing_artifacts=missing_artifacts,
-                    scope='SQLite, all referenced document/material originals and existing registered local run artifacts; missing historical artifacts explicitly inventoried. Vectors rebuilt from canonical records. Unregistered files and model weights excluded.')
+                    scope='Committed SQLite snapshot, referenced document/material originals, task checkpoint files and existing registered local run/download artifacts. Missing historical artifacts explicitly inventoried. Vectors rebuilt from canonical records. Stable file/registry snapshots are not a distributed atomic cut. Unregistered files, Git working trees, execution leases, credentials and model weights excluded; arbitrary execution resume is not certified.')
+                if registry_digest and sha(self.registry_path)!=registry_digest:raise ValueError('下载注册表在备份期间发生变化，请重试')
                 (target/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
             return dict(ok=True,status='degraded' if missing_artifacts else 'complete',path=str(target),source_files=len(entries),unique_files=len(copied),
                 missing_artifacts=len(missing_artifacts),complete_original_sources=True,scope=manifest['scope'],weights_included=False)
@@ -116,14 +132,21 @@ class RecoveryBundle:
         db=inside(folder,manifest['database']['path'])
         if sha(db)!=manifest['database']['sha256']:raise ValueError('数据库备份摘要不一致')
         self.ops._assert_sqlite_ok(db)
-        refs=self._sources(db)
+        refs=self._sources(db,manifest['material_root'],manifest.get('checkpoints_included',False))
+        registry=manifest.get('delivery_registry',{})
+        if not isinstance(registry,dict):raise ValueError('恢复包下载注册表无效')
+        for key,item in registry.items():
+            if not isinstance(item,dict) or item.get('id')!=key or not Path(item.get('path','')).is_absolute():raise ValueError('恢复包下载记录无效')
+            refs.append(dict(kind='delivery',id=key,path=item['path'],expected_sha=item['sha256']))
         expected={(r['kind'],str(r['id'])) for r in refs}
         actual={(r['kind'],str(r['id'])) for r in manifest['files']}
         missing=manifest.get('missing_artifacts',[])
-        if any(r.get('kind')!='artifact' for r in missing):raise ValueError('原始资料不能作为缺失产物略过')
+        if any(r.get('kind') not in ('artifact','delivery') for r in missing):raise ValueError('原始资料或检查点不能作为缺失产物略过')
         missing_ids={(r['kind'],str(r['id'])) for r in missing}
         if expected!=actual|missing_ids or actual&missing_ids or len(actual)!=len(manifest['files']) or len(missing_ids)!=len(missing):raise ValueError('恢复包资料清单不完整或重复')
         for ref in manifest['files']:
+            original=next(r for r in refs if r['kind']==ref['kind'] and str(r['id'])==str(ref['id']))
+            if ref['path']!=original['path'] or (original.get('expected_sha') and ref['sha256']!=original['expected_sha']):raise ValueError('恢复包文件未绑定数据库或注册表原始引用')
             source=inside(folder,ref['bundle_path'])
             if sha(source)!=ref['sha256'] or source.stat().st_size!=ref['bytes']:raise ValueError('资料备份摘要不一致')
         return folder,manifest
@@ -158,6 +181,12 @@ class RecoveryBundle:
                 if 'knowledge_vector_index_state_v2' in names:c.execute('DELETE FROM knowledge_vector_index_state_v2')
                 if 'knowledge_vector_outbox_v2' in names:c.execute("UPDATE knowledge_vector_outbox_v2 SET processed_at='',error=''")
                 c.commit()
+            restored_registry={}
+            for key,item in manifest.get('delivery_registry',{}).items():
+                if item['path'] in mapping:restored_registry[key]=dict(item,path=mapping[item['path']])
+            registry_path=root/'output'/'artifact_delivery'/'index.json'
+            registry_path.parent.mkdir(parents=True,exist_ok=True)
+            registry_path.write_text(json.dumps(restored_registry,ensure_ascii=False,indent=2),encoding='utf-8')
             from memoryos.memory_store import MemoryStore
             from services.maintenance_service import MaintenanceService
             from memoryos.services.vector_store import MemoryVectorStore
@@ -175,6 +204,8 @@ class RecoveryBundle:
                 if not health['ok']:raise ValueError('隔离恢复后的数据库或原文件检查失败')
                 result=dict(ok=True,status='degraded' if manifest.get('missing_artifacts') else 'complete',missing_artifacts=len(manifest.get('missing_artifacts',[])),
                     target=str(root),database=str(db),material_root=str(restored_materials),source_files=len(manifest['files']),rebound_json_fields=rebound,health=health,
+                    delivery_registry=str(registry_path),delivery_items=len(restored_registry),checkpoint_files=sum(r['kind']=='checkpoint' for r in manifest['files']),
+                    execution_resume_verified=False,
                     vector=dict(provider=stats['provider'],embedding_provider=stats['embedding_provider'],count=stats['vector_count'],consistent=stats['consistent'],projection=str(portable)),
                     boundary='隔离恢复已验证原文件摘要、SQLite 及向量投影；默认使用离线 hash 后端。实际嵌入模型需复用外部权重并以 vector_factory 单独演练，未切换运行中的数据库。')
                 (root/'recovery-report.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')

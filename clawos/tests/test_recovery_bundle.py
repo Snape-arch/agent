@@ -75,4 +75,29 @@ class RecoveryBundleTests(unittest.TestCase):
             c.execute("INSERT INTO run_artifacts(run_id,artifact_id,uri) VALUES ('lost','artifact',?)",(str(self.root/'gone.md'),))
         out=self.bundle.backup();self.assertEqual(out['status'],'degraded');self.assertEqual(out['missing_artifacts'],1)
         restored=self.bundle.restore_isolated(out['path']);self.assertEqual(restored['missing_artifacts'],1)
+
+    def test_delivery_registry_and_task_checkpoint_survive_clean_restore(self):
+        from services.artifact_delivery_service import ArtifactDeliveryService
+        report=self.root/'download.md';report.write_text('Download survives a clean recovery.')
+        delivery=ArtifactDeliveryService(self.bundle.registry_path,[self.root])
+        artifact=delivery.register(report)
+        checkpoint=self.root/'checkpoint.json';checkpoint.write_text('{"completed":2}')
+        task=self.store.start_task('recovery','Durable task',metadata={'checkpoint_path':str(checkpoint),'latest_checkpoint':{'uri':str(checkpoint),'digest':sha(checkpoint)}})
+        out=self.bundle.backup();report.unlink();checkpoint.unlink();self.bundle.registry_path.unlink()
+        restored=self.bundle.restore_isolated(out['path'])
+        self.assertEqual(restored['delivery_items'],1);self.assertEqual(restored['checkpoint_files'],2)
+        item,path=ArtifactDeliveryService(restored['delivery_registry'],[Path(restored['target'])]).resolve(artifact['id'])
+        self.assertEqual(path.read_text(),'Download survives a clean recovery.')
+        store=MemoryStore(restored['database']);metadata=store.get_task(task['id'])['task']['metadata']
+        self.assertTrue(Path(metadata['checkpoint_path']).is_file())
+        self.assertEqual(metadata['checkpoint_path'],metadata['latest_checkpoint']['uri'])
+        self.assertEqual(sha(metadata['checkpoint_path']),metadata['latest_checkpoint']['digest'])
+
+    def test_manifest_cannot_rebind_original_to_other_valid_file(self):
+        out=self.bundle.backup();folder=Path(out['path']);mp=folder/'manifest.json';manifest=json.loads(mp.read_text())
+        material=next(r for r in manifest['files'] if r['kind']=='material')
+        other=next(r for r in manifest['files'] if r['kind']=='document')
+        material.update(bundle_path=other['bundle_path'],sha256=other['sha256'],bytes=other['bytes'])
+        mp.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError,'原始引用'):self.bundle.verify(folder)
 if __name__=='__main__':unittest.main()

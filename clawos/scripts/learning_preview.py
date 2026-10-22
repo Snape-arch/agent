@@ -1,5 +1,6 @@
 """Loopback-only Academy QA with actual HTTP handlers and an isolated store."""
 import sys
+import os
 import argparse
 from contextlib import asynccontextmanager, nullcontext
 import httpx
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+os.environ['CLAWOS_SKIP_LOCAL_ENV'] = '1'
 import clawos_server as server
 from memoryos.memory_store import MemoryStore
 from services.learning_product_service import LearningProductService
@@ -90,7 +92,7 @@ def main():
         app.middleware('http')(server.no_cache_static_shell)
         app.middleware('http')(server.workbench_access)
         for route in server.app.routes:
-            if route.path.startswith(("/api/academy/learning/", "/api/academy/paper/", "/api/documents", "/academy", '/api/collaboration','/api/data-lab','/api/meeting-workbench','/api/feishu','/api/architecture','/api/workspace/meetings', '/api/history/','/api/self-evolution/','/api/evolution-review/','/api/artifacts/','/api/workspace/research/learning-analysis')) or route.path in ('/','/product','/data-lab','/meetings','/console','/evolution-review','/api/sessions'):
+            if route.path.startswith(("/api/academy/learning/", "/api/academy/paper/", "/api/documents", "/academy", '/api/collaboration','/api/data-lab','/api/meeting-workbench','/api/feishu','/api/architecture','/api/workspace/meetings', '/api/history/','/api/self-evolution/','/api/evolution-review/','/api/artifacts/','/api/workspace/research/learning-analysis')) or route.path in ('/health','/api/runtime/release','/','/product','/data-lab','/meetings','/console','/evolution-review','/api/sessions'):
                 app.router.routes.append(route)
         app.mount("/static", StaticFiles(directory=server.STATIC_DIR), name="static")
         app.mount("/assets", StaticFiles(directory=server.STATIC_DIR / "assets"), name="assets")
