@@ -9,6 +9,14 @@ A self-evolving personal AI agent operating system based on the observe-plan-exe
 
 ## 快速开始
 
+Windows 启动器优先使用项目 `.venv`；也可设置 `CLAWOS_PYTHON` 为已准备好的 Python 可执行文件绝对路径。`start_clawos.bat --local` 会跳过项目 `.env`，并在启动前检查 Chroma、sentence-transformers 和 Torch。依赖不齐时明确退出，避免把轻量检索降级当成本地嵌入就绪；完整模型兼容性仍以实际加载为准。
+
+`GET /api/runtime/release` 提供进程实例、启动提交、启动/当前源码摘要和 `restart_required`。`GET /health` 的 `core_ready` 还要求数据库可访问、工作区服务初始化、向量一致且未降级；固定 `status: ok` 仅作存活信息。模型端点可达性另用 `/api/model/health?probe=true` 核验。指纹只覆盖明确列出的源码和页面文件，不能证明所有延迟导入模块或外部依赖版本。
+
+恢复包现在包含已注册下载产物和任务检查点文件。`clawos/scripts/p0_recovery_acceptance.py` 可在独立进程和合成数据中验证六类持久化链路；`recovery_drill.py` 对指定数据库做只读快照和隔离恢复，默认重建离线向量，实际 Chroma/嵌入恢复须显式传入 `--vector-config`。它们都不认证任意代码任务续跑或模型语义质量。范围、失败记录和剩余门槛见 [P0 运行与恢复验收](benchmarks/P0_RUNTIME_RECOVERY_ACCEPTANCE.md)。
+
+Windows 编码任务可部署独立的 Python 标准库运行时。从仓库根目录执行 `clawos/.venv/Scripts/python.exe clawos/scripts/sandbox_runtime.py setup --confirmed`，之后用 `status` 核验、`quarantine` 查看未确认收尾的任务。未指定运行时/profile环境变量时，编码服务会自动发现并校验该部署；损坏或未知清理状态拒绝执行。v2 宿主日志支持监督者/自有执行树退出后的应用启动收尾；也可用 `recover --command-id <命令ID> --confirmed` 核验后清理。仅恢复权限和工作区可用性，不自动执行中断命令；旧日志与证据不足继续隔离。物理断电等尚未验证，仍非生产就绪，见 [重启收尾验收](benchmarks/SANDBOX_RESTART_RECOVERY_ACCEPTANCE.md) 及 [原部署验收](benchmarks/SANDBOX_RUNTIME_SUPERVISION_ACCEPTANCE.md)。
+
 ### 1. 克隆或复制项目
 
 将本目录完整复制到目标机器。

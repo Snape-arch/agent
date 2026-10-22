@@ -1,0 +1,127 @@
+/* Shared warm-paper palette. Loaded last; no layout, asset or motion changes. */
+:root {
+  color-scheme: light;
+  background-color: #fbfaf5;
+  --claw-paper: #fbfaf5;
+  --claw-surface: #fffefb;
+  --claw-sidebar: #f5f3ec;
+  --claw-subtle: #f2efe7;
+  --claw-line: #e4dfd4;
+  --claw-control-line: #928b7c;
+  --claw-ink: #292824;
+  --claw-muted: #6f6b62;
+  --claw-accent: #3f5d50;
+  --claw-accent-hover: #304b3f;
+  --claw-accent-soft: #e9ede5;
+  --claw-accent-line: #c7d1c3;
+  --claw-on-accent: #fffefb;
+  --claw-dark: #242621;
+  --product-paper: var(--claw-paper);
+  --product-surface: var(--claw-surface);
+  --product-ink: var(--claw-ink);
+  --product-muted: var(--claw-muted);
+  --product-line: var(--claw-line);
+  --product-green: var(--claw-accent);
+  --product-soft: var(--claw-accent-soft);
+  --ink: var(--claw-ink); --muted: var(--claw-muted);
+  --paper: var(--claw-paper); --soft: var(--claw-sidebar); --line: var(--claw-line);
+  --accent: var(--claw-accent); --surface: var(--claw-surface); --bg: var(--claw-paper);
+  --c-surface: var(--claw-surface); --c-soft: var(--claw-sidebar);
+  --c-line-strong: var(--claw-line); --c-shadow: 0 10px 30px rgba(65,55,34,.045);
+}
+/* Existing workspace shells consume their own aliases. */
+body.workspace-linked {
+  --mint: var(--claw-accent-soft);
+  --navy: var(--claw-dark);
+  --workbench-canvas: var(--claw-paper);
+  --workbench-panel: var(--claw-surface);
+  --workbench-line: var(--claw-line);
+  --workbench-ink: var(--claw-ink);
+  --workbench-muted: var(--claw-muted);
+  --workbench-accent: var(--claw-accent);
+}
+.workspace-nav { background: var(--claw-surface); }
+.workspace-linked>.site-nav.light { background: var(--claw-surface); border-color: var(--claw-line); }
+.workspace-linked.academy-page>.site-nav.light .nav-links a.active { background: var(--claw-accent-soft); color: var(--claw-accent); }
+.workspace-linked :is(.rail,.doc-rail,.wb-rail) { background: var(--claw-sidebar); border-color: var(--claw-line); }
+.workspace-linked :is(.card,.wb-card,.doc-page,.doc-topbar,.doc-toolbar,.paper-reader-workspace,.reader-outline,.reader-canvas-pane,.reader-notes-pane,.reader-document-bar,.code-evidence-panel,.quiz-guidance,.ingest-queue) {
+  background-color: var(--claw-surface); border-color: var(--claw-line);
+}
+.workspace-linked :is(input,textarea,select) { background-color: var(--claw-surface); border-color: var(--claw-control-line); color: var(--claw-ink); }
+.workspace-linked button:hover:not(.primary,#send,.mint,.danger) { border-color: var(--claw-accent-line); color: var(--claw-accent); }
+.workspace-linked :is(.wb-intro p,.wb-card p,.fields label,.metric span,.metric b,.reader-document-state,.reader-page-indicator,.reader-note-card p) { color: var(--claw-muted); }
+.workspace-linked .review-banner { background: var(--claw-accent-soft); border-color: var(--claw-accent); }
+.workspace-linked :is(#stepResult,.meeting-review-source) { background: var(--claw-sidebar); border-color: var(--claw-line); color: var(--claw-ink); }
+.workspace-linked dialog { background: var(--claw-surface); border-color: var(--claw-line); color: var(--claw-ink); }
+.workspace-linked dialog::backdrop { background: rgba(41,40,36,.4); }
+.workspace-linked :is(.badge,.meta .badge,.metric,.recipe-step,.paper-toolbar,.reader-pane-head,.doc-foot,.doc-library-head input) { background-color: var(--claw-sidebar); border-color: var(--claw-line); }
+.workspace-linked :is(.reader-quick-actions button,.reader-note-card,.reader-note-card textarea,.atlas-progress,.atlas-search,.atlas-workspace,.atlas-inspector,.atlas-learning-plan,.atlas-plan-steps article,.code-studio,.notes-studio,.ingest-studio,.quiz-studio,.quiz-summary,.code-run-empty) {
+  background-color: var(--claw-surface); border-color: var(--claw-line);
+}
+.workspace-linked :is(.reader-outline,.atlas-rail,.atlas-canvas,.code-missions,.notes-template-rail,.notes-preview,.quiz-sidebar,.quiz-guidance,.ingest-queue,.quiz-grid article) {
+  background-color: var(--claw-sidebar); border-color: var(--claw-line);
+}
+.workspace-linked :is(.atlas-view-switch button.active,.atlas-rail button.active,.notes-template-rail>button.active,.code-lab-tabs button.active,.atlas-plan-steps span,.atlas-inspector .atlas-meta i,.reader-quick-actions button:hover,.paper-citation-row button) {
+  background: var(--claw-accent-soft); color: var(--claw-accent);
+}
+.workspace-linked :is(.atlas-canvas .academy-layer-node.unlocked:not(.active),.ingest-policy) {
+  background: var(--claw-accent-soft); border-color: var(--claw-accent-line); color: var(--claw-accent);
+}
+.workspace-linked :is(.atlas-canvas .academy-layer-node.active,.quiz-index button.active,.code-editor-panel,.code-editor-panel pre) { background-color: var(--claw-dark); }
+.workspace-linked :is(.atlas-canvas .academy-layer-node.active,.quiz-index button.active) { color: var(--claw-on-accent); border-color: var(--claw-dark); }
+.workspace-linked :is(.atlas-inspector li:before,.atlas-legend i.learned) { background: var(--claw-accent); border-color: var(--claw-accent); }
+.workspace-linked :is(.atlas-inspector .pill,.academy-module-card em,.atlas-history span,.message-feedback .feedback-status) { color: var(--claw-accent); }
+.workspace-linked :is(.doc-block.quote,.code-run-empty,.feishu-readiness,.workspace-table-scroll pre) { background-color: var(--claw-sidebar); }
+.workspace-linked :is(.block-edit code,.table-cell code) { background: var(--claw-accent-soft); color: var(--claw-accent); }
+.workspace-linked .doc-block.math { background: var(--claw-paper); border-color: var(--claw-line); }
+.workspace-linked .doc-block.code { background: var(--claw-dark); color: var(--claw-on-accent); }
+.workspace-linked .doc-block td { background-color: var(--claw-surface); }
+.workspace-linked .reader-notes-pane .academy-output { background: var(--claw-paper); border-color: var(--claw-line); }
+.workspace-linked :is(.reader-note-tabs,.guided-prompts button>span) { background: var(--claw-accent-soft); color: var(--claw-accent); }
+.workspace-linked :is(.reader-note-tabs button,.paper-toolbar,.reader-tab-panel label) { color: var(--claw-ink); }
+.workspace-linked :is(.reader-note-tabs button.active,.guided-prompts button) { background: var(--claw-surface); color: var(--claw-ink); border-color: var(--claw-line); }
+.workspace-linked :is(.guided-prompts small,.reader-quick-actions small,.reader-note-card p) { color: var(--claw-muted); }
+body.workspace-linked.aether-console { --c-panel: var(--claw-surface); --c-blue: var(--claw-accent); }
+.workspace-linked.aether-console :is(.side,.console-head,.composer,.intent-panel,.section-block,.empty-state) { background-color: var(--claw-surface) !important; border-color: var(--claw-line) !important; }
+.workspace-linked.aether-console .side { background-color: var(--claw-sidebar) !important; }
+.workspace-linked.aether-console :is(input,textarea,select) { border-color: var(--claw-control-line) !important; }
+.workspace-linked.aether-console :is(.workbench-quick button,.msg.user .bubble,.item,.session-result:hover,.settings-note,.graph-stage) { background-color: var(--claw-sidebar) !important; border-color: var(--claw-line) !important; }
+.workspace-linked.aether-console :is(.primary,#send,.avatar,.side-nav button.on .fluent-icon) { background: var(--claw-accent) !important; color: var(--claw-on-accent) !important; border-color: var(--claw-accent) !important; }
+.workspace-linked.aether-console :is(.primary,#send):hover { background: var(--claw-accent-hover) !important; }
+.workspace-linked.aether-console :is(.tool,.session.on,.session:hover,.tab.active,.chip.active) { background-color: var(--claw-accent-soft) !important; color: var(--claw-accent) !important; }
+/* Independent reviewers use the same palette, without adding workspace navigation. */
+body:has(#ratingForm) { font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif; color: var(--claw-ink); background: var(--claw-paper); }
+body:has(#ratingForm) :is(header,.question,fieldset,button,input,textarea,select) { background-color: var(--claw-surface); border-color: var(--claw-line); }
+body:has(#ratingForm) :is(input,textarea,select) { border-color: var(--claw-control-line); }
+body:has(#ratingForm) :is(pre,#status) { background: var(--claw-sidebar); border-color: var(--claw-accent-line); color: var(--claw-ink); }
+body:has(#ratingForm) .primary { background: var(--claw-accent); border-color: var(--claw-accent); color: var(--claw-on-accent); }
+/* Cover composition, images, transforms and animations stay in site.css. */
+.claw-home-v2 {
+  --home-bg: var(--claw-paper); --home-ink: var(--claw-ink);
+  --home-muted: var(--claw-muted); --home-blue: var(--claw-accent);
+  --home-panel: rgba(255,254,251,.78);
+}
+.claw-home-v2 .claw-hero { background: var(--claw-paper); }
+.claw-home-v2 .claw-home-nav { background: rgba(251,250,245,.88); border-color: var(--claw-line); }
+.claw-home-v2 .claw-home-nav.scrolled { background: rgba(251,250,245,.88); border-color: var(--claw-line); }
+.claw-home-v2 :is(.hero-title-stack p,.home-section-head p,.vision-card p,.builder-card p,.cap-card p) { color: var(--claw-muted); }
+.claw-home-v2 :is(.vision-card,.builder-card,.cap-card,.home-btn.ghost) { background-color: var(--claw-surface); border-color: var(--claw-line); }
+.claw-home-v2 :is(.home-btn.dark,.home-nav-cta) { background: var(--claw-dark); border-color: var(--claw-dark); color: var(--claw-on-accent); }
+.claw-home-v2 :is(.hero-kicker,.home-section-head>span,.claw-home-brand small,.annotation b) { color: var(--claw-muted); }
+.claw-home-v2 .annotation span { color: #817a6e; }
+.claw-home-v2 .dark-section { background-color: var(--claw-dark); }
+.claw-home-v2 .dark-section :is(.agent-copy p,.agent-copy>span) { color: #c7c6b9; }
+.product-page { background: var(--claw-paper); color: var(--claw-ink); }
+.product-page:before { background: radial-gradient(circle at 78% 8%,rgba(255,254,251,.85),transparent 28rem),linear-gradient(rgba(70,61,43,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(70,61,43,.02) 1px,transparent 1px); background-size: auto,56px 56px,56px 56px; }
+.product-page .site-nav.light { background: rgba(251,250,245,.88); border-color: var(--claw-line); }
+.product-page :is(.white-panel,.capability-link-card,.evidence-grid article) { background: var(--claw-surface); border-color: var(--claw-line); box-shadow: 0 12px 36px rgba(65,55,34,.045); }
+.product-page :is(.product-hero p,.white-panel p,.evidence-grid p,.compile-section p,.capability-index-head p) { color: var(--claw-muted); }
+.product-page :is(.section-title span,.compile-section span,.evidence-grid b,.capability-link-card em,.capability-index-head>span) { color: var(--claw-accent); }
+.product-page .pill.solid.dark { background: var(--claw-dark); border-color: var(--claw-dark); color: var(--claw-on-accent); }
+.product-page .eyebrow.dark { color: var(--claw-muted); background: var(--claw-surface); border-color: var(--claw-line); }
+.product-page .eyebrow.dark i { background: var(--claw-accent); box-shadow: none; }
+.product-page .visual-glyph { border-color: var(--claw-accent-line); box-shadow: 0 24px 80px rgba(65,55,34,.08); }
+.product-page .glyph-a { background: radial-gradient(circle at 35% 30%,var(--claw-surface),rgba(148,165,141,.22) 55%,rgba(205,196,168,.16)); }
+.product-page .glyph-b { background: linear-gradient(160deg,var(--claw-surface),rgba(148,165,141,.12)); }
+.product-page .line-art { background: repeating-linear-gradient(0deg,rgba(63,93,80,.3) 0 1px,transparent 1px 8px),linear-gradient(135deg,var(--claw-surface),var(--claw-sidebar)); border-color: var(--claw-line); }
+/* Errors, warnings, collaboration actor hues and chart series retain their semantics. */

@@ -32,6 +32,269 @@ TRUSTED_DOMAIN_HINTS = (
     "python.org",
 )
 
+COMMUNITY_DOMAIN_HINTS = (
+    "stackoverflow.com",
+    "stackexchange.com",
+    "users.rust-lang.org",
+    "zhihu.com",
+    "juejin.cn",
+    "csdn.net",
+    "segmentfault.com",
+    "v2ex.com",
+    "reddit.com",
+    "medium.com",
+    "substack.com",
+)
+
+ACADEMIC_DOMAIN_HINTS = (
+    "arxiv.org",
+    "acm.org",
+    "ieee.org",
+    "nature.com",
+    "science.org",
+    "semanticscholar.org",
+    "scholar.google.",
+)
+
+EXPLICIT_SEARCH_PATTERNS = (
+    r"联网", r"搜索", r"检索", r"查一下", r"查证", r"核实", r"来源", r"网页链接",
+    r"search\b", r"browse\b", r"look\s*up", r"verify", r"source(?:s)?\b", r"citation(?:s)?\b",
+)
+FRESHNESS_PATTERNS = (
+    r"最新", r"最近", r"今天", r"当前", r"现在", r"实时", r"刚刚", r"近期",
+    r"latest", r"recent", r"today", r"current", r"now", r"up[- ]to[- ]date",
+)
+
+
+SEARCH_EXPLICIT_PATTERNS = (
+    r"联网", r"搜索", r"检索", r"查一下", r"查证", r"核实", r"来源", r"网页链接",
+    r"search\b", r"browse\b", r"look\s*up", r"verify", r"source(?:s)?\b", r"citation(?:s)?\b",
+)
+SEARCH_FRESHNESS_PATTERNS = (
+    r"最新", r"最近", r"今天", r"当前", r"现在", r"实时", r"刚刚", r"近期",
+    r"latest", r"recent", r"today", r"current", r"now", r"up[- ]to[- ]date",
+)
+SEARCH_HIGH_RISK_PATTERNS = (
+    r"诊断", r"治疗", r"用药", r"剂量", r"法律意见", r"是否合法", r"合同风险",
+    r"税务", r"投资建议", r"保险理赔", r"合规要求", r"diagnos", r"treatment",
+    r"medication", r"dosage", r"legal advice", r"tax law", r"investment advice",
+    r"regulation", r"compliance requirement",
+)
+SEARCH_EXPERIENCE_PATTERNS = (
+    r"经验", r"实践", r"踩坑", r"口碑", r"真实使用", r"社区观点", r"大家怎么",
+    r"推荐", r"选型", r"对比", r"评测", r"值不值得", r"如何选择", r"experience",
+    r"best practice", r"pitfall", r"community", r"real[- ]world", r"recommend",
+    r"which should", r"compare", r"review",
+)
+
+
+def decide_search_need(
+    query: str,
+    *,
+    mode: str = "auto",
+    has_attachments: bool = False,
+    local_context_sufficient: bool = False,
+) -> dict[str, Any]:
+    """Decide whether web access adds material value to this request.
+
+    Explicit user requests override the UI's proactive-search switch. Auto mode is
+    deliberately conservative: stable explanations and attached-document reading
+    stay local, while freshness and external verification trigger research.
+    """
+    text = str(query or "").strip().lower()
+    normalized_mode = mode if mode in {"off", "auto", "force"} else "auto"
+    explicit_terms = ("\u8054\u7f51", "\u641c\u7d22", "\u68c0\u7d22", "\u67e5\u4e00\u4e0b", "\u67e5\u8bc1", "\u6838\u5b9e", "\u6765\u6e90")
+    freshness_terms = ("\u6700\u65b0", "\u6700\u8fd1", "\u4eca\u5929", "\u5f53\u524d", "\u73b0\u5728", "\u5b9e\u65f6", "\u8fd1\u671f")
+    high_risk_terms = ("\u8bca\u65ad", "\u6cbb\u7597", "\u7528\u836f", "\u5242\u91cf", "\u6cd5\u5f8b", "\u5408\u6cd5", "\u5408\u540c\u98ce\u9669", "\u5408\u89c4", "\u7a0e\u52a1", "\u6295\u8d44\u5efa\u8bae", "\u4fdd\u9669\u7406\u8d54")
+    experience_terms = ("\u7ecf\u9a8c", "\u5b9e\u8df5", "\u8e29\u5751", "\u53e3\u7891", "\u771f\u5b9e\u4f7f\u7528", "\u793e\u533a\u89c2\u70b9", "\u63a8\u8350", "\u9009\u578b", "\u5bf9\u6bd4", "\u8bc4\u6d4b", "\u503c\u4e0d\u503c\u5f97", "\u5982\u4f55\u9009\u62e9")
+    explicit = any(term in text for term in explicit_terms) or any(re.search(pattern, text, re.I) for pattern in SEARCH_EXPLICIT_PATTERNS)
+    freshness = any(term in text for term in freshness_terms) or any(re.search(pattern, text, re.I) for pattern in SEARCH_FRESHNESS_PATTERNS)
+    high_risk = any(term in text for term in high_risk_terms) or any(re.search(pattern, text, re.I) for pattern in SEARCH_HIGH_RISK_PATTERNS)
+    experiential = any(term in text for term in experience_terms) or any(re.search(pattern, text, re.I) for pattern in SEARCH_EXPERIENCE_PATTERNS)
+    local_sufficient = bool(local_context_sufficient or has_attachments)
+    if normalized_mode == "force":
+        should_search, reason, confidence = True, "forced_by_request_mode", 1.0
+    elif explicit:
+        should_search, reason, confidence = True, "explicit_user_request", 0.98
+    elif normalized_mode == "off":
+        should_search, reason, confidence = False, "proactive_search_disabled", 0.98
+    elif high_risk:
+        should_search, reason, confidence = True, "high_stakes_verification_required", 0.95
+    elif freshness:
+        should_search, reason, confidence = True, "freshness_or_current_state_needed", 0.92
+    elif local_sufficient:
+        should_search, reason, confidence = False, "local_evidence_is_sufficient", 0.94
+    elif experiential:
+        should_search, reason, confidence = True, "independent_experience_adds_value", 0.84
+    else:
+        should_search, reason, confidence = False, "stable_answer_can_be_given_directly", 0.82
+    if high_risk:
+        source_policy, breadth = "authority_first", "deep"
+        minimum_sources, minimum_domains, max_source_reads = 2, 2, 3
+    elif experiential:
+        source_policy, breadth = "authority_and_community", "balanced"
+        minimum_sources, minimum_domains, max_source_reads = 3, 2, 3
+    elif freshness:
+        source_policy, breadth = "fresh_primary_sources", "balanced"
+        minimum_sources, minimum_domains, max_source_reads = 2, 2, 2
+    elif explicit or normalized_mode == "force":
+        source_policy, breadth = "claim_appropriate_sources", "balanced"
+        minimum_sources, minimum_domains, max_source_reads = 2, 1, 2
+    else:
+        source_policy, breadth = "local_first", "quick"
+        minimum_sources, minimum_domains, max_source_reads = 0, 0, 0
+    return {
+        "should_search": should_search,
+        "reason": reason,
+        "confidence": confidence,
+        "mode": normalized_mode,
+        "explicit_request": explicit,
+        "freshness_needed": freshness,
+        "high_stakes": high_risk,
+        "experiential": experiential,
+        "local_context_sufficient": local_sufficient,
+        "source_policy": source_policy,
+        "breadth": breadth,
+        "coverage": {
+            "minimum_sources": minimum_sources,
+            "minimum_domains": minimum_domains,
+            "require_authoritative": bool(high_risk or freshness),
+            "require_community": bool(experiential),
+            "require_fresh": bool(freshness),
+        },
+        "max_source_reads": max_source_reads,
+        "stop_when": "coverage requirements are met and remaining uncertainty is explicit",
+    }
+
+
+def classify_source_type(url: str) -> str:
+    host = urllib.parse.urlparse(str(url or "")).netloc.lower()
+    if any(hint in host for hint in COMMUNITY_DOMAIN_HINTS):
+        return "community"
+    if any(hint in host for hint in ACADEMIC_DOMAIN_HINTS) or host.endswith(".edu"):
+        return "academic"
+    if host.endswith(".gov") or ".gov." in host or any(hint in host for hint in ("who.int", "nih.gov", "docs.", "developer.")):
+        return "official"
+    return "other"
+
+
+def build_query_plan(
+    query: str,
+    *,
+    breadth: str = "balanced",
+    decision: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    plan = [{"query": str(query or "").strip(), "facet": "primary"}]
+    if breadth == "quick" or not plan[0]["query"]:
+        return plan
+    text = plan[0]["query"]
+    is_chinese = bool(re.search(r"[\u4e00-\u9fff]", text))
+    decision = decision or decide_search_need(text, mode="auto")
+    exploratory = bool(decision.get("experiential")) or any(key in text.lower() for key in (
+        "如何", "怎么", "为什么", "对比", "评测", "经验", "推荐", "实践", "踩坑", "观点",
+        "如何", "怎么", "为什么", "对比", "评测", "经验", "推荐", "实践", "踩坑", "观点",
+        "how", "why", "compare", "review", "experience", "recommend", "practice",
+    ))
+    if is_chinese and exploratory:
+        plan.append({
+            "query": f"{text} (site:zhihu.com OR site:juejin.cn OR site:csdn.net)",
+            "facet": "community",
+        })
+    elif exploratory:
+        plan.append({
+            "query": f"{text} (site:reddit.com OR site:stackoverflow.com OR site:medium.com)",
+            "facet": "community",
+        })
+    if decision.get("freshness_needed"):
+        plan.append({
+            "query": f"{text} {datetime.now(timezone.utc).year} official",
+            "facet": "fresh_primary",
+        })
+    elif decision.get("high_stakes"):
+        plan.append({
+            "query": f"{text} official guidance primary source",
+            "facet": "authoritative",
+        })
+    if breadth == "deep" and any(key in text.lower() for key in ("论文", "研究", "paper", "research")):
+        plan.append({"query": f"{text} (site:arxiv.org OR site:acm.org OR site:nature.com)", "facet": "academic"})
+    return plan[:3]
+
+
+def evidence_sufficiency(
+    results: list[dict[str, Any]], decision: dict[str, Any]
+) -> dict[str, Any]:
+    """Return a deterministic stop signal for evidence acquisition."""
+    coverage = decision.get("coverage") or {}
+    credible = [
+        item for item in results
+        if item.get("credibility") in {"high", "medium"}
+        and float((item.get("scores") or {}).get("relevance", 0)) >= 0.12
+    ]
+    domains = {str(item.get("domain") or "") for item in credible if item.get("domain")}
+    authoritative = [item for item in credible if item.get("source_type") in {"official", "academic"}]
+    community = [item for item in credible if item.get("source_type") == "community"]
+    fresh = [item for item in credible if float((item.get("scores") or {}).get("freshness", 0)) >= 0.75]
+    missing = []
+    if len(credible) < int(coverage.get("minimum_sources") or 0):
+        missing.append("source_count")
+    if len(domains) < int(coverage.get("minimum_domains") or 0):
+        missing.append("domain_diversity")
+    if coverage.get("require_authoritative") and not authoritative:
+        missing.append("authoritative_source")
+    if coverage.get("require_community") and not community:
+        missing.append("community_experience")
+    if coverage.get("require_fresh") and not fresh:
+        missing.append("fresh_source")
+    enough = not missing
+    return {
+        "enough_to_stop_search": enough,
+        "answer_ready": enough and bool(credible),
+        "missing": missing,
+        "credible_sources": len(credible),
+        "domains": len(domains),
+        "authoritative_sources": len(authoritative),
+        "community_sources": len(community),
+        "fresh_sources": len(fresh),
+        "reason": "evidence_coverage_met" if enough else "additional_evidence_lane_needed",
+    }
+
+
+def select_diverse_results(
+    results: list[dict[str, Any]],
+    limit: int,
+    *,
+    require_community: bool = True,
+    authority_first: bool = False,
+) -> list[dict[str, Any]]:
+    """Keep ranking quality while preventing one domain from filling the answer."""
+    if authority_first:
+        results = sorted(
+            results,
+            key=lambda item: (
+                item.get("source_type") not in {"official", "academic"},
+                -float((item.get("scores") or {}).get("source_score", 0)),
+            ),
+        )
+    selected: list[dict[str, Any]] = []
+    domain_counts: dict[str, int] = {}
+    for item in results:
+        domain = str(item.get("domain") or "")
+        if domain and domain_counts.get(domain, 0) >= 2:
+            continue
+        selected.append(item)
+        if domain:
+            domain_counts[domain] = domain_counts.get(domain, 0) + 1
+        if len(selected) >= limit:
+            break
+    if require_community and limit >= 4 and not any(item.get("source_type") == "community" for item in selected):
+        community = next((item for item in results if item.get("source_type") == "community"), None)
+        if community and float(community.get("scores", {}).get("relevance", 0)) >= 0.15:
+            if len(selected) >= limit:
+                selected[-1] = community
+            else:
+                selected.append(community)
+    return selected[:limit]
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -143,6 +406,7 @@ class SearchEvidenceEngine:
         return {
             **item,
             "domain": host,
+            "source_type": classify_source_type(url),
             "scores": {
                 "source_score": score,
                 "relevance": round(relevance, 4),
@@ -186,8 +450,13 @@ class SearchEvidenceEngine:
         *,
         retries: int = 2,
         use_cache: bool = True,
+        breadth: str = "balanced",
+        decision: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        key = safe_cache_key("search", query, limit, providers)
+        decision = decision or decide_search_need(query, mode="auto")
+        effective_breadth = str(decision.get("breadth") or breadth)
+        query_plan = build_query_plan(query, breadth=effective_breadth, decision=decision)
+        key = safe_cache_key("search", query, limit, providers, query_plan)
         if use_cache:
             cached = self.cache.get(key)
             if cached:
@@ -197,6 +466,7 @@ class SearchEvidenceEngine:
             return {"error": "rate_limited", "error_type": "rate_limited", "query": query, "results": [], "rate_limit": rate}
         attempts: list[dict[str, Any]] = []
         all_rows: list[dict[str, Any]] = []
+        successful_provider = ""
         for provider in providers:
             fn = provider_funcs.get(str(provider).lower())
             if not fn:
@@ -207,6 +477,7 @@ class SearchEvidenceEngine:
                     rows, error_type = fn(query, limit)
                     attempts.append({
                         "provider": provider,
+                        "facet": "primary",
                         "attempt": attempt,
                         "ok": bool(rows),
                         "error_type": error_type,
@@ -214,10 +485,12 @@ class SearchEvidenceEngine:
                     })
                     if rows:
                         all_rows.extend(rows)
+                        successful_provider = str(provider).lower()
                         break
                 except Exception as exc:
                     attempts.append({
                         "provider": provider,
+                        "facet": "primary",
                         "attempt": attempt,
                         "ok": False,
                         "error_type": type(exc).__name__,
@@ -226,6 +499,49 @@ class SearchEvidenceEngine:
                     })
             if len(all_rows) >= limit:
                 break
+        preliminary_ranked = [self.score_source(query, row) for row in all_rows]
+        preliminary_ranked.sort(
+            key=lambda item: item.get("scores", {}).get("source_score", 0),
+            reverse=True,
+        )
+        preliminary_coverage = decision.get("coverage") or {}
+        preliminary_selected = select_diverse_results(
+            preliminary_ranked,
+            limit,
+            require_community=bool(preliminary_coverage.get("require_community")),
+            authority_first=bool(preliminary_coverage.get("require_authoritative")),
+        )
+        preliminary_sufficiency = evidence_sufficiency(preliminary_selected, decision)
+        if (
+            successful_provider
+            and len(query_plan) > 1
+            and not preliminary_sufficiency["enough_to_stop_search"]
+        ):
+            fn = provider_funcs.get(successful_provider)
+            for query_variant in query_plan[1:]:
+                started = time.perf_counter()
+                try:
+                    rows, error_type = fn(query_variant["query"], max(3, limit // 2)) if fn else ([], "provider_unavailable")
+                    attempts.append({
+                        "provider": successful_provider,
+                        "facet": query_variant["facet"],
+                        "attempt": 1,
+                        "ok": bool(rows),
+                        "error_type": error_type,
+                        "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+                    })
+                    for row in rows:
+                        all_rows.append({**row, "query_facet": query_variant["facet"]})
+                except Exception as exc:
+                    attempts.append({
+                        "provider": successful_provider,
+                        "facet": query_variant["facet"],
+                        "attempt": 1,
+                        "ok": False,
+                        "error_type": type(exc).__name__,
+                        "message": str(exc)[:200],
+                        "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+                    })
         deduped: dict[str, dict[str, Any]] = {}
         for row in all_rows:
             url = str(row.get("url") or "").split("#", 1)[0]
@@ -233,15 +549,31 @@ class SearchEvidenceEngine:
                 deduped[url] = row
         ranked = [self.score_source(query, row) for row in deduped.values()]
         ranked.sort(key=lambda item: item.get("scores", {}).get("source_score", 0), reverse=True)
+        coverage = decision.get("coverage") or {}
+        selected = select_diverse_results(
+            ranked,
+            limit,
+            require_community=bool(coverage.get("require_community")),
+            authority_first=bool(coverage.get("require_authoritative")),
+        )
+        sufficiency = evidence_sufficiency(selected, decision)
         payload = {
             "query": query,
+            "query_plan": query_plan,
             "provider": next((a["provider"] for a in attempts if a.get("ok")), ""),
-            "results": ranked[:limit],
+            "results": selected,
             "attempts": attempts,
             "provider_health": provider_health_summary(attempts, providers),
             "cache_hit": False,
             "rate_limit": rate,
-            "quality_summary": self.quality_summary(ranked[:limit]),
+            "quality_summary": self.quality_summary(selected),
+            "search_policy": decision,
+            "evidence_sufficiency": sufficiency,
+            "stop_search": sufficiency["enough_to_stop_search"],
+            "expansion_skipped": bool(
+                len(query_plan) > 1
+                and preliminary_sufficiency["enough_to_stop_search"]
+            ),
         }
         if ranked and use_cache:
             self.cache.set(key, payload)
@@ -259,6 +591,8 @@ class SearchEvidenceEngine:
             "high_credibility": sum(1 for item in results if item.get("credibility") == "high"),
             "avg_source_score": round(sum(scores) / len(scores), 4),
             "domains": sorted({item.get("domain", "") for item in results if item.get("domain")})[:8],
+            "source_types": sorted({item.get("source_type", "other") for item in results}),
+            "community_count": sum(1 for item in results if item.get("source_type") == "community"),
         }
 
     def fetch(

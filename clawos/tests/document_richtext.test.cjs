@@ -1,0 +1,5 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');
+const rich=require('../static/assets/document-richtext.js');
+test('typed rendering never inserts arbitrary HTML or invalid URLs',()=>{const html=rich.render([{text:'<img src=x onerror=alert(1)>',marks:[{type:'highlight'},{type:'link',href:'javascript:alert(1)'}]}]);assert(!html.includes('<img'));assert(!html.includes('javascript:'));assert(html.includes('<mark>'));});
+test('nested formatting and backticks survive the Markdown projection',()=>{const runs=[{text:'`x`',marks:[{type:'code'},{type:'bold'}]},{text:'参考',marks:[{type:'link',href:'https://example.org/a(b)'}]}];assert.equal(rich.markdown(runs),'**`` `x` ``**[参考](https://example.org/a%28b%29)');assert(rich.render(runs).includes('<strong><code>'));});
+test('code preview escapes HTML while highlighting supported tokens',()=>{const html=rich.highlight('const x = "<script>"; // evidence','javascript');assert(html.includes('syntax-keyword'));assert(!html.includes('<script>'));assert(html.includes('&lt;script&gt;'));assert.equal(rich.highlight('<b>','unknown'),'&lt;b&gt;');});

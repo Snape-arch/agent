@@ -155,7 +155,10 @@ assert report.citation_hit_rate >= 0.85`
 };
 
 const academyState = {
-  completed: new Set(JSON.parse(localStorage.getItem("clawos_academy_completed") || '["foundation"]')),
+  completed: new Set(),
+  mastery: {},
+  learningDashboard: null,
+  activeQuiz: null,
   ingestQueue: JSON.parse(localStorage.getItem("clawos_academy_ingest") || "[]")
 };
 
@@ -181,7 +184,6 @@ const academyPaperState = {
 };
 
 function academySave() {
-  localStorage.setItem("clawos_academy_completed", JSON.stringify([...academyState.completed]));
   localStorage.setItem("clawos_academy_ingest", JSON.stringify(academyState.ingestQueue));
 }
 
@@ -208,10 +210,71 @@ function academyRenderHtml(id, html) {
   if (node) node.innerHTML = html;
 }
 
+async function academyLoadLearningDashboard() {
+  const dashboard = await academyApi("/api/academy/learning/dashboard");
+  academyState.learningDashboard = dashboard;
+  academyState.mastery = Object.fromEntries(
+    (dashboard.topics || []).map(item => [item.topic_key, Number(item.p_known || 0)])
+  );
+  academyState.completed = new Set(
+    (dashboard.topics || []).filter(item => item.mastered).map(item => item.topic_key)
+  );
+  academyRenderLayerGraph(document.querySelector(".academy-layer-node.active")?.dataset.layer);
+  academyRenderProgressNodes();
+  const progress = dashboard.topics?.length
+    ? Math.round((dashboard.mastered_count / dashboard.topics.length) * 100)
+    : 0;
+  academySetText("academyProgress", `${progress}%`);
+  academySetText("academyDueCount", String(dashboard.due_count || 0));
+  academySetText(
+    "academyMasterySummary",
+    `已掌握 ${dashboard.mastered_count || 0}/${dashboard.topics?.length || 0}；证据模型 ${dashboard.topics?.[0]?.algorithm_version || "未初始化"}`
+  );
+  await academyRenderLearningQueue(dashboard);
+  return dashboard;
+}
+
+async function academyRenderLearningQueue(dashboard) {
+  const grid = document.getElementById("academyQuizGrid");
+  if (!grid) return;
+  let panel = document.getElementById("academyLearningQueue");
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.id = "academyLearningQueue";
+    grid.before(panel);
+  }
+  const [catalog, queue] = await Promise.all([
+    academyApi("/api/academy/learning/courses"),
+    academyApi("/api/academy/learning/mistakes")
+  ]);
+  panel.innerHTML = `<label>当前课程 <select id="academyCourseSelect">${(catalog.courses || []).map(course =>
+    `<option value="${Number(course.id)}" ${course.id === dashboard.course.id ? "selected" : ""}>${academyEsc(course.title)}</option>`).join("")}</select></label>
+    <p>待复习 ${Number(dashboard.due_count)} 个知识点 · 待订正 ${Number(queue.count)} 道错题</p>
+    ${(dashboard.topics || []).map(item => `<p>${academyEsc(item.topic)}：${item.mastered ? "已掌握" : item.unlocked ? "可练习" : "等待前置知识"} · ${Number(item.evidence_count)} 份证据</p>`).join("")}
+    ${(queue.mistakes || []).map(item => `<details><summary>${academyEsc(item.prompt)}</summary><p>原答案：${academyEsc(item.wrong_answer)}</p><p>${academyEsc(item.correct_answer)}</p><small>请根据反馈重新练习；订正记录本身不会提高掌握度。</small></details>`).join("")}`;
+  panel.querySelector("select").addEventListener("change", async event => {
+    event.target.disabled = true;
+    try {
+      await academyApi("/api/academy/learning/enroll", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ course_id: Number(event.target.value) })
+      });
+      await academyLoadLearningDashboard();
+      await academyGenerateQuiz();
+    } catch (error) {
+      academySetText("academyMasterySummary", error.message);
+      event.target.disabled = false;
+    }
+  });
+}
+
 function academyCompleteNode(key) {
-  academyState.completed.add(key);
-  academySave();
-  academyRenderLayerGraph(document.querySelector(".academy-layer-node.active")?.dataset.layer || key);
+  const item = academyState.learningDashboard?.topics?.find(row => row.topic_key === key);
+  if (item?.mastered) {
+    academySetText("academyProgress", "该节点已有至少两份掌握证据。");
+    return;
+  }
+  window.location.href = "/academy/quiz";
 }
 
 function academyRenderLayerStrip() {
@@ -283,20 +346,38 @@ function academyPaperSnippet() {
 }
 
 function academyRenderPaperChunks() {
-  const target = document.getElementById("academyPaperText");
-  if (!target) return;
-  if (!academyPaperState.chunks.length) {
-    target.innerHTML = `<article class="paper-chunk"><b>Parsed Text</b><p>等待后端解析论文 chunk。</p></article>`;
-    academyRenderPaperRuntimeStatus();
-    return;
-  }
-  target.innerHTML = academyPaperState.chunks.slice(0, 10).map((chunk, index) => {
-    const label = chunk.citation || `doc:${academyPaperState.document?.id || "?"}#chunk=${chunk.chunk_index ?? index}`;
-    const text = chunk.text || chunk.content || chunk.preview || "";
-    return `<article class="paper-chunk"><b>${academyEsc(label)}</b><p>${academyEsc(text.slice(0, 720))}</p></article>`;
+  const target=document.getElementById("academyPaperText");
+  if(!target)return;
+  target.hidden=Boolean(academyPaperState.frameSource);
+  document.getElementById("academyPdfFrame")?.toggleAttribute("hidden",!academyPaperState.frameSource);
+  if(!academyPaperState.chunks.length){target.textContent="等待解析原文。";academyRenderPaperRuntimeStatus();return;}
+  document.getElementById("academyReaderEmpty")?.setAttribute("hidden","");
+  target.innerHTML=academyPaperState.chunks.map((chunk,index)=>{
+    const label=chunk.citation||'doc:'+academyPaperState.document?.id+'#chunk='+chunk.chunk_index;
+    const text=chunk.text||chunk.content||chunk.preview||"";
+    return '<article class="paper-chunk" data-chunk-index="'+Number(chunk.chunk_index??index)+'"><b>'+academyEsc(label)+(chunk.metadata?.review_required?' · 待复核文本':'')+'</b><p>'+academyEsc(text)+'</p></article>';
   }).join("");
-  academyRenderPaperRuntimeStatus();
+  if(academyPaperState.chunksHasMore)target.insertAdjacentHTML("beforeend",'<button type="button" id="academyMorePaperText">继续载入原文</button>');
+  document.getElementById("academyMorePaperText")?.addEventListener("click",async e=>{
+    e.currentTarget.disabled=true;
+    try{const r=await academyApi('/api/documents/'+academyPaperState.document.id+'/chunks?limit=100&include_review=true&offset='+academyPaperState.chunksNextOffset);
+      academyPaperState.chunks.push(...r.chunks);academyPaperState.chunksHasMore=r.has_more;academyPaperState.chunksNextOffset=r.next_offset;academyRenderPaperChunks();
+    }catch(error){academySetText("academyPaperStatus","原文载入失败："+error.message);e.currentTarget.disabled=false;}
+  });
+  const outline=document.querySelector(".reader-outline-list");
+  if(outline){
+    const rows=academyPaperState.chunks.filter((c,i)=>i===0||c.metadata?.heading||c.metadata?.section).slice(0,40);
+    outline.innerHTML=rows.map((c,i)=>{const page=Number(c.metadata?.page||c.metadata?.page_start)||0;
+      return '<button type="button" data-source-chunk="'+Number(c.chunk_index??i)+'" '+(page?'data-source-page="'+page+'"':'')+'><span>'+(i+1)+'</span><b>'+academyEsc(c.metadata?.heading||c.metadata?.section||'原文片段 '+(Number(c.chunk_index??i)+1))+(!page&&academyPaperState.frameSource?' · 页码未确认':'')+'</b></button>';
+    }).join("");
+    outline.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
+      if(academyPaperState.frameSource){if(b.dataset.sourcePage)academyJumpPaperSection(b.dataset.sourcePage,b);else academySetText("academyPaperStatus","该片段没有可靠页码，请在原文中核对定位。");}
+      else target.querySelector('[data-chunk-index="'+b.dataset.sourceChunk+'"]')?.scrollIntoView({behavior:"smooth",block:"start"});
+    }));
+  }
+  academyRenderReaderNotes();academyRenderPaperRuntimeStatus();
 }
+
 
 function academyRenderCitationEvidence(result) {
   const answer = result?.answer || result?.summary || "暂无回答。";
@@ -364,8 +445,16 @@ async function academyRefreshPaperPersistedStatus() {
     academyRenderPaperRuntimeStatus();
     return null;
   }
-  const status = await academyApi(`/api/academy/paper/status?document_id=${Number(academyPaperState.document.id)}`);
+  const documentId = Number(academyPaperState.document.id);
+  const status = await academyApi(`/api/academy/paper/status?document_id=${documentId}`);
+  if (Number(academyPaperState.document?.id) !== documentId) return null;
+  academyPaperState.document = {...academyPaperState.document,...status.document};
+  if (document.getElementById('paperTitle')) document.getElementById('paperTitle').value = academyPaperState.document.title || academyPaperState.document.filename || `Document ${documentId}`;
   academyPaperState.persistedStatus = status;
+  if (status.report?.ready && status.report?.analysis) {
+    academyPaperState.report = {report:status.report,analysis:status.report.analysis,artifacts:status.report.artifacts || []};
+    academyRenderPaperReport();
+  }
   if (status.knowledge?.id) academyPaperState.savedKnowledgeId = status.knowledge.id;
   if (status.annotation?.artifact) academyPaperState.annotationArtifact = status.annotation.artifact;
   if (status.checkpoint?.artifact) academyPaperState.checkpointArtifact = status.checkpoint.artifact;
@@ -375,31 +464,80 @@ async function academyRefreshPaperPersistedStatus() {
 }
 function academyRenderPaperReport() {
   const report = academyPaperState.report;
-  const target = document.getElementById("academyPaperReportCard");
+  const target = document.getElementById("paperDeepReadOutput");
+  const operationsCard = document.getElementById("academyPaperReportCard");
   if (!target || !report) return;
   const markdownPath = report.report?.markdown_path || report.markdown_path || "";
   const pdfPath = report.report?.pdf_path || report.pdf_path || "";
-  const preview = report.preview || report.report?.preview || report.summary || "";
+  const analysis = report.analysis || {};
+  const modeLabel = analysis.mode === "model_assisted" ? "模型辅助 · 引用约束" : "证据回退 · 模型不可用";
+  const sections = [
+    ["methodology", "方法与机制"],
+    ["experiments", "实验与结果"],
+    ["findings", "核心发现"],
+    ["limitations", "局限与边界"]
+  ];
+  const renderItems = key => {
+    const rows = analysis[key] || [];
+    if (!rows.length) return `<p class="paper-report-empty">当前证据未稳定定位这一部分。</p>`;
+    return `<ul class="paper-report-points">${rows.map(item => `
+      <li>
+        <span class="paper-claim-status ${academyEsc(item.status || "inference")}">${item.status === "supported" ? "原文支持" : item.status === "not_found" ? "待核查" : "分析推断"}</span>
+        <p>${academyEsc(item.text || "")}</p>
+        ${item.conditions?.length ? `<p class="paper-report-conditions"><b>实验条件：</b>${item.conditions.map(academyEsc).join('；')}</p>` : ''}
+        <div class="paper-citation-row">${(item.citations || []).map(citation => `<button type="button" data-report-citation="${academyEsc(citation)}">${academyEsc(citation)}</button>`).join("")}</div>
+      </li>`).join("")}</ul>`;
+  };
+  target.classList.add("grounded-paper-report");
   target.innerHTML = `
-    <b>报告产物</b>
-    <p id="academyPaperReportStatus">已生成 AI 导读报告。保存到知识库后会形成可追踪 Artifact/Evidence。</p>
-    <div class="report-paths">
-      <span>Markdown: ${academyEsc(markdownPath || "未返回")}</span>
-      <span>PDF: ${academyEsc(pdfPath || "未返回")}</span>
+    <div class="paper-report-heading">
+      <div><span class="paper-report-kicker">Grounded review</span><h3>${academyEsc(analysis.title || academyPaperState.document?.title || "论文精读报告")}</h3></div>
+      <span class="paper-report-mode">${modeLabel}</span>
+      <button type="button" class="paper-report-expand">全窗口阅读报告</button>
     </div>
-    <p>${academyEsc(String(preview).slice(0, 520))}</p>
+    <p class="paper-report-summary">${academyEsc(analysis.summary || report.preview || "报告已生成。")}</p>
+    <section class="paper-report-problem"><b>研究问题</b><p>${academyEsc(analysis.research_problem || "当前证据未稳定定位研究问题。")}</p></section>
+    <div class="paper-report-sections">${sections.map(([key, label]) => `<details ${key === "methodology" || key === "experiments" ? "open" : ""}><summary>${label}<span>${(analysis[key] || []).length}</span></summary>${renderItems(key)}</details>`).join("")}</div>
+    <div class="paper-report-verdict"><b>综合判断</b><p>${academyEsc(analysis.verdict || "请结合原文引用核查结论。")}</p></div>
+    <details class="paper-report-files"><summary>下载报告与核查来源</summary><p>引用属于当前论文，结论仍需回原文核查；实验条件随报告保留。</p><div class="report-paths">${(report.artifacts || []).map(item => `<a href="${academyEsc(item.download_url)}" download>${academyEsc(item.format.toUpperCase())} · ${academyEsc(item.name)}</a>`).join('')}<span>证据片段: ${Number(analysis.evidence_count || 0)}</span></div>
+    ${(analysis.source_index || []).map(item => `<details><summary>${academyEsc(item.citation)}</summary><blockquote>${academyEsc(item.excerpt)}</blockquote></details>`).join('')}</details>
   `;
+  target.querySelectorAll("[data-report-citation]").forEach(button => button.addEventListener("click", () => {
+    academySwitchReaderTab("evidence");
+    academyAskPaperCitation(button.dataset.reportCitation || "");
+  }));
+  if (operationsCard) operationsCard.innerHTML = `<b>报告产物</b><p id="academyPaperReportStatus">${academyEsc(modeLabel)}，已生成 Markdown/PDF 和结构化证据报告。</p><div class="report-paths"><span>${academyEsc(markdownPath || "Markdown 未返回")}</span><span>${academyEsc(pdfPath || "PDF 未返回")}</span></div>`;
+  target.querySelector('.paper-report-expand').onclick = academyExpandPaperReport;
   academyRenderPaperRuntimeStatus();
 }
 
+function academyExpandPaperReport() {
+  const source = document.getElementById('paperDeepReadOutput');
+  if (!source?.classList.contains('grounded-paper-report')) return;
+  let dialog = document.getElementById('paperReportDialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id='paperReportDialog';dialog.className='paper-report-dialog';
+    dialog.setAttribute('aria-labelledby','paperReportDialogTitle');
+    dialog.innerHTML='<header><h2 id="paperReportDialogTitle">论文精读报告</h2><button type="button">返回原文 · Esc</button></header><div class="paper-report-dialog-body"></div>';
+    document.body.append(dialog);
+    dialog.querySelector('header button').onclick=()=>dialog.close();
+    dialog.querySelector('.paper-report-dialog-body').onclick=event=>{
+      const citation=event.target.closest('[data-report-citation]');
+      if (!citation) return;
+      dialog.close();academySwitchReaderTab('evidence');academyAskPaperCitation(citation.dataset.reportCitation);
+    };
+  }
+  const copy=source.cloneNode(true);copy.removeAttribute('id');
+  copy.querySelectorAll('details').forEach(item=>item.open=true);
+  dialog.querySelector('.paper-report-dialog-body').replaceChildren(copy);
+  dialog.showModal();
+}
+
 function academyLightPaperGraph(stage = "paper") {
-  ["nlp_llm", "rag", "governance"].forEach(node => academyState.completed.add(node));
-  if (stage === "saved") academyState.completed.add("application");
-  academySave();
-  academyRenderProgressNodes();
   const saved = academyPaperState.savedKnowledgeId ? `知识库条目 #${academyPaperState.savedKnowledgeId}` : "等待保存知识库";
   academyRenderPaperRuntimeStatus();
-  academySetText("academyPaperGraphStatus", `已点亮 NLP/LLM、RAG、Evaluation/Safety 节点；${saved}。`);
+  academySetText("academyPaperGraphStatus", `论文产物阶段：${stage}；${saved}。掌握度需要独立评估或绑定 TaskRun 的项目证据。`);
 }
 
 async function academyRefreshPaperAudit() {
@@ -583,7 +721,7 @@ async function academyOpenPaperTimelineEvent(index) {
   academyPaperState.chunks = pack.chunks || [];
   academyPaperState.projectItems = pack.project_items || [];
   academyPaperState.checkpoints = pack.checkpoints || [];
-  academyPaperState.report = pack.status?.report ? { report: pack.status.report } : null;
+  academyPaperState.report = pack.status?.report ? { report: pack.status.report, analysis:pack.status.report.analysis || {}, artifacts:pack.status.report.artifacts || [] } : null;
   academyPaperState.savedKnowledgeId = pack.status?.knowledge?.id || null;
   academyPaperState.annotationArtifact = pack.status?.annotation?.artifact || null;
   academyPaperState.checkpointArtifact = pack.status?.checkpoint?.artifact || null;
@@ -664,12 +802,18 @@ async function academyOpenPaperCheckpoint(runId) {
   const payload = await academyApi(`/api/academy/paper/checkpoints/${encodeURIComponent(runId)}`);
   const checkpoint = payload.checkpoint || {};
   const status = checkpoint.status || {};
-  const doc = checkpoint.document || status.document || {};
-  academyPaperState.document = doc;
+  const savedDoc = checkpoint.document || status.document || {};
+  await academyOpenPaperDocument(Number(savedDoc.id),checkpoint.reading?.page||1);
+  const doc=academyPaperState.document;
+  const revision=checkpoint.reading?.source_revision||savedDoc.file_hash;
+  if(revision&&revision!==doc.file_hash)throw Error('原文版本已变化，已打开当前原文；旧引用和批注需重新核对。');
   academyPaperState.persistedStatus = status;
+  if (status.report?.ready && status.report?.analysis) {
+    academyPaperState.report = {report:status.report,analysis:status.report.analysis,artifacts:status.report.artifacts || []};
+    academyRenderPaperReport();
+  }
   academyPaperState.citation = checkpoint.citation || null;
-  academyPaperState.chunks = checkpoint.chunks || [];
-  academyPaperState.report = status.report ? { report: status.report } : null;
+  academyPaperState.report = status.report ? { report: status.report, analysis:status.report.analysis || {}, artifacts:status.report.artifacts || [] } : null;
   academyPaperState.savedKnowledgeId = status.knowledge?.id || null;
   academyPaperState.annotationArtifact = status.annotation?.artifact || null;
   academyPaperState.checkpointArtifact = payload.summary?.artifact || status.checkpoint?.artifact || null;
@@ -677,7 +821,7 @@ async function academyOpenPaperCheckpoint(runId) {
   if (title) title.value = doc.title || doc.filename || payload.summary?.document_title || "Checkpoint paper";
   const frame = document.getElementById("academyPdfFrame");
   if (frame) {
-    if (doc.id && academyPreviewablePaperSource(doc)) academySetPdfSource(`/api/documents/${Number(doc.id)}/source`);
+    if (doc.id && academyPreviewablePaperSource(doc)) academySetPdfSource(`/api/documents/${Number(doc.id)}/source`,academyPaperState.currentPage);
     else { frame.removeAttribute("src"); academyPaperState.frameSource = ""; document.getElementById("academyReaderEmpty")?.removeAttribute("hidden"); }
   }
   academyRenderPaperMeta();
@@ -693,8 +837,9 @@ function academyPreviewablePaperSource(doc) {
   const mime = String(doc?.mime_type || "").toLowerCase();
   return filename.endsWith(".pdf") || mime.includes("pdf");
 }
-async function academyOpenPaperDocument(documentId) {
+async function academyOpenPaperDocument(documentId,initialPage=1) {
   const doc = academyPaperState.documents.find(item => Number(item.id) === Number(documentId)) || { id: documentId };
+  academyPaperState.currentPage=initialPage;academyPaperState.pageCount=null;academyPaperState.selectedQuote='';
   academyPaperState.document = doc;
   academyPaperState.report = null;
   academyPaperState.citation = null;
@@ -706,17 +851,19 @@ async function academyOpenPaperDocument(documentId) {
   if (title) title.value = doc.title || doc.filename || `Document ${documentId}`;
   const frame = document.getElementById("academyPdfFrame");
   if (frame) {
-    if (academyPreviewablePaperSource(doc)) academySetPdfSource(`/api/documents/${Number(documentId)}/source`);
+    if (academyPreviewablePaperSource(doc)) academySetPdfSource(`/api/documents/${Number(documentId)}/source`,initialPage);
     else { frame.removeAttribute("src"); academyPaperState.frameSource = ""; document.getElementById("academyReaderEmpty")?.removeAttribute("hidden"); }
   }
   academySetText("academyPaperStatus", `Opening local paper doc:${documentId}...`);
-  const chunks = await academyApi(`/api/documents/${Number(documentId)}/chunks?limit=12`);
+  const chunks = await academyApi(`/api/documents/${Number(documentId)}/chunks?limit=100&include_review=true`);
   academyPaperState.document = chunks.document || doc;
   academyPaperState.chunks = chunks.chunks || chunks.items || [];
+  academyPaperState.chunksHasMore=chunks.has_more;academyPaperState.chunksNextOffset=chunks.next_offset;
   academyRenderPaperMeta();
   await academyRefreshPaperPersistedStatus().catch(() => null);
   academyRenderPaperChunks();
-  academyGeneratePaperRead();
+  if (academyPaperState.report?.analysis) academyRenderPaperReport();
+  else academyGeneratePaperRead();
   academyLightPaperGraph("parsed");
   academyLoadPaperCheckpoints(Number(documentId)).catch(() => null);
   academyLoadPaperProjectBoard(Number(documentId)).catch(() => null);
@@ -748,8 +895,9 @@ async function academyUploadPaper() {
   if (title && (!title.value || title.value.includes("Retrieval-Augmented"))) {
     title.value = academyPaperState.document.title || academyPaperState.document.filename || file.name;
   }
-  const chunks = await academyApi(`/api/documents/${Number(academyPaperState.document.id)}/chunks?limit=12`);
+  const chunks = await academyApi(`/api/documents/${Number(academyPaperState.document.id)}/chunks?limit=100&include_review=true`);
   academyPaperState.chunks = chunks.chunks || chunks.items || [];
+  academyPaperState.chunksHasMore=chunks.has_more;academyPaperState.chunksNextOffset=chunks.next_offset;
   academyRenderPaperMeta();
   await academyRefreshPaperPersistedStatus().catch(() => null);
   academyRenderPaperChunks();
@@ -768,14 +916,15 @@ async function academyRunPaperWorkflow() {
   try {
     if (!academyPaperState.document?.id) await academyUploadPaper();
     if (!academyPaperState.document?.id) return;
-    academySetText("academyPaperReportStatus", "正在生成 Markdown/PDF 深度导读报告...");
+    academySetText("academyPaperReportStatus", "正在按方法、实验、发现和局限组织证据，并生成引用约束报告…");
     const body = {
       library_document_id: Number(academyPaperState.document.id),
       report_style: "academic_deep_read",
       depth: 5,
       question_count: 40,
       output_dir: "output/academy",
-      formats: ["markdown", "pdf"]
+      formats: ["markdown", "pdf"],
+      model_assisted: true
     };
     academyPaperState.report = await academyApi("/api/workspace/research/learning-analysis", {
       method: "POST",
@@ -796,39 +945,24 @@ async function academySavePaperKnowledge() {
   try {
     if (!academyPaperState.report) await academyRunPaperWorkflow();
     if (!academyPaperState.report) return;
-    academySetText("academyPaperStatus", "正在保存论文导读到知识库...");
-    const title = document.getElementById("paperTitle")?.value || academyPaperState.document?.title || "Academy paper deep read";
-    const markdownPath = academyPaperState.report.report?.markdown_path || academyPaperState.report.markdown_path || "";
-    const pdfPath = academyPaperState.report.report?.pdf_path || academyPaperState.report.pdf_path || "";
-    const citationText = JSON.stringify(academyPaperState.citation || {}, null, 2).slice(0, 3000);
-    const content = [
-      `# ${title}`,
-      "",
-      "## AI 导读报告",
-      academyPaperState.report.preview || academyPaperState.report.summary || "报告已生成。",
-      "",
-      `Markdown: ${markdownPath}`,
-      `PDF: ${pdfPath}`,
-      "",
-      "## Citation Evidence",
-      citationText
-    ].join("\n");
-    const saved = await academyApi("/api/knowledge", {
+    academySetText("academyPaperStatus", "正在把完整报告、结论证据和待验证问题分别沉淀到知识库…");
+    const saved = await academyApi("/api/academy/paper/knowledge-capture", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: `${title} - Academy Deep Read`, content, category: "research", source: `academy-paper doc:${academyPaperState.document?.id || ""}`, tags: ["academy", "paper", "deep-read", "citation-evidence"] })
+      body: JSON.stringify({ document_id: Number(academyPaperState.document?.id || 0) })
     });
-    academyPaperState.savedKnowledgeId = saved.id || saved.item?.id || saved.knowledge_id;
+    academyPaperState.savedKnowledgeId = saved.primary_knowledge_id;
     await academyRefreshPaperPersistedStatus().catch(() => null);
     academyLightPaperGraph("saved");
-    academySetText("academyPaperStatus", `已保存到知识库：${academyPaperState.savedKnowledgeId || "完成"}。`);
+    const counts = saved.counts || {};
+    academySetText("academyPaperStatus", `知识包已保存：${counts.knowledge_items || 0} 个条目、${counts.claims || 0} 条结论、${counts.open_questions || 0} 个待验证问题。`);
     const graph = await academyApi("/api/knowledge/graph?category=research&limit=20").catch(() => null);
     if (graph) {
       const nodeCount = (graph.nodes || graph.items || []).length;
       academyRenderPaperRuntimeStatus();
     academyLoadPaperCheckpoints(Number(academyPaperState.document.id)).catch(() => null);
       academyLoadPaperTimeline(Number(academyPaperState.document.id)).catch(() => null);
-      academySetText("academyPaperGraphStatus", `知识库已更新：research graph ${nodeCount} 个节点；学习图谱已点亮论文相关能力。`);
+      academySetText("academyPaperGraphStatus", `知识库已更新：research graph ${nodeCount} 个节点；本次保存保留了报告、结论证据与开放问题之间的关联。`);
     }
   } catch (error) {
     academySetText("academyPaperStatus", `保存失败：${error.message}`);
@@ -847,7 +981,8 @@ async function academySavePaperCheckpoint() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         document_id: Number(academyPaperState.document.id),
-        citation: academyPaperState.citation || {}
+        citation: academyPaperState.citation || {},
+        reading: {page:academyPaperState.currentPage||1}
       })
     });
     academyPaperState.checkpointArtifact = saved.artifact || saved.status?.checkpoint?.artifact || null;
@@ -945,9 +1080,6 @@ function academyGeneratePaperRead() {
   const abstract = academyPaperSnippet();
   const target = document.getElementById("paperDeepReadOutput");
   if (!target) return;
-  academyState.completed.add("nlp_llm");
-  academyState.completed.add("rag");
-  academySave();
   const terms = abstract.split(/\W+/).filter(Boolean).slice(0, 10).join(" / ");
   const cards = [
     ["概念与定义", "抽取论文核心对象、变量、任务定义、输入输出边界和评价指标。"],
@@ -979,6 +1111,8 @@ function academySetPdfSource(source, page = 1, mode = "fit") {
   if (!frame || !source) return;
   academyPaperState.frameSource = String(source).split("#")[0];
   academyPaperState.currentPage = Math.max(1, Number(page) || 1);
+  const pageInput = document.getElementById("academyPageNumber");
+  if (pageInput) pageInput.value = academyPaperState.currentPage;
   if (mode === "fit") academyReaderScale = 1;
   const view = mode === "fit" ? "view=FitH" : `zoom=${Math.round(academyReaderScale * 100)}`;
   frame.src = `${academyPaperState.frameSource}#page=${academyPaperState.currentPage}&${view}`;
@@ -1008,6 +1142,8 @@ function academyPreviewLocalPaper(file) {
   const frame = document.getElementById("academyPdfFrame");
   if (academyPaperState.pdfUrl) URL.revokeObjectURL(academyPaperState.pdfUrl);
   academyPaperState.pdfUrl = URL.createObjectURL(file);
+  academyPaperState.localFileKey = `${file.name}:${file.size}:${file.lastModified}`;
+  academyPaperState.document = null;
   if (frame && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))) academySetPdfSource(academyPaperState.pdfUrl);
   document.getElementById("academyReaderEmpty")?.setAttribute("hidden", "");
   academySetText("academyReaderProgress", "原文已打开");
@@ -1045,9 +1181,12 @@ function academyJumpPaperSection(page, button) {
     academySetText("academyPaperStatus", "请先打开 PDF，再使用目录跳转。");
     return;
   }
-  academyPaperState.currentPage = Math.max(1, Number(page) || 1);
+  academyCacheInk();
+  const pages = academyPaperState.pageCount || Number(academyPaperState.document?.metadata?.pages || academyPaperState.document?.metadata?.page_count) || 100000;
+  academyPaperState.currentPage = Math.min(pages, Math.max(1, Math.floor(Number(page) || 1)));
   document.querySelectorAll(".reader-outline-list button").forEach(item => item.classList.toggle("active", item === button));
   academyRefreshPdfView("page");
+  window.requestAnimationFrame(academyResizeInkCanvas);
   academySetText("academyReaderProgress", `正在阅读第 ${academyPaperState.currentPage} 页`);
   academySetText("academyPaperStatus", `已跳转到第 ${academyPaperState.currentPage} 页。`);
 }
@@ -1062,14 +1201,13 @@ function academyToggleOutline() {
 }
 
 async function academyToggleReaderFullscreen() {
-  const viewer = document.getElementById("academyPaperViewer");
-  if (!viewer) return;
-  try {
-    if (document.fullscreenElement === viewer) await document.exitFullscreen();
-    else await viewer.requestFullscreen();
-  } catch (error) {
-    academySetText("academyPaperStatus", `浏览器未允许全屏：${error.message}`);
-  }
+  const active = document.body.classList.toggle("reader-window");
+  if(active && window.innerWidth<750 && !document.querySelector(".paper-reader-workspace")?.classList.contains("notes-collapsed"))document.getElementById("academyReaderSideToggle")?.click();
+  const button = document.getElementById("academyReaderFullscreen");
+  button?.setAttribute("aria-pressed", String(active));
+  button?.setAttribute("aria-label", active ? "退出窗口阅读" : "进入窗口阅读");
+  if (button) button.textContent = active ? "退出窗口 · Esc" : "窗口阅读";
+  window.requestAnimationFrame(academyResizeInkCanvas);
 }
 
 function academyToggleResearchOps() {
@@ -1083,8 +1221,8 @@ function academyToggleResearchOps() {
 }
 
 function academySwitchReaderTab(tab) {
-  document.querySelectorAll("[data-reader-tab]").forEach(button => button.classList.toggle("active", button.dataset.readerTab === tab));
-  document.querySelectorAll("[data-reader-panel]").forEach(panel => panel.classList.toggle("active", panel.dataset.readerPanel === tab));
+  document.querySelectorAll("[data-reader-tab]").forEach(button => {const active=button.dataset.readerTab===tab;button.classList.toggle("active",active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;});
+  document.querySelectorAll("[data-reader-panel]").forEach(panel => {const active=panel.dataset.readerPanel===tab;panel.classList.toggle("active",active);panel.hidden=!active;});
 }
 
 function academySetGuidedPrompt(kind) {
@@ -1100,7 +1238,14 @@ function academySetGuidedPrompt(kind) {
 function academyRenderReaderNotes() {
   const target = document.getElementById("academyReaderNotes");
   if (!target) return;
-  target.innerHTML = academyReaderNotes.length ? academyReaderNotes.map(note => `<article><b>${academyEsc(note.tag || "阅读笔记")}</b><p>${academyEsc(note.text)}</p><small>${academyEsc(new Date(note.at || Date.now()).toLocaleString())}</small><button class="reader-note-delete" type="button" aria-label="删除笔记" data-reader-note-id="${academyEsc(note.id)}">×</button></article>`).join("") : `<div class="reader-placeholder"><b>还没有笔记</b><p>写下判断、疑问或复现线索，保存后会保留在这台设备。</p></div>`;
+  academySetupReaderNoteDraft();
+  const notes = academyCurrentReaderNotes();
+  target.innerHTML = notes.length ? notes.map(note => `<article><b>${academyEsc(note.tag || "阅读笔记")}</b><p>${academyEsc(note.text)}</p><small>第 ${academyEsc(note.page || 1)} 页 · ${academyEsc(new Date(note.at || Date.now()).toLocaleString())}</small><button class="reader-note-delete" type="button" aria-label="删除笔记" data-reader-note-id="${academyEsc(note.id)}">×</button></article>`).join("") : `<div class="reader-placeholder"><b>本篇还没有笔记</b><p>写下判断、疑问或复现线索，保存后会保留在这台设备。</p></div>`;
+}
+
+function academyCurrentReaderNotes() {
+  const title=document.getElementById("paperTitle")?.value || "";
+  return academyReaderNotes.filter(n=>n.document_id ? n.document_id===academyPaperState.document?.id : n.document===title);
 }
 
 function academyAddReaderNote() {
@@ -1112,10 +1257,9 @@ function academyAddReaderNote() {
     return;
   }
   const now = new Date().toISOString();
-  academyReaderNotes.unshift({ id: `${Date.now()}`, text, tag: document.getElementById("academyReaderNoteTag")?.value.trim() || "阅读笔记", at: now, document: document.getElementById("paperTitle")?.value || "" });
-  academyReaderNotes = academyReaderNotes.slice(0, 30);
+  academyReaderNotes.unshift({ id: crypto.randomUUID(), text, tag: document.getElementById("academyReaderNoteTag")?.value.trim() || "阅读笔记", at: now, page: academyPaperState.currentPage || 1, document_id: academyPaperState.document?.id, document: document.getElementById("paperTitle")?.value || "" });
   localStorage.setItem("clawos_academy_reader_notes", JSON.stringify(academyReaderNotes));
-  localStorage.removeItem("clawos_academy_reader_note_draft");
+  localStorage.removeItem(academyReaderDraftKey());
   if (input) input.value = "";
   academyRenderReaderNotes();
   academySetText("academyReaderNoteStatus", `笔记已保存 · ${new Date(now).toLocaleTimeString()}`);
@@ -1128,15 +1272,15 @@ function academyDeleteReaderNote(noteId) {
   academySetText("academyReaderNoteStatus", "笔记已删除。");
 }
 
+function academyReaderDraftKey() {
+  return 'clawos_reader_draft_v2_'+(academyPaperState.document?.id ? 'doc-'+academyPaperState.document.id+'-'+(academyPaperState.document.file_hash||'legacy') : academyPaperState.localFileKey || document.getElementById('paperTitle')?.value || 'unassigned');
+}
 function academySetupReaderNoteDraft() {
-  const input = document.getElementById("academyReaderNote");
-  if (!input) return;
-  const draft = localStorage.getItem("clawos_academy_reader_note_draft") || "";
-  if (draft && !input.value) input.value = draft;
-  input.addEventListener("input", () => {
-    localStorage.setItem("clawos_academy_reader_note_draft", input.value);
-    academySetText("academyReaderNoteStatus", input.value.trim() ? "草稿已自动保存。" : "请输入阅读笔记。");
-  });
+  const input=document.getElementById('academyReaderNote');if(!input)return;
+  const key=academyReaderDraftKey();
+  if(input.dataset.draftKey!==key){input.value=localStorage.getItem(key)||'';input.dataset.draftKey=key;}
+  if(input.dataset.draftBound)return;input.dataset.draftBound='true';
+  input.addEventListener('input',()=>{try{localStorage.setItem(academyReaderDraftKey(),input.value);academySetText('academyReaderNoteStatus','本篇草稿已保留。');}catch(e){academySetText('academyReaderNoteStatus','草稿空间不足，请整理到智能文档保存。');}});
 }
 
 function academySetupReaderControls() {
@@ -1144,6 +1288,28 @@ function academySetupReaderControls() {
   document.getElementById("academyZoomIn")?.addEventListener("click", () => academyReaderZoom(.1));
   document.getElementById("academyZoomFit")?.addEventListener("click", academyReaderFit);
   document.getElementById("academyReaderFullscreen")?.addEventListener("click", academyToggleReaderFullscreen);
+  document.addEventListener("keydown", e => {if (e.key === "Escape" && !document.querySelector('dialog[open]') && document.body.classList.contains("reader-window")) academyToggleReaderFullscreen();});
+  document.getElementById("academyReaderSideToggle")?.addEventListener("click", e => {
+    const hidden = document.querySelector(".paper-reader-workspace").classList.toggle("notes-collapsed");
+    e.currentTarget.textContent = hidden ? "展开笔记" : "收起笔记";
+    e.currentTarget.setAttribute("aria-pressed", String(hidden));
+    window.requestAnimationFrame(academyResizeInkCanvas);
+  });
+  const jump = page => { academyJumpPaperSection(page); const input = document.getElementById("academyPageNumber"); if(input) input.value=academyPaperState.currentPage; };
+  document.getElementById("academyPageNumber")?.addEventListener("change",e=>jump(e.target.value));
+  document.getElementById("academyPagePrevious")?.addEventListener("click",()=>jump(academyPaperState.currentPage-1));
+  document.getElementById("academyPageNext")?.addEventListener("click",()=>jump(academyPaperState.currentPage+1));
+  document.getElementById("academyOpenSmartDocument")?.addEventListener("click", async () => {
+    const title = document.getElementById("paperTitle")?.value || "阅读文档";
+    const source = title+' · 第 '+(academyPaperState.currentPage||1)+' 页'+(academyPaperState.document?.id?' · 文献 #'+academyPaperState.document.id:'');
+    const blocks=[];const add=(type,text)=>blocks.push({id:crypto.randomUUID(),type,text,...(type==='heading'?{level:2}:{})});
+    if(academyPaperState.selectedQuote)add('quote',academyPaperState.selectedQuote);
+    for(const note of academyCurrentReaderNotes()){add('heading',(note.tag||'阅读笔记')+' · 第 '+(note.page||1)+' 页');add('paragraph',note.text);}
+    const draft=document.getElementById('academyReaderNote')?.value.trim();if(draft){add('heading','待整理草稿');add('paragraph',draft);}
+    if(!blocks.length)add('paragraph','');
+    try{const saved=await academyApi('/api/academy/learning/documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:(title+' · 精读笔记').slice(0,200),context:source.slice(0,1000),blocks})});location.href='/academy/notes?document='+saved.id;}
+    catch(e){academySetText('academyReaderNoteStatus','智能文档创建失败，当前笔记保留：'+e.message);}
+  });
   document.getElementById("academyOutlineToggle")?.addEventListener("click", academyToggleOutline);
   document.getElementById("academySaveReaderNote")?.addEventListener("click", academyAddReaderNote);
   document.querySelectorAll("[data-paper-page]").forEach(button => button.addEventListener("click", () => academyJumpPaperSection(button.dataset.paperPage, button)));
@@ -1163,7 +1329,7 @@ function academyDownloadText(filename, text) {
 
 function academyExportReaderNotes() {
   const title = document.getElementById("paperTitle")?.value || "Paper notes";
-  const body = academyReaderNotes.map(note => `## ${note.tag}\n\n${note.text}`).join("\n\n");
+  const body = academyCurrentReaderNotes().map(note => `## ${note.tag} · 第 ${note.page || 1} 页\n\n${note.text}`).join("\n\n");
   academyDownloadText("paper-reading-notes.md", `# ${title}\n\n${body || "尚无阅读笔记。"}\n`);
 }
 
@@ -1171,8 +1337,8 @@ function academyResizeInkCanvas() {
   const canvas = document.getElementById("academyInkCanvas");
   const viewer = document.getElementById("academyPaperViewer");
   if (!canvas || !viewer) return;
-  const rect = viewer.getBoundingClientRect();
-  const toolbarInset = academyPaperState.frameSource ? 56 : 0;
+  const rect = (academyPaperState.controlledPage ? document.getElementById('academyPdfPage') : viewer).getBoundingClientRect();
+  const toolbarInset = academyPaperState.controlledPage ? 0 : academyPaperState.frameSource ? 56 : 0;
   const drawableHeight = Math.max(1, rect.height - toolbarInset);
   const ratio = window.devicePixelRatio || 1;
   canvas.width = Math.max(1, Math.round(rect.width * ratio));
@@ -1185,13 +1351,27 @@ function academyResizeInkCanvas() {
   academyRestoreInk();
 }
 
+function academyAnnotationKey() {
+  const source = academyPaperState.document?.id ? 'document-'+academyPaperState.document.id+'-'+(academyPaperState.document.file_hash || 'legacy')+'-'+(academyPaperState.controlledPage?'page-v2':'viewport') : academyPaperState.localFileKey;
+  return source ? 'clawos_academy_ink_'+source+'_page_'+(academyPaperState.currentPage || 1) : null;
+}
+
+function academyCacheInk() {
+  const key=academyAnnotationKey(),canvas=document.getElementById("academyInkCanvas");
+  if(!key || !canvas)return;
+  try { localStorage.setItem(key,canvas.toDataURL("image/png")); }
+  catch(e) { academySetText("academyPaperStatus","批注缓存空间不足，请保存为文献产物。 "); }
+}
+
 function academyRestoreInk() {
   const canvas = document.getElementById("academyInkCanvas");
   const viewer = document.getElementById("academyPaperViewer");
-  const saved = localStorage.getItem("clawos_academy_paper_annotation");
+  const key=academyAnnotationKey();
+  const saved = key && localStorage.getItem(key);
   if (!canvas || !viewer || !saved) return;
   const image = new Image();
   image.onload = () => {
+    if(key!==academyAnnotationKey())return;
     const rect = canvas.getBoundingClientRect();
     canvas.getContext("2d").drawImage(image, 0, 0, rect.width, rect.height);
   };
@@ -1257,15 +1437,17 @@ function academySetupInk() {
   canvas.addEventListener("pointerup", () => {
     academyPaperState.drawing = false;
     academyPaperState.lastPoint = null;
+    academyCacheInk();
   });
+  canvas.addEventListener("pointercancel", () => { academyPaperState.drawing=false;academyPaperState.lastPoint=null;academyCacheInk(); });
   document.getElementById("academyClearInk")?.addEventListener("click", () => {
     canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-    localStorage.removeItem("clawos_academy_paper_annotation");
+    if(academyAnnotationKey())localStorage.removeItem(academyAnnotationKey());
     academySetText("academyPaperStatus", "批注已清除。");
   });
   document.getElementById("academySaveAnnotation")?.addEventListener("click", async () => {
     const dataUrl = canvas.toDataURL("image/png");
-    localStorage.setItem("clawos_academy_paper_annotation", dataUrl);
+    academyCacheInk();
     if (!academyPaperState.document?.id) {
       academySetText("academyPaperStatus", "批注已保存到本地缓存；上传论文后可持久化为 Artifact。");
       return;
@@ -1275,7 +1457,8 @@ function academySetupInk() {
       const saved = await academyApi("/api/academy/paper/annotations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ document_id: Number(academyPaperState.document.id), title, image_data: dataUrl })
+        body: JSON.stringify({ document_id: Number(academyPaperState.document.id), title, image_data: dataUrl,
+          page: academyPaperState.currentPage, source_revision: academyPaperState.document.file_hash || '', coordinate_space: academyPaperState.controlledPage ? 'pdf_page' : 'viewport' })
       });
       academyPaperState.annotationArtifact = saved.artifact;
       await academyRefreshPaperPersistedStatus().catch(() => null);
@@ -1289,8 +1472,6 @@ function academySetupInk() {
 function academyGenerateNote() {
   const input = document.getElementById("academyNoteInput")?.value || "今天学习了一个 AI 概念。";
   const target = document.getElementById("academyNoteOutput");
-  academyState.completed.add("foundation");
-  academySave();
   if (target) {
     target.innerHTML = `<b>Cornell Note</b><p>关键词：${academyEsc(input.slice(0, 56))}</p><p>核心解释：用自己的话重述概念，再写一个例子和一个反例。</p><p>复盘问题：它解决什么问题？依赖什么假设？如何验证？和哪一层图谱相关？</p>`;
   }
@@ -1316,9 +1497,10 @@ function academyRenderCode(topic = "embedding") {
 }
 
 function academyCompleteExperiment() {
-  academyState.completed.add("infra");
-  academyState.completed.add("governance");
-  academySave();
+  academySetText(
+    "academyCodeEvidenceStatus",
+    "本地草稿不会直接改变掌握度。请运行、测试并通过 TaskRun 项目证据入口提交产物摘要。"
+  );
 }
 
 async function academyCopyCode() {
@@ -1329,34 +1511,58 @@ async function academyCopyCode() {
 function academyQueueKnowledge(kind) {
   academyState.ingestQueue.unshift({ kind, time: new Date().toISOString() });
   academyState.ingestQueue = academyState.ingestQueue.slice(0, 5);
-  academyState.completed.add("application");
   academySave();
   const target = document.getElementById("academyIngestStatus");
   if (target) target.textContent = `已加入知识入库队列：${academyState.ingestQueue.map(item => item.kind).join(" / ")}`;
 }
 
-function academyGenerateQuiz() {
-  const questions = [
-    ["RAG 最核心的价值是什么？", "把外部证据引入生成过程", "rag"],
-    ["为什么需要 rerank？", "提升召回候选的最终证据质量", "infra"],
-    ["Agent trace 的作用是什么？", "让规划、工具、产物和门禁可审计", "agent"],
-    ["论文精读最容易漏掉什么？", "历史来源、实验设置和失败样本", "nlp_llm"],
-    ["企业级验收为什么要记录 failure reason？", "让失败可复现、可返工、可治理", "governance"]
-  ];
+async function academyGenerateQuiz() {
   const grid = document.getElementById("academyQuizGrid");
   if (!grid) return;
-  grid.innerHTML = questions.map((item, index) => `<article><b>Q${index + 1}</b><p>${academyEsc(item[0])}</p><button type="button" onclick="academyAnswerQuiz(this, '${academyEsc(item[2])}')">${academyEsc(item[1])}</button></article>`).join("");
+  grid.innerHTML = "<article><p>正在加载到期复习题……</p></article>";
+  try {
+    const quiz = await academyApi("/api/academy/learning/quiz");
+    academyState.activeQuiz = quiz;
+    const question = quiz.question;
+    grid.innerHTML = `<article class="academy-evidence-quiz">
+      <b>${academyEsc(question.cognitive_level)} · 难度 ${academyEsc(question.difficulty)}</b>
+      <p>${academyEsc(question.prompt)}</p>
+      <textarea class="academy-quiz-answer" placeholder="请先作答，再查看评分与缺失概念。至少 24 个字符。"></textarea>
+      <button type="button" onclick="academyAnswerQuiz(this, ${Number(question.id)})">提交掌握证据</button>
+      <small>答案不会在提交前披露；仅持久化评估或项目证据可以改变掌握度。</small>
+    </article>`;
+  } catch (error) {
+    grid.innerHTML = `<article><b>题目暂不可用</b><p>${academyEsc(error.message)}</p></article>`;
+  }
 }
 
-function academyAnswerQuiz(button, node) {
-  button.closest("article")?.classList.add("answered");
-  academyState.completed.add(node);
-  academySave();
+async function academyAnswerQuiz(button, questionId) {
+  const article = button.closest("article");
+  const answer = article?.querySelector(".academy-quiz-answer")?.value || "";
+  button.disabled = true;
+  try {
+    const result = await academyApi(`/api/academy/learning/questions/${questionId}/answers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answer })
+    });
+    article?.classList.add("answered");
+    const missing = result.rubric?.missing_concepts || [];
+    article?.insertAdjacentHTML("beforeend", `<div class="academy-quiz-result">
+      <b>概念覆盖评分 ${Math.round(Number(result.score || 0) * 100)}%${result.accepted === false ? " · 重复答案未累计证据" : ""}</b>
+      <p>${missing.length ? `仍需补充：${academyEsc(missing.join(" / "))}` : "本轮概念覆盖通过。"}</p>
+      <small>下次复习：${Number(result.next_review_days || 1)} 天后。概念覆盖不等同于语义正确。</small>
+      <button type="button" onclick="academyGenerateQuiz()">继续练习</button>
+    </div>`);
+    await academyLoadLearningDashboard();
+  } catch (error) {
+    article?.insertAdjacentHTML("beforeend", `<p class="academy-error">${academyEsc(error.message)}</p>`);
+    button.disabled = false;
+  }
 }
 
 function academyResetProgress() {
-  academyState.completed = new Set(["foundation"]);
-  academySave();
+  academySetText("academyProgress", "掌握证据不能在浏览器中重置；请通过学习记录治理入口操作。");
   academyGenerateQuiz();
 }
 
@@ -1364,12 +1570,16 @@ function academyBoot() {
   academyRenderLayerStrip();
   academyRenderLayerGraph();
   academyRenderProgressNodes();
+  academyLoadLearningDashboard().catch(error => {
+    academySetText("academyProgress", `学习后端不可用：${error.message}`);
+  });
   academyRenderCode("embedding");
   academyGenerateQuiz();
   academySetupInk();
   academyRenderReaderNotes();
   academySetupReaderNoteDraft();
   academySetupReaderControls();
+  document.querySelector('.reader-note-tabs')?.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const tabs=[...document.querySelectorAll('[data-reader-tab]')],index=tabs.indexOf(document.activeElement);if(index<0)return;event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length;academySwitchReaderTab(tabs[next].dataset.readerTab);tabs[next].focus();});
   document.getElementById("academyPaperViewer")?.addEventListener("keydown", event => {
     if (!(event.ctrlKey || event.metaKey)) return;
     if (["+", "="].includes(event.key)) { event.preventDefault(); academyReaderZoom(.1); }

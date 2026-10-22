@@ -115,6 +115,53 @@ class FeedbackPreferenceLearningTests(unittest.TestCase):
                     min_arm_exposure=1,
                 )
 
+    def test_codex_evaluator_feedback_is_grounded_but_not_a_human_user(self):
+        from agent_learning import FeedbackLearningService
+        from services.task_service import TaskService
+
+        with tempfile.TemporaryDirectory() as td:
+            store = self._store(td)
+            tasks = TaskService(store)
+            human_task = tasks.create("human", "Human-rated task")
+            tasks.finish(human_task["id"], "succeeded")
+            evaluator_task = tasks.create("codex", "Evaluator-rated task")
+            tasks.finish(evaluator_task["id"], "succeeded")
+            feedback = FeedbackLearningService(store)
+            feedback.record(
+                task_id=human_task["id"], signal_type="score", value=1,
+                owner_id="human-1",
+            )
+            with self.assertRaisesRegex(ValueError, "evidence_digest"):
+                feedback.record(
+                    task_id=evaluator_task["id"],
+                    signal_type="score", value=1,
+                    owner_id="codex-evaluator",
+                    metadata={"evaluator_origin": "codex_evaluator"},
+                )
+            result = feedback.record(
+                task_id=evaluator_task["id"],
+                signal_type="score", value=1,
+                owner_id="codex-evaluator",
+                metadata={
+                    "evaluator_origin": "codex_evaluator",
+                    "evidence_digest": "sha256:test-evidence",
+                    "evaluation_method": "hidden_tests_and_patch_review",
+                },
+            )
+            quality = feedback.quality_report()
+
+        self.assertFalse(
+            result["provenance"]["counts_as_independent_human"]
+        )
+        self.assertTrue(result["provenance"]["counts_as_grounded_reward"])
+        self.assertEqual(quality["explicit_feedback_count"], 2)
+        self.assertEqual(quality["grounded_feedback_count"], 2)
+        self.assertEqual(quality["independent_human_owner_count"], 1)
+        self.assertEqual(quality["evaluator_owner_count"], 1)
+        self.assertEqual(
+            quality["feedback_origin_counts"]["codex_evaluator"], 1
+        )
+
     def test_reward_calibration_trains_evaluates_and_requires_confirmation(self):
         from agent_learning import FeedbackLearningService, RewardCalibrator
         from services.task_service import TaskService

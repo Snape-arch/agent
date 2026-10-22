@@ -7,6 +7,9 @@ import statistics
 import subprocess
 import tempfile
 import os
+import re
+import zipfile
+from xml.etree import ElementTree as ET
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -28,6 +31,7 @@ class OfficeVisualQualityService:
         elif fmt == "docx":
             checks.extend(self._docx_checks(path))
             render = self._render_via_office(path)
+            checks.extend(self.rendered_note_checks(path, render.get("pdf", "")))
         elif fmt == "pptx":
             checks.extend(self._pptx_checks(path))
             render = self._render_via_office(path)
@@ -39,7 +43,11 @@ class OfficeVisualQualityService:
         if template_path:
             checks.append(self._template_fidelity(path, Path(template_path).expanduser().resolve()))
         if render.get("stderr") and "No display font" in render["stderr"]:
-            checks.append({"name": "render_font_resolution", "passed": False, "severity": "high", "detail": render["stderr"]})
+            # TeXLive's Windows Poppler build emits this for its optional
+            # ArialUnicode fallback even when the PDF embeds its own font and
+            # every page renders. Preserve the diagnostic, but only block when
+            # rendering itself failed.
+            checks.append({"name": "render_font_resolution", "passed": bool(render.get("available") and render.get("pages")), "severity": "high", "detail": render["stderr"]})
         visual_gate = render["available"] and render["pages"] > 0
         checks.append({"name": "rendered_pages", "passed": visual_gate, "severity": "high" if strict_visual else "warning", "detail": render})
         hard_failures = [item for item in checks if not item["passed"] and item.get("severity") == "high"]
@@ -187,7 +195,37 @@ class OfficeVisualQualityService:
         root = Path(tempfile.mkdtemp(prefix="clawos-pdf-render-")); prefix = root / "page"
         result = subprocess.run([executable, "-png", "-r", "144", str(path), str(prefix)], capture_output=True, text=True, timeout=120)
         images = sorted(str(item) for item in root.glob("page-*.png"))
-        return {"available": result.returncode == 0 and bool(images), "engine": "pdftoppm", "pages": len(images), "images": images, "stderr": result.stderr[-1000:]}
+        return {"available": result.returncode == 0 and bool(images), "engine": "pdftoppm", "pages": len(images), "images": images, "pdf": str(path), "stderr": result.stderr[-1000:]}
+
+    @staticmethod
+    def rendered_note_checks(source: Path, rendered_pdf: str | Path) -> list[dict[str, Any]]:
+        """A visible note marker alone is not proof that its evidence text survived."""
+        namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        notes = []
+        with zipfile.ZipFile(source) as archive:
+            for part, kind in (("word/footnotes.xml", "footnote"), ("word/endnotes.xml", "endnote")):
+                if part not in archive.namelist():
+                    continue
+                for note in ET.fromstring(archive.read(part)).findall(f"{{{namespace}}}{kind}"):
+                    if note.get(f"{{{namespace}}}type", "normal") != "normal" or int(note.get(f"{{{namespace}}}id", "-1")) < 1:
+                        continue
+                    value = "".join(node.text or "" for node in note.iter(f"{{{namespace}}}t"))
+                    if value.strip():
+                        notes.append(value)
+        if not notes:
+            return []
+        error, text = "", ""
+        try:
+            import fitz
+            with fitz.open(str(rendered_pdf)) as document:
+                text = " ".join(page.get_text() for page in document)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+        normalize = lambda value: re.sub(r"\s+", "", value).casefold()
+        rendered = normalize(text)
+        missing = [index for index, value in enumerate(notes, 1) if normalize(value) not in rendered]
+        return [{"name": "rendered_note_content", "passed": not missing and not error, "severity": "high",
+                 "detail": {"expected_notes": len(notes), "missing_note_indices": missing, "error": error}}]
 
     def _render_via_office(self, path: Path) -> dict[str, Any]:
         known = Path("C:/Program Files/LibreOffice/program/soffice.com")

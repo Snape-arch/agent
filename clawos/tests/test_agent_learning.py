@@ -130,7 +130,7 @@ class AgentLearningTests(unittest.TestCase):
                 ],
                 exploration_rate=1,
             )
-            for index in range(150):
+            for index in range(300):
                 task = tasks.create(
                     f"session-{index}",
                     f"Research task {index}",
@@ -204,7 +204,7 @@ class AgentLearningTests(unittest.TestCase):
 
         self.assertEqual(candidate["status"], "candidate")
         self.assertTrue(candidate["training_metrics"]["group_disjoint_holdout"])
-        self.assertEqual(candidate["training_metrics"]["holdout_count"], 30)
+        self.assertEqual(candidate["training_metrics"]["holdout_count"], 60)
         self.assertTrue(
             set(candidate["weights"]["training_example_ids"]).isdisjoint(
                 candidate["weights"]["holdout_example_ids"]

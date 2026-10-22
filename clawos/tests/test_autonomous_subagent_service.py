@@ -190,6 +190,33 @@ class AutonomousSubagentServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("completed_at", tool_trace)
             self.assertGreaterEqual(tool_trace["duration_ms"], 0)
 
+    async def test_cancel_persists_completed_parallel_role_for_resume(self):
+        captures={}
+        with tempfile.TemporaryDirectory() as td:
+            slow=True
+            def factory(spec):
+                return FakeProvider(spec.role_id,captures,delay=100 if slow and spec.role_id=="b" else .01)
+            service=AutonomousSubagentService(factory,checkpoint_root=td,max_concurrency=2)
+            roles=[SubagentRoleSpec("a","A","A"),SubagentRoleSpec("b","B","B")]
+            task=asyncio.create_task(service.run("Recover",roles))
+            checkpoint=None
+            try:
+                for _ in range(100):
+                    found=list(Path(td).glob("*/checkpoint.json"))
+                    if found:
+                        checkpoint=found[0];break
+                    await asyncio.sleep(.02)
+                self.assertIsNotNone(checkpoint)
+                saved=json.loads(checkpoint.read_text())
+                self.assertEqual(saved["completed"]["a"]["status"],"passed")
+            finally:
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):await task
+            slow=False
+            result=await service.run("Recover",roles,resume_checkpoint=str(checkpoint))
+            self.assertEqual(result["status"],"passed")
+            self.assertEqual(len(captures["a"]),1)
+
 
 if __name__ == "__main__":
     unittest.main()

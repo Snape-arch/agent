@@ -131,21 +131,40 @@ class PolicyHookRegistry:
         "before_context", "after_context", "before_model", "after_model",
         "before_tool", "after_tool", "before_write", "after_write",
         "before_publish", "after_publish", "on_failure",
+        "session_start", "session_end", "instructions_loaded",
+        "user_prompt", "permission_request", "permission_denied",
+        "tool_failure", "tool_batch_complete", "subagent_start",
+        "subagent_stop", "task_created", "task_transition",
+        "task_completed", "checkpoint_created", "checkpoint_restored",
+        "worktree_create", "worktree_remove", "before_compact",
+        "after_compact", "file_changed", "configuration_changed",
     }
 
     def __init__(self):
         self._hooks: dict[str, list[tuple[int, str, Callable]]] = {
             event: [] for event in self.EVENTS
         }
+        self._metadata: dict[tuple[str, str], dict[str, Any]] = {}
 
     def register(
         self, event: str, name: str, callback: Callable[[dict[str, Any]], dict[str, Any] | None],
-        *, priority: int = 100
+        *, priority: int = 100, matcher: str = "*", scope: str = "runtime",
+        handler_type: str = "python"
     ) -> None:
         if event not in self.EVENTS:
             raise ValueError(f"unsupported hook event: {event}")
+        if scope not in {"managed", "user", "project", "plugin", "skill", "runtime"}:
+            raise ValueError("unsupported hook scope")
+        if handler_type not in {"python", "command", "http", "mcp", "prompt", "agent"}:
+            raise ValueError("unsupported hook handler type")
         self._hooks[event].append((int(priority), str(name), callback))
         self._hooks[event].sort(key=lambda item: (item[0], item[1]))
+        self._metadata[(event, str(name))] = {
+            "matcher": str(matcher or "*"),
+            "scope": scope,
+            "handler_type": handler_type,
+            "priority": int(priority),
+        }
 
     def run(self, event: str, payload: dict[str, Any]) -> dict[str, Any]:
         if event not in self.EVENTS:
@@ -153,12 +172,22 @@ class PolicyHookRegistry:
         current = dict(payload or {})
         evidence = []
         for _, name, callback in self._hooks[event]:
+            metadata = self._metadata.get((event, name), {})
+            match_value = str(
+                current.get("tool_name") or current.get("path")
+                or current.get("agent") or current.get("kind") or ""
+            )
+            matcher = str(metadata.get("matcher") or "*")
+            if matcher != "*" and not fnmatch.fnmatch(match_value, matcher):
+                continue
             result = callback(dict(current)) or {}
             decision = str(result.get("decision") or "allow")
             evidence.append({
                 "hook": name,
                 "decision": decision,
                 "reason": str(result.get("reason") or ""),
+                "scope": metadata.get("scope", "runtime"),
+                "handler_type": metadata.get("handler_type", "python"),
             })
             if decision == "deny":
                 return {
@@ -174,6 +203,23 @@ class PolicyHookRegistry:
             "event": event,
             "payload": current,
             "evidence": evidence,
+        }
+
+    def describe(self) -> dict[str, Any]:
+        hooks = []
+        for event, rows in sorted(self._hooks.items()):
+            for priority, name, _ in rows:
+                hooks.append({
+                    "event": event,
+                    "name": name,
+                    **self._metadata.get((event, name), {"priority": priority}),
+                })
+        return {
+            "schema": "clawos.agent-hooks.v2",
+            "events": sorted(self.EVENTS),
+            "handler_types": ["python", "command", "http", "mcp", "prompt", "agent"],
+            "scopes": ["managed", "user", "project", "plugin", "skill", "runtime"],
+            "hooks": hooks,
         }
 
 
@@ -245,6 +291,8 @@ class CodingAgentReadiness:
             "network_egress_policy",
             "production_trace_wiring",
             "signed_review_evidence",
+            "evaluator_feedback_provenance",
+            "real_repository_benchmark_contract",
         ),
         "p1": (
             "structured_patch_loop",
@@ -256,6 +304,10 @@ class CodingAgentReadiness:
             "persistent_lsp",
             "headless_ide_entry",
             "path_scoped_context",
+            "recoverable_model_patch_errors",
+            "hosted_ci_reproducibility",
+            "ide_preview_cancel_contract",
+            "modular_product_readiness",
         ),
         "p2": (
             "trajectory_ranker",
@@ -265,6 +317,8 @@ class CodingAgentReadiness:
             "lifecycle_hooks",
             "group_disjoint_policy_evaluation",
             "paired_canary_control",
+            "unknown_propensity_exclusion",
+            "advanced_learning_fail_closed",
         ),
     }
 

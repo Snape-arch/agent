@@ -14,9 +14,32 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
+from functools import wraps
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+def atomic_workflow(method):
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        with self.transaction():
+            return method(self, *args, **kwargs)
+    return run
+
+
+class AtomicConnection(sqlite3.Connection):
+    """Execute schema statements without sqlite3.executescript's implicit COMMIT."""
+    def executescript(self, script):
+        pending = ''
+        for part in script.split(';'):
+            pending += part + ';'
+            if sqlite3.complete_statement(pending):
+                self.execute(pending)
+                pending = ''
+        if pending.strip(' ;\n\r\t'):
+            self.execute(pending)
+        return self.cursor()
 
 
 class MemoryStore:
@@ -24,13 +47,27 @@ class MemoryStore:
 
     def __init__(self, db_path: str = ""):
         self._db_path = db_path or str(Path(__file__).parent.parent / "memoryos.db")
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._transaction_state = threading.local()
         self._init_db()
 
     @contextmanager
     def _conn(self):
+        active = getattr(self._transaction_state, 'connection', None)
+        if active is not None:
+            self._transaction_state.sequence += 1
+            name = f"nested_{self._transaction_state.sequence}"
+            active.execute(f"SAVEPOINT {name}")
+            try:
+                yield active
+                active.execute(f"RELEASE SAVEPOINT {name}")
+            except BaseException:
+                active.execute(f"ROLLBACK TO SAVEPOINT {name}")
+                active.execute(f"RELEASE SAVEPOINT {name}")
+                raise
+            return
         with self._lock:
-            conn = sqlite3.connect(self._db_path, timeout=10)
+            conn = sqlite3.connect(self._db_path, timeout=10, factory=AtomicConnection)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=ON")
@@ -42,6 +79,22 @@ class MemoryStore:
                 raise
             finally:
                 conn.close()
+
+    @contextmanager
+    def transaction(self):
+        """Publish a complete synchronous workflow; nested methods use savepoints."""
+        if getattr(self._transaction_state, 'connection', None) is not None:
+            with self._conn() as connection:
+                yield connection
+            return
+        with self._conn() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            self._transaction_state.connection = connection
+            self._transaction_state.sequence = 0
+            try:
+                yield connection
+            finally:
+                self._transaction_state.connection = None
 
     def _init_db(self):
         with self._conn() as c:
@@ -133,10 +186,20 @@ class MemoryStore:
                     chunk_index INTEGER NOT NULL,
                     content TEXT NOT NULL,
                     citation TEXT DEFAULT '',
+                    metadata TEXT DEFAULT '{}',
                     created_at TEXT DEFAULT (datetime('now')),
                     FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_document_chunks_doc ON document_chunks(document_id, chunk_index);
+                CREATE TABLE IF NOT EXISTS document_review_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    document_id INTEGER NOT NULL,
+                    source_sha256 TEXT NOT NULL,
+                    revision TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
                 CREATE TABLE IF NOT EXISTS context_snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT NOT NULL,
@@ -220,6 +283,13 @@ class MemoryStore:
                     created_at TEXT DEFAULT (datetime('now'))
                 );
                 CREATE INDEX IF NOT EXISTS idx_mtclaw_trace_session ON mtclaw_traces(session_id, id);
+                CREATE TABLE IF NOT EXISTS conversation_archive (
+                    original_id INTEGER PRIMARY KEY,
+                    session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL,
+                    tool_calls TEXT, metadata TEXT, created_at TEXT,
+                    archived_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_conversation_archive_session ON conversation_archive(session_id,original_id);
                 CREATE TABLE IF NOT EXISTS memories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     memory_type TEXT NOT NULL CHECK(memory_type IN ('profile','preference','project','experience','skill')),
@@ -419,6 +489,88 @@ class MemoryStore:
                     FOREIGN KEY(run_id) REFERENCES self_evolution_runs(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_self_evolution_signals_run ON self_evolution_quality_signals(run_id, id DESC);
+                CREATE TABLE IF NOT EXISTS evolution_experiments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    definition TEXT NOT NULL,
+                    definition_digest TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'frozen',
+                    report TEXT NOT NULL DEFAULT '{}',
+                    created_by TEXT NOT NULL DEFAULT 'system',
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS evolution_attempts (
+                    token TEXT PRIMARY KEY,
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_experiments(id),
+                    status TEXT NOT NULL,
+                    lease_until REAL NOT NULL,
+                    started_at REAL NOT NULL,
+                    finished_at REAL,
+                    reason TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_evolution_attempts_exp ON evolution_attempts(experiment_id, started_at);
+                CREATE TABLE IF NOT EXISTS evolution_case_results (
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_experiments(id),
+                    case_id TEXT NOT NULL,
+                    candidate_id TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    outcome_digest TEXT NOT NULL,
+                    attempt_token TEXT NOT NULL,
+                    PRIMARY KEY(experiment_id,case_id,candidate_id)
+                );
+                CREATE TABLE IF NOT EXISTS evolution_exposures (
+                    input_key TEXT NOT NULL,
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_experiments(id),
+                    split TEXT NOT NULL,
+                    PRIMARY KEY(input_key,experiment_id)
+                );
+                CREATE TABLE IF NOT EXISTS evolution_review_packets (
+                    experiment_id INTEGER PRIMARY KEY REFERENCES evolution_experiments(id),
+                    packet_digest TEXT NOT NULL UNIQUE,
+                    payload TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS evolution_reviews (
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_review_packets(experiment_id),
+                    reviewer TEXT NOT NULL,
+                    submission TEXT NOT NULL,
+                    submission_digest TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY(experiment_id,reviewer)
+                );
+                CREATE TABLE IF NOT EXISTS evolution_model_jobs (
+                    experiment_id INTEGER PRIMARY KEY REFERENCES evolution_experiments(id),
+                    token TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    lease_until REAL NOT NULL,
+                    specification TEXT NOT NULL,
+                    message TEXT NOT NULL DEFAULT ''
+                );
+                CREATE TABLE IF NOT EXISTS evolution_model_receipts (
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_experiments(id),
+                    case_id TEXT NOT NULL,
+                    variant TEXT NOT NULL,
+                    receipt TEXT NOT NULL,
+                    receipt_digest TEXT NOT NULL,
+                    PRIMARY KEY(experiment_id,case_id,variant)
+                );
+                CREATE TABLE IF NOT EXISTS evolution_review_grants (
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_review_packets(experiment_id),
+                    user_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    granted_by TEXT NOT NULL,
+                    PRIMARY KEY(experiment_id,user_id)
+                );
+                CREATE TABLE IF NOT EXISTS evolution_adjudications (
+                    experiment_id INTEGER NOT NULL REFERENCES evolution_review_packets(experiment_id),
+                    entry_id TEXT NOT NULL,
+                    review_set_digest TEXT NOT NULL,
+                    adjudicator TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    decision_digest TEXT NOT NULL,
+                    PRIMARY KEY(experiment_id,entry_id,review_set_digest)
+                );
                 CREATE TABLE IF NOT EXISTS policy_groups (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -760,6 +912,9 @@ class MemoryStore:
                 "message": "TEXT DEFAULT ''",
                 "data": "TEXT DEFAULT '{}'",
             })
+            self._ensure_columns(c, "document_chunks", {
+                "metadata": "TEXT DEFAULT '{}'",
+            })
             self._ensure_columns(c, "run_records", {
                 "schema": "TEXT NOT NULL DEFAULT 'clawos.run.v1'",
                 "actor": "TEXT DEFAULT 'system'",
@@ -780,6 +935,7 @@ class MemoryStore:
                 "release_stage": "TEXT NOT NULL DEFAULT 'candidate'",
                 "traffic_percent": "REAL NOT NULL DEFAULT 0",
                 "quality_signals": "TEXT NOT NULL DEFAULT '{}'",
+                "baseline_policy_version": "INTEGER NOT NULL DEFAULT -1",
             })
             self._ensure_columns(c, "memories", {
                 "source": "TEXT DEFAULT ''",
@@ -1290,6 +1446,81 @@ class MemoryStore:
             row = c.execute("SELECT * FROM task_events WHERE id=?", (int(cursor.lastrowid),)).fetchone()
             return self._event_row_to_dict(row)
 
+    def transition_task(
+        self, task_id, status, actor_id="system", reason="", checkpoint=None
+    ):
+        """Apply the canonical TaskRun state machine and persist one audit event."""
+
+        from services.agent_product_kernel import TaskRunContract
+
+        target = str(status or "").strip()
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT * FROM tasks WHERE id=?", (int(task_id),)
+            ).fetchone()
+            if not row:
+                return {}
+            current = str(row["status"] or "created")
+            TaskRunContract.validate_transition(current, target)
+            metadata = self._json_loads(row["metadata"], {})
+            checkpoint = dict(checkpoint or {})
+            if checkpoint:
+                if not checkpoint.get("uri") or not checkpoint.get("digest"):
+                    raise ValueError("checkpoint requires uri and digest")
+                metadata["latest_checkpoint"] = checkpoint
+            terminal = target in TaskRunContract.TERMINAL
+            cancellation_requested = int(target == "cancel_requested")
+            completed = "datetime('now')" if terminal else "completed_at"
+            c.execute(
+                f"""
+                UPDATE tasks
+                SET status=?, metadata=?, cancellation_requested=?,
+                    completed_at={completed},
+                    resume_state=?
+                WHERE id=?
+                """,
+                (
+                    target,
+                    json.dumps(metadata, ensure_ascii=False),
+                    cancellation_requested,
+                    "checkpoint_available" if checkpoint else target,
+                    int(task_id),
+                ),
+            )
+            if checkpoint:
+                c.execute(
+                    """
+                    INSERT INTO task_events (task_id, event_type, message, data)
+                    VALUES (?, 'run.checkpoint', ?, ?)
+                    """,
+                    (
+                        int(task_id), "Checkpoint attached to task run",
+                        json.dumps({
+                            "actor_id": str(actor_id or "system"),
+                            "checkpoint": checkpoint,
+                        }, ensure_ascii=False),
+                    ),
+                )
+            event_type = "run.completed" if terminal else "run.transitioned"
+            c.execute(
+                """
+                INSERT INTO task_events (task_id, event_type, message, data)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    int(task_id), event_type, reason or f"{current} -> {target}",
+                    json.dumps({
+                        "from": current, "to": target,
+                        "actor_id": str(actor_id or "system"),
+                        "checkpoint": checkpoint,
+                    }, ensure_ascii=False),
+                ),
+            )
+            updated = c.execute(
+                "SELECT * FROM tasks WHERE id=?", (int(task_id),)
+            ).fetchone()
+            return self._task_row_to_dict(updated)
+
     def list_tasks(self, session_id="", status="", limit=50):
         with self._conn() as c:
             limit = max(1, min(int(limit or 50), 200))
@@ -1305,6 +1536,21 @@ class MemoryStore:
             rows = c.execute(
                 f"SELECT * FROM tasks{where} ORDER BY id DESC LIMIT ?",
                 [*params, limit],
+            ).fetchall()
+            return [self._task_row_to_dict(row) for row in rows]
+
+    def list_tasks_for_soak(self, session_id, limit=200000):
+        """Return the complete bounded task set used by offline soak validation."""
+        with self._conn() as c:
+            limit = max(1, min(int(limit or 200000), 200000))
+            rows = c.execute(
+                """
+                SELECT * FROM tasks
+                WHERE session_id=?
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                (str(session_id), limit),
             ).fetchall()
             return [self._task_row_to_dict(row) for row in rows]
 
@@ -2220,6 +2466,7 @@ class MemoryStore:
         with self._conn() as c:
             return fetch(c)
 
+    @atomic_workflow
     def set_runtime_policy(self, target_type, target_key, payload, actor_id="system"):
         with self._conn() as c:
             current = self.get_runtime_policy(target_type, target_key, conn=c)
@@ -2246,6 +2493,40 @@ class MemoryStore:
 
     # ---- SELF-EVOLUTION RUNS ----
 
+    @atomic_workflow
+    def create_evolution_experiment(self, definition, definition_digest, created_by="system"):
+        with self._conn() as c:
+            cursor = c.execute("INSERT INTO evolution_experiments (definition,definition_digest,created_by) VALUES (?,?,?)",
+                               (json.dumps(definition, ensure_ascii=False), definition_digest, str(created_by)))
+            return self.get_evolution_experiment(cursor.lastrowid)
+
+    def get_evolution_experiment(self, experiment_id):
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM evolution_experiments WHERE id=?", (int(experiment_id),)).fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            result["definition"] = self._json_loads(result["definition"], {})
+            result["report"] = self._json_loads(result["report"], {})
+            from services.evolution_jobs import EvolutionJobStore
+            result["job"] = EvolutionJobStore(self).summary(int(experiment_id), conn=c)
+            return result
+
+    def list_evolution_experiments(self, limit=50):
+        with self._conn() as c:
+            rows = c.execute("SELECT id FROM evolution_experiments ORDER BY id DESC LIMIT ?",
+                             (max(1, min(int(limit), 100)),)).fetchall()
+            return [self.get_evolution_experiment(row["id"]) for row in rows]
+
+    def claim_evolution_experiment(self, experiment_id):
+        from services.evolution_jobs import EvolutionJobStore
+        return EvolutionJobStore(self).claim(experiment_id)
+
+    def finish_evolution_experiment(self, experiment_id, report, failed=False, *, attempt_token=""):
+        from services.evolution_jobs import EvolutionJobStore
+        return EvolutionJobStore(self).finish(experiment_id, attempt_token, report, failed=failed)
+
+    @atomic_workflow
     def create_self_evolution_run(
         self, title, target_type, target_key, baseline_payload, candidate_payload,
         benchmarks=None, conclusion="", publish_decision="pending",
@@ -2274,6 +2555,11 @@ class MemoryStore:
                     str(created_by or "system"),
                 ),
             )
+            current = self.get_runtime_policy(target_type, target_key, conn=c)
+            if current and current.get('active') and current['payload'] != baseline_payload:
+                raise ValueError('baseline payload must match the current runtime policy')
+            c.execute("UPDATE self_evolution_runs SET baseline_policy_version=? WHERE id=?",
+                      (int(current['version']) if current else 0, cursor.lastrowid))
             return self.get_self_evolution_run(int(cursor.lastrowid), conn=c)
 
     def list_self_evolution_runs(self, status="", limit=100):
@@ -2340,6 +2626,7 @@ class MemoryStore:
             )
             return self.get_self_evolution_run(run_id, conn=c)
 
+    @atomic_workflow
     def publish_self_evolution_run(self, run_id, actor_id="system", reason=""):
         with self._conn() as c:
             run = self.get_self_evolution_run(run_id, conn=c)
@@ -2350,9 +2637,12 @@ class MemoryStore:
             if run["publish_decision"] not in {"publish", "shadow_required", "canary"}:
                 raise ValueError("self-evolution run is not approved for activation")
             current = self.get_runtime_policy(run["target_type"], run["target_key"], conn=c)
+            if run.get("baseline_policy_version", -1) != (int(current['version']) if current else 0):
+                raise ValueError("runtime policy changed; create and benchmark a fresh candidate")
             rollback = {
                 "existed": bool(current),
                 "payload": current["payload"] if current else {},
+                "active": bool(current and current.get('active')),
             }
             version = int(current["version"]) + 1 if current else 1
             c.execute(
@@ -2393,12 +2683,37 @@ class MemoryStore:
             )
             return self.get_self_evolution_run(run_id, conn=c)
 
+    @atomic_workflow
+    def rollback_self_evolution_run(self, run_id, actor_id="user", reason=""):
+        with self._conn() as c:
+            run = self.get_self_evolution_run(run_id, conn=c)
+            if not run or run['status'] != 'published':
+                raise ValueError('only a published self-evolution run can be rolled back')
+            current = self.get_runtime_policy(run['target_type'], run['target_key'], conn=c)
+            rollback = run['rollback_payload']
+            if (not current or current['version'] != rollback.get('policy_version')
+                    or current['payload'] != run['candidate_payload']):
+                raise ValueError('runtime policy changed; rollback cannot overwrite a newer policy')
+            c.execute('''UPDATE runtime_policies SET payload=?,version=version+1,active=?,
+                updated_by=?,updated_at=datetime('now') WHERE target_type=? AND target_key=?''',
+                (json.dumps(rollback.get('payload', {}), ensure_ascii=False),
+                 int(rollback.get('active', rollback.get('existed', False))), actor_id, run['target_type'], run['target_key']))
+            c.execute('''UPDATE self_evolution_runs SET status='rolled_back',release_stage='stopped',
+                traffic_percent=0,publish_decision='reject',conclusion=?,updated_at=datetime('now') WHERE id=?''',
+                (str(reason or 'Explicit rollback to previous runtime policy'), int(run_id)))
+            return self.get_self_evolution_run(run_id, conn=c)
+
     def record_self_evolution_quality_signal(
         self, run_id, signal_type, value, metadata=None, created_by="system",
     ):
         with self._conn() as c:
-            if not c.execute("SELECT id FROM self_evolution_runs WHERE id=?", (int(run_id),)).fetchone():
+            stage_row = c.execute("SELECT release_stage FROM self_evolution_runs WHERE id=?", (int(run_id),)).fetchone()
+            if not stage_row:
                 raise ValueError("self-evolution run not found")
+            import math
+            if not math.isfinite(float(value)) or not 0 <= float(value) <= 1:
+                raise ValueError("quality signal must be finite and between zero and one")
+            metadata = {**(metadata or {}), "observed_stage": stage_row["release_stage"]}
             c.execute(
                 """
                 INSERT INTO self_evolution_quality_signals
@@ -2430,13 +2745,10 @@ class MemoryStore:
                 "cancel_rate": 0.15,
                 "long_task_failure_rate": 0.10,
             }
-            unhealthy = any(
-                float((aggregate.get(key) or {}).get("latest", 0) or 0) > limit
-                for key, limit in limits.items()
-            )
-            retrieval = aggregate.get("retrieval_hit_rate") or {}
-            if retrieval and float(retrieval.get("latest", 1) or 0) < 0.80:
-                unhealthy = True
+            live = metadata.get('variant') != 'control' and metadata.get('source') not in {
+                'runtime_snapshot', 'offline_replay', 'policy_materialization'}
+            unhealthy = live and (float(value) > limits.get(signal_type, 1)
+                                 or (signal_type == 'retrieval_hit_rate' and float(value) < .80))
             if run_row and run_row["status"] == "canary" and unhealthy:
                 c.execute(
                     """
@@ -2453,7 +2765,7 @@ class MemoryStore:
 
     def list_self_evolution_quality_signals(self, run_id, limit=100):
         with self._conn() as c:
-            limit = max(1, min(int(limit or 100), 500))
+            limit = max(1, min(int(limit or 100), 50000))
             rows = c.execute(
                 """
                 SELECT * FROM self_evolution_quality_signals
@@ -2863,98 +3175,10 @@ class MemoryStore:
     def promote_policy_arm(
         self, group_id, arm_id, target_type, target_key, actor_id="system",
     ):
-        with self._conn() as c:
-            arm = c.execute(
-                "SELECT * FROM policy_arms WHERE id=? AND group_id=?",
-                (int(arm_id), int(group_id)),
-            ).fetchone()
-            if not arm:
-                raise ValueError("policy arm not found")
-            current = self.get_runtime_policy(target_type, target_key, conn=c)
-            previous_payload = current["payload"] if current else {}
-            payload = self._json_loads(arm["payload"], {})
-            version = int(current["version"]) + 1 if current else 1
-            c.execute(
-                """
-                INSERT INTO runtime_policies
-                    (target_type, target_key, payload, version, active, updated_by, updated_at)
-                VALUES (?, ?, ?, ?, 1, ?, datetime('now'))
-                ON CONFLICT(target_type, target_key) DO UPDATE SET
-                    payload=excluded.payload,
-                    version=excluded.version,
-                    active=1,
-                    updated_by=excluded.updated_by,
-                    updated_at=datetime('now')
-                """,
-                (
-                    str(target_type), str(target_key),
-                    json.dumps(payload, ensure_ascii=False),
-                    version, str(actor_id or "system"),
-                ),
-            )
-            cursor = c.execute(
-                """
-                INSERT INTO policy_promotions
-                    (group_id, arm_id, target_type, target_key, previous_payload,
-                     previous_existed, promoted_payload, promoted_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    int(group_id), int(arm_id), str(target_type), str(target_key),
-                    json.dumps(previous_payload, ensure_ascii=False),
-                    1 if current else 0,
-                    json.dumps(payload, ensure_ascii=False),
-                    str(actor_id or "system"),
-                ),
-            )
-            return self.get_policy_promotion(int(cursor.lastrowid), conn=c)
+        raise ValueError("direct arm publication is retired; nominate through SelfEvolutionManager and complete the shared release gates")
 
     def rollback_policy_promotion(self, promotion_id, actor_id="system"):
-        with self._conn() as c:
-            promotion = c.execute(
-                "SELECT * FROM policy_promotions WHERE id=?", (int(promotion_id),)
-            ).fetchone()
-            if not promotion:
-                raise ValueError("policy promotion not found")
-            if promotion["status"] != "active":
-                raise ValueError("policy promotion is not active")
-            current = self.get_runtime_policy(
-                promotion["target_type"], promotion["target_key"], conn=c
-            )
-            version = int(current["version"]) + 1 if current else 1
-            if promotion["previous_existed"]:
-                c.execute(
-                    """
-                    UPDATE runtime_policies
-                    SET payload=?, version=?, active=1, updated_by=?, updated_at=datetime('now')
-                    WHERE target_type=? AND target_key=?
-                    """,
-                    (
-                        promotion["previous_payload"], version, str(actor_id or "system"),
-                        promotion["target_type"], promotion["target_key"],
-                    ),
-                )
-            else:
-                c.execute(
-                    """
-                    UPDATE runtime_policies
-                    SET payload='{}', version=?, active=0, updated_by=?, updated_at=datetime('now')
-                    WHERE target_type=? AND target_key=?
-                    """,
-                    (
-                        version, str(actor_id or "system"),
-                        promotion["target_type"], promotion["target_key"],
-                    ),
-                )
-            c.execute(
-                """
-                UPDATE policy_promotions
-                SET status='rolled_back', rolled_back_at=datetime('now')
-                WHERE id=?
-                """,
-                (int(promotion_id),),
-            )
-            return self.get_policy_promotion(promotion_id, conn=c)
+        raise ValueError("legacy arm promotions have no bound publication version; review the current policy before manual restoration")
 
     def get_policy_promotion(self, promotion_id, conn=None):
         def fetch(c):
@@ -3071,7 +3295,17 @@ class MemoryStore:
                     json.dumps(reward_components or {}, ensure_ascii=False),
                     float(step_reward) if step_reward is not None else None,
                     int(policy_selection_id) if policy_selection_id else None,
-                    max(0.000001, min(float(behavior_propensity or 1), 1.0)),
+                    max(
+                        0.0,
+                        min(
+                            float(
+                                1.0
+                                if behavior_propensity is None
+                                else behavior_propensity
+                            ),
+                            1.0,
+                        ),
+                    ),
                     1 if safety_violation else 0,
                 ),
             )
@@ -3491,8 +3725,45 @@ class MemoryStore:
                 """
                 SELECT COUNT(*) FROM agent_trajectory_steps
                 WHERE behavior_propensity>0 AND behavior_propensity<=1
+                  AND json_extract(
+                      action_payload, '$._policy_trace.complete'
+                  ) = 1
                 """
             ).fetchone()[0])
+            feedback_rows = c.execute(
+                """
+                SELECT owner_id, metadata FROM agent_feedback
+                WHERE explicit=1 AND score IS NOT NULL
+                """
+            ).fetchall()
+            origin_counts = {
+                "human_user": 0,
+                "codex_evaluator": 0,
+                "automated_test": 0,
+            }
+            human_owners = set()
+            evaluator_owners = set()
+            grounded_feedback_count = 0
+            for row in feedback_rows:
+                metadata = self._json_loads(row["metadata"], {})
+                origin = str(
+                    metadata.get("evaluator_origin") or "human_user"
+                )
+                if origin not in origin_counts:
+                    origin = "automated_test"
+                origin_counts[origin] += 1
+                if origin == "human_user":
+                    human_owners.add(str(row["owner_id"] or "default"))
+                    grounded_feedback_count += 1
+                elif (
+                    origin == "codex_evaluator"
+                    and metadata.get("evidence_digest")
+                    and metadata.get("evaluation_method")
+                ):
+                    evaluator_owners.add(
+                        str(row["owner_id"] or "codex-evaluator")
+                    )
+                    grounded_feedback_count += 1
             scenarios = {
                 str(row["scenario"]): int(row["count"])
                 for row in c.execute(
@@ -3531,6 +3802,10 @@ class MemoryStore:
                 "decision_step_count": step_count,
                 "preference_pair_count": preference_count,
                 "explicit_feedback_count": explicit_feedback_count,
+                "grounded_feedback_count": grounded_feedback_count,
+                "feedback_origin_counts": origin_counts,
+                "independent_human_owner_count": len(human_owners),
+                "evaluator_owner_count": len(evaluator_owners),
                 "feedback_task_count": feedback_task_count,
                 "feedback_coverage": round(
                     feedback_task_count / trajectory_count, 6
@@ -3844,6 +4119,7 @@ class MemoryStore:
             )
             return self.get_agent_policy_model(model_id, conn=c)
 
+    @atomic_workflow
     def activate_agent_policy_model(self, model_id):
         with self._conn() as c:
             model = c.execute(
@@ -3854,6 +4130,14 @@ class MemoryStore:
                 raise ValueError("agent policy model not found")
             if model["status"] != "shadow":
                 raise ValueError("only a shadow-evaluated model can be activated")
+            metrics = self._json_loads(model['evaluation_metrics'], {})
+            if not metrics.get('passed') or metrics.get('schema') != 'clawos.router-promotion.v2':
+                raise ValueError('common robust gate is required; legacy evaluations must be repeated')
+            weights = self._json_loads(model['weights'], {})
+            current = c.execute("SELECT id FROM agent_policy_models WHERE group_name=? AND status='active'",
+                                (model['group_name'],)).fetchone()
+            if weights.get('baseline_active_model_id', -1) != (current['id'] if current else 0):
+                raise ValueError('active router changed; retrain before publication')
             c.execute(
                 """
                 UPDATE agent_policy_models SET status='retired'
@@ -3871,6 +4155,7 @@ class MemoryStore:
             )
             return self.get_agent_policy_model(model_id, conn=c)
 
+    @atomic_workflow
     def rollback_agent_policy_model(self, model_id):
         with self._conn() as c:
             model = c.execute(
@@ -3932,7 +4217,9 @@ class MemoryStore:
         ):
             item[key] = self._json_loads(item.get(key), {})
         item["behavior_propensity"] = float(
-            item.get("behavior_propensity") or 0.000001
+            0.0
+            if item.get("behavior_propensity") is None
+            else item["behavior_propensity"]
         )
         item["safety_violation"] = bool(item.get("safety_violation"))
         for key in ("step_reward", "discounted_return"):
@@ -4165,6 +4452,7 @@ class MemoryStore:
 
     # ── PROFILE ──
 
+    @atomic_workflow
     def set_profile(
         self, key: str, value: str, category: str = "general", importance: float = 0.5,
         source: str = "profile_ingestion", actor_id: str = "system",
@@ -4187,20 +4475,34 @@ class MemoryStore:
             """, (category, key, value, importance))
         return result
 
+    @staticmethod
+    def _effective_legacy_memory(connection, row, memory_type):
+        if not row:
+            return None
+        result=dict(row)
+        memory=connection.execute("SELECT * FROM memories WHERE memory_type=? AND category=? AND key=?",(memory_type,row['category'],row['key'])).fetchone()
+        if memory:
+            if not memory['enabled'] or memory['workspace_id']!='default' or memory['owner_id']!='default':
+                return None
+            result['value']=memory['value']
+            result['confidence' if memory_type=='preference' else 'importance']=memory['confidence']
+        return result
+
     def get_profile(self, key: str, category: str = "general") -> dict | None:
         with self._conn() as c:
             row = c.execute(
                 "SELECT * FROM profiles WHERE category=? AND key=?", (category, key)
             ).fetchone()
-            return dict(row) if row else None
+            return self._effective_legacy_memory(c,row,"profile")
 
     def get_all_profiles(self) -> list[dict]:
         with self._conn() as c:
             rows = c.execute("SELECT * FROM profiles ORDER BY importance DESC").fetchall()
-            return [dict(r) for r in rows]
+            return [item for row in rows if (item := self._effective_legacy_memory(c,row,"profile")) is not None]
 
     # ── PREFERENCES ──
 
+    @atomic_workflow
     def set_preference(
         self, key: str, value: str, category: str = "general", confidence: float = 0.5,
         source: str = "preference_ingestion", actor_id: str = "system",
@@ -4228,33 +4530,31 @@ class MemoryStore:
             row = c.execute(
                 "SELECT * FROM preferences WHERE category=? AND key=?", (category, key)
             ).fetchone()
-            return dict(row) if row else None
+            return self._effective_legacy_memory(c,row,"preference")
 
     def get_all_preferences(self) -> list[dict]:
         with self._conn() as c:
             rows = c.execute("SELECT * FROM preferences ORDER BY confidence DESC").fetchall()
-            return [dict(r) for r in rows]
+            return [item for row in rows if (item := self._effective_legacy_memory(c,row,"preference")) is not None]
 
     # ── CONVERSATIONS ──
 
+    @atomic_workflow
     def add_message(self, session_id: str, role: str, content: str, tool_calls: str = "", metadata: str = ""):
         with self._conn() as c:
-            # Auto-truncate: keep max 100 messages per session
             count = c.execute("SELECT COUNT(*) FROM conversations WHERE session_id=?", (session_id,)).fetchone()[0]
             if count >= 100:
-                c.execute(
-                    "DELETE FROM conversations WHERE id IN (SELECT id FROM conversations WHERE session_id=? ORDER BY created_at ASC LIMIT 10)",
-                    (session_id,)
-                )
+                from .services.management import ManagementService
+                ManagementService(self).compact_conversation(session_id, keep_recent=90)
             c.execute(
                 "INSERT INTO conversations (session_id, role, content, tool_calls, metadata) VALUES (?, ?, ?, ?, ?)",
-                (session_id, role, content[:8000], tool_calls, metadata)
+                (session_id, role, content, tool_calls, metadata)
             )
 
     def get_session_messages(self, session_id: str, limit: int = 30) -> list[dict]:
         with self._conn() as c:
             rows = c.execute(
-                "SELECT role, content, tool_calls, metadata, created_at FROM conversations WHERE session_id=? ORDER BY id ASC LIMIT ?",
+                "SELECT id, role, content, tool_calls, metadata, created_at FROM conversations WHERE session_id=? ORDER BY id ASC LIMIT ?",
                 (session_id, limit)
             ).fetchall()
             return [dict(r) for r in rows]
@@ -4266,6 +4566,26 @@ class MemoryStore:
                 (session_id, n)
             ).fetchall()
             return [dict(r) for r in reversed(rows)]
+
+    def conversation_history(self, session_id, limit=50, before_id=0):
+        """Page full visible messages across compaction, using immutable IDs."""
+        limit = max(1, min(int(limit), 200))
+        before_id = max(0, int(before_id))
+        with self._conn() as c:
+            source = """WITH history AS (
+                SELECT id,session_id,role,content,created_at,0 AS archived FROM conversations
+                UNION ALL
+                SELECT original_id AS id,session_id,role,content,created_at,1 AS archived
+                FROM conversation_archive WHERE NOT EXISTS
+                (SELECT 1 FROM conversations WHERE id=conversation_archive.original_id)) """
+            rows = c.execute(source + """SELECT id,role,content,created_at,archived FROM history
+                WHERE session_id=? AND role IN ('user','assistant') AND (?=0 OR id<?)
+                ORDER BY id DESC LIMIT ?""", (session_id,before_id,before_id,limit+1)).fetchall()
+            more = len(rows) > limit
+            items = [dict(row) for row in reversed(rows[:limit])]
+            total = c.execute(source + "SELECT COUNT(*) FROM history WHERE session_id=? AND role IN ('user','assistant')", (session_id,)).fetchone()[0]
+            return dict(session_id=session_id, messages=items, count=len(items), total=total,
+                        has_more=more, next_before_id=items[0]['id'] if items and more else None)
 
     def get_session_summary(self, session_id: str) -> str:
         """Return the persistent semantic summary plus recent activity."""
@@ -4305,6 +4625,16 @@ class MemoryStore:
                 """,
                 (session_id, str(summary)[:20_000], int(source_message_count)),
             )
+
+    def archive_session_messages(self, session_id, message_ids):
+        ids=[int(value) for value in message_ids]
+        with self._conn() as c:
+            for message_id in ids:
+                c.execute("""INSERT OR IGNORE INTO conversation_archive
+                    (original_id,session_id,role,content,tool_calls,metadata,created_at)
+                    SELECT id,session_id,role,content,tool_calls,metadata,created_at FROM conversations WHERE id=? AND session_id=?""",(message_id,session_id))
+                c.execute("DELETE FROM conversations WHERE id=? AND session_id=? AND EXISTS (SELECT 1 FROM conversation_archive WHERE original_id=?)",(message_id,session_id,message_id))
+        return len(ids)
 
     def delete_oldest_session_messages(self, session_id: str, count: int) -> int:
         with self._conn() as c:
@@ -4351,6 +4681,7 @@ class MemoryStore:
 
     # ── EXPERIENCES ──
 
+    @atomic_workflow
     def add_experience(self, task, outcome, lesson="", context="", solution="", tags=None, importance=0.5):
         with self._conn() as c:
             cursor = c.execute(
@@ -4371,27 +4702,33 @@ class MemoryStore:
     def get_recent_experiences(self, limit: int = 20) -> list[dict]:
         with self._conn() as c:
             rows = c.execute(
-                "SELECT * FROM experiences ORDER BY id DESC LIMIT ?", (limit,)
+                "SELECT * FROM experiences e WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.memory_type='experience' AND m.key='reflection:'||e.id AND m.enabled=0) ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
             return [dict(r) for r in rows]
 
     # ── STATS ──
 
-    def list_sessions(self) -> list[dict]:
+    def list_sessions(self, query="", limit=500) -> list[dict]:
         """List all conversation sessions with last message preview."""
         with self._conn() as c:
-            rows = c.execute("""
+            source = """WITH history AS (
+                SELECT id,session_id,role,content,created_at FROM conversations
+                UNION ALL SELECT original_id,session_id,role,content,created_at FROM conversation_archive
+                WHERE NOT EXISTS (SELECT 1 FROM conversations WHERE id=conversation_archive.original_id)) """
+            rows = c.execute(source + """
                 SELECT session_id, MAX(id) AS last_id
-                FROM conversations
+                FROM history WHERE role IN ('user','assistant')
+                AND (?='' OR instr(lower(session_id),lower(?))>0 OR session_id IN (SELECT session_id FROM history
+                    WHERE role IN ('user','assistant') AND instr(lower(content),lower(?))>0))
                 GROUP BY session_id
-                ORDER BY last_id DESC
-            """).fetchall()
+                ORDER BY last_id DESC LIMIT ?
+            """, (query,query,query,max(1,min(int(limit),500)))).fetchall()
             result = []
             for row in rows:
                 sid = row["session_id"]
-                msgs = c.execute("""SELECT role, content, created_at FROM conversations WHERE session_id=? ORDER BY id DESC LIMIT 1""", (sid,)).fetchone()
+                msgs = c.execute(source + """SELECT role, content, created_at FROM history WHERE session_id=? AND role IN ('user','assistant') ORDER BY id DESC LIMIT 1""", (sid,)).fetchone()
                 first_msgs = c.execute(
-                    "SELECT role, content FROM conversations WHERE session_id=? AND role IN ('user','assistant') ORDER BY id ASC LIMIT 6",
+                    source + "SELECT role, content FROM history WHERE session_id=? AND role IN ('user','assistant') ORDER BY id ASC LIMIT 6",
                     (sid,),
                 ).fetchall()
                 title, tags = self._summarize_session(first_msgs, sid)
@@ -4448,12 +4785,86 @@ class MemoryStore:
             }
     # ── KNOWLEDGE ──
 
-    def add_knowledge(self, title, content, category="domain", source="", tags=None, confidence=0.5):
+    @atomic_workflow
+    def add_knowledge(self, title, content, category="domain", source="", tags=None, confidence=0.5, *, reviewed_chunk_id=None):
         with self._conn() as c:
+            from services.document_evidence_policy import source_usable
+            if not source_usable(c, source):
+                raise ValueError("Document source requires review before knowledge publication")
+            if reviewed_chunk_id is not None:
+                evidence = c.execute("SELECT * FROM document_chunks WHERE id=? AND citation=?", (reviewed_chunk_id,source)).fetchone()
+                if not evidence or evidence["content"] != content or self._json_loads(evidence["metadata"], {}).get("review_state") != "approved":
+                    raise ValueError("Reviewed evidence changed before publication; reload")
+                existing = c.execute("SELECT * FROM knowledge WHERE source=? AND content=?", (source,content)).fetchone()
+                if existing:
+                    return dict(existing)
             cursor = c.execute("INSERT INTO knowledge (category,title,content,source,tags,confidence) VALUES (?,?,?,?,?,?)",
                                (category, title, content, source, json.dumps(tags or []), confidence))
             row = c.execute("SELECT * FROM knowledge WHERE id=?", (int(cursor.lastrowid),)).fetchone()
-            return dict(row)
+            result = dict(row)
+        try:
+            from services.knowledge_core_service import KnowledgeCoreService
+            absorbed = KnowledgeCoreService(self).absorb(
+                title=title, statement=content, category=category, source_ref=source or "manual",
+                source_type="document" if str(source).startswith("doc:") else "manual",
+                excerpt=content[:1200], locator=KnowledgeCoreService.source_locator(source),
+                confidence=confidence, metadata={"tags": tags or []},
+                entities=KnowledgeCoreService.infer_entities(title, content, tags or []),
+                legacy_knowledge_id=int(result["id"]),
+            )
+            result["knowledge_v2_id"] = absorbed["id"]
+            result["absorption_outcome"] = absorbed["absorption_outcome"]
+        except (ImportError, OSError, sqlite3.DatabaseError, ValueError):
+            if getattr(self._transaction_state, "connection", None) is not None:
+                raise
+            result["knowledge_v2_id"] = None
+        return result
+
+    def absorb_knowledge(self, **payload):
+        from services.knowledge_core_service import KnowledgeCoreService
+        return KnowledgeCoreService(self).absorb(**payload)
+
+    def search_knowledge_v2(self, query, category="", limit=10, **scope):
+        from services.knowledge_core_service import KnowledgeCoreService
+        return KnowledgeCoreService(self).search(query, category=category, limit=limit, **scope)
+
+    def knowledge_context_pack(self, query, category="", limit=6, token_budget=1600, **scope):
+        from services.knowledge_core_service import KnowledgeCoreService
+        return KnowledgeCoreService(self).task_context_pack(
+            query, category=category, limit=limit, token_budget=token_budget, **scope,
+        )
+
+    def answer_from_knowledge(
+        self, query, category="", limit=6, token_budget=1600,
+        session_id="", task_id="", **scope,
+    ):
+        from services.knowledge_core_service import KnowledgeCoreService
+        return KnowledgeCoreService(self).grounded_answer(
+            query, category=category, limit=limit, token_budget=token_budget,
+            session_id=session_id, task_id=task_id, **scope,
+        )
+
+    def knowledge_v2_stats(self):
+        from services.knowledge_core_service import KnowledgeCoreService
+        return KnowledgeCoreService(self).stats()
+
+    def resolve_knowledge_conflict(self, conflict_id, decision, reviewer="system", reason=""):
+        from services.knowledge_core_service import KnowledgeCoreService
+        return KnowledgeCoreService(self).resolve_conflict(
+            conflict_id, decision, reviewer=reviewer, reason=reason,
+        )
+
+    def list_knowledge_conflicts(self, status="pending", limit=100):
+        from services.knowledge_core_service import KnowledgeCoreService
+        return KnowledgeCoreService(self).list_conflicts(status, limit)
+
+    def backfill_knowledge_v2(self, limit=10000):
+        from services.knowledge_core_service import KnowledgeCoreService
+        return KnowledgeCoreService(self).backfill_legacy(limit=limit)
+
+    def record_knowledge_usage(self, knowledge_ids, **payload):
+        from services.knowledge_core_service import KnowledgeCoreService
+        return KnowledgeCoreService(self).record_usage(knowledge_ids, **payload)
 
     def search_knowledge(self, query, category="", limit=10):
         with self._conn() as c:
@@ -4463,6 +4874,8 @@ class MemoryStore:
             else:
                 rows = c.execute("SELECT * FROM knowledge WHERE title LIKE ? OR content LIKE ? ORDER BY confidence DESC LIMIT ?",
                                  (f"%{query}%", f"%{query}%", limit)).fetchall()
+            from services.document_evidence_policy import source_usable
+            rows = [r for r in rows if source_usable(c, r["source"])]
             for r in rows:
                 c.execute("UPDATE knowledge SET access_count=access_count+1 WHERE id=?", (r["id"],))
             return [dict(r) for r in rows]
@@ -4470,10 +4883,19 @@ class MemoryStore:
     def get_knowledge_by_id(self, kid):
         with self._conn() as c:
             row = c.execute("SELECT * FROM knowledge WHERE id=?", (kid,)).fetchone()
+            from services.document_evidence_policy import source_usable
+            if row and not source_usable(c, row["source"]):
+                return None
             if row: c.execute("UPDATE knowledge SET access_count=access_count+1 WHERE id=?", (kid,))
             return dict(row) if row else None
 
+    @atomic_workflow
     def update_knowledge(self, kid, title, content, category="domain", source="", tags=None, confidence=0.5):
+        try:
+            from services.knowledge_core_service import KnowledgeCoreService
+            KnowledgeCoreService(self).expire_legacy(int(kid), "legacy_record_updated")
+        except (ImportError, OSError, sqlite3.DatabaseError, ValueError):
+            raise
         with self._conn() as c:
             c.execute(
                 """
@@ -4484,14 +4906,42 @@ class MemoryStore:
                 (title, content, category, source, json.dumps(tags or []), confidence, int(kid)),
             )
             row = c.execute("SELECT * FROM knowledge WHERE id=?", (int(kid),)).fetchone()
-            return dict(row) if row else None
+            result = dict(row) if row else None
+        if result:
+            try:
+                from services.knowledge_core_service import KnowledgeCoreService
+                absorbed = KnowledgeCoreService(self).absorb(
+                    title=title, statement=content, category=category, source_ref=source or "manual",
+                    source_type="document" if str(source).startswith("doc:") else "manual",
+                    excerpt=content[:1200], locator=KnowledgeCoreService.source_locator(source),
+                    confidence=confidence, metadata={"tags": tags or []},
+                    entities=KnowledgeCoreService.infer_entities(title, content, tags or []),
+                    legacy_knowledge_id=int(kid), changed_by="legacy_update",
+                )
+                result["knowledge_v2_id"] = absorbed["id"]
+            except (ImportError, OSError, sqlite3.DatabaseError, ValueError, TypeError):
+                raise
+        return result
 
+    @atomic_workflow
     def delete_knowledge(self, kid):
+        try:
+            from services.knowledge_core_service import KnowledgeCoreService
+            KnowledgeCoreService(self).expire_legacy(int(kid), "legacy_record_deleted")
+        except (ImportError, OSError, sqlite3.DatabaseError, ValueError):
+            raise
         with self._conn() as c:
             cursor = c.execute("DELETE FROM knowledge WHERE id=?", (int(kid),))
             return cursor.rowcount > 0
 
+    @atomic_workflow
     def delete_knowledge_by_source_prefix(self, prefix):
+        try:
+            from services.knowledge_core_service import KnowledgeCoreService
+            KnowledgeCoreService(self).expire_source_prefix(prefix)
+        except (ImportError, OSError, sqlite3.DatabaseError, ValueError):
+            if getattr(self._transaction_state, "connection", None) is not None:
+                raise
         with self._conn() as c:
             cursor = c.execute("DELETE FROM knowledge WHERE source LIKE ?", (f"{prefix}%",))
             return cursor.rowcount
@@ -4500,13 +4950,27 @@ class MemoryStore:
         with self._conn() as c:
             sql = "SELECT * FROM knowledge" + (" WHERE category=?" if category else "") + " ORDER BY access_count DESC"
             rows = c.execute(sql, (category,) if category else ()).fetchall()
-            return [dict(r) for r in rows]
+            from services.document_evidence_policy import source_usable
+            return [dict(r) for r in rows if source_usable(c, r["source"])]
+
+    def document_source_usable(self, source, knowledge_id=None, version=None):
+        from services.document_evidence_policy import source_usable
+        with self._conn() as c:
+            if str(source).startswith("doc:") and knowledge_id is not None:
+                if not c.execute("SELECT 1 FROM sqlite_master WHERE name='knowledge_records_v2'").fetchone():
+                    return False
+                record = c.execute("SELECT status,current_version FROM knowledge_records_v2 WHERE id=?", (int(knowledge_id),)).fetchone()
+                if not record or record["status"] != "active" or version is not None and int(version) != record["current_version"]:
+                    return False
+            return source_usable(c, source)
 
     # ── CONTEXT SNAPSHOTS ──
 
-    def add_document(self, title, filename="", file_path="", file_hash="", mime_type="", category="domain", extractor="", status="ready", metadata=None):
+    def add_document(self, title, filename="", file_path="", file_hash="", mime_type="", category="domain", extractor="", status="ready", metadata=None, *, document_id=0):
         with self._conn() as c:
-            existing = c.execute("SELECT id FROM documents WHERE file_hash=? AND file_hash<>''", (file_hash,)).fetchone()
+            existing = c.execute("SELECT id FROM documents WHERE file_hash=? AND file_hash<>''", (file_hash,)).fetchone() if not document_id else c.execute("SELECT id FROM documents WHERE id=?",(int(document_id),)).fetchone()
+            if document_id and not existing:
+                raise ValueError("Document not found")
             meta = json.dumps(metadata or {}, ensure_ascii=False)
             if existing:
                 doc_id = int(existing["id"])
@@ -4537,16 +5001,18 @@ class MemoryStore:
                 result["metadata"] = {}
             return result
 
-    def add_document_chunk(self, document_id, chunk_index, content, citation=""):
+    def add_document_chunk(self, document_id, chunk_index, content, citation="", metadata=None):
         with self._conn() as c:
             cursor = c.execute(
-                "INSERT INTO document_chunks (document_id, chunk_index, content, citation) VALUES (?, ?, ?, ?)",
-                (int(document_id), int(chunk_index), content, citation),
+                "INSERT INTO document_chunks (document_id, chunk_index, content, citation, metadata) VALUES (?, ?, ?, ?, ?)",
+                (int(document_id), int(chunk_index), content, citation, json.dumps(metadata or {}, ensure_ascii=False)),
             )
             row = c.execute("SELECT * FROM document_chunks WHERE id=?", (int(cursor.lastrowid),)).fetchone()
-            return dict(row)
+            item = dict(row)
+            item["metadata"] = self._json_loads(item.get("metadata"), {})
+            return item
 
-    def list_documents(self, category=""):
+    def list_documents(self, category="", *, include_review=False):
         with self._conn() as c:
             sql = """
                 SELECT d.*,
@@ -4561,10 +5027,13 @@ class MemoryStore:
                     item["metadata"] = json.loads(item.get("metadata") or "{}")
                 except json.JSONDecodeError:
                     item["metadata"] = {}
+                if not include_review:
+                    from services.document_evidence_policy import safe_document
+                    item = safe_document(item)
                 items.append(item)
             return items
 
-    def get_document(self, document_id):
+    def get_document(self, document_id, *, include_review=False):
         with self._conn() as c:
             row = c.execute("SELECT * FROM documents WHERE id=?", (int(document_id),)).fetchone()
             if not row:
@@ -4574,20 +5043,54 @@ class MemoryStore:
                 item["metadata"] = json.loads(item.get("metadata") or "{}")
             except json.JSONDecodeError:
                 item["metadata"] = {}
+            if not include_review:
+                from services.document_evidence_policy import safe_document
+                item = safe_document(item)
             return item
 
-    def get_document_chunks(self, document_id, limit=20):
+    def get_document_chunks(self, document_id, limit=20, *, include_review=False, offset=0):
         with self._conn() as c:
+            gate = "" if include_review else " AND json_valid(metadata) AND COALESCE(json_extract(metadata, '$.review_required'), 0)=0"
             rows = c.execute(
-                "SELECT * FROM document_chunks WHERE document_id=? ORDER BY chunk_index LIMIT ?",
-                (int(document_id), int(limit)),
+                "SELECT * FROM document_chunks WHERE document_id=?" + gate + " ORDER BY chunk_index LIMIT ? OFFSET ?",
+                (int(document_id), int(limit), max(0,int(offset))),
             ).fetchall()
-            return [dict(r) for r in rows]
+            items = [dict(r) for r in rows]
+            for item in items:
+                item["metadata"] = self._json_loads(item.get("metadata"), {})
+            return items
+
+    def iter_evidence_chunks(self, document_id=0, category=""):
+        """Stream all scoped candidates so late passages cannot be hidden by top-k."""
+        with self._conn() as c:
+            filters, params = [], []
+            if document_id:
+                filters.append("d.id=?")
+                params.append(int(document_id))
+            if category:
+                filters.append("d.category=?")
+                params.append(category)
+            where = " WHERE " + " AND ".join(filters) if filters else ""
+            cursor = c.execute("SELECT dc.*, d.title, d.filename, d.category FROM document_chunks dc JOIN documents d ON d.id=dc.document_id" + where + " ORDER BY d.id,dc.chunk_index", params)
+            while True:
+                rows = cursor.fetchmany(128)
+                if not rows:
+                    break
+                for row in rows:
+                    item = dict(row)
+                    try:
+                        item["metadata"] = json.loads(item.get("metadata") or "{}")
+                        if not isinstance(item["metadata"], dict):
+                            continue
+                    except (TypeError, ValueError):
+                        continue
+                    yield item
 
     def search_document_chunks(self, query, category="", limit=10):
         with self._conn() as c:
             params = [f"%{query}%", f"%{query}%"]
             where = "(d.title LIKE ? OR dc.content LIKE ?)"
+            where += " AND json_valid(dc.metadata) AND COALESCE(json_extract(dc.metadata, '$.review_required'), 0)=0"
             if category:
                 where = "d.category=? AND " + where
                 params.insert(0, category)
@@ -4602,14 +5105,17 @@ class MemoryStore:
                 """,
                 (*params, int(limit)),
             ).fetchall()
-            return [dict(r) for r in rows]
+            items = [dict(r) for r in rows]
+            for item in items:
+                item["metadata"] = self._json_loads(item.get("metadata"), {})
+            return items
 
     def save_context_snapshot(self, session_id, task="", active_tools=None, environment="", user_intent=""):
         with self._conn() as c:
             c.execute("INSERT INTO context_snapshots (session_id,task_description,active_tools,environment,user_intent) VALUES (?,?,?,?,?)",
                       (session_id, task, json.dumps(active_tools or []), environment, user_intent))
-            c.execute("DELETE FROM context_snapshots WHERE id NOT IN (SELECT id FROM context_snapshots WHERE session_id=? ORDER BY id DESC LIMIT 20)",
-                      (session_id,))
+            c.execute("DELETE FROM context_snapshots WHERE session_id=? AND id NOT IN (SELECT id FROM context_snapshots WHERE session_id=? ORDER BY id DESC LIMIT 20)",
+                      (session_id, session_id))
 
     def get_latest_context(self, session_id):
         with self._conn() as c:
@@ -4733,12 +5239,13 @@ class MemoryStore:
         results = []
         with self._conn() as c:
             rows = c.execute("""
-                SELECT id, title AS title, content AS body, category AS type, 'knowledge' AS _source, created_at
+                SELECT id, title AS title, content AS body, category AS type, 'knowledge' AS _source, source, created_at
                 FROM knowledge
                 WHERE title LIKE ? OR content LIKE ?
                 LIMIT ?
             """, (f"%{query}%", f"%{query}%", limit)).fetchall()
-            results.extend(dict(r) for r in rows)
+            from services.document_evidence_policy import source_usable
+            results.extend(dict(r) for r in rows if source_usable(c, r["source"]))
 
             rows = c.execute("""
                 SELECT id, task AS title, lesson || ' ' || context || ' ' || solution AS body,

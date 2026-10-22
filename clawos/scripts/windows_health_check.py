@@ -16,6 +16,7 @@ def main() -> int:
     parser.add_argument("--url", required=True)
     parser.add_argument("--name", default="service")
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument('--require-ready',action='store_true',help='Require ClawOS core readiness and matching startup/disk sources')
     args = parser.parse_args()
 
     deadline = time.monotonic() + max(args.timeout, 1.0)
@@ -28,6 +29,9 @@ def main() -> int:
                 body = response.read().decode("utf-8", errors="replace")
                 payload = json.loads(body) if body else {}
                 if 200 <= response.status < 300:
+                    if args.require_ready and (not isinstance(payload,dict) or payload.get('core_ready') is not True or not isinstance(payload.get('release'),dict) or payload['release'].get('restart_required') is not False):
+                        last_error='Core not ready or source version changed; restart/recheck this instance'
+                        time.sleep(.5);continue
                     print(f"[OK] {args.name} healthy: {args.url}")
                     if isinstance(payload, dict):
                         status = payload.get("status")

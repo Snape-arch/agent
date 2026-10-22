@@ -64,10 +64,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertNotIn("console-product-nav", console)
         self.assertNotIn('id="spaceSwitcher"', console)
         self.assertIn("workbench-shell", console)
-        self.assertIn("workbenchTaskList", console)
+        self.assertIn("chatTaskSidebarList", console)
         self.assertIn("autonomy-options", console)
-        self.assertIn("delivery-center", console)
-        self.assertIn("agent-roster", console)
+        self.assertIn("execution-settings", console)
         for token in (
             "--claw-card-radius",
             "--claw-pill-radius",
@@ -154,7 +153,9 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("academyPaperTimeline", paper)
         self.assertIn("academyPaperTimelineDetail", paper)
         self.assertIn("academyCodeBlock", code)
-        self.assertIn("academyNoteOutput", notes)
+        self.assertIn("docBlocks", notes)
+        self.assertIn("drawCanvas", notes)
+        self.assertIn("docHistory", notes)
         self.assertIn("academyIngestStatus", ingest)
         self.assertIn("academyQuizGrid", quiz)
         for token in (
@@ -205,9 +206,23 @@ class FrontendStaticTests(unittest.TestCase):
             "academyQueueKnowledge",
             "academyGenerateQuiz",
             "academyAnswerQuiz",
-            "clawos_academy_completed",
+            "academyLoadLearningDashboard",
+            "/api/academy/learning/dashboard",
+            "/api/academy/learning/quiz",
+            "/api/academy/learning/questions/",
         ):
             self.assertIn(token, academy_js)
+        self.assertNotIn("clawos_academy_completed", academy_js)
+        self.assertNotIn("completed.add(node)", academy_js)
+        for endpoint in (
+            "/api/academy/learning/dashboard",
+            "/api/academy/learning/quiz",
+            "/api/academy/learning/questions/{question_id}/answers",
+            "/api/academy/learning/mistakes",
+            "/api/academy/learning/project-evidence",
+            "/api/academy/learning/courses/{course_id}/publish",
+        ):
+            self.assertIn(endpoint, server)
         for token in (
             ".academy-page",
             ".academy-hero",
@@ -253,7 +268,7 @@ class FrontendStaticTests(unittest.TestCase):
 
         self.assertNotIn("space-group work-front", html)
         self.assertNotIn("space-group system-back", html)
-        self.assertIn("delivery-table", html)
+        self.assertIn("task-workspace", html)
         for token in (
             "Anti-compression layer",
             "writing-mode:horizontal-tb",
@@ -346,7 +361,7 @@ class FrontendStaticTests(unittest.TestCase):
         css = self.read_page("assets/console.css")
 
         self.assertIn('href="/assets/site.css"', html)
-        self.assertIn('href="/assets/console.css"', html)
+        self.assertRegex(html, r'<link\s+rel="stylesheet"\s+href="/assets/console\.css(?:\?v=[^"<>]+)?"')
         self.assertIn('data-view="chat"', html)
         self.assertIn("workbench-new", html)
         self.assertIn("useWorkbenchPrompt", html + js)
@@ -363,7 +378,7 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("view-memory", html)
         self.assertIn("filePicker", html)
         self.assertIn("webSearchToggle", html)
-        self.assertIn("联网搜索", html)
+        self.assertIn("证据策略", html)
         self.assertIn("commandDrawer", html)
 
     def test_console_spaces_are_real_navigation_targets(self):
@@ -404,6 +419,17 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("location.hash", js)
         self.assertIn("webSearchToggle", js)
         self.assertIn('"web_search"', js)
+        self.assertIn('"web_fetch"', js)
+        self.assertIn("clawos_web_search_mode", js)
+        self.assertIn('id="webSearchToggle" type="checkbox" checked', html)
+        self.assertNotIn("按需联网：仅在时效性", js)
+        self.assertNotIn("请先联网搜索可验证来源", js)
+        self.assertIn("appendArtifactsToLastAssistant", js)
+        self.assertIn("appendCodingEvidenceToLastAssistant", js)
+        self.assertIn("chat-artifact-card", js)
+        self.assertIn("chat-coding-evidence", js)
+        self.assertIn("download_url", js)
+        self.assertIn("preview_url", js)
         self.assertIn('target="_blank"', js)
         self.assertNotIn('document.querySelectorAll(".side-nav button[data-view]")', js)
 
@@ -424,12 +450,30 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertIn(token, css)
 
+    def test_console_is_conversation_first_and_renders_safe_markdown(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        clean_css = self.read_page("assets/console.clean.css")
+
+        chat = html.split('<section class="view on" id="view-chat">', 1)[1].split('<section class="view" id="view-search">', 1)[0]
+        self.assertNotIn("delivery-center", chat)
+        self.assertNotIn("agent-roster", chat)
+        self.assertIn("chat-progress-panel", chat)
+        self.assertIn("execution-settings", chat)
+        self.assertIn("markdown-it-14.1.0.min.js", html)
+        self.assertIn("window.ClawChatContent.render(text)", js)
+        self.assertIn("function enhanceMarkdown", js)
+        self.assertIn('rel="noopener noreferrer"', js)
+        self.assertIn("Conversation-first P0-P1 closure", clean_css)
+        self.assertIn("height:calc(100vh - 124px)", clean_css)
+        self.assertIn(".md-table-wrap", clean_css)
+
     def test_console_remediation_removes_legacy_overlay_and_restores_site_navigation(self):
         html = self.read_page("console.html")
         css = self.read_page("assets/console.css")
         clean_css = self.read_page("assets/console.clean.css")
 
-        self.assertIn('href="/assets/console.clean.css"', html)
+        self.assertIn('href="/assets/console.clean.css?', html)
         for href in ('href="/"', 'href="/product"', 'href="/academy"'):
             self.assertIn(href, html)
         self.assertIn("console-site-links", html)
@@ -677,6 +721,32 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".aether-console .sessions .session-tags", css)
         self.assertIn("text-overflow:ellipsis", css)
         self.assertIn(".aether-console [hidden]", css)
+
+    def test_console_exposes_evidence_knowledge_health_and_governance(self):
+        html = self.read_page("console.html")
+        js = self.read_page("assets/console.js")
+        css = self.read_page("assets/console.clean.css")
+
+        for marker in (
+            "knowledgeHealthSummary",
+            "knowledgeHealthGrid",
+            "knowledgeGovernance",
+            "knowledgeConflictTable",
+            "knowledgeGovernanceStatus",
+        ):
+            self.assertIn(marker, html)
+        for marker in (
+            "loadKnowledgeGovernance",
+            "openKnowledgeGovernance",
+            "resolveKnowledgeConflict",
+            "backfillKnowledgeV2",
+            "/api/knowledge/v2/stats",
+            "/api/knowledge/v2/conflicts",
+            "/api/knowledge/v2/backfill",
+        ):
+            self.assertIn(marker, js)
+        self.assertIn(".knowledge-health-card", css)
+        self.assertIn(".knowledge-governance-sheet", css)
 
     def test_chat_file_picker_uses_attachment_context_not_prompt_paste(self):
         html = self.read_page("console.html")
@@ -1014,12 +1084,15 @@ class FrontendStaticTests(unittest.TestCase):
 
         for token in (
             "view-evolution",
-            "Self-Evolution Board",
+            "策略演进实验室",
             "evolutionRunTable",
             "evolutionGateTable",
             "evolutionQualityTable",
-            "queueEvolutionRun",
-            "shadow → canary → active",
+            "searchEvolutionCandidates",
+            "独立留出验证",
+            "evolutionExperimentTable",
+            "evolutionReviewId",
+            "evolutionReviewFile",
         ):
             self.assertIn(token, html)
         for token in (
@@ -1029,6 +1102,9 @@ class FrontendStaticTests(unittest.TestCase):
             "/api/self-evolution/runs/${id}/activate",
             "snapshotEvolutionQuality",
             "evolutionActions",
+            "controlEvolutionExperiment",
+            "importEvolutionReview",
+            "exportEvolutionReview",
             "loadEvolution",
         ):
             self.assertIn(token, js)
@@ -1194,7 +1270,7 @@ class FrontendStaticTests(unittest.TestCase):
             "academyDeleteReaderNote",
             "academySetupReaderControls",
             "frame.style.transform",
-            "requestFullscreen",
+            'classList.toggle("reader-window")',
             "history:",
             "domain:",
             "era:",
@@ -1298,11 +1374,11 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("localAcceptanceHistoryTable", html)
         self.assertIn("localAcceptanceTrendGrid", html)
         self.assertIn("localRemediationGuide", html)
-        self.assertIn("Local Acceptance History", html)
-        self.assertIn("Run daily check", html)
-        self.assertIn("Daily + Qwen", html)
-        self.assertIn("Qwen smoke", html)
-        self.assertIn("Export report", html)
+        self.assertIn("本地检查记录", html)
+        self.assertIn("运行本地检查", html)
+        self.assertIn("检查并验证模型", html)
+        self.assertIn("模型连通检查", html)
+        self.assertIn("导出报告", html)
         self.assertIn("refreshOfflineReadiness", js)
         self.assertIn("/api/workbench/offline-readiness", js)
         self.assertIn("/api/workbench/daily-local-acceptance", js)

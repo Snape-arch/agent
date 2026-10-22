@@ -1,0 +1,25 @@
+.paper-output-card.grounded-paper-report .paper-report-heading{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.paper-report-heading>div{min-width:0}
+.paper-output-card .paper-report-heading h3{font-size:17px;line-height:1.5;overflow-wrap:anywhere}
+.paper-output-card .paper-report-mode{justify-self:start;max-width:100%;font:500 12px/1.5 system-ui;letter-spacing:0;white-space:normal;color:#16765b;background:#edf7f2}
+.paper-report-files .report-paths a{display:block;min-width:0;padding:9px 10px;border:1px solid #dce6e0;border-radius:8px;background:#f6faf7;color:#16765b;overflow-wrap:anywhere;line-height:1.6;font-size:12px}
+.paper-report-files blockquote{margin:8px 0;padding:10px;border-left:3px solid #bfd8cb;background:#f6faf7;overflow-wrap:anywhere;font-size:13px;line-height:1.7}
+.paper-report-conditions{font-size:13px!important;line-height:1.7;overflow-wrap:anywhere}
+.paper-output-card.grounded-paper-report .paper-report-kicker{color:#16765b}
+.paper-output-card.grounded-paper-report .paper-report-problem p,.paper-output-card.grounded-paper-report .paper-report-verdict p{color:#43554c}
+.paper-report-expand{justify-self:start;min-height:36px;border:1px solid #cfe0d7;border-radius:8px;background:#eff7f3;color:#16765b;padding:6px 12px;font:600 13px/1.5 system-ui;cursor:pointer}
+.paper-report-dialog{width:min(1100px,calc(100vw - 28px));height:calc(100dvh - 28px);max-width:none;max-height:none;padding:0;border:1px solid #dce6e0;border-radius:14px;background:#f5f7f4;color:#182c24;box-sizing:border-box}
+.paper-report-dialog[open]{display:flex;flex-direction:column}
+.paper-report-dialog::backdrop{background:rgba(18,34,27,.45)}
+.paper-report-dialog>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 22px;border-bottom:1px solid #dce6e0;background:#fff}
+.paper-report-dialog h2{margin:0;font:600 16px/1.5 system-ui}
+.paper-report-dialog>header button{min-height:38px;padding:7px 14px;border:1px solid #cfe0d7;background:#eff7f3;color:#16765b;border-radius:8px;font:600 14px/1.5 system-ui;cursor:pointer}
+.paper-report-dialog-body{flex:1;min-height:0;overflow:auto;padding:24px}
+.paper-report-dialog .grounded-paper-report{max-width:850px;max-height:none;margin:0 auto;overflow:visible;padding:20px;background:#fff;border:1px solid #dce6e0;border-radius:12px;box-shadow:none}
+.paper-report-dialog .paper-report-heading{position:static;display:grid;grid-template-columns:minmax(0,1fr);padding:16px 18px;gap:12px}
+.paper-report-dialog .paper-report-heading h3{font-size:26px;line-height:1.4;letter-spacing:0}
+.paper-report-dialog .paper-report-kicker{color:#16765b;font-size:12px;letter-spacing:.1em}
+.paper-report-dialog .paper-report-expand{display:none}
+.paper-report-dialog p,.paper-report-dialog li{font-size:15px;line-height:1.85}
+.paper-report-dialog :focus-visible,.paper-report-expand:focus-visible{outline:2px solid #16765b;outline-offset:3px}
+@media(max-width:600px){.paper-report-dialog{width:100vw;height:100dvh;border-radius:0;border:0}.paper-report-dialog-body{padding:10px}.paper-report-dialog .grounded-paper-report{padding:8px}.paper-report-dialog .paper-report-heading h3{font-size:21px}.paper-report-dialog>header{padding:12px}}

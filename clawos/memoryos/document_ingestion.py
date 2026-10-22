@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import zipfile
 from pathlib import Path
+from typing import Any
 from xml.etree import ElementTree
 
 
@@ -36,7 +37,12 @@ def chunk_text(text: str, size: int = 1400, overlap: int = 180) -> list[str]:
     start = 0
     while start < len(clean):
         end = min(len(clean), start + size)
-        chunks.append(clean[start:end])
+        if end < len(clean):
+            window = clean[start:end]
+            boundary = max(window.rfind("\n\n"), window.rfind("\n"), window.rfind(". "), window.rfind("。"))
+            if boundary >= int(size * 0.62):
+                end = start + boundary + (1 if window[boundary:boundary + 1] in {"\n", "。"} else 2)
+        chunks.append(clean[start:end].strip())
         if end >= len(clean):
             break
         start = max(start + 1, end - overlap)
@@ -119,6 +125,45 @@ def extract_pdf_text(path: Path) -> tuple[str, dict]:
 
 def extract_pdf_text_enhanced(path: Path) -> tuple[str, dict]:
     """Try structure-aware offline PDF extraction before legacy text fallbacks."""
+    try:
+        from services.document_semantic_graph_service import DocumentSemanticGraphService
+
+        graph = DocumentSemanticGraphService().parse_pdf(path)
+        if str(graph.get("plain_text") or "").strip() or graph.get("ocr_pages"):
+            grobid_meta = _extract_pdf_with_grobid(path)
+            if grobid_meta:
+                graph["scholarly_metadata"] = grobid_meta
+                if grobid_meta.get("references"):
+                    known = {_compact_reference(item.get("text", "")) for item in graph.get("references") or []}
+                    for index, raw in enumerate(grobid_meta["references"], 1):
+                        if _compact_reference(raw) not in known:
+                            graph.setdefault("references", []).append({
+                                "id": f"grobid-reference:{index}", "type": "reference", "text": raw,
+                                "page": 0, "locator": f"grobid-reference={index}", "source": "grobid-tei",
+                            })
+            structure = {
+                "title": (grobid_meta or {}).get("title", ""),
+                "authors": (grobid_meta or {}).get("authors", []),
+                "abstract": (grobid_meta or {}).get("abstract", ""),
+                "sections": graph.get("sections") or [], "tables": graph.get("tables") or [],
+                "figures": graph.get("figures") or [], "formulas": graph.get("formulas") or [],
+                "footnotes": graph.get("footnotes") or [], "references": graph.get("references") or [],
+                "relations": graph.get("relations") or [], "layout_pages": graph.get("pages") or [],
+                "reading_order": "semantic_graph",
+            }
+            attempted_ocr = [item["page"] for item in graph.get("pages") or [] if (item.get("ocr") or {}).get("required")]
+            ocr_pages = [item["page"] for item in graph.get("pages") or []
+                         if (item.get("ocr") or {}).get("required") and (item.get("ocr") or {}).get("status") != "completed"]
+            return str(graph["plain_text"]), {
+                "extractor": "document-semantic-graph+pymupdf+pdfplumber" + ("+grobid" if grobid_meta else ""),
+                "page_count": len(graph.get("pages") or []), "ocr_required": bool(ocr_pages),
+                "ocr_pages": ocr_pages, "layout_aware": True, "structure": structure,
+                "ocr_attempted_pages": attempted_ocr,
+                "ocr_review_pages": [item["page"] for item in graph.get("ocr_pages") or [] if item.get("review_required")],
+                "semantic_graph": graph, "semantic_quality": graph.get("quality") or {},
+            }
+    except (ImportError, OSError, RuntimeError, ValueError, zipfile.BadZipFile):
+        pass
     engines: list[str] = []
     pages: list[str] = []
     structure: dict = {
@@ -169,22 +214,58 @@ def _extract_pdf_with_pymupdf(path: Path) -> tuple[list[str], dict]:
     pages: list[str] = []
     figures: list[dict] = []
     sections: list[dict] = []
+    layout_pages: list[dict] = []
     with fitz.open(str(path)) as doc:
         for page_index, page in enumerate(doc, 1):
             blocks = page.get_text("blocks") or []
             lines: list[str] = []
-            for block in sorted(blocks, key=lambda item: (round(item[1], 1), round(item[0], 1))):
+            ordered_blocks, column_count = _order_pdf_text_blocks(blocks, float(page.rect.width or 0))
+            page_layout = {"page": page_index, "column_count": column_count, "blocks": []}
+            for order_index, block in enumerate(ordered_blocks, 1):
                 text = str(block[4] or "").strip()
                 if not text:
                     continue
                 lines.append(text)
+                page_layout["blocks"].append({
+                    "order": order_index,
+                    "bbox": [round(float(value), 2) for value in block[:4]],
+                    "text": re.sub(r"\s+", " ", text)[:240],
+                })
                 compact = re.sub(r"\s+", " ", text)
                 if len(compact) <= 90 and re.match(r"^(\d+(\.\d+)*\s+)?[A-Z\u4e00-\u9fff][\w\s:：\-]{4,}$", compact):
                     sections.append({"page": page_index, "title": compact[:120]})
             for image_index, _image in enumerate(page.get_images(full=True), 1):
                 figures.append({"page": page_index, "index": image_index})
             pages.append("\n".join(lines))
-    return pages, {"structure": {"sections": sections[:80], "figures": figures[:200]}}
+            layout_pages.append(page_layout)
+    return pages, {"structure": {"sections": sections[:80], "figures": figures[:200], "layout_pages": layout_pages[:200], "reading_order": "column_aware"}}
+
+
+def _order_pdf_text_blocks(blocks: list, page_width: float) -> tuple[list, int]:
+    """Approximate human reading order for common one- and two-column papers."""
+    text_blocks = [block for block in blocks if len(block) >= 5 and str(block[4] or "").strip()]
+    default_order = sorted(text_blocks, key=lambda item: (round(item[1], 1), round(item[0], 1)))
+    if page_width <= 0 or len(text_blocks) < 4:
+        return default_order, 1
+    midpoint = page_width / 2
+    spanning = [block for block in text_blocks if float(block[0]) <= page_width * 0.22 and float(block[2]) >= page_width * 0.78]
+    non_spanning = [block for block in text_blocks if block not in spanning]
+    left = [block for block in non_spanning if (float(block[0]) + float(block[2])) / 2 < midpoint]
+    right = [block for block in non_spanning if (float(block[0]) + float(block[2])) / 2 >= midpoint]
+    if len(left) < 2 or len(right) < 2:
+        return default_order, 1
+    if max(float(block[2]) for block in left) > min(float(block[0]) for block in right) + page_width * 0.08:
+        return default_order, 1
+    first_column_y = min(float(block[1]) for block in non_spanning)
+    top_spanning = [block for block in spanning if float(block[1]) <= first_column_y + 8]
+    remaining_spanning = [block for block in spanning if block not in top_spanning]
+    ordered = (
+        sorted(top_spanning, key=lambda item: (round(item[1], 1), round(item[0], 1)))
+        + sorted(left, key=lambda item: (round(item[1], 1), round(item[0], 1)))
+        + sorted(right, key=lambda item: (round(item[1], 1), round(item[0], 1)))
+        + sorted(remaining_spanning, key=lambda item: (round(item[1], 1), round(item[0], 1)))
+    )
+    return ordered, 2
 
 
 def _extract_pdf_with_pdfplumber(path: Path) -> dict:
@@ -258,7 +339,30 @@ def _tei_text(node) -> str:
     return re.sub(r"\s+", " ", " ".join(node.itertext())).strip()
 
 
+def _compact_reference(value: Any) -> str:
+    return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", str(value or "").lower())[:600]
+
+
 def extract_docx_text(path: Path) -> tuple[str, dict]:
+    try:
+        from services.document_semantic_graph_service import DocumentSemanticGraphService
+
+        graph = DocumentSemanticGraphService().parse_docx(path, recover_rendered_pages=True)
+        if str(graph.get("plain_text") or "").strip():
+            return str(graph["plain_text"]), {
+                "extractor": "document-semantic-graph+docx-ooxml", "ocr_required": False,
+                "page_count": len(graph.get("pages") or []), "layout_aware": True,
+                "structure": {
+                    "sections": graph.get("sections") or [], "tables": graph.get("tables") or [],
+                    "figures": graph.get("figures") or [], "formulas": graph.get("formulas") or [],
+                    "footnotes": graph.get("footnotes") or [], "references": graph.get("references") or [],
+                    "comments": graph.get("comments") or [], "revisions": graph.get("revisions") or [],
+                    "relations": graph.get("relations") or [],
+                },
+                "semantic_graph": graph, "semantic_quality": graph.get("quality") or {},
+            }
+    except (ImportError, OSError, RuntimeError, ValueError, zipfile.BadZipFile):
+        pass
     paragraphs: list[str] = []
     with zipfile.ZipFile(path) as archive:
         names = [n for n in archive.namelist() if n.startswith("word/") and n.endswith(".xml")]
@@ -285,54 +389,106 @@ def ingest_file(store, upload_dir: Path, source_path: Path, *, title: str = "", 
     if source_path.resolve() != stored_path.resolve():
         shutil.copyfile(source_path, stored_path)
     text, metadata = extract_text(stored_path)
-    chunks = chunk_text_with_pages(text)
-    if not chunks:
-        if metadata.get("ocr_required"):
-            document = store.add_document(
-                title=title or source_path.stem,
-                filename=source_path.name,
-                file_path=str(stored_path),
-                file_hash=digest,
-                mime_type=metadata.get("mime_type", ""),
-                category=category or "domain",
-                extractor=metadata.get("extractor", ""),
-                status="needs_ocr",
-                metadata={**metadata, "ocr_reason": metadata.get("ocr_reason") or "no_extractable_text"},
-            )
-            document["chunk_count"] = 0
-            document["knowledge_ids"] = []
-            return document
-        raise ValueError("No extractable text found; OCR may be required")
-    document = store.add_document(
-        title=title or source_path.stem,
-        filename=source_path.name,
-        file_path=str(stored_path),
-        file_hash=digest,
-        mime_type=metadata.get("mime_type", ""),
-        category=category or "domain",
-        extractor=metadata.get("extractor", ""),
-        status="ready",
-        metadata=metadata,
-    )
-    knowledge_ids: list[int] = []
-    for index, chunk_info in enumerate(chunks, 1):
-        chunk = chunk_info["content"]
-        page_number = int(chunk_info.get("page_number") or 0)
-        page_chunk = int(chunk_info.get("page_chunk_index") or index)
-        citation = f"doc:{document['id']}#page={page_number}&chunk={page_chunk}" if page_number else f"doc:{document['id']}#chunk={index}"
-        if index == 1 and hasattr(store, "delete_knowledge_by_source_prefix"):
-            store.delete_knowledge_by_source_prefix(f"doc:{document['id']}#")
-        store.add_document_chunk(document["id"], index, chunk, citation)
-        item = store.add_knowledge(
-            title=f"{document['title']} p.{page_number} #{page_chunk}" if page_number else f"{document['title']} #{index}",
-            content=f"{chunk}\n\nSource: {citation}",
+    semantic_graph = metadata.get("semantic_graph") if isinstance(metadata.get("semantic_graph"), dict) else {}
+    if semantic_graph:
+        try:
+            from services.document_semantic_graph_service import DocumentSemanticGraphService
+            chunks = DocumentSemanticGraphService().semantic_chunks(semantic_graph)
+        except (ImportError, TypeError, ValueError):
+            chunks = chunk_text_with_pages(text)
+    else:
+        chunks = chunk_text_with_pages(text)
+    with store.transaction():
+        if not chunks:
+            if metadata.get("ocr_required"):
+                document = store.add_document(
+                    title=title or source_path.stem,
+                    filename=source_path.name,
+                    file_path=str(stored_path),
+                    file_hash=digest,
+                    mime_type=metadata.get("mime_type", ""),
+                    category=category or "domain",
+                    extractor=metadata.get("extractor", ""),
+                    status="needs_ocr",
+                    metadata={**metadata, "ocr_reason": metadata.get("ocr_reason") or "no_extractable_text"},
+                )
+                store.delete_knowledge_by_source_prefix(f"doc:{document['id']}#")
+                document["chunk_count"] = 0
+                document["knowledge_ids"] = []
+                return document
+            raise ValueError("No extractable text found; OCR may be required")
+        document = store.add_document(
+            title=title or source_path.stem,
+            filename=source_path.name,
+            file_path=str(stored_path),
+            file_hash=digest,
+            mime_type=metadata.get("mime_type", ""),
             category=category or "domain",
-            source=citation,
-            tags=["document", Path(source_path.name).suffix.lower().lstrip(".")],
-            confidence=0.85,
+            extractor=metadata.get("extractor", ""),
+            status="needs_ocr" if metadata.get("ocr_required") else ("needs_review" if metadata.get("ocr_review_pages") else "ready"),
+            metadata=metadata,
         )
-        knowledge_ids.append(int(item["id"]))
-    document["chunk_count"] = len(chunks)
-    document["knowledge_ids"] = knowledge_ids
-    document["metadata"] = metadata
-    return document
+        knowledge_ids: list[int] = []
+        for index, chunk_info in enumerate(chunks, 1):
+            chunk = chunk_info["content"]
+            page_number = int(chunk_info.get("page_number") or 0)
+            page_chunk = int(chunk_info.get("page_chunk_index") or index)
+            citation = f"doc:{document['id']}#page={page_number}&chunk={page_chunk}" if page_number else f"doc:{document['id']}#chunk={index}"
+            if index == 1 and hasattr(store, "delete_knowledge_by_source_prefix"):
+                store.delete_knowledge_by_source_prefix(f"doc:{document['id']}#")
+            chunk_metadata = {
+                "page_number": page_number, "page_chunk_index": page_chunk,
+                "node_ids": chunk_info.get("node_ids") or [], "locators": chunk_info.get("locators") or [],
+                "evidence_types": chunk_info.get("evidence_types") or [],
+                "review_required": bool(chunk_info.get("review_required")),
+                "recognition_confidence_min": chunk_info.get("recognition_confidence_min"),
+            }
+            store.add_document_chunk(document["id"], index, chunk, citation, metadata=chunk_metadata)
+            # Keep uncertain OCR available for source inspection, but do not silently
+            # promote its potentially corrupted numbers/conditions into knowledge.
+            if chunk_metadata["review_required"]:
+                continue
+            item = store.add_knowledge(
+                title=f"{document['title']} p.{page_number} #{page_chunk}" if page_number else f"{document['title']} #{index}",
+                content=f"{chunk}\n\nSource: {citation}",
+                category=category or "domain",
+                source=citation,
+                tags=["document", Path(source_path.name).suffix.lower().lstrip(".")],
+                confidence=0.85,
+            )
+            knowledge_ids.append(int(item["id"]))
+            try:
+                from services.knowledge_core_service import KnowledgeCoreService
+                core = KnowledgeCoreService(store)
+                source_chunk_id = int(item.get("knowledge_v2_id") or 0)
+                for claim in core.extract_claims(chunk):
+                    claim_title = re.sub(r"\s+", " ", claim).strip()[:120]
+                    core.absorb(
+                        title=claim_title,
+                        statement=claim,
+                        category=category or "domain",
+                        knowledge_type="claim",
+                        source_ref=citation,
+                        source_type="document_claim",
+                        excerpt=claim,
+                        locator=core.source_locator(citation),
+                        confidence=0.82,
+                        entities=core.infer_entities(document["title"], claim, [Path(source_path.name).suffix.lower().lstrip(".")]),
+                        relations=[{"type": "derived_from", "target_kind": "knowledge", "target_id": source_chunk_id, "confidence": 1.0}] if source_chunk_id else [],
+                        metadata={
+                            "document_id": document["id"],
+                            "chunk_index": index,
+                            "page_number": page_number,
+                            "claim_type": core.classify_claim(claim),
+                            "semantic_node_ids": chunk_metadata["node_ids"],
+                            "semantic_locators": chunk_metadata["locators"],
+                            "evidence_types": chunk_metadata["evidence_types"],
+                        },
+                        changed_by="document_ingestion",
+                    )
+            except (ImportError, OSError, ValueError, TypeError):
+                raise
+        document["chunk_count"] = len(chunks)
+        document["knowledge_ids"] = knowledge_ids
+        document["metadata"] = metadata
+        return document

@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .repository_intelligence_service import RepositoryIntelligenceService
+
 
 SOURCE_SUFFIXES = {
     ".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java", ".kt",
@@ -63,6 +65,10 @@ class CodingContextService:
 
     SCHEMA = "clawos.coding-context.v1"
 
+    def build_execution(self, repo_path, objective, **options):
+        from .coding_execution_context import CodingExecutionContext
+        return CodingExecutionContext.build(self, repo_path, objective, **options)
+
     def __init__(self, cache_path: str | Path | None = None):
         self._cache_path = (
             Path(cache_path).expanduser().resolve() if cache_path else None
@@ -77,6 +83,8 @@ class CodingContextService:
                 self._analysis_cache = dict(value.get("entries") or {})
             except (OSError, json.JSONDecodeError):
                 self._analysis_cache = {}
+        graph_cache = self._cache_path.parent / "repository-intelligence" if self._cache_path else None
+        self.repository_intelligence = RepositoryIntelligenceService(graph_cache)
 
     def build(
         self,
@@ -87,6 +95,8 @@ class CodingContextService:
         token_budget: int = 12000,
         diagnostics: list[dict[str, Any]] | None = None,
         include_git_history: int = 8,
+        semantic_graph: dict[str, Any] | None = None,
+        execution_coverage: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         repo = self._repo(repo_path)
         budget = max(1000, min(int(token_budget or 12000), 100_000))
@@ -108,8 +118,26 @@ class CodingContextService:
         instructions = self._instructions(repo, ranked, budget // 5)
         before_hits, before_misses = self._cache_hits, self._cache_misses
         repo_map = self._repo_map(repo, ranked[:80])
+        repository_graph = self.repository_intelligence.build(
+            repo, semantic_graph=semantic_graph or {},
+            execution_coverage=execution_coverage or {},
+        )
+        task_context = self.repository_intelligence.task_slice(
+            repository_graph, objective, focus_paths=sorted(focus),
+            max_files=max(8, min(30, budget // 400)),
+        )
+        selected_paths = task_context.get("selected_files") or []
+        selected_order = {path: index for index, path in enumerate(selected_paths)}
+        task_ranked = sorted(
+            ranked,
+            key=lambda item: (
+                selected_order.get(item["path"], len(selected_order) + 1),
+                -item["score"], item["path"],
+            ),
+        )
         snippets, used = self._snippets(
-            repo, ranked, query_tokens, max(500, budget - self._estimate(instructions))
+            repo, task_ranked, query_tokens, max(500, budget - self._estimate(instructions)),
+            allowed_paths=set(selected_paths) if selected_paths else None,
         )
         git_context = {
             "head": self._git(repo, "rev-parse", "HEAD").strip(),
@@ -155,6 +183,20 @@ class CodingContextService:
             "code_evidence": snippets,
             "git": git_context,
             "diagnostics": normalized_diagnostics,
+            "semantic_graph": self._semantic_context(semantic_graph or {}, ranked),
+            "repository_intelligence": {
+                "schema": repository_graph.get("schema"),
+                "digest": repository_graph.get("digest"),
+                "metrics": repository_graph.get("metrics") or {},
+                "incremental": repository_graph.get("incremental") or {},
+                "repo_map": repository_graph.get("repo_map") or {},
+                "evidence_summary": repository_graph.get("evidence_summary") or {},
+                "execution_coverage": repository_graph.get("execution_coverage") or {},
+            },
+            "task_context": task_context,
+            "impact_analysis": self.repository_intelligence.impact_analysis(
+                repository_graph, sorted(focus)
+            ) if focus else {"changed_paths": [], "impacted_files": [], "tests": [], "risk": "unknown"},
             "incremental_index": {
                 "enabled": True,
                 "persistent": bool(self._cache_path),
@@ -176,6 +218,24 @@ class CodingContextService:
         manifest["context_digest"] = _digest(manifest)
         self._persist_cache()
         return manifest
+
+    @staticmethod
+    def _semantic_context(graph: dict[str, Any], ranked: list[dict[str, Any]]) -> dict[str, Any]:
+        if not graph:
+            return {"available": False, "graphs": [], "metrics": {}}
+        paths = {item["path"] for item in ranked[:30]}
+        compact = []
+        for item in graph.get("graphs") or []:
+            nodes = [node for node in item.get("nodes") or [] if node.get("path") in paths][:300]
+            ids = {node.get("id") for node in nodes}
+            edges = [edge for edge in item.get("edges") or [] if edge.get("source") in ids or edge.get("target") in ids][:600]
+            compact.append({
+                "language": item.get("language"), "digest": item.get("digest"),
+                "nodes": nodes, "edges": edges,
+                "diagnostics": [row for row in item.get("diagnostics") or [] if row.get("path") in paths][:200],
+                "metrics": item.get("metrics") or {},
+            })
+        return {"available": bool(compact), "graphs": compact, "metrics": graph.get("metrics") or {}, "errors": graph.get("errors") or []}
 
     @staticmethod
     def render_for_prompt(
@@ -208,6 +268,20 @@ class CodingContextService:
         lines.append("\n[Repository map]\n" + json.dumps(
             compact_map, ensure_ascii=False, separators=(",", ":")
         ))
+        task_context = manifest.get("task_context") or {}
+        if task_context:
+            lines.append("\n[Task-specific repository graph slice]\n" + json.dumps({
+                "digest": task_context.get("digest"),
+                "selected_files": task_context.get("selected_files") or [],
+                "layered_repo_map": task_context.get("layered_repo_map") or {},
+                "nodes": (task_context.get("nodes") or [])[:60],
+                "edges": (task_context.get("edges") or [])[:100],
+            }, ensure_ascii=False, separators=(",", ":")))
+        impact = manifest.get("impact_analysis") or {}
+        if impact.get("changed_paths"):
+            lines.append("\n[Downstream impact analysis]\n" + json.dumps(
+                impact, ensure_ascii=False, separators=(",", ":")
+            ))
         for item in manifest.get("code_evidence", []):
             lines.append(
                 f"\n[Code {item.get('path')} | sha256={item.get('digest')}]\n"
@@ -217,6 +291,11 @@ class CodingContextService:
         if diagnostics:
             lines.append("\n[IDE/LSP diagnostics]\n" + json.dumps(
                 diagnostics, ensure_ascii=False, separators=(",", ":")
+            ))
+        semantic = manifest.get("semantic_graph") or {}
+        if semantic.get("available"):
+            lines.append("\n[LSP semantic graph]\n" + json.dumps(
+                semantic, ensure_ascii=False, separators=(",", ":")
             ))
         rendered = "\n".join(lines)
         return rendered[:limit]
@@ -418,6 +497,7 @@ class CodingContextService:
         ranked: list[dict[str, Any]],
         query_tokens: set[str],
         token_budget: int,
+        allowed_paths: set[str] | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         rows = []
         used = 0
@@ -427,6 +507,8 @@ class CodingContextService:
         for index, item in enumerate(ranked):
             if used >= token_budget:
                 break
+            if allowed_paths is not None and item["path"] not in allowed_paths:
+                continue
             path = repo / item["path"]
             text = path.read_text(encoding="utf-8", errors="replace")
             excerpt = self._relevant_excerpt(text, query_tokens)

@@ -103,7 +103,10 @@ class WorkflowEngine:
     ) -> dict[str, Any]:
         run = self.start(workflow_id, name)
         run.transition("running", reason="executor started")
-        final_status = "passed"
+        if not gate_statuses:
+            run.transition("failed", reason="no quality gate evidence supplied")
+            return run.to_dict()
+        final_status = "failed"
         for index, gate in enumerate(gate_statuses or [], start=1):
             status = str(gate.get("status") or "failed")
             failures = list(gate.get("failures") or [])

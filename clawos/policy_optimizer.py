@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 import random
+import hashlib
+import json
 from datetime import datetime
 
 
@@ -110,6 +112,13 @@ class PolicyOptimizer:
                     action_payload=selected.get("payload") or {},
                     policy_selection_id=int(selection["id"]),
                     behavior_propensity=behavior_propensity,
+                    candidate_set=[arm["name"] for arm in eligible],
+                    candidate_scores={arm["name"]: (1e12 if math.isinf(value) else value)
+                                      for value, arm in exploit_scored},
+                    policy_version="hybrid-ucb-v1:" + hashlib.sha256(json.dumps(
+                        {"group": group, "arms": eligible, "model": learned.get("model")},
+                        sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:20],
+                    exploration_source="epsilon_uniform" if explore else "ucb_exploit",
                 )
             except ValueError:
                 # A caller may use a task identifier from another store.
@@ -236,12 +245,15 @@ class PolicyOptimizer:
                 -arm["id"],
             ),
         )
-        return self._store.promote_policy_arm(
-            stats["group"]["id"],
-            winner["id"],
-            target_type,
-            target_key,
-            actor_id=actor_id,
+        # Arm reward averages nominate a candidate; they never bypass the
+        # independent regression / shadow / canary release path.
+        from reflection.self_evolution import SelfEvolutionManager
+        current = self._store.get_runtime_policy(target_type, target_key)
+        return SelfEvolutionManager(self._store).create_run(
+            target_type, target_key, (current or {}).get("payload") or {},
+            winner.get("payload") or {}, created_by=actor_id,
+            title=f"UCB nomination: {group_name}/{winner['name']}",
+            conclusion="Reward-ranked nomination; regression and paired runtime evidence are still required.",
         )
 
     def rollback(self, promotion_id, actor_id="system"):

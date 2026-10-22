@@ -37,7 +37,7 @@
   "vector_store": {
     "provider": "${VECTOR_PROVIDER:-chroma}",
     "chroma_dir": "${CHROMA_DIR:-./data/chroma}",
-    "embedding_provider": "${EMBEDDING_PROVIDER:-hash}",
+    "embedding_provider": "${EMBEDDING_PROVIDER:-qwen3}",
     "embedding_model_path": "${EMBEDDING_MODEL_PATH:-../tools/models/qwen3-embedding-0.6b}",
     "embedding_dim": "${EMBEDDING_DIM:-1024}",
     "reranker_provider": "${RERANKER_PROVIDER:-none}",

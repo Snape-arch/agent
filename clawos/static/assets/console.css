@@ -4257,3 +4257,15 @@ body.aether-console{
 .competition-phase-card ul,.competition-next-actions{margin:12px 0 0;padding-left:20px}
 .competition-phase-card li,.competition-next-actions li{margin:7px 0}
 @media(max-width:900px){.competition-phase-grid{grid-template-columns:1fr}}
+
+/* Opaque status surface preserves contrast over the responsive glass shell. */
+.aether-console .health{background:#f8fafc;padding:4px 8px;border-radius:8px}
+.aether-console .health #healthText{color:#374151}
+.aether-console .sessions button.session{display:block;width:100%;text-align:left;font:inherit;border:0;cursor:pointer}
+.aether-console .sessions button.session:focus-visible{outline:2px solid var(--studio-accent,#16765b);outline-offset:-2px}
+.history-controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 0;margin-bottom:12px;border-bottom:1px solid var(--workbench-line,#dfe3ea);font-size:13px}
+.history-controls a{color:var(--studio-accent,#16765b);text-underline-offset:3px}
+.history-controls small{flex-basis:100%}
+.aether-console .side{overflow-y:auto}
+.aether-console .sessions{flex:0 0 auto;min-height:52px;align-content:start}
+.console-page.workspace-linked.aether-console .side-brand b{font-size:13px;white-space:nowrap;overflow-wrap:normal}

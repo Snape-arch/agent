@@ -1,0 +1,70 @@
+{
+  "schema": "clawos.scanned-table-regions.v1",
+  "source": "clawos/tmp/document-corpus/docx-a/ClawOS 项目计划书与技术说明书-最终版本.pdf",
+  "source_sha256": "111b212b9665f8811e7f87d9055706e10d0c5e9652146a0ab4c1effaef04c13a",
+  "review_status": "agent_visual_transcription_development_not_independent",
+  "maintainer_signoff": false,
+  "raster_scale": 3,
+  "tables": [
+    {
+      "page": 1, "bbox": [90, 212, 506, 309],
+      "rows": [
+        ["问题", "描述", "用户痛点"],
+        ["没有长期记忆", "今天教AI做的事，明天就忘了", "每次都要重复解释，效率低下"],
+        ["不会成长", "完成任务后不总结经验", "AI永远停留在初始水平"],
+        ["缺少个性化", "用户偏好无法长期保存", "不懂用户风格，输出千篇一律"],
+        ["无法本地化", "依赖云端API", "隐私风险、成本高、离线不可用"]
+      ]
+    },
+    {
+      "page": 1, "bbox": [90, 466, 506, 671],
+      "rows": [
+        ["比赛要求", "ClawOS如何满足", "具体指标"],
+        ["基于MTClaw", "Agent调度、工具管理、工作流编排全部基于MTClaw", "代码中调用MTClaw API，不改源码"],
+        ["跑在MTT AIBOOK本地", "Qwen-7B本地推理，数据不离本机", "全程无云端调用"],
+        ["快", "固化Skill后本地秒级响应", "已知任务<1秒，比MTClaw官方快7倍"],
+        ["准", "长期记忆+反思学习，用户偏好永久保存", "同类任务首次即正确率提升至95%+"],
+        ["狠", "泛化能力强，一次教会同类场景", "从“整理财报”自动泛化到“整理报表”"],
+        ["覆盖全工作场景", "科研学习、竞赛开发、软件开发和办公协作", "四大场景覆盖"]
+      ],
+      "critical": [
+        {"row": 1, "column": 2, "contains": "不改源码", "kind": "negation"},
+        {"row": 2, "column": 1, "contains": "数据不离本机", "kind": "condition"},
+        {"row": 3, "column": 2, "contains": "<1秒", "kind": "numeric"},
+        {"row": 3, "column": 2, "contains": "7倍", "kind": "numeric"},
+        {"row": 4, "column": 2, "contains": "至95%+", "kind": "numeric"}
+      ]
+    },
+    {
+      "page": 1, "bbox": [90, 718, 506, 768],
+      "rows": [
+        ["用户类型", "典型场景", "核心需求"],
+        ["大学生", "科研、课程设计、竞赛", "快速上手，减少重复劳动"],
+        ["开发者", "代码开发、项目管理", "代码辅助，自动化流程"]
+      ]
+    },
+    {
+      "page": 2, "bbox": [90, 120, 506, 201],
+      "rows": [
+        ["场景", "典型任务", "ClawOS能力"],
+        ["科研学习", "论文阅读、翻译、总结", "文档消化+知识库检索"],
+        ["竞赛开发", "赛题分析、方案设计、PPT生成", "任务拆解+工作流固化"],
+        ["软件开发", "代码生成、调试、测试", "代码辅助+上下文记忆"],
+        ["办公协作", "会议纪要、邮件、待办事项", "信息提取+自动化执行"]
+      ]
+    }
+  ],
+  "negative_regions": [
+    {"page": 1, "bbox": [85, 335, 510, 429], "kind": "prose"},
+    {"page": 2, "bbox": [85, 270, 510, 780], "kind": "flowchart"}
+  ],
+  "gates": {
+    "region_iou": 0.95,
+    "cell_text_exact": 0.9,
+    "critical_exact": 1.0,
+    "manual_cell_edit_reduction": 0.5,
+    "critical_edits_required": 0,
+    "auto_changes_worsened": 0,
+    "verification_elapsed_seconds": 90.0
+  }
+}

@@ -147,6 +147,8 @@ class CompetitionArchitectureTests(unittest.TestCase):
             os.environ["CLAWOS_MEMORY_DB"] = str(Path(td) / "memory.db")
             try:
                 store = MemoryStore(os.environ["CLAWOS_MEMORY_DB"])
+                doc=store.add_document("RAG source")
+                store.add_document_chunk(doc['id'],1,"Local citation evidence for paper reading.",f"doc:{doc['id']}#chunk=1")
                 store.add_knowledge("RAG evidence", "Local citation evidence for paper reading.", "research", "doc:1#chunk=1")
                 tool_runner.input_data = {"query": "citation evidence", "category": "research"}
                 output = io.StringIO()

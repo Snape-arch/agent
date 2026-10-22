@@ -1,0 +1,28 @@
+{
+  "schema": "clawos.coding-oss-corpus.v1",
+  "status": "awaiting_network_checkout_and_second_reviewer",
+  "cases": [],
+  "review_protocol": {
+    "required_reviewers": 2,
+    "instructions": [
+      "Resolve a public release tag to a full 40-character commit SHA.",
+      "Verify the clean checkout command succeeds before mutation.",
+      "Apply exactly one deterministic mutation with an unambiguous anchor.",
+      "Assign one of environment_failure, test_failure, implementation_failure, requirements_failure from raw tool evidence.",
+      "Verify the inverse repair restores the original source and the command passes.",
+      "Record reviewer identity, review date, repository URL, license, revision and commands before inclusion."
+    ]
+  },
+  "candidate_repositories": [
+    {"language": "typescript", "repository": "https://github.com/sindresorhus/yoctocolors", "pin": "unresolved"},
+    {"language": "go", "repository": "https://github.com/tidwall/gjson", "pin": "unresolved"},
+    {"language": "rust", "repository": "https://github.com/BurntSushi/byteorder", "pin": "unresolved"},
+    {"language": "c", "repository": "https://github.com/benhoyt/inih", "tag": "r59", "pin": "unresolved"},
+    {"language": "csharp", "repository": "https://github.com/dotnet/samples", "pin": "unresolved"}
+  ],
+  "network_evidence": {
+    "git_https": "failed: github.com:443 connect timeout",
+    "github_rest": "failed: unauthenticated API rate limit exceeded",
+    "recorded_at": "2026-08-12"
+  }
+}

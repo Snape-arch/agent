@@ -1,4 +1,7 @@
 import os
+import json
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -11,6 +14,25 @@ if str(ROOT) not in sys.path:
 
 
 class RuntimeSecurityTests(unittest.TestCase):
+    def test_file_write_is_atomic_and_conflict_safe(self):
+        from scripts import tool_runner
+
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td) / "report.md"
+            output = io.StringIO()
+            tool_runner.input_data = {"path": str(target), "content": "first"}
+            with contextlib.redirect_stdout(output):
+                tool_runner.handlers["file_write"]()
+            first = json.loads(output.getvalue())
+            output = io.StringIO()
+            tool_runner.input_data = {"path": str(target), "content": "second", "expected_sha256": first["sha256"]}
+            with contextlib.redirect_stdout(output):
+                tool_runner.handlers["file_write"]()
+            second = json.loads(output.getvalue())
+
+        self.assertTrue(first["atomic"])
+        self.assertTrue(second["atomic"])
+        self.assertNotEqual(first["sha256"], second["sha256"])
     def test_path_sandbox_allows_root_and_blocks_escape(self):
         from security.policy import ToolSecurityPolicy
 
@@ -173,6 +195,30 @@ class RuntimeSecurityTests(unittest.TestCase):
         self.assertEqual(result["status"], "denied")
         self.assertEqual(called, [])
         self.assertEqual(events[0]["decision"], "deny")
+
+    def test_confirmed_office_tool_receives_service_level_confirmation(self):
+        import clawos_server as server
+        from security.policy import ToolSecurityPolicy
+
+        with tempfile.TemporaryDirectory() as td:
+            old_policy = server.g_security_policy
+            old_execute = server.execute_python_tool
+            captured = []
+            server.g_security_policy = ToolSecurityPolicy([td])
+            server.execute_python_tool = lambda name, args: captured.append(json.loads(args)) or {"path": str(Path(td) / "report.pdf")}
+            try:
+                result = server.execute_tool_call(
+                    "office_productivity",
+                    json.dumps({"action": "create", "output_path": str(Path(td) / "report.pdf")}),
+                    "s1",
+                    confirmed_tools={"office_productivity"},
+                )
+            finally:
+                server.g_security_policy = old_policy
+                server.execute_python_tool = old_execute
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(captured[0]["confirmed"])
 
 
 if __name__ == "__main__":

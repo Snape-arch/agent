@@ -107,6 +107,27 @@
 @media(max-width:1050px){.academy-card-index,.academy-layer-graph,.academy-layer-detail{grid-template-columns:1fr 1fr}.academy-layer-detail>div{grid-column:1/-1}}
 @media(max-width:720px){.academy-page .site-nav.light{padding:12px 18px;height:auto}.academy-page main{width:min(100% - 28px,1180px);padding-top:120px}.academy-path,.quiz-grid,.academy-card-index,.academy-layer-graph,.academy-layer-detail{grid-template-columns:1fr}.paper-output-card{grid-template-columns:1fr}.paper-text-stream{position:absolute;left:10px;right:10px;top:auto;bottom:10px;width:auto;max-height:45%}.paper-reader-main{grid-template-rows:auto 520px}.paper-toolbar{flex-wrap:wrap}.citation-query-row{display:grid}.academy-hero h1{font-size:clamp(2.4rem,12vw,4.2rem)}.academy-visual{min-height:320px}.academy-orbit{width:64px;height:64px}.academy-graph{min-height:330px}.academy-node{position:relative;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;margin:8px}}
 
+/* Evidence-grounded paper report */
+.paper-output-card.grounded-paper-report{display:block;max-height:52vh;overflow:auto;padding:0;background:#fff;border-color:rgba(15,23,42,.1);box-shadow:0 18px 50px rgba(15,23,42,.08)}
+.paper-report-heading{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:18px 18px 14px;background:rgba(255,255,255,.94);border-bottom:1px solid rgba(15,23,42,.08);backdrop-filter:blur(14px)}
+.paper-report-kicker{display:block;margin-bottom:5px;font:800 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#315cf5}
+.paper-report-heading h3{margin:0;font-size:18px;line-height:1.25;letter-spacing:-.02em}
+.paper-report-mode{flex:0 0 auto;padding:6px 9px;border-radius:999px;background:rgba(49,92,245,.09);color:#2448c8;font:800 10px var(--mono);letter-spacing:0;text-transform:none}
+.paper-report-summary{margin:0!important;padding:16px 18px 8px!important;color:#101828!important;font-size:14px!important;font-weight:720;line-height:1.75!important}
+.paper-report-problem,.paper-report-verdict{margin:8px 18px 14px;padding:13px 14px;border-radius:14px;background:#f6f7fb;border:1px solid rgba(15,23,42,.06)}
+.paper-report-problem b,.paper-report-verdict b{font-size:12px}.paper-report-problem p,.paper-report-verdict p{margin:5px 0 0!important;font-size:12px!important;line-height:1.65!important}
+.paper-report-sections{display:grid;gap:8px;padding:0 18px 8px}
+.paper-report-sections details{border:1px solid rgba(15,23,42,.08);border-radius:14px;background:#fff;overflow:hidden}
+.paper-report-sections summary{display:flex;align-items:center;justify-content:space-between;padding:12px 13px;cursor:pointer;font-size:12px;font-weight:850;list-style:none}
+.paper-report-sections summary::-webkit-details-marker{display:none}.paper-report-sections summary span{min-width:22px;padding:3px 6px;border-radius:999px;background:#eef1f6;text-align:center;font:800 10px var(--mono);color:#526071}
+.paper-report-points{display:grid;gap:0;margin:0!important;padding:0!important;list-style:none!important;border-top:1px solid rgba(15,23,42,.06)}
+.paper-report-points li{display:grid;gap:7px;padding:12px 13px;border-bottom:1px solid rgba(15,23,42,.055)}.paper-report-points li:last-child{border-bottom:0}
+.paper-report-points p{margin:0!important;font-size:12px!important;line-height:1.65!important;color:#344054!important}
+.paper-claim-status{width:max-content;padding:3px 7px;border-radius:999px;background:#fff6e6;color:#9a5b00;font:800 9px var(--mono);letter-spacing:.04em;text-transform:none!important}.paper-claim-status.supported{background:#eaf8ef;color:#18703a}.paper-claim-status.not_found{background:#f1f3f6;color:#667085}
+.paper-citation-row{display:flex;gap:5px;flex-wrap:wrap}.paper-citation-row button{border:0;border-radius:999px;background:#eef2ff;color:#315cf5;padding:4px 7px;font:750 9px var(--mono);cursor:pointer}.paper-citation-row button:hover{background:#315cf5;color:#fff}
+.paper-report-empty{padding:0 13px 12px!important;color:#667085!important;font-size:12px!important}
+.paper-report-files{margin:0 18px 18px;color:#667085;font-size:11px}.paper-report-files>summary{cursor:pointer;font-weight:800}.paper-report-files .report-paths{margin-top:8px}
+
 /* Unified product skin: cool white/gray to match the app1 homepage and Aether console. */
 .product-page{background:linear-gradient(135deg,#f7f8fb 0%,#eef0f6 100%);color:#0a0a0a;font-family:Inter,Geist,-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;overflow-x:hidden}
 .product-page:before{content:"";position:fixed;inset:0;z-index:-1;background:radial-gradient(circle at 78% 8%,rgba(255,255,255,.86),transparent 28rem),linear-gradient(rgba(0,0,0,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.02) 1px,transparent 1px);background-size:auto,56px 56px,56px 56px}

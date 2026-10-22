@@ -1,0 +1,63 @@
+{
+  "validation_status": "superseded_footnote_content_was_not_checked",
+  "superseded_by": "output/document-fidelity-20260830/cross_office.json",
+  "schema": "clawos.office-cross-application.v1",
+  "source": "C:\\Users\\34712\\Desktop\\agentwork\\clawos\\output\\document-fidelity\\cross-app-fidelity.docx",
+  "source_sha256": "6b3026f6294e3d3a3d6f4ce5fcc83015fe2bf97949bf16b04e61a78195fd149b",
+  "engines": {
+    "libreoffice": {
+      "engine": "libreoffice",
+      "status": "completed",
+      "pdf": "C:\\Users\\34712\\Desktop\\agentwork\\clawos\\output\\document-fidelity\\cross-render\\libreoffice.pdf",
+      "sha256": "0ee6ae9ad9b8dcf8852ef1d46bb8a45db536482e43ba8138269a4830becbca7c",
+      "pages": 4,
+      "text_chars": 4542
+    },
+    "microsoft_word": {
+      "engine": "microsoft_word",
+      "status": "completed",
+      "pdf": "C:\\Users\\34712\\Desktop\\agentwork\\clawos\\output\\document-fidelity\\cross-render\\microsoft-word.pdf",
+      "sha256": "45e184cbd8c0240bb51a0914d56a8903e4904430f1468c2cfb5f23e5104a1a31",
+      "pages": 4,
+      "text_chars": 4734
+    },
+    "wps_writer": {
+      "engine": "wps_writer",
+      "status": "completed",
+      "pdf": "C:\\Users\\34712\\Desktop\\agentwork\\clawos\\output\\document-fidelity\\cross-render\\wps-writer.pdf",
+      "sha256": "fedcc7fb11b4213bec3dc23aa46c87d22c9e06581019641afb2f8eb5743cbdb9",
+      "pages": 4,
+      "text_chars": 4554
+    }
+  },
+  "comparisons": [
+    {
+      "baseline": "microsoft_word",
+      "candidate": "libreoffice",
+      "page_count_equal": true,
+      "baseline_pages": 4,
+      "candidate_pages": 4,
+      "text_token_recall": 0.976816,
+      "visual_similarity": 0.988418
+    },
+    {
+      "baseline": "microsoft_word",
+      "candidate": "wps_writer",
+      "page_count_equal": true,
+      "baseline_pages": 4,
+      "candidate_pages": 4,
+      "text_token_recall": 0.992272,
+      "visual_similarity": 0.967258
+    }
+  ],
+  "acceptance": {
+    "passed": true,
+    "checks": {
+      "all_required_engines_rendered": true,
+      "page_count_parity": true,
+      "text_token_retention": true,
+      "visual_similarity": true
+    }
+  },
+  "truth_boundary": "Renderer parity checks page count, extracted-token retention and normalized raster similarity. It does not prove every interactive editing behavior is identical."
+}

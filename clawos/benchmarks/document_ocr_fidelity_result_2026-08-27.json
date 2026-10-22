@@ -1,0 +1,24 @@
+{
+  "schema": "clawos.document-ocr-fidelity.v1",
+  "source": "C:\\Users\\34712\\Desktop\\agentwork\\参考文献\\2305.16291v2.pdf",
+  "source_sha256": "769a4e33ddeeb73870849232eece49afe882c2d146362e33917ccb432ba0efb8",
+  "page": 1,
+  "engine": "tesseract-tsv",
+  "expected_tokens": 248,
+  "ocr_words": 301,
+  "metrics": {
+    "word_recall": 0.943548,
+    "bbox_validity": 1.0,
+    "mean_confidence": 0.871951
+  },
+  "acceptance": {
+    "passed": true,
+    "checks": {
+      "ocr_completed": true,
+      "word_recall": true,
+      "bbox_validity": true,
+      "mean_confidence": true
+    }
+  },
+  "truth_boundary": "A real born-digital English PDF page was rasterized into an image-only PDF. Text extracted before rasterization is the OCR reference; this does not measure handwriting or Chinese OCR."
+}

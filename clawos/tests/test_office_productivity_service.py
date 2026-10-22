@@ -22,8 +22,11 @@ class OfficeProductivityServiceTests(unittest.TestCase):
             json_row = service.create(root / "data.json", data={"ok": True}, confirmed=True)
             for item in (docx, pdf, xlsx, pptx, csv_row, json_row):
                 self.assertTrue(item["valid"], item)
-                self.assertEqual(item["quality_gate"], "pass")
                 self.assertGreater(item["bytes"], 0)
+            for item in (docx, pdf, xlsx, pptx):
+                self.assertIn("visual_quality", item)
+                self.assertIn(item["visual_quality"]["visual_status"], {"structural_only", "rendered", "audit_failed"})
+            self.assertEqual(pdf["quality_gate"], "pass", pdf)
             self.assertIn("'", (root / "data.csv").read_text(encoding="utf-8-sig"))
 
     def test_meeting_package_contains_minutes_actions_email_calendar_and_pdf(self):

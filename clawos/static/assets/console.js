@@ -1,5 +1,11 @@
 const API = location.origin;
 let currentSession = "default";
+let historyRequest = 0;
+let historyPage = null;
+let sessionSearchRequest = 0;
+let sessionSearchTimer;
+let sessionSearchRows = null;
+try { currentSession = localStorage.getItem('clawos-last-session') || 'default'; } catch (_) {}
 let busy = false;
 let lastToolCalls = [];
 let lastRoutingStrategy = null;
@@ -33,18 +39,18 @@ let lastKnowledgeGraph = { nodes: [], edges: [], category: "all" };
 
 const $ = id => document.getElementById(id);
 const VIEW_META = {
-  chat: ["今日工作台", "任务、进度、交付与审批集中在一个工作面"],
+  chat: ["工作台", "对话、文件和任务"],
   search: ["搜索聊天", "查找历史会话并继续上下文"],
-  knowledge: ["知识库", "管理用户主动构建的 RAG 资料、文档和学习沉淀"],
+  knowledge: ["知识库", "管理资料、文档和检索来源"],
   dash: ["状态总览", "查看模型、工具、任务和记忆系统的运行状态"],
   memory: ["记忆治理", "管理画像、偏好、项目、经验和技能等系统记忆"],
   projects: ["项目", "进入本地项目、科研目录和交付任务"],
   reflection: ["反思循环", "审查任务复盘、改进建议、验证结果和回滚记录"],
-  evolution: ["Self-Evolution", "候选生成、自动基准门禁、shadow/canary 灰度和真实质量信号"],
-  skills: ["固化技能", "查看可复用工作流、候选版本和执行质量"],
+  evolution: ["策略演进实验室", "候选比较、成对回放与独立任务证据"],
+  skills: ["技能", "查找、预演和管理可复用工作流"],
   tools: ["工具路由", "查看本地函数清单、参数结构和调用轨迹"],
-  tasks: ["运行轨迹", "跟踪任务取消、重试、恢复、队列领取和事件审计"],
-  ops: ["Ops Center", "备份恢复、配置检查、后台 worker 和真实业务长任务"],
+  tasks: ["任务与进度", "查看执行状态、任务记录与待处理事项"],
+  ops: ["运行维护", "备份与恢复、配置检查及后台任务"],
   benchmarks: ["冻结基准", "运行离线基准套件，查看通过率和 P95 延迟"],
   scenes: ["场景工作台", "核对会议、科研、办公、学习、Git 和技能治理的交付边界"],
   feishu: ["飞书连接器", "消息、纪要、审批与回执"],
@@ -198,20 +204,23 @@ function handleProjectFiles(event) {
 }
 
 function statusBadge(status) {
-  const raw = String(status ?? "").toLowerCase();
-  const ok = ["ok", "success", "succeeded", "ready", "true", "passed", "allow"].includes(raw);
-  const bad = ["error", "failed", "false", "deny", "canceled", "cancelled"].includes(raw);
-  const cls = ok ? "ok" : bad ? "err" : "wait";
-  const label = status === true ? "ok" : status === false ? "failed" : String(status || "pending");
-  return `<span class="state ${cls}">${esc(label)}</span>`;
+  const raw = String(status ?? "pending").trim().toLowerCase() || 'pending';
+  const labels = {ok:"正常",success:"成功",succeeded:"已完成",ready:"就绪",true:"通过",passed:"通过",allow:"允许",
+    error:"异常",failed:"失败",false:"未通过",deny:"拒绝",canceled:"已取消",cancelled:"已取消",pending:"待处理",
+    running:"进行中",queued:"排队中",active:"已启用",candidate:"候选",validated:"已验证",needs_changes:"需修改",
+    rejected:"已拒绝",canary:"灰度中",paused:"已暂停",blocked:"受阻",completed:"已完成",published:"已发布"};
+  const ok = ["ok","success","succeeded","ready","true","passed","allow","active","validated","completed","published"].includes(raw);
+  const bad = ["error","failed","false","deny","rejected","blocked"].includes(raw);
+  return `<span class="state ${ok ? "ok" : bad ? "err" : "wait"}" title="${esc(raw)}">${esc(labels[raw] || String(status ?? "待处理"))}</span>`;
 }
 
 function table(headers, rows) {
-  const head = `<thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>`;
+  const head = `<thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join("")}</tr></thead>`;
   const body = `<tbody>${(rows || []).map(row => `<tr>${row.map(cell => {
     if (cell && typeof cell === "object" && "html" in cell) return `<td>${cell.html}</td>`;
-    return `<td>${esc(cell)}</td>`;
-  }).join("")}</tr>`).join("")}</tbody>`;
+    if (cell && typeof cell === "object") return `<td><details class="cell-details"><summary>查看详细信息</summary><pre>${esc(JSON.stringify(cell,null,2))}</pre></details></td>`;
+    return `<td>${esc(cell ?? "—")}</td>`;
+  }).join("")}</tr>`).join("") || `<tr><td class="table-empty" colspan="${Math.max(1,headers.length)}">暂无记录</td></tr>`}</tbody>`;
   return head + body;
 }
 
@@ -229,6 +238,7 @@ function setView(viewName) {
   $("viewTitle").textContent = (VIEW_META[viewName] || VIEW_META.chat)[0];
   $("viewSub").textContent = (VIEW_META[viewName] || VIEW_META.chat)[1];
   if (location.hash !== "#" + viewName) history.replaceState(null, "", "#" + viewName);
+  document.dispatchEvent(new CustomEvent('workspace-view', {detail:viewName}));
   document.body.classList.remove("sidebar-open");
   closeCommandDrawer();
   refreshView(viewName);
@@ -245,17 +255,55 @@ document.querySelectorAll("button[data-view]").forEach(button => {
 });
 
 function toggleSidebar() {
-  if (window.matchMedia("(max-width: 760px)").matches) document.body.classList.toggle("sidebar-open");
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    document.body.classList.remove('sidebar-collapsed');
+    document.body.classList.toggle("sidebar-open");
+  }
   else document.body.classList.toggle("sidebar-collapsed");
+  const collapsed = document.body.classList.contains('sidebar-collapsed');
+  const button = document.querySelector('.side-collapse');
+  button?.setAttribute('aria-label', collapsed ? '展开侧栏' : '收起侧栏');
+  const label = button?.querySelector('.ui-action-label');
+  if (label) label.textContent = collapsed ? '展开' : '收起';
 }
 
 function md(text) {
-  return esc(text || "")
-    .replace(/```([\s\S]*?)```/g, "<pre>$1</pre>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
-    .replace(/(https?:\/\/[^\s<>"'）)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/\n/g, "<br>");
+  return window.ClawChatContent.render(text);
+}
+
+function enhanceMarkdown(container) {
+  container?.querySelectorAll(".md-copy").forEach(button => {
+    button.onclick = async () => {
+      const code = button.closest(".md-code")?.querySelector("code")?.textContent || "";
+      try {
+        let copied = false;
+        if (navigator.clipboard?.writeText) {
+          try {
+            await navigator.clipboard.writeText(code);
+            copied = true;
+          } catch (_) {
+            copied = false;
+          }
+        }
+        if (!copied) {
+          const fallback = document.createElement("textarea");
+          fallback.value = code;
+          fallback.setAttribute("readonly", "");
+          fallback.style.position = "fixed";
+          fallback.style.opacity = "0";
+          document.body.appendChild(fallback);
+          fallback.select();
+          const succeeded = document.execCommand("copy");
+          fallback.remove();
+          if (!succeeded) throw new Error("copy unavailable");
+        }
+        button.textContent = "已复制";
+        window.setTimeout(() => { button.textContent = "复制"; }, 1400);
+      } catch (_) {
+        button.textContent = "复制失败";
+      }
+    };
+  });
 }
 
 function addMessage(role, text, tools) {
@@ -268,6 +316,7 @@ function addMessage(role, text, tools) {
   const chips = (tools || []).map(t => `<span class="tool ${String(JSON.stringify(t.result || {})).includes("error") ? "err" : ""}">${esc(t.name)}</span>`).join("");
   div.innerHTML = `<div class="message-body">${chips ? `<div class="tool-row">${chips}</div>` : ""}<div class="mc">${md(text)}</div></div>`;
   inner.appendChild(div);
+  enhanceMarkdown(div);
   $("chat").scrollTop = $("chat").scrollHeight;
 }
 
@@ -276,13 +325,79 @@ function addAssistantStream() {
   if (inner.querySelector(".empty")) inner.innerHTML = "";
   const div = document.createElement("div");
   div.className = "msg agent";
-  div.innerHTML = `<div class="message-body"><div class="mc"></div></div>`;
+  div.innerHTML = '<div class="message-body"><div class="mc" aria-live="polite"></div><p class="chat-response-state">正在生成…</p></div>';
   inner.appendChild(div);
   const target = div.querySelector(".mc");
-  return text => {
+  const status = div.querySelector(".chat-response-state");
+  const update = text => {
+    const chat = $("chat");
+    const follow = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 100;
     target.innerHTML = md(text);
-    $("chat").scrollTop = $("chat").scrollHeight;
+    enhanceMarkdown(target);
+    status.hidden = true;
+    if (follow) chat.scrollTop = chat.scrollHeight;
   };
+  update.note = text => { status.textContent = text; status.hidden = false; };
+  return update;
+}
+
+function formatArtifactBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function appendArtifactsToLastAssistant(artifacts) {
+  const rows = Array.isArray(artifacts) ? artifacts : [];
+  if (!rows.length) return;
+  const messages = document.querySelectorAll("#chatInner .msg.agent");
+  const message = messages[messages.length - 1];
+  const body = message?.querySelector(".message-body");
+  if (!body) return;
+  body.querySelector(".chat-artifacts")?.remove();
+  const panel = document.createElement("section");
+  panel.className = "chat-artifacts";
+  panel.setAttribute("aria-label", "生成的文件");
+  panel.innerHTML = `<div class="chat-artifacts-head"><b>已生成文件</b><span>${rows.length} 个可交付产物</span></div><div class="chat-artifact-list">${rows.map(item => `
+    <article class="chat-artifact-card">
+      <div class="chat-artifact-icon" aria-hidden="true">${esc(String(item.format || "FILE").slice(0, 4).toUpperCase())}</div>
+      <div class="chat-artifact-meta"><b>${esc(item.name || "未命名文件")}</b><span>${esc(formatArtifactBytes(item.bytes))} · ${esc(item.source_tool || "ClawOS")}</span></div>
+      <div class="chat-artifact-actions">${["docx","xlsx","pptx"].includes(String(item.format || "").toLowerCase()) ? `<button type="button" onclick="openEmbeddedOfficeEditor('${esc(item.id)}')">编辑</button>` : ""}${item.preview_url ? `<a href="${esc(item.preview_url)}" target="_blank" rel="noopener noreferrer">预览</a>` : ""}<a class="primary" href="${esc(item.download_url)}" download>下载</a></div>
+    </article>`).join("")}</div>`;
+  body.appendChild(panel);
+}
+
+function appendCodingEvidenceToLastAssistant(toolCalls) {
+  const calls = Array.isArray(toolCalls) ? toolCalls : [];
+  const call = [...calls].reverse().find(item => item?.name === "coding_agent" && item?.result?.data?.workspace);
+  if (!call) return;
+  const data = call.result.data;
+  const workspace = data.workspace || {};
+  const changes = data.workspace_changes || {};
+  const source = data.source_verification || {};
+  const attempts = Array.isArray(data.attempts) ? data.attempts : [];
+  const rounds = attempts.flatMap(item => item?.workflow?.rounds || []);
+  const tests = rounds.flatMap(item => item?.tests || []);
+  const sandbox = tests.find(item => item?.sandbox)?.sandbox || {};
+  const egress = sandbox.egress || {};
+  const messages = document.querySelectorAll("#chatInner .msg.agent");
+  const body = messages[messages.length - 1]?.querySelector(".message-body");
+  if (!body) return;
+  body.querySelector(".chat-coding-evidence")?.remove();
+  const panel = document.createElement("section");
+  panel.className = "chat-coding-evidence";
+  panel.setAttribute("aria-label", "编码执行证据");
+  const sourceSafe = source.head_unchanged === true && source.working_tree_unchanged === true;
+  panel.innerHTML = `<div class="chat-coding-evidence-head"><b>编码执行证据</b><span>${data.status === "passed" ? "验证通过" : esc(data.status || "已执行")}</span></div>
+    <div class="chat-coding-evidence-grid">
+      <div><span>隔离工作区</span><b>${workspace.isolated ? "已启用" : "未启用"}</b></div>
+      <div><span>原项目目录</span><b>${sourceSafe ? "未改动" : "需要检查"}</b></div>
+      <div><span>测试沙箱</span><b>${esc(sandbox.backend || "无测试证据")}</b></div>
+      <div><span>外网策略</span><b>${egress.default_deny_external ? "默认拒绝" : "未验证"}</b></div>
+    </div>
+    <div class="chat-coding-evidence-files"><span>变更文件</span><code>${esc((changes.changed_files || []).join(", ") || "无")}</code></div>`;
+  body.appendChild(panel);
 }
 
 function attachFeedbackControls(taskId) {
@@ -305,6 +420,7 @@ function attachFeedbackControls(taskId) {
       <option value="2">2 · 不满意</option>
       <option value="1">1 · 很不满意</option>
     </select>
+    <label><input type="checkbox" data-quality-consent> 允许将本次问答匿名加入固定质量评测</label>
     <span class="feedback-status" role="status"></span>`;
   message.querySelector(".message-body")?.appendChild(toolbar);
   toolbar.querySelectorAll("[data-feedback-binary]").forEach(button => {
@@ -334,6 +450,8 @@ async function submitTaskFeedback(taskId, feedback, toolbar) {
       body: JSON.stringify({
         task_id: Number(taskId),
         ...feedback,
+        quality_consent: Boolean(toolbar.querySelector("[data-quality-consent]")?.checked),
+        quality_answer: toolbar.closest(".msg.agent")?.querySelector(".mc")?.innerText || "",
         idempotency_key: `console:${taskId}:${feedback.signal_type}:${String(feedback.value)}`
       })
     });
@@ -351,9 +469,6 @@ function sendMessage() {
   if ((!text && !ready.length) || busy) return;
   prompt.value = "";
   const wantsWebSearch = Boolean($("webSearchToggle")?.checked);
-  if (wantsWebSearch) {
-    text = `${text || "请阅读附件并联网检索相关资料。"}\n\n请先联网搜索可验证来源，回答中保留可点击网页链接，并标出哪些结论来自搜索结果。`;
-  }
   const attachments = ready.map(item => ({
     name: item.name,
     type: item.type,
@@ -363,50 +478,21 @@ function sendMessage() {
   }));
   chatAttachments = chatAttachments.filter(item => item.status === "uploading");
   renderAttachmentTray();
-  submitMessage(text || "请阅读附件并给出分析。", wantsWebSearch ? ["web_search"] : [], attachments);
+  submitMessage(text || "请阅读附件并给出分析。", wantsWebSearch ? ["web_search", "web_fetch"] : [], attachments, wantsWebSearch ? "auto" : "off");
 }
 
 async function readChatStream(response, onText, onMeta) {
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let text = "";
-  let meta = {};
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let index;
-    while ((index = buffer.indexOf("\n\n")) >= 0) {
-      const block = buffer.slice(0, index);
-      buffer = buffer.slice(index + 2);
-      if (!block.trim() || block.includes("data: [DONE]")) continue;
-      const event = (block.match(/^event:\s*(.+)$/m) || [])[1] || "message";
-      const data = (block.match(/^data:\s*([\s\S]*)$/m) || [])[1] || "";
-      try {
-        const payload = JSON.parse(data);
-        if (event === "clawos_meta") {
-          meta = { ...meta, ...payload };
-          onMeta(meta);
-          continue;
-        }
-        const piece = payload.choices?.[0]?.delta?.content || "";
-        text += piece;
-        onText(text);
-      } catch (err) {}
-    }
-  }
-  return { text, meta };
+  return window.ClawChatContent.readStream(response, onText, onMeta);
 }
 
-async function submitMessage(text, confirmedTools, attachments) {
+async function submitMessage(text, confirmedTools, attachments, webSearchMode = "off") {
   busy = true;
+  lastTaskId = null;
   window.activeChatController = new AbortController();
   $("send").disabled = true;
   if ($("stop")) $("stop").disabled = false;
   const names = (attachments || []).map(item => item.name).filter(Boolean);
-  const webHint = (confirmedTools || []).includes("web_search") ? "\n\n已开启联网搜索，回答会尽量保留来源链接。" : "";
-  addMessage("user", text + webHint + (names.length ? `\n\n附件：${names.join("、")}` : ""));
+  addMessage("user", text + (names.length ? `\n\n附件：${names.join("、")}` : ""));
   const update = addAssistantStream();
   try {
     const response = await fetch(API + "/v1/chat/completions", {
@@ -417,11 +503,15 @@ async function submitMessage(text, confirmedTools, attachments) {
         session_id: currentSession,
         stream: true,
         clawos_confirmed_tools: confirmedTools || [],
+        clawos_web_search_mode: webSearchMode,
         clawos_attachments: attachments || [],
         messages: [{ role: "user", content: text }]
       })
     });
-    if (!response.ok) throw new Error("chat " + response.status);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(typeof error.detail === "string" ? error.detail : `请求失败 (${response.status})`);
+    }
     const contentType = response.headers.get("content-type") || "";
     let data = null;
     let streamMeta = {};
@@ -441,21 +531,26 @@ async function submitMessage(text, confirmedTools, attachments) {
     lastTaskId = data.clawos?.task_id || lastTaskId;
     if (lastTaskId) attachFeedbackControls(lastTaskId);
     if (data.clawos?.needs_confirmation) {
-      const toolNames = tools.map(t => t.name).filter(Boolean);
+      const toolNames = [...new Set((data.clawos?.confirmation_tools || tools.map(t => t.name)).filter(Boolean))];
       const risks = [...new Set(tools.map(t => t.result?.risk_level).filter(Boolean))];
-      pendingConfirmation = { text, tools: toolNames, attachments: attachments || [] };
-      $("confirmText").textContent = `需要确认：${toolNames.join("、")}${risks.length ? ` · 风险 ${risks.join("/")}` : ""}`;
+      pendingConfirmation = { text, tools: toolNames, attachments: attachments || [], webSearchMode };
+      const webOnly = toolNames.length && toolNames.every(name => ["web_search", "web_fetch", "scholarly_search", "scholarly_download"].includes(name));
+      $("confirmText").textContent = webOnly
+        ? `允许联网读取 ${toolNames.length} 类公开来源？确认后会自动继续。${risks.length ? ` 风险级别：${risks.join("/")}` : ""}`
+        : `允许执行 ${toolNames.join("、") || "本地变更"}？确认后将写入文件、运行测试或生成产物。${risks.length ? ` 风险级别：${risks.join("/")}` : ""}`;
       $("confirmBar").classList.add("on");
     } else {
       pendingConfirmation = null;
       $("confirmBar").classList.remove("on");
     }
+    appendArtifactsToLastAssistant(data.clawos?.artifacts || []);
+    appendCodingEvidenceToLastAssistant(data.clawos?.tool_calls || []);
     renderLastTools();
     if (data.clawos?.reflection) renderLastReflection(data.clawos.reflection);
     await loadSessions();
     await refreshAll();
   } catch (err) {
-    update(err.name === "AbortError" ? "已停止生成。" : "请求失败：" + err.message);
+    update.note(err.name === "AbortError" ? "已停止生成，已收到的内容保留。" : "请求失败：" + err.message);
   } finally {
     busy = false;
     window.activeChatController = null;
@@ -483,7 +578,7 @@ function confirmPending() {
   const pending = pendingConfirmation;
   pendingConfirmation = null;
   $("confirmBar").classList.remove("on");
-  submitMessage(pending.text, pending.tools, pending.attachments || []);
+  submitMessage(pending.text, pending.tools, pending.attachments || [], pending.webSearchMode || "off");
 }
 
 function cancelPending() {
@@ -491,21 +586,78 @@ function cancelPending() {
   $("confirmBar").classList.remove("on");
 }
 
+function emptyConversation() {
+  return `<div class="empty workbench-empty task-empty"><b>开始一个新任务</b><span>描述你的目标，或选择一个常用任务。</span><div class="workbench-quick" aria-label="常用任务">${["编写与开发","会议纪要","数据分析","论文精读"].map(kind=>`<button type="button" onclick="useWorkbenchPrompt('${kind}')"><b>${kind}</b><span>${({"编写与开发":"分析项目、修改代码、运行测试","会议纪要":"整理决策和后续行动","数据分析":"清洗数据、统计和生成图表","论文精读":"阅读原文、核对证据、撰写报告"})[kind]}</span></button>`).join("")}</div></div>`;
+}
+
 function newChat() {
+  if (busy) return;
+  historyRequest++;
+  historyPage = null;
   currentSession = "s_" + Date.now();
-  $("chatInner").innerHTML = `<div class="empty workbench-empty task-empty"><b>开始一个新任务</b><span>输入目标，或添加需要处理的文件。</span></div>`;
+  try { localStorage.setItem('clawos-last-session', currentSession); } catch (_) {}
+  $("chatInner").innerHTML = emptyConversation();
   loadSessions();
   setView("chat");
 }
 
 async function switchSession(id) {
-  currentSession = id;
-  startTaskStream();
-  const data = await api("/api/history/" + encodeURIComponent(id));
-  $("chatInner").innerHTML = "";
-  (data.messages || []).forEach(message => addMessage(message.role === "assistant" ? "assistant" : "user", message.content));
-  renderSessions(window._sessions || []);
-  setView("chat");
+  if (busy) return;
+  const request = ++historyRequest;
+  try {
+    const data = await api("/api/history/" + encodeURIComponent(id));
+    if (request !== historyRequest || busy) return;
+    currentSession = id;
+    try { localStorage.setItem('clawos-last-session', id); } catch (_) {}
+    startTaskStream();
+    historyPage = data;
+    $("chatInner").innerHTML = data.messages?.length ? "" : emptyConversation();
+    (data.messages || []).forEach(message => addMessage(message.role, message.content));
+    renderHistoryControls();
+    renderSessions(window._sessions || []);
+    setView("chat");
+  } catch (err) {
+    if (request === historyRequest) alert('历史记录加载失败：' + err.message);
+  }
+}
+
+function renderHistoryControls() {
+  $('historyControls')?.remove();
+  const controls = document.createElement('div');
+  controls.id = 'historyControls';
+  controls.className = 'history-controls';
+  const visible = $('chatInner').querySelectorAll('.msg').length;
+  if (!visible) return;
+  controls.innerHTML = `<span role="status">已显示 ${visible} / ${Math.max(visible,Number(historyPage?.total || visible))} 条记录</span>
+    <button type="button" class="secondary" id="historyOlder" ${!historyPage?.has_more || visible >= 1000 ? 'hidden' : ''}>加载更早记录</button>
+    <a href="/api/history/${encodeURIComponent(currentSession)}/export?format=markdown" download>导出 Markdown</a>
+    <a href="/api/history/${encodeURIComponent(currentSession)}/export?format=json" download>导出 JSON</a>
+    ${visible >= 1000 ? '<small>页面最多显示 1000 条，完整记录可导出。</small>' : ''}`;
+  $('chatInner').prepend(controls);
+  $('historyOlder').onclick = loadOlderHistory;
+}
+
+async function loadOlderHistory() {
+  if (busy || !historyPage?.has_more) return;
+  const id = currentSession, request = historyRequest, button = $('historyOlder');
+  button.disabled = true;
+  try {
+    const data = await api(`/api/history/${encodeURIComponent(id)}?before_id=${historyPage.next_before_id}`);
+    if (id !== currentSession || request !== historyRequest || busy) return;
+    const container = $('chatInner'), first = container.querySelector('.msg');
+    const height = $('chat').scrollHeight, top = $('chat').scrollTop;
+    const fragment = document.createDocumentFragment();
+    for (const message of data.messages || []) {
+      addMessage(message.role, message.content);
+      fragment.append(container.lastElementChild);
+    }
+    container.insertBefore(fragment, first);
+    historyPage = data;
+    renderHistoryControls();
+    $('chat').scrollTop = top + $('chat').scrollHeight - height;
+    $('historyOlder')?.focus();
+  } catch (err) { if (id === currentSession) alert('更早记录加载失败：' + err.message); }
+  finally { if (button.isConnected) button.disabled = false; }
 }
 
 async function loadSessions() {
@@ -543,22 +695,37 @@ function sessionSummary(session) {
 
 function renderSessions(list) {
   const rows = list || [];
-  $("sessions").innerHTML = rows.map(session => `<div class="session ${session.session_id === currentSession ? "on" : ""}" onclick="switchSession('${esc(session.session_id)}')"><b>${esc(sessionTitle(session).slice(0, 54))}</b>${session.tags?.length ? `<div class="session-tags">${sessionTags(session)}</div>` : ""}</div>`).join("") || '<div class="session">暂无会话</div>';
+  $("sessions").innerHTML = rows.map(session => `<button type="button" class="session ${session.session_id === currentSession ? "on" : ""}" data-session="${esc(session.session_id)}"><b>${esc(sessionTitle(session).slice(0, 54))}</b>${session.tags?.length ? `<span class="session-tags">${sessionTags(session)}</span>` : ""}</button>`).join("") || '<div class="session">暂无会话</div>';
+  $('sessions').onclick = event => { const item = event.target.closest('[data-session]'); if (item) switchSession(item.dataset.session); };
 }
 
 function renderSessionSearch() {
   const target = $("sessionSearchList");
   if (!target) return;
   const query = ($("sessionQuery")?.value || "").toLowerCase();
-  const rows = (window._sessions || []).filter(session => {
+  const rows = sessionSearchRows?.query === query.trim() && query.trim() ? sessionSearchRows.rows : (window._sessions || []).filter(session => {
     const haystack = [session.title, session.topic, session.last_message, session.session_id, ...(session.tags || [])].join(" ").toLowerCase();
     return !query || haystack.includes(query);
   });
-  target.innerHTML = rows.map(session => `<button class="session-result" onclick="switchSession('${esc(session.session_id)}')">
+  target.innerHTML = rows.map(session => `<button type="button" class="session-result" data-session="${esc(session.session_id)}">
     <span class="session-result-copy"><b>${esc(sessionTitle(session).slice(0, 96))}</b><small>${esc(sessionSummary(session))}</small></span>
     <time>${esc(session.updated_at || session.session_id)}</time>
     <span class="session-continue">继续</span>
   </button>`).join("") || '<div class="empty-state">暂无匹配会话</div>';
+  target.onclick = event => { const item = event.target.closest('[data-session]'); if (item) switchSession(item.dataset.session); };
+}
+
+function searchSessionHistory() {
+  clearTimeout(sessionSearchTimer);
+  const request = ++sessionSearchRequest, query = $('sessionQuery').value.trim();
+  sessionSearchTimer = setTimeout(async () => {
+    try {
+      const data = await api('/api/sessions?q=' + encodeURIComponent(query));
+      if (request !== sessionSearchRequest) return;
+      sessionSearchRows = {query:query.toLowerCase(), rows:data.sessions || []};
+      renderSessionSearch();
+    } catch (err) { if (request === sessionSearchRequest) $('sessionSearchList').textContent = '搜索失败：' + err.message; }
+  }, 250);
 }
 
 function chooseLocalFile() {
@@ -572,7 +739,7 @@ function renderAttachmentTray() {
   tray.innerHTML = chatAttachments.map(item => {
     const loading = item.status === "loading";
     const label = loading ? "上传解析中" : item.status === "error" ? "解析失败" : `${item.chunk_count || 0} chunks`;
-    return `<div class="attachment-chip ${loading ? "loading" : ""} ${item.status === "error" ? "error" : ""}"><span class="attachment-spinner"></span><b>${esc(item.name)}</b><small>${esc(label)}</small><button type="button" onclick="removeAttachment('${esc(item.id)}')" title="移除附件"><span class="fluent-icon" aria-hidden="true">&#xE711;</span></button></div>`;
+    return `<div class="attachment-chip ${loading ? "loading" : ""} ${item.status === "error" ? "error" : ""}"><span class="attachment-spinner"></span><b>${esc(item.name)}</b><small>${esc(label)}</small><button type="button" onclick="removeAttachment('${esc(item.id)}')" title="移除附件"><span aria-hidden="true">×</span></button></div>`;
   }).join("");
 }
 
@@ -767,12 +934,134 @@ async function loadKnowledge() {
       { html: `<button class="secondary" onclick="loadKnowledgeItem(${Number(item.id)})">打开</button> <button class="secondary" onclick="appendKnowledgeToPrompt(${Number(item.id)})">提问</button>` }
     ]));
     renderKnowledgeMap(knowledgeItems);
+    loadKnowledgeGovernance();
     if ($("knowledgeStatus")) $("knowledgeStatus").textContent = `${knowledgeCategoryLabel(knowledgeCategory)} · ${knowledgeItems.length} 条资料`;
   } catch (err) {
     target.innerHTML = table(["标题", "知识库", "操作"], []);
     renderKnowledgeMap([]);
     if ($("knowledgeStatus")) $("knowledgeStatus").textContent = "知识库加载失败：" + err.message;
   }
+}
+
+async function loadKnowledgeGovernance() {
+  if (!$("knowledgeHealthSummary")) return;
+  try {
+    const [stats, conflicts, quality, benchmark, candidates] = await Promise.all([
+      api("/api/knowledge/v2/stats"),
+      api("/api/knowledge/v2/conflicts?status=pending&limit=100"),
+      api("/api/knowledge/v2/answer-quality/feedback?limit=1"),
+      api("/api/knowledge/v2/answer-quality/latest"),
+      api("/api/memory/candidates?limit=100")
+    ]);
+    const projection = stats.vector_projection || {};
+    const indexState = projection.consistent ? "索引一致" : "索引待同步";
+    $("knowledgeHealthSummary").textContent = `${stats.active || 0} 条有效 · ${stats.sources || 0} 个来源 · ${stats.pending_conflicts || 0} 个待审冲突 · ${indexState}`;
+    if ($("knowledgeHealthGrid")) {
+      $("knowledgeHealthGrid").innerHTML = [
+        ["有效知识", stats.active || 0], ["来源证据", stats.sources || 0],
+        ["待审冲突", stats.pending_conflicts || 0], ["过期版本", stats.expired || 0],
+        ["实体关系", `${stats.entities || 0} / ${stats.relations || 0}`], ["利用事件", stats.usage_events || 0],
+        ["向量投影", `${projection.knowledge_v2 || 0} / ${projection.expected_knowledge_v2 || stats.active || 0}`],
+        ["索引状态", projection.consistent ? "一致" : `${projection.outbox_pending || 0} 条待同步`]
+      ].map(([label, value]) => `<div><span>${esc(label)}</span><b>${esc(String(value))}</b></div>`).join("");
+    }
+    if ($("knowledgeConflictTable")) {
+      $("knowledgeConflictTable").innerHTML = table(["知识", "冲突", "候选", "决策"], (conflicts.items || []).map(item => [
+        item.title || `#${item.knowledge_id}`, item.conflict_type,
+        String(item.candidate_statement || "").slice(0, 120),
+        { html: `<button class="secondary" onclick="resolveKnowledgeConflict(${Number(item.id)},'keep_existing')">保留现有</button> <button class="primary" onclick="resolveKnowledgeConflict(${Number(item.id)},'accept_candidate')">接受候选</button>` }
+      ]));
+    }
+    const qstats = quality.stats || {};
+    const proxyCount = benchmark.case_count || qstats.proxy_count || 0;
+    if ($("answerQualitySummary")) {
+      $("answerQualitySummary").textContent = `${qstats.consented_user_count || 0} 条经同意的真实反馈 · ${proxyCount} 条固定代理评测；两者永不混算。`;
+    }
+    if ($("answerQualityGrid")) {
+      const interval = (benchmark.confidence_intervals || {}).classification_accuracy || {};
+      $("answerQualityGrid").innerHTML = [
+        ["真实用户", qstats.consented_user_count || 0], ["代理评测", proxyCount],
+        ["固定测试集", `${benchmark.fixed_test_count || 0} 条`], ["分类准确率 95% CI", `${Math.round((interval.lower || 0) * 1000) / 10}%–${Math.round((interval.upper || 0) * 1000) / 10}%`]
+      ].map(([label, value]) => `<div><span>${esc(label)}</span><b>${esc(String(value))}</b></div>`).join("");
+    }
+    const memoryStats = candidates.stats || {};
+    if ($("memoryCandidateSummary")) {
+      $("memoryCandidateSummary").textContent = `${memoryStats.pending_review || 0} 条待审核 · ${memoryStats.blocked_sensitive || 0} 条敏感阻断 · ${memoryStats.promoted || 0} 条已晋升。`;
+    }
+    if ($("memoryCandidateTable")) {
+      $("memoryCandidateTable").innerHTML = table(["类型", "候选", "状态", "操作"], (candidates.items || []).map(item => [
+        item.candidate_type, String(item.content || "").slice(0, 120), item.status,
+        { html: item.status === "pending_review"
+          ? `<button class="secondary" onclick="reviewMemoryCandidate(${Number(item.id)},'reject')">拒绝</button> <button class="primary" onclick="reviewMemoryCandidate(${Number(item.id)},'approve')">批准</button>`
+          : item.status === "approved" ? `<button class="primary" onclick="promoteMemoryCandidate(${Number(item.id)})">晋升</button>` : "—" }
+      ]));
+    }
+  } catch (err) {
+    $("knowledgeHealthSummary").textContent = "知识健康读取失败：" + err.message;
+  }
+}
+
+async function reviewMemoryCandidate(id, decision) {
+  if (!window.confirm(decision === "approve" ? "确认批准该长期记忆候选？批准后仍需单独晋升。" : "确认拒绝该长期记忆候选？")) return;
+  await api(`/api/memory/candidates/${id}/review`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, reviewer: "console-user", confirmed: true })
+  });
+  await loadKnowledgeGovernance();
+}
+
+async function promoteMemoryCandidate(id) {
+  if (!window.confirm("确认把已批准候选写入长期记忆？该操作会保留来源与审核记录。")) return;
+  await api(`/api/memory/candidates/${id}/promote`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor_id: "console-user", confirmed: true })
+  });
+  await loadKnowledgeGovernance();
+}
+
+function openKnowledgeGovernance() {
+  const panel = $("knowledgeGovernance");
+  if (!panel) return;
+  panel.classList.add("on");
+  panel.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  loadKnowledgeGovernance();
+}
+
+function closeKnowledgeGovernance() {
+  const panel = $("knowledgeGovernance");
+  if (!panel) return;
+  panel.classList.remove("on");
+  panel.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+}
+
+async function resolveKnowledgeConflict(id, decision) {
+  await api(`/api/knowledge/v2/conflicts/${id}/resolve`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, reviewer: "console-user", reason: "Reviewed in knowledge governance" })
+  });
+  if ($("knowledgeGovernanceStatus")) $("knowledgeGovernanceStatus").textContent = "冲突已审核，检索状态已更新。";
+  await loadKnowledgeGovernance();
+}
+
+async function backfillKnowledgeV2() {
+  if ($("knowledgeGovernanceStatus")) $("knowledgeGovernanceStatus").textContent = "正在增量迁移历史知识…";
+  const result = await api("/api/knowledge/v2/backfill", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ limit: 10000 })
+  });
+  if ($("knowledgeGovernanceStatus")) $("knowledgeGovernanceStatus").textContent = `迁移 ${result.migrated || 0} 条，失败 ${result.failed || 0} 条。`;
+  await loadKnowledgeGovernance();
+}
+
+async function rebuildKnowledgeIndex() {
+  if (!window.confirm("确认重建知识向量索引？知识原文不会删除，但重建期间语义检索可能短暂不可用。")) return;
+  if ($("knowledgeGovernanceStatus")) $("knowledgeGovernanceStatus").textContent = "正在重建向量索引…";
+  const result = await api("/api/knowledge/v2/index/rebuild", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true })
+  });
+  if ($("knowledgeGovernanceStatus")) $("knowledgeGovernanceStatus").textContent = result.consistent ? "索引重建完成且一致。" : "索引重建完成，但仍有待同步项目。";
+  await loadKnowledgeGovernance();
 }
 
 function renderKnowledgeMap(items) {
@@ -2162,13 +2451,17 @@ async function rollbackReflection(id) { await transitionReflection(id, "rolled_b
 function evolutionActions(run) {
   const id = Number(run.id);
   const status = String(run.status || "");
+  if (run.stale_baseline) return '<span>策略基线已变更，请创建新候选并重新验证</span>';
   const canShadow = status === "validated";
   const canCanary = status === "shadow" || status === "canary";
   const canActivate = status === "canary";
+  const evidenceReady = Boolean(run.paired_quality_evidence?.passed);
   return [
+    status === "candidate" ? `<button class="secondary" onclick="benchmarkEvolutionRun(${id})">运行回归</button>` : "",
     canShadow ? `<button class="secondary" onclick="shadowEvolutionRun(${id})">Shadow</button>` : "",
-    canCanary ? `<button class="secondary" onclick="canaryEvolutionRun(${id})">Canary</button>` : "",
-    canActivate ? `<button class="primary" onclick="activateEvolutionRun(${id})">Activate</button>` : "",
+    canCanary ? `<button class="secondary" ${evidenceReady ? "" : 'disabled title="尚缺本阶段成对任务证据"'} onclick="canaryEvolutionRun(${id})">灰度</button>` : "",
+    canActivate ? `<button class="primary" ${evidenceReady ? "" : 'disabled title="尚缺灰度阶段的新任务证据"'} onclick="activateEvolutionRun(${id})">激活</button>` : "",
+    run.owns_active_policy ? `<button class="secondary" onclick="rollbackEvolutionRun(${id})">回滚</button>` : "",
     `<button class="secondary" onclick="snapshotEvolutionQuality(${id})">质量快照</button>`
   ].filter(Boolean).join(" ");
 }
@@ -2177,24 +2470,25 @@ async function loadEvolution() {
   if (!$("evolutionRunTable")) return;
   const data = await api("/api/self-evolution/board").catch(() => ({ runs: [], quality_snapshot: {} }));
   const runs = data.runs || [];
-  if ($("evolutionScore")) $("evolutionScore").textContent = `Evolution readiness: ${data.enterprise_score ?? "--"}% · ${data.enterprise_ready ? "enterprise gate passed" : "needs observation"}`;
+  if ($("evolutionScore")) $("evolutionScore").textContent = `当前有效策略 ${data.active_count || 0} · 基线失效候选 ${data.stale_count || 0} · 保留回归、影子与灰度门禁`;
   const quality = data.quality_snapshot || {};
   if ($("evolutionQualityTable")) {
     $("evolutionQualityTable").innerHTML = table(["Signal", "Value"], Object.keys(quality).map(key => [key, quality[key]]));
   }
   $("evolutionRunTable").innerHTML = table(
-    ["ID", "目标", "阶段", "流量", "门禁", "决策", "结论", "操作"],
+    ["ID", "目标", "阶段", "流量", "门禁", "成对证据", "结论", "操作"],
     runs.map(run => [
       run.id,
       `${run.target_type}/${run.target_key}`,
-      { html: statusBadge(run.release_stage || run.status) },
+      { html: statusBadge(run.effective_stage || run.release_stage || run.status) },
       `${run.traffic_percent || 0}%`,
       { html: statusBadge((run.gate_result || {}).passed ? "passed" : run.status === "candidate" ? "pending" : "failed") },
-      run.publish_decision || "",
+      `${run.paired_quality_evidence?.matched_task_count || 0} 个任务 · ${run.paired_quality_evidence?.passed ? "本阶段通过" : "等待或阻止晋级"}`,
       run.conclusion || "",
       { html: evolutionActions(run) }
     ])
   );
+  await loadEvolutionExperiments();
   const selected = runs[0] || {};
   const checks = (selected.gate_result || {}).checks || [];
   if ($("evolutionGateTable")) {
@@ -2301,6 +2595,198 @@ async function activateEvolutionRun(id) {
   const data = await api(`/api/self-evolution/runs/${id}/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor_id: "console", reason: "console activation after shadow/canary review", confirmed: true }) });
   if ($("evolutionResult")) $("evolutionResult").textContent = JSON.stringify(data, null, 2);
   await loadEvolution();
+}
+
+let evolutionCandidateSearch = null;
+async function searchEvolutionCandidates() {
+  const status = $("evolutionSearchStatus");
+  try {
+    const request = {target_type: $("evoTargetType").value, target_key: $("evoTargetKey").value || "default",
+      baseline_payload: JSON.parse($("evoBaselinePayload").value || "{}"), mine_reflections: true};
+    status.textContent = "正在生成候选…";
+    const data = await api("/api/self-evolution/candidates", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(request)});
+    evolutionCandidateSearch = {request, candidates: data.candidates || []};
+    $("evolutionCandidateGrid").innerHTML = evolutionCandidateSearch.candidates.map((candidate, index) =>
+      `<article class="evolution-candidate-card"><h3>${esc(candidate.name)}</h3><p>${esc(candidate.hypothesis)} · ${Number(candidate.evidence?.reflection_count || 0)} 条失败反思</p><p>候选 ${esc(candidate.payload_digest.slice(0,12))} · 效果待验证</p><details><summary>检查配置差异</summary><pre>${esc(JSON.stringify(candidate.payload,null,2))}</pre></details><button class="secondary" onclick="queueSearchedCandidate(${index})">提名并运行回归</button></article>`).join("");
+    status.textContent = `${data.candidates?.length || 0} 个有界候选；仅配置提议，尚未验证质量提升。`;
+  } catch (err) { status.textContent = "候选生成失败：" + err.message; }
+}
+
+async function queueSearchedCandidate(index) {
+  const snapshot = evolutionCandidateSearch;
+  if (!snapshot?.candidates[index]) return;
+  try {
+    const data = await api("/api/self-evolution/runs", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({...snapshot.request, mine_reflections:false, candidate_payload:snapshot.candidates[index].payload, auto_queue:true, actor_id:"console"})});
+    $("evolutionSearchStatus").textContent = `候选 #${data.run.id} 已排队；后台回归通过后进入影子阶段。`;
+    await loadEvolution();
+  } catch (err) { $("evolutionSearchStatus").textContent = "提名失败：" + err.message; }
+}
+
+let evolutionExperimentLoadGeneration = 0;
+async function loadEvolutionExperiments() {
+  const generation = ++evolutionExperimentLoadGeneration;
+  const target = $("evolutionExperimentTable");
+  if (!target) return;
+  try {
+    const data = await api("/api/self-evolution/experiments");
+    if (generation !== evolutionExperimentLoadGeneration) return;
+    target.innerHTML = table(["实验", "目标", "状态", "任务 / 候选", "搜索 / 留出组", "离线结论", "操作"], (data.experiments || []).map(item => {
+      const report = item.report || {};
+      const id = Number(item.id);
+      const actions = [`<button class="secondary" onclick="exportEvolutionExperiment(${id})">下载证据</button>`];
+      const job = item.job || {};
+      if (item.status === "frozen" || item.status === "paused" || job.recoverable) actions.unshift(`<button class="primary" onclick="replayEvolutionExperiment(${id})">${item.status === 'frozen' ? '成对回放' : '继续回放'}</button>`);
+      if (item.status === "running") actions.unshift(`<button class="secondary" onclick="controlEvolutionExperiment(${id},'pause')">暂停</button>`);
+      if (['frozen','running','paused'].includes(item.status)) actions.push(`<button class="secondary" onclick="controlEvolutionExperiment(${id},'cancel')">取消实验</button>`);
+      if (item.status === 'completed') actions.push(`<button class="secondary" onclick="selectEvolutionReview(${id})">准备盲评</button>`);
+      if (report.eligible_for_regression_queue) actions.unshift(`<button class="secondary" onclick="nominateEvolutionExperiment(${id})">提名候选</button>`);
+      return [id, `${item.target_type}/${item.target_key}`, `${item.status} · ${job.checkpoint_count || 0} 个检查点${job.recoverable ? ' · 租约过期，可恢复' : ''}`, `${item.case_count} / ${item.candidate_count}`,
+        `${report.search_groups ?? "—"} / ${report.holdout_groups ?? "—"}`,
+        item.stale_evidence ? "源码或策略基线已变更；需新实验" : report.eligible_for_regression_queue ? "可提名；仍需回归和线上证据" : report.error || (item.status === "completed" ? "未通过；检查下载证据" : "等待回放"), {html:actions.join(" ")}];
+    }));
+  } catch (err) { $("evolutionExperimentStatus").textContent = "实验加载失败：" + err.message; }
+}
+
+async function freezeEvolutionExperiment() {
+  const status = $("evolutionExperimentStatus");
+  const file = $("evolutionExperimentFile").files[0];
+  if (!file) { status.textContent = "请先选择审核后的任务与资料 JSON。"; return; }
+  if (file.size > 8 * 1024 * 1024) { status.textContent = "文件超过 8MiB。"; return; }
+  try {
+    const data = JSON.parse(await file.text());
+    status.textContent = "正在冻结任务、资料与分组…";
+    const result = await api("/api/self-evolution/experiments", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)});
+    status.textContent = `实验 #${result.experiment.id} 已冻结，摘要 ${result.experiment.definition_digest.slice(0,12)}。`;
+    await loadEvolutionExperiments();
+  } catch (err) { status.textContent = "冻结失败：" + err.message; }
+}
+
+async function replayEvolutionExperiment(id) {
+  const status = $("evolutionExperimentStatus");
+  const poll = setInterval(() => loadEvolutionExperiments(), 4000);
+  try {
+    status.textContent = `实验 #${id} 正在回放；检索使用隔离资料库，工具路由只计算合同。`;
+    const data = await api(`/api/self-evolution/experiments/${id}/replay`, {method:"POST"});
+    status.textContent = data.experiment.report.eligible_for_regression_queue ? `实验 #${id} 留出验证通过，可提名候选。` : `实验 #${id} 验证未通过，下载证据查看阻止原因。`;
+    await loadEvolutionExperiments();
+  } catch (err) { status.textContent = "回放未完成：" + err.message; await loadEvolutionExperiments(); }
+  finally { clearInterval(poll); }
+}
+
+async function controlEvolutionExperiment(id, action) {
+  try {
+    await api(`/api/self-evolution/experiments/${id}/control`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
+    $('evolutionExperimentStatus').textContent = action === 'pause' ? `实验 #${id} 已暂停，已保存的检查点可恢复。` : `实验 #${id} 已取消；留出题使用记录保留。`;
+    await loadEvolutionExperiments();
+  } catch (err) { $('evolutionExperimentStatus').textContent = '操作未完成：' + err.message; }
+}
+
+function selectEvolutionReview(id) {
+  $('evolutionReviewId').value = id;
+  $('evolutionReviewResult').innerHTML = '';
+  $('evolutionReviewId').focus();
+  $('evolutionReviewStatus').textContent = `已选择实验 #${id}。可捕获主模型回答，或上传绑定摘要的外部成对输出。`;
+  loadEvolutionCapture();
+}
+
+async function importEvolutionReview(kind) {
+  const status = $('evolutionReviewStatus');
+  try {
+    const id = Number($('evolutionReviewId').value), file = $('evolutionReviewFile').files[0];
+    if (!Number.isInteger(id) || id < 1 || !file) throw Error('请选择实验并上传 JSON 文件。');
+    if (file.size > 8*1024*1024) throw Error('文件超过 8MiB。');
+    const endpoint = kind === 'outputs' ? 'review-outputs' : 'reviews';
+    const data = await api(`/api/self-evolution/experiments/${id}/${endpoint}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(JSON.parse(await file.text()))});
+    status.textContent = kind === 'outputs' ? `输出已冻结，共 ${data.packet.entries.length} 题。可下载盲评包交给审核者。` : `已收录 ${data.summary.reviewer_count} 位具名审核者；${data.summary.reported_review_passed ? '报告评分通过，身份与模型执行仍待验证' : '尚未通过，检查样本、分歧和严重错误'}。`;
+    if (data.summary) renderEvolutionReviewSummary(data.summary);
+    else $('evolutionReviewResult').innerHTML = '';
+  } catch (err) { status.textContent = '导入未完成：' + err.message; }
+}
+
+function renderEvolutionReviewSummary(summary) {
+  const authenticated = Number(summary.authenticated_reviewer_count || 0) > 0;
+  const segments = (authenticated ? summary.authenticated_reviewed_gate : summary.reviewed_gate)?.segments || {};
+  const rows = Object.entries(segments).map(([name, report]) => {
+    const metrics = Object.values(report.metrics || {});
+    const count = metrics.length ? Math.min(...metrics.map(item => Number(item.independent_clusters || 0))) : 0;
+    const lower = metrics.length ? Math.min(...metrics.map(item => Number(item.confidence_lower || 0))) : 0;
+    return [name, count, count < 30 ? '样本不足' : report.passed ? '未见显著退步' : '检测到退步', `${(lower * 100).toFixed(1)} 个百分点`];
+  });
+  const conflicts = (authenticated ? summary.authenticated_adjudication_required : summary.adjudication_required)?.length || 0;
+  const critical = (authenticated ? summary.authenticated_critical_errors : summary.critical_errors)?.length || 0;
+  const count = Number(authenticated ? summary.authenticated_reviewer_count : summary.reviewer_count);
+  const passed = authenticated ? summary.authenticated_review_passed : summary.reported_review_passed;
+  const state = passed ? '评分报告通过' : count < 2 ? '等待第二位审核者' : conflicts || critical ? '需要人工复核' : '任务类别门禁未通过';
+  const provenance = summary.provider_execution_verified ? '应用已捕获主模型调用凭据' : '外部输出，模型执行未验证';
+  $('evolutionReviewResult').innerHTML = `<div class="evolution-review-summary"><h3>${esc(state)}</h3><p>${esc(provenance)}；${authenticated ? '评审已绑定授权会话' : '评分为自报名称'}。真人独立性与专业资格仍待核验；当前报告评分不计入线上发布证据。</p><div class="evolution-review-metrics"><div><strong>${count || 0}</strong><span>${authenticated ? '已认证会话评审者' : '具名审核者'}</span></div><div><strong>${Number(summary.case_count || 0)}</strong><span>成对留出题</span></div><div><strong>${conflicts}</strong><span>需复核的分歧</span></div><div><strong>${critical}</strong><span>严重错误标记</span></div></div><p>当前评分快照已裁决 ${Number(summary.authenticated_resolved_entries || 0)} 题；新增评审会使旧裁决失效，原始记录保留。</p><h3>任务类别验收</h3><p>每类至少 30 个独立任务组；置信下界低于 −2 个百分点会阻止通过。</p><div class="evolution-review-gates" role="region" aria-label="任务类别评分" tabindex="0"><table class="table">${table(['任务类别','独立任务组','结论','提升置信下界'],rows)}</table></div><details><summary>原始评分门禁数据</summary><pre tabindex="0" aria-label="原始评审数据">${esc(JSON.stringify(summary,null,2))}</pre></details></div>`;
+}
+
+function evolutionReviewId(){const id=Number($('evolutionReviewId').value);if(!Number.isSafeInteger(id)||id<1)throw Error('请选择实验。');return id;}
+async function loadEvolutionCapture(){
+  try{const data=await api(`/api/self-evolution/experiments/${evolutionReviewId()}/model-capture`),tokens=Number($('evolutionCaptureTokens').value);
+    $('evolutionCaptureStatus').textContent=`计划 ${data.plan.calls} 次调用 · 最大 ${data.plan.calls*tokens} 个输出 token · 状态 ${data.capture.status} · 已保存 ${data.capture.saved_answers} 个答案${data.capture.recoverable?' · 租约已过期，可显式继续':''}。`;
+  }catch(error){$('evolutionCaptureStatus').textContent='预算读取未完成：'+error.message;}
+}
+async function startEvolutionCapture(){
+  const button=$('evolutionCaptureStart');let timer;
+  try{const id=evolutionReviewId();button.disabled=true;$('evolutionCaptureStatus').textContent='捕获中，部分回答会逐条保存…';
+    timer=setInterval(loadEvolutionCapture,3000);
+    const data=await api(`/api/self-evolution/experiments/${id}/model-capture`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_calls:Number($('evolutionCaptureCalls').value),max_tokens:Number($('evolutionCaptureTokens').value),timeout:Number($('evolutionCaptureTimeout').value)})});
+    $('evolutionReviewStatus').textContent=`模型回答已捕获并冻结，共 ${data.packet.entries.length} 题。可授权会话用户开始盲评。`;
+  }catch(error){$('evolutionReviewStatus').textContent='捕获未完成：'+error.message;}
+  finally{clearInterval(timer);button.disabled=false;loadEvolutionCapture();}
+}
+async function pauseEvolutionCapture(){try{await api(`/api/self-evolution/experiments/${evolutionReviewId()}/model-capture/pause`,{method:'POST'});await loadEvolutionCapture();}catch(error){$('evolutionCaptureStatus').textContent='暂停未完成：'+error.message;}}
+async function exportEvolutionReceipts(){try{const id=evolutionReviewId(),data=await api(`/api/self-evolution/experiments/${id}/model-receipts`);const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download=`evolution-model-receipts-${id}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(error){$('evolutionCaptureStatus').textContent='凭据导出未完成：'+error.message;}}
+async function loadEvolutionReviewUsers(){try{const data=await api('/api/self-evolution/review-users');$('evolutionReviewUser').replaceChildren(...data.users.map(user=>{const option=document.createElement('option');option.value=user.id;option.textContent=`${user.name} · ${user.id.slice(0,8)}`;return option;}));$('evolutionGrantStatus').textContent=data.users.length?'已加载会话用户，请核对人员并选择实验角色。':'尚无协作会话用户，请先通过文档协作邀请加入。';}catch(error){$('evolutionGrantStatus').textContent=error.message;}}
+async function grantEvolutionReview(){try{const user=$('evolutionReviewUser').value;if(!user)throw Error('请选择会话用户。');await api(`/api/self-evolution/experiments/${evolutionReviewId()}/review-grants`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user,role:$('evolutionReviewRole').value})});$('evolutionGrantStatus').textContent='实验授权已保存；既有评分与裁决记录保留。';}catch(error){$('evolutionGrantStatus').textContent='授权未完成：'+error.message;}}
+async function copyEvolutionReviewLink(){try{const url=new URL(`/evolution-review?experiment=${evolutionReviewId()}`,location.origin).href;await navigator.clipboard.writeText(url);$('evolutionGrantStatus').textContent='评审链接已复制。协作者需在已登录协作会话的浏览器打开。';}catch(error){$('evolutionGrantStatus').textContent='复制未完成：'+error.message;}}
+async function loadEvolutionReviewSummary(){try{const data=await api(`/api/self-evolution/experiments/${evolutionReviewId()}/review/summary`);renderEvolutionReviewSummary(data.summary);}catch(error){$('evolutionReviewStatus').textContent='结果读取未完成：'+error.message;}}
+
+async function exportEvolutionReview(kind) {
+  try {
+    const id = Number($('evolutionReviewId').value);
+    if (!Number.isInteger(id) || id < 1) throw Error('请选择实验。');
+    const data = await api(`/api/self-evolution/experiments/${id}/review/${kind}`);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data[kind],null,2)],{type:'application/json'}));
+    const link = document.createElement('a'); link.href = url; link.download = `evolution-review-${id}-${kind}.json`; link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    $('evolutionReviewStatus').textContent = kind === 'packet' ? '盲评包已导出，包含匿名 A/B 答案与正文摘要。' : '评审证据已导出，包含原始评分、分歧与来源绑定。';
+  } catch (err) { $('evolutionReviewStatus').textContent = '导出未完成：' + err.message; }
+}
+
+async function nominateEvolutionExperiment(id) {
+  try {
+    const data = await api(`/api/self-evolution/experiments/${id}/nominate`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({actor_id:"console"})});
+    $("evolutionExperimentStatus").textContent = `候选 #${data.run.id} 已提名，请运行回归；离线回放不计入影子／灰度样本。`;
+    await loadEvolution();
+  } catch (err) { $("evolutionExperimentStatus").textContent = "提名失败：" + err.message; }
+}
+
+async function exportEvolutionExperiment(id) {
+  try {
+    const data = await api(`/api/self-evolution/experiments/${id}`);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data.experiment, null, 2)], {type:"application/json"}));
+    const link = document.createElement("a"); link.href = url; link.download = `evolution-experiment-${id}.json`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) { $("evolutionExperimentStatus").textContent = "证据下载失败：" + err.message; }
+}
+
+async function benchmarkEvolutionRun(id) {
+  try {
+    $("evolutionExperimentStatus").textContent = `候选 #${id} 正在运行隔离回归…`;
+    const data = await api(`/api/self-evolution/runs/${id}/evaluate`, {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+    $("evolutionExperimentStatus").textContent = `候选 #${id}：${data.run.status}；仍需本阶段成对任务证据。`;
+    await loadEvolution();
+  } catch (err) { $("evolutionExperimentStatus").textContent = "回归未完成：" + err.message; }
+}
+
+async function rollbackEvolutionRun(id) {
+  try {
+    await api(`/api/self-evolution/runs/${id}/rollback`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmed:true,actor_id:'console'})});
+    await loadEvolution();
+  } catch (err) { alert('回滚未执行：' + err.message); }
 }
 
 async function snapshotEvolutionQuality(id) {
@@ -2716,14 +3202,82 @@ async function loadOcrQueue() {
   try {
     const query = knowledgeCategory ? "?category=" + encodeURIComponent(knowledgeCategory) : "";
     const data = await api("/api/documents/ocr-queue" + query);
-    target.innerHTML = table(["文档", "库", "页码", "原因", "操作"], (data.documents || []).map(item => [item.title || item.filename || "", knowledgeCategoryLabel(item.category), Array.isArray(item.ocr_pages) ? item.ocr_pages.join(", ") : "", item.ocr_reason || "low_extractable_text", { html: `<button class="secondary" onclick="runDocumentOcr(${Number(item.id)})">运行 OCR</button>` }]));
+    target.innerHTML = table(["文档", "库", "页码", "原因", "操作"], (data.documents || []).map(item => [item.title || item.filename || "", knowledgeCategoryLabel(item.category), Array.isArray(item.ocr_pages) ? item.ocr_pages.join(", ") : "", item.ocr_reason || "low_extractable_text", { html: `<button class="secondary" onclick="openDocumentReview(${Number(item.id)})">对照原图复核</button> <button class="secondary" onclick="runDocumentOcr(${Number(item.id)})">重新 OCR</button>` }]));
   } catch (err) {
     target.innerHTML = table(["文档", "库", "页码", "原因", "操作"], []);
   }
 }
 
+async function openDocumentReview(id) {
+  const dialog = document.createElement("dialog");
+  dialog.style.cssText = "width:min(1000px,92vw);max-height:88vh;overflow:auto;padding:24px;border-radius:12px";
+  document.body.appendChild(dialog);
+  const close = document.createElement("button"); close.textContent = "关闭";
+  close.onclick = () => dialog.close(); dialog.appendChild(close);
+  const body = document.createElement("div"); dialog.appendChild(body);
+  dialog.addEventListener("close", () => dialog.remove()); dialog.showModal();
+  async function render() {
+    body.replaceChildren();
+    const status = document.createElement("p"); body.appendChild(status); status.textContent = "正在加载复核证据…";
+    try {
+      const data = await api(`/api/documents/${Number(id)}/review`);
+      const effort = data.review_effort || {};
+      const timing = effort.timed_submissions ? ` · 已记录 ${effort.timed_submissions} 次真实操作，共 ${(effort.active_review_ms / 1000).toFixed(1)} 秒、修改 ${effort.corrected_cell_count} 格` : " · 尚无真实复核耗时样本";
+      status.textContent = `${data.items.filter(item => item.state !== "rejected").length} 条待复核 · ${data.items.filter(item => item.state === "rejected").length} 条已拒绝 · ${data.history.length} 条历史记录${timing}。请核对整行和表头，尤其是数字、单位和否定词。`;
+      const publish = document.createElement("button"); publish.textContent = "将已确认内容写入知识库";
+      publish.onclick = async () => {
+        if (!window.confirm("只发布已对照原图确认的内容；待复核或拒绝的内容不会发布。继续？")) return;
+        publish.disabled = true;
+        try {
+          const result = await api(`/api/documents/${Number(id)}/review/publish`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({confirmed:true})});
+          status.textContent = `已发布 ${result.count} 条已确认内容（重复操作不会重复入库）。`;
+          await Promise.allSettled([loadKnowledge(), searchKnowledge()]);
+        } catch (err) { status.textContent = err.message; }
+        finally { publish.disabled = false; }
+      };
+      body.appendChild(publish);
+      for (const item of data.items) {
+        const section = document.createElement("section"); section.style.cssText = "border-top:1px solid #8885;margin-top:20px;padding-top:12px";
+        const title = document.createElement("h3"); title.textContent = `第 ${item.cells[0]?.page || "?"} 页 · 证据 ${item.chunk_id} · ${item.state === "rejected" ? "已拒绝，可重新核对" : "待确认"}`;
+        section.appendChild(title); const inputs = new Map(); let loaded = 0; let reviewStartedAt = null;
+        for (const cell of item.cells) {
+          const row = document.createElement("div"); row.style.cssText = "display:grid;grid-template-columns:minmax(160px,1fr) minmax(180px,1fr);gap:12px;margin:12px 0";
+          const source = document.createElement("div");
+          const label = document.createElement("p"); label.textContent = `第 ${cell.page} 页 · ${cell.is_header ? "表头" : cell.header || "正文"}`; source.appendChild(label);
+          const img = document.createElement("img"); img.src = cell.crop_url; img.alt = "原始 PDF 单元格裁剪"; img.style.cssText = "max-width:100%;border:1px solid #8885";
+          img.onload = () => { loaded += 1; if (loaded === item.cells.length) reviewStartedAt = performance.now(); }; img.onerror = () => { status.textContent = "原图加载失败，不能确认。请检查源文件后重试。"; };
+          source.appendChild(img); row.appendChild(source);
+          const editor = document.createElement("div");
+          const input = document.createElement("textarea"); input.value = cell.text; input.rows = 3; input.style.width = "100%";
+          input.setAttribute("aria-label", `确认值 ${cell.header || cell.id}`); inputs.set(cell.id, input); editor.appendChild(input);
+          const candidates = document.createElement("p"); candidates.style.fontSize = "12px";
+          candidates.textContent = (cell.verification?.candidates || []).map((v, index) => `识别视图 ${index + 1}：${v.status === "completed" ? v.text : "识别未完成"}`).join("；") || "没有第二识别视图；仍需对照原图。";
+          editor.appendChild(candidates); row.appendChild(editor); section.appendChild(row);
+        }
+        const label = document.createElement("label"); const checked = document.createElement("input"); checked.type = "checkbox";
+        label.append(checked, document.createTextNode(" 我已对照原图核对整行、表头、数字、单位和条件")); section.appendChild(label);
+        for (const action of ["approve", "reject"]) {
+          const button = document.createElement("button"); button.textContent = action === "approve" ? "保存确认值" : "拒绝使用此行";
+          button.onclick = async () => {
+            if (!checked.checked || loaded !== item.cells.length) { status.textContent = "请等待原图加载完成，并勾选核对确认。"; return; }
+            button.disabled = true;
+            try {
+              const activeReviewMs = Math.max(0, Math.round(performance.now() - (reviewStartedAt || performance.now())));
+              await api(`/api/documents/${Number(id)}/review`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({chunk_id:item.chunk_id,revision:data.revision,values:Object.fromEntries([...inputs].map(([key,input])=>[key,input.value])),confirmed:true,action,active_review_ms:activeReviewMs})});
+              await render(); await loadOcrQueue();
+            } catch (err) { status.textContent = `${err.message}；请关闭后重新加载复核窗口。`; button.disabled = false; }
+          }; section.appendChild(button);
+        }
+        body.appendChild(section);
+      }
+    } catch (err) { status.textContent = err.message; }
+  }
+  await render();
+}
+
 async function runDocumentOcr(id) {
-  const sidecar = window.prompt("可选：粘贴 OCR 文本；留空则尝试本地 sidecar 或 tesseract 引擎。", "") || "";
+  const sidecar = window.prompt("重新 OCR 会重建提取结果，并使旧的复核确认失效。留空使用本地 OCR；仅无待复核证据时可粘贴替换文本。取消则不执行。", "");
+  if (sidecar === null) return;
   if ($("knowledgeStatus")) $("knowledgeStatus").textContent = "OCR 正在处理并重建索引";
   try {
     const data = await api(`/api/documents/${Number(id)}/ocr`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sidecar_text: sidecar, force: true }) });
@@ -2801,26 +3355,32 @@ async function loadFeishuCenter() {
   // §13 resource endpoints: each is a dedicated URL, not an action router.
   const get = (path) => api(path).catch(err => ({ error: err.message }));
   try {
-    const [health, messages, summaries, approvals, dispatches] = await Promise.all([
+    const [health, messages, summaries, approvals, dispatches, permissions] = await Promise.all([
       get("/api/feishu/health"),
       get("/api/feishu/messages?limit=50"),
       get("/api/feishu/summaries?limit=50"),
       get("/api/feishu/approvals?limit=50"),
       get("/api/feishu/dispatches?limit=50"),
+      get('/api/feishu/permissions'),
     ]);
     const cfg = (health && health.config) || {};
     const cli = (health && health.client) || {};
+    const populateTargets=()=>{const field=$('feishuTargetId');if(!field)return;const previous=field.value,targets=(permissions.targets||[]).filter(t=>t.type===$('feishuTargetType').value);field.innerHTML=targets.length?'<option value="">请选择白名单目标</option>'+targets.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.id)+'</option>').join(''):'<option value="">此类型尚未配置目标白名单</option>';if(targets.some(t=>t.id===previous))field.value=previous;};
+    if($('feishuTargetType'))$('feishuTargetType').onchange=populateTargets;populateTargets();
+    if ($('feishuPermissions')) $('feishuPermissions').innerHTML = '<h3>权限链路</h3><div class="feishu-status-scroll"><table class="table">'+table(['环节','状态','依据'],(permissions.checks||[]).map(c=>[c.name,c.ready?'已配置':'待配置',c.detail]))+'</table></div><p class="hint">'+esc(permissions.boundary||permissions.error||'')+'</p>';
+    const summaryParam = new URLSearchParams(location.search).get('summary');
+    if (summaryParam && /^\d+$/.test(summaryParam) && $('feishuSummaryId')) $('feishuSummaryId').value=summaryParam;
     // P1-2: disable outbound write buttons until the connector is configured.
     window.__feishuCfg = cfg;
-    const feishuConfigured = !!cfg.configured;
+    const feishuConfigured = !!(cfg.configured && cfg.live && cfg.live_ready && health.has_client);
     const caBtn = $("feishuCreateApprovalBtn");
     const sendBtn = $("feishuSendBtn");
     if (caBtn) caBtn.disabled = !feishuConfigured;
     if (sendBtn) sendBtn.disabled = !feishuConfigured;
-    if ($("feishuHealth")) $("feishuHealth").innerHTML = table(["项", "值"], [
+    if ($("feishuHealth")) $("feishuHealth").innerHTML = '<p class="feishu-readiness"><strong>'+esc(cfg.live_ready ? '连接配置已就绪' : '当前仅可创建本地草稿')+'</strong><br>'+esc(cfg.live_ready ? '发送仍需白名单目标和原生审批通过。' : '请先配置应用、审批表单、发起人、审批人和允许发送的目标。')+'</p><details><summary>查看连接配置</summary><div class="feishu-status-scroll"><table class="table">'+table(["项", "值"], [
       ["事件模式(event_mode)", cfg.event_mode || "—"],
-      ["实时发送(live)", { html: statusBadge(cfg.live ? "ok" : "pending") }],
-      ["实时就绪(live_ready)", { html: statusBadge(cfg.live_ready ? "ok" : "pending") }],
+      ["实时发送", cfg.live ? "已开启" : "已关闭 · 仅本地草稿"],
+      ["配置就绪", cfg.live_ready ? "已配置；平台权限仍需验证" : "配置不完整"],
       ["App 配置", cfg.configured ? "已配置" : "未配置(env)"],
       ["Client 连接", cli.connection || (health && health.has_client ? "已连接" : "无")],
       ["审批定义码", cfg.approval_code_present ? "已配置" : "—"],
@@ -2830,18 +3390,19 @@ async function loadFeishuCenter() {
       ["允许目标数", cfg.whitelist_target_open_ids ?? 0],
       ["授权审批人数", cfg.approvers ?? 0],
       ["消息留存(天)", cfg.message_retention_days ?? "—"],
-    ]);
+    ])+'</table></div></details>';
     if ($("feishuMessagesTable")) $("feishuMessagesTable").innerHTML = (messages && messages.length) ? table(["聊天", "发送者", "类型", "内容", "接收时间", "状态"], (messages || []).map(m => [m.chat_id, m.sender_id, m.message_type, m.text, m.create_time, { html: statusBadge(m.processed_status) }])) : '<tr><td colspan="6" class="empty-state">暂无消息</td></tr>';
     if ($("feishuSummariesTable")) $("feishuSummariesTable").innerHTML = (summaries && summaries.length) ? table(["ID", "主题", "结论数", "行动项数", "来源消息", "状态", "创建时间"], (summaries || []).map(s => [s.id, s.topic, (s.conclusions || []).length, (s.action_items || []).length, (s.source_message_ids || []).join(","), { html: statusBadge(s.status) }, s.created_at])) : '<tr><td colspan="7" class="empty-state">暂无纪要</td></tr>';
     const preview = (approvals || [])[0];
-    if ($("feishuPreview")) $("feishuPreview").textContent = preview ? (preview.body_text || "（空正文）") : "暂无待审批/待发送内容。";
+    const draft = Array.isArray(summaries) ? summaries.find(s=>String(s.id)===summaryParam) : null;
+    if ($("feishuPreview")) $("feishuPreview").textContent = draft ? ('待审批草稿：'+draft.topic+'\n\n'+(draft.conclusions||[]).map(c=>c.text).join('\n\n')+'\n来源：'+(draft.source_message_ids||[]).join(', ')) : preview ? (preview.body_text || "（空正文）") : "暂无待审批/待发送内容。";
     if ($("feishuApprovalsTable")) $("feishuApprovalsTable").innerHTML = (approvals && approvals.length) ? table(["ID", "目标", "状态", "审批人", "已用", "有效期", "创建时间"], (approvals || []).map(a => {
       const expired = a.expires_at_epoch && a.expires_at_epoch < Math.floor(Date.now() / 1000);
       return [a.id, (a.target_type || "") + ":" + (a.target_id || ""), { html: statusBadge(a.status) }, a.approver_id, { html: statusBadge(a.used ? "used" : "no") }, { html: statusBadge(expired ? "expired" : "valid") }, a.created_at_epoch ? new Date(a.created_at_epoch * 1000).toLocaleString() : ""];
     })) : '<tr><td colspan="7" class="empty-state">暂无审批</td></tr>';
     if ($("feishuDispatchesTable")) $("feishuDispatchesTable").innerHTML = (dispatches && dispatches.length) ? table(["ID", "审批ID", "目标", "状态", "尝试", "飞书消息ID", "API码", "API消息", "追踪ID"], (dispatches || []).map(d => [d.id, d.approval_id, (d.target_type || "") + ":" + (d.target_id || ""), { html: statusBadge(d.status) }, d.attempts, d.feishu_message_id, d.api_code, d.api_msg, d.trace_id])) : '<tr><td colspan="9" class="empty-state">暂无发送回执</td></tr>';
   } catch (err) {
-    if ($("feishuHealth")) $("feishuHealth").innerHTML = table(["状态", "说明"], [["加载失败", err.message]]);
+    if ($("feishuHealth")) $("feishuHealth").innerHTML = '<div class="feishu-status-scroll"><table class="table">'+table(["状态", "说明"], [["加载失败", err.message]])+'</table></div>';
   }
 }
 
@@ -2870,7 +3431,7 @@ async function feishuCreateSummary() {
 async function feishuCreateApproval() {
   const targetType = ($("feishuTargetType").value || "chat").trim();
   const targetId = ($("feishuTargetId").value || "").trim();
-  if (!targetId) { alert("请填写 target_id（须为白名单内的 chat_id 或 open_id）"); return; }
+  if (!targetId) { alert("请选择白名单内的发送目标；暂无目标时请先配置连接器。"); return; }
   // P1-2: 不再静默提交 confirmed:true；必须人类显式确认。审批人由飞书实例决定，不手填。
   const ok = confirm(
     `确认创建飞书出站审批？\n\n目标：${targetType}:${targetId}\n\n` +
@@ -3069,6 +3630,40 @@ async function refreshView(viewName) {
   if (["chat", "tasks"].includes(viewName) && window.loadRuntimeRecords) window.loadRuntimeRecords();
 }
 
+let embeddedOfficeInstance = null;
+function loadOfficeEditorScript(url) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script"); script.src = url; script.onload = resolve; script.onerror = reject; document.head.appendChild(script);
+  });
+}
+async function openEmbeddedOfficeEditor(artifactId) {
+  const modal = $("officeEditorModal"), mount = $("office-editor-mount"), status = $("officeEditorStatus");
+  modal?.classList.add("on"); modal?.setAttribute("aria-hidden", "false");
+  if (mount) mount.innerHTML = ""; if (status) status.textContent = "正在建立安全编辑会话…";
+  try {
+    const caps = await fetch("/api/office/editor/capabilities").then(r => r.json());
+    const provider = ["onlyoffice", "wps", "collabora"].find(name => caps.configured?.includes(name));
+    if (!provider) throw new Error("尚未配置 WPS、ONLYOFFICE 或 Collabora 编辑服务");
+    const response = await fetch("/api/office/editor/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({artifact_id:artifactId,provider,mode:"edit"})});
+    const session = await response.json(); if (!response.ok) throw new Error(session.detail || "编辑会话创建失败");
+    const config = session.mount; if (status) status.textContent = `${provider} · 会话将在 15 分钟后过期`;
+    if (config.type === "onlyoffice-docsapi") {
+      if (!window.DocsAPI) await loadOfficeEditorScript(config.script_url);
+      embeddedOfficeInstance = new window.DocsAPI.DocEditor("office-editor-mount", config.config);
+    } else if (config.type === "wps-jssdk") {
+      if (!window.WebOfficeSDK) await loadOfficeEditorScript(config.sdk_url);
+      embeddedOfficeInstance = window.WebOfficeSDK.init(config.config);
+    } else {
+      mount.innerHTML = `<iframe title="Office editor" src="${esc(config.iframe_url)}" allow="clipboard-read; clipboard-write"></iframe>`;
+    }
+  } catch (error) { if (status) status.textContent = error.message || String(error); }
+}
+function closeEmbeddedOfficeEditor() {
+  try { embeddedOfficeInstance?.destroy?.(); } catch (_) {}
+  embeddedOfficeInstance = null; $("office-editor-mount")?.replaceChildren();
+  $("officeEditorModal")?.classList.remove("on"); $("officeEditorModal")?.setAttribute("aria-hidden", "true");
+}
+
 if ($("cfgProvider")) $("cfgProvider").addEventListener("change", () => applyProviderPreset(true));
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
@@ -3077,13 +3672,14 @@ document.addEventListener("keydown", (event) => {
   else if ($("chatProgressPanel")?.classList.contains("on")) toggleChatProgress(false);
   else if ($("modelSettings")?.classList.contains("on")) closeModelSettings();
   else if ($("commandDrawer")?.classList.contains("on")) closeCommandDrawer();
+  else if ($("officeEditorModal")?.classList.contains("on")) closeEmbeddedOfficeEditor();
 });
 applyReportPreset();
 renderKnowledgeWorkspaceShell();
 setAutonomyMode(localStorage.getItem("clawos-autonomy-mode") || "approve");
-loadSessions();
+loadSessions().then(() => { if (!initialView || initialView === 'chat') switchSession(currentSession); });
 startTaskStream();
-const initialView = (location.hash || "").replace("#", "");
+const initialView = (location.hash || "").replace("#", "") || new URLSearchParams(location.search).get('view');
 setView(initialView);
 setInterval(loadHealth, 30000);
 setInterval(() => {

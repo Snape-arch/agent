@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+import uuid
 
 
 RUN_SCHEMA_VERSION = "clawos.run.v1"
@@ -209,7 +210,7 @@ def run_from_task(task: dict[str, Any]) -> dict[str, Any]:
 
 def run_from_multi_agent_result(result: dict[str, Any]) -> dict[str, Any]:
     run = RunRecord(
-        run_id=str(result.get("run_id") or f"multi-agent-{result.get('project_name', 'clawos')}-{result.get('score', 0)}"),
+        run_id=str(result.get("run_id") or f"multi-agent-{uuid.uuid4().hex}"),
         run_type="multi_agent",
         title=f"{result.get('project_name', 'ClawOS')} multi-agent review",
         status=str((result.get("quality_gate") or {}).get("status") or result.get("status") or "unknown"),

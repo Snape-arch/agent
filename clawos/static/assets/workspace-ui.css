@@ -1,0 +1,24 @@
+:root{--workspace-height:52px;--workspace-ink:#243449;--workspace-muted:#596a7f;--workspace-line:#dce3ed;--workspace-blue:#315cf5}
+body.workspace-linked{padding-top:var(--workspace-height)}
+.workspace-nav{position:fixed;inset:0 0 auto;height:var(--workspace-height);z-index:45;display:flex;align-items:center;gap:32px;padding:0 24px;background:#fff;border-bottom:1px solid var(--workspace-line);font:14px/1.4 "Segoe UI","Microsoft YaHei",sans-serif;color:var(--workspace-ink)}
+.workspace-nav a{text-decoration:none;color:inherit}.workspace-brand{display:flex;align-items:center;gap:9px;font-weight:750;white-space:nowrap}.workspace-brand img{width:27px;height:27px;border-radius:7px}
+.workspace-links{display:flex;align-items:center;gap:6px;overflow-x:auto;min-width:0;height:100%}.workspace-links a{padding:9px 15px;white-space:nowrap;border-radius:7px;font-size:13px;font-weight:600;color:var(--workspace-muted)}
+.workspace-links a:hover{background:#f2f5fb}.workspace-links a[aria-current=page]{background:#edf1ff;color:#244bd1}.workspace-nav a:focus-visible{outline:2px solid var(--workspace-blue);outline-offset:2px}
+.workspace-linked .rail,.workspace-linked .doc-rail{top:var(--workspace-height)}
+.workspace-linked.aether-console .side{top:var(--workspace-height);height:calc(100vh - var(--workspace-height))}
+.workspace-linked.aether-console .console-head{top:var(--workspace-height)}
+.workspace-linked .console-site-links,.workspace-linked .side-site-links,.workspace-linked .wb-head{display:none!important}
+.workspace-linked .wb-layout{min-height:calc(100vh - var(--workspace-height))}
+.workspace-linked>.skip:focus{z-index:100;top:0}
+.workspace-linked .muted{color:var(--workspace-muted)}
+.feishu-status-scroll{overflow:auto;max-width:100%}.feishu-status-scroll table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}.feishu-status-scroll th,.feishu-status-scroll td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--workspace-line);white-space:normal;overflow-wrap:anywhere;vertical-align:top}.feishu-status-scroll th{color:var(--workspace-muted);background:#f7f9fc}.feishu-status-scroll th:first-child{width:29%}.feishu-status-scroll .table td{white-space:normal!important}
+#feishuPermissions>h3{margin-top:24px}#feishuMessagesTable .empty-state{padding:38px 18px;white-space:normal}
+.feishu-readiness{background:#f1f5fb;border-radius:8px;padding:14px;font-size:13px;line-height:1.8;color:#465d78}.feishu-readiness strong{color:#243449}#feishuMessagesTable:has(.empty-state){min-width:0!important;width:100%!important}.feishu-status-scroll .table{min-width:0!important;width:100%!important}.workspace-linked #view-feishu .security-grid{align-items:start}.workspace-linked #view-feishu .section-block{min-width:0}
+.workspace-linked #feishuPermissions th:first-child{width:25%!important}.workspace-linked #feishuPermissions th:nth-child(2){width:18%!important}.workspace-linked #feishuPermissions th:nth-child(3){width:57%!important}.workspace-linked .feishu-status-scroll th,.workspace-linked .feishu-status-scroll td{font-size:12px!important;line-height:1.7!important;padding:10px!important;white-space:normal!important;overflow-wrap:anywhere}
+@media(max-width:780px){.workspace-nav{gap:12px;padding:0 12px}.workspace-links a{padding:9px 12px}.workspace-brand{font-size:13px}.workspace-brand img{width:24px;height:24px}.workspace-linked .rail{top:auto}}
+@media(max-width:650px){.workspace-linked .doc-rail{top:auto}.workspace-nav{gap:8px}.workspace-links a{padding:10px;font-size:12px}.feishu-status-scroll table{font-size:12px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}}
+.workspace-linked>.skip{position:fixed;top:-80px;left:12px;background:white;padding:12px;z-index:100}.workspace-linked>.skip:focus{top:0}.workspace-linked main{scroll-margin-top:64px}
+.workspace-linked{--muted:#596a7f}.workspace-linked .wb-empty p,.workspace-linked .side-label,.workspace-linked .recent-label,.workspace-linked .side-bottom-label{color:#596a7f}
+.workspace-linked.aether-console .side .side-label,.workspace-linked.aether-console .side .recent-label,.workspace-linked.aether-console .side .side-bottom-label{color:#596a7f}
+.workspace-linked.aether-console{--c-faint:#596a7f}

@@ -89,6 +89,34 @@ class TaskService:
             store.save_run_record(run_from_task({**task, "error": error}))
         except Exception:
             pass
+        memory_payload = result_payload if isinstance(result_payload, dict) else {}
+        memory_candidates = memory_payload.get("memory_candidates") or []
+        if memory_candidates:
+            try:
+                from .selective_memory_service import SelectiveMemoryService
+
+                proposal = SelectiveMemoryService(store).propose_from_task(
+                    task_id=int(task_id), outcome=str(status), candidates=memory_candidates,
+                    success_evidence=memory_payload.get("success_evidence") or [],
+                    session_id=str(task.get("session_id") or ""),
+                    owner_id=str((task.get("metadata") or {}).get("owner_id") or "default"),
+                    workspace_id=str((task.get("metadata") or {}).get("workspace_id") or "default"),
+                )
+                task = store.update_task_metadata(
+                    int(task_id),
+                    {"selective_memory_proposal": {
+                        "candidate_ids": [item["id"] for item in proposal["candidates"]],
+                        "review_required": proposal["review_required"],
+                        "blocked_sensitive": proposal["blocked_sensitive"],
+                    }},
+                    event_type="memory_candidates_created",
+                )
+            except (ImportError, OSError, TypeError, ValueError) as exc:
+                task = store.update_task_metadata(
+                    int(task_id),
+                    {"selective_memory_error": f"{type(exc).__name__}: {exc}"},
+                    event_type="memory_candidates_failed",
+                )
         return task
 
     def cancel(self, task_id: int, reason: str = "", actor_id: str = "user"):
