@@ -195,7 +195,7 @@ class CodingAgentExcellenceTests(unittest.TestCase):
                 (recovery.parent / "untracked" / "agent-output.txt").is_file()
             )
 
-    def test_task_worktree_runs_tests_through_restricted_backend(self):
+    def test_legacy_worktree_reports_actual_backend_and_known_host_downgrade(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             repo = self._repo(root)
@@ -205,7 +205,8 @@ class CodingAgentExcellenceTests(unittest.TestCase):
             )
             workspace = Path(task["workspace"])
             workflow = CodingWorkflowService(artifact_root=root / "artifacts")
-            # This test exercises the actual legacy restricted-token backend.
+            # Exercise the real legacy backend; a service-host DLL init failure
+            # must remain a diagnosed downgrade, never a strict sandbox pass.
             # Installed profiles and strict-mode settings on the host must not
             # silently select a different backend for this regression.
             with patch.dict(os.environ, {"CLAWOS_REQUIRE_OS_SANDBOX": "0"}), patch(
@@ -226,15 +227,16 @@ class CodingAgentExcellenceTests(unittest.TestCase):
             sandbox = result["rounds"][0]["tests"][0]["sandbox"]
             if os.name == "nt":
                 self.assertTrue(sandbox["os_enforced"])
-                self.assertEqual(
-                    sandbox["backend"], "windows-restricted-token-low-integrity",
-                    sandbox,
-                )
                 if sandbox["backend"] == "windows-restricted-token-low-integrity":
+                    self.assertTrue(sandbox['restricted_token'])
                     self.assertFalse(sandbox["network_non_bypass_enforced"])
                 else:
+                    self.assertEqual(sandbox['backend'], 'windows-job-object', sandbox)
                     self.assertTrue(sandbox["restricted_token_attempted"])
-                    self.assertTrue(sandbox["restricted_token_error"])
+                    self.assertIn('bootstrap exit=3221225794', sandbox['restricted_token_error'], sandbox)
+                    self.assertFalse(sandbox['filesystem_isolated'])
+                    self.assertFalse(sandbox['network_isolated'])
+                self.assertFalse(sandbox['production_sandbox_ready'])
                 self.assertTrue(sandbox["egress"]["default_deny_external"])
                 self.assertTrue(
                     sandbox["egress"]["proxy_environment_configured"]

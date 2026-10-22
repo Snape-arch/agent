@@ -78,6 +78,20 @@ class RuntimeIntegrity(unittest.TestCase):
                 actual=CodingWorkflowService._run_command(workspace,['python','a.py'],10)
             self.assertEqual(actual['exit_code'],126);fallback.assert_not_called()
 
+    @unittest.skipUnless(os.name=='nt','Windows strict gate')
+    def test_strict_mode_never_accepts_legacy_host_downgrade(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);workspace=root/'repo';workspace.mkdir()
+            (root/'workspace.json').write_text(json.dumps(dict(schema='clawos.task-workspace.v1',workspace=str(workspace),isolated=True)))
+            with patch.dict(os.environ,{'CLAWOS_REQUIRE_OS_SANDBOX':'1'}), \
+                 patch.object(WindowsAppContainerBoundary,'status',return_value=dict(installed=False)), \
+                 patch('services.coding_workflow_service.WindowsJobSandbox.run') as job, \
+                 patch('services.coding_workflow_service.WindowsRestrictedTokenSandbox.run_command') as legacy:
+                result=CodingWorkflowService._run_command(workspace,['python','a.py'],10)
+            self.assertEqual(result['exit_code'],126)
+            self.assertTrue(result['sandbox']['launch_failed_closed'])
+            job.assert_not_called();legacy.assert_not_called()
+
 
 class SupervisorOwnership(unittest.TestCase):
     @unittest.skipUnless(os.name=='nt','Native process handles')

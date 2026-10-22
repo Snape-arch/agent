@@ -39,12 +39,20 @@ e3178da的[首轮四分片](https://github.com/Snape-arch/agent/actions/runs/397
 - 冻结基准原来在源码仓库上准备提交，干净CI没有变更，两个Git案例失败。本轮改为基准自有临时Git仓库、真实初始提交与待提交文件；三个Git案例使用git_repo变量，不再依赖或操作用户脏改。
 - Windows CI没有Poppler，严格PDF视觉检查无法渲染。本轮使用已声明的PyMuPDF做真实PNG渲染后备；最多20页/每页几何上限/最长边1800像素，更大文档需Poppler，失败仍保留revision_required，不用结构检查冒充图像。
 - 产品就绪服务原来只认工作流字符串unittest discover，现识别隔离分片入口及其最终依赖门禁。此为静态配置合同，不代表云端运行已通过。
-- 原低完整性宿主bootstrap不依赖第三方包，改用-I/-S/-B并禁止弹出控制台；未产生回执时报告真实bootstrap退出码，不把普通Job后备认证为受限令牌成功。原测试仍要求实际低完整性后端。
+- 原低完整性宿主bootstrap不依赖第三方包，改用-I/-S/-B并禁止弹出控制台；未产生回执时报告真实bootstrap退出码，不把普通Job后备认证为受限令牌成功。第二轮进一步明确兼容模式与严格模式的不同合同，见下节。
 - 额外复现core.autocrlf=false、CRLF源文件的补丁传输错误：subprocess文本模式会丢失hunk中的CR。Git传输改为字节捕获后显式UTF-8解码，新增精确index重放回归，没有放宽补丁检查。
 - requirements-test补齐仓库语法图所需的四个已声明Tree-sitter固定版本，避免干净环境隐式依赖本机包。
 
 新建完全独立的clean-runtime，仅安装CI依赖，pip check通过。定向验证独立计数：办公5/5（29.482秒，含真实后备PNG核对）、冻结基准7/7（11.864秒）、仓库图谱6/6（9.532秒）、共享上下文12/12（38.934秒）、就绪合同5/5（1.452秒）；最终新增夹具/CRLF/实际低完整性/PDF页数负向4/4（5.656秒）。最后收集完整1040项，分片覆盖另行记录，不等于本地全量执行。
 
 前轮失败均保留：空系统Git配置压力轮先复现CRLF重放错误，修复后Git Windows系统默认配置下上下文通过；关闭系统Git换行设置的额外压力轮出现原有diff-check CRLF尾空白行为，不能声称任意Git配置全通过。CRLF测试初版切换autocrlf后未刷新其余夹具索引，修正基线后4项终版通过。首次额度暂停导致的审批未执行，不计验证。正常Windows低完整性本地实测不能代替新一轮GitHub验证。
+
+## 宿主能力与严格隔离分开验收
+
+7987bba的[第二轮](https://github.com/Snape-arch/agent/actions/runs/39800503390)进一步给出旧低完整性bootstrap退出3221225794（0xC0000142）。依据[Windows进程创建文档](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessasuserw)，进程创建成功不保证DLL初始化完成，需要读取退出状态；未确认具体DLL，不能把常见的窗口站/桌面权限问题当作已证明根因。本机实际低完整性运行通过，GitHub宿主该能力尚未通过，不放宽或修改宿主交互桌面权限。
+
+原测试在CLAWOS_REQUIRE_OS_SANDBOX=0的兼容模式中无条件要求旧令牌后端，又包含无法到达的Job退回验证。本次纠正该测试合同：实际旧令牌必须有restricted_token；仅允许有明确0xC0000142诊断的已知宿主退回，检查Job缺少文件/网络隔离、production_sandbox_ready=false、代理非直连防绕过等原限制。其他意外退回仍失败。此不认证GitHub旧令牌能力，更不把Job记作严格隔离成功。
+
+新增严格模式负向回归：AppContainer不可用必须退出126/launch_failed_closed，Job及旧令牌启动函数均不得调用；监督相关9/9（0.090秒）通过。兼容模式本机原生专项另测通过，最终新CI共有1041项。只修改验收合同和明确限制，严格执行服务的失败封闭行为保持原要求。
 
 日常数据库SHA256保持8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543；原registry保持本地脏改且摘要a72423d78ff1e7d67c646fcd7debf1824ce9e88767b0034455ff1fecc5a23d4，不提交。未重启生产或访问模型权重。
