@@ -254,7 +254,7 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(vector["reranker_top_k"], "${RERANKER_TOP_K:-5}")
 
     def test_local_daily_profile_is_qwen_embedding_first_and_reranker_opt_in(self):
-        config = json.loads((ROOT / "config.local.json").read_text(encoding="utf-8"))
+        config = json.loads((ROOT / "config.local.example.json").read_text(encoding="utf-8"))
 
         self.assertEqual(config["listen_host"], "127.0.0.1")
         self.assertEqual(config["model_provider"]["provider"], "${MODEL_PROVIDER:-qwen}")

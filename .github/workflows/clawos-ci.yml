@@ -24,6 +24,8 @@ jobs:
         shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -34,6 +36,14 @@ jobs:
           node-version: "22"
       - name: Install deterministic test dependencies
         run: python -m pip install -r clawos/requirements-test.txt
+      - name: Install pinned Office rendering backend
+        run: |
+          choco install libreoffice-fresh --version=26.2.6 --yes --no-progress --limit-output
+          if ($LASTEXITCODE -notin @(0, 3010)) { exit $LASTEXITCODE }
+          $office = Join-Path $env:ProgramFiles 'LibreOffice/program/soffice.exe'
+          if (-not (Test-Path -LiteralPath $office)) { throw 'LibreOffice renderer missing' }
+          & $office --headless --version
+          exit $LASTEXITCODE
       - name: Compile critical Python entrypoints
         run: >-
           python -m py_compile

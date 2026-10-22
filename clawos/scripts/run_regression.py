@@ -9,6 +9,7 @@ import hashlib
 import json
 import time
 import unittest
+import tempfile
 
 
 def flatten(suite):
@@ -93,6 +94,10 @@ def main():
     root.mkdir(parents=True)
     env=dict(os.environ,CLAWOS_SKIP_LOCAL_ENV='1',CLAWOS_MEMORY_DB=str(root/'memoryos.db'),CLAWOS_OUTPUT_DIR=str(root/'artifacts'),PYTHONPATH=str(project)+os.pathsep+os.environ.get('PYTHONPATH',''),
              PYTHONIOENCODING='utf-8',PYTHONUNBUFFERED='1',CLAWOS_REGRESSION_REPORT=str(root/'summary.json'))
+    # Hosted Windows may publish TEMP as C:\\Users\\RUNNER~1. Python/Git
+    # canonicalize existing paths to the long name; generate fixtures there too.
+    temp_root=str(Path(tempfile.gettempdir()).resolve(strict=True))
+    env.update(TEMP=temp_root,TMP=temp_root)
     print('Isolated regression workspace: '+str(root),flush=True)
     command=[sys.executable,str(Path(__file__).resolve()),'--worker','--pattern',args.pattern,
              '--shard-count',str(args.shard_count),'--shard-index',str(args.shard_index)]

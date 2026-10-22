@@ -16,7 +16,9 @@ def _file_lock(target, timeout=10, *, lock_dir=None):
     # Keep a stable lock inode: deleting it after release races waiting writers.
     folder = Path(lock_dir) if lock_dir is not None else Path(tempfile.gettempdir()) / "clawos-file-locks"
     folder.mkdir(parents=True,exist_ok=True)
-    key = hashlib.sha256(os.path.normcase(str(target)).encode()).hexdigest()
+    path=Path(target)
+    canonical=path.resolve() if path.exists() else path.parent.resolve()/path.name
+    key = hashlib.sha256(os.path.normcase(str(canonical)).encode()).hexdigest()
     with (folder / (key + ".lock")).open("a+b") as handle:
         # Windows permits byte-range locks past EOF. Initializing a byte before
         # acquiring the lock races another handle already locking the empty

@@ -441,6 +441,7 @@ class CodingWorkflowService:
 
     @staticmethod
     def _run_command(repo: Path, command: list[str], timeout_seconds: int) -> dict[str, Any]:
+        repo = Path(repo).resolve()
         started = time.perf_counter()
         strict = os.environ.get("CLAWOS_REQUIRE_OS_SANDBOX", "").lower() in {"1", "true", "yes"}
         metadata_path = repo.parent / "workspace.json"

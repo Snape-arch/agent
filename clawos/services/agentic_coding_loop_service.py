@@ -592,7 +592,7 @@ class AgenticCodingLoopService:
             raise ValueError('observation path outside execution context')
         path = (repo / rel).resolve()
         try:
-            path.relative_to(repo)
+            path.relative_to(Path(repo).resolve())
         except ValueError as exc:
             raise ValueError("observation path escapes repository") from exc
         if name == "read":

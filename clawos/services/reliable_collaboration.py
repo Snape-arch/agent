@@ -46,7 +46,11 @@ class ReliableCollaborationService:
     def __init__(self, provider_factory: Callable, *, root: str | Path,
                  store=None, max_concurrency=3):
         self.factory = provider_factory
-        self.root = Path(root).resolve()
+        # Resolve after creation: older Windows Python keeps 8.3 aliases when
+        # the final directory does not exist yet.
+        pending_root = Path(root).absolute()
+        pending_root.mkdir(parents=True, exist_ok=True)
+        self.root = pending_root.resolve(strict=True)
         self.store = store
         self.concurrency = max(1, min(int(max_concurrency), 4))
         self.workspaces = CodingWorkspaceService()

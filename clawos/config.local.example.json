@@ -1,0 +1,22 @@
+{
+  "listen_host": "127.0.0.1",
+  "model_provider": {
+    "provider": "${MODEL_PROVIDER:-qwen}",
+    "base_url": "${MODEL_BASE_URL:-http://127.0.0.1:8000/v1}",
+    "model": "${MODEL_NAME:-Qwen3.5-9B-Q4_K_M}",
+    "api_key": "",
+    "requires_api_key": false
+  },
+  "model_fallbacks": [],
+  "vector_store": {
+    "provider": "${VECTOR_PROVIDER:-chroma}",
+    "embedding_provider": "${EMBEDDING_PROVIDER:-qwen3}",
+    "embedding_model_path": "${EMBEDDING_MODEL_PATH:-../tools/models/qwen3-embedding-0.6b}",
+    "embedding_dim": "${EMBEDDING_DIM:-1024}",
+    "reranker_provider": "${RERANKER_PROVIDER:-none}",
+    "reranker_model_path": "${RERANKER_MODEL_PATH:-../tools/models/qwen3-reranker-0.6b}",
+    "reranker_recall_k": "${RERANKER_RECALL_K:-30}",
+    "reranker_top_k": "${RERANKER_TOP_K:-5}"
+  },
+  "mtclaw": {"enabled": false}
+}

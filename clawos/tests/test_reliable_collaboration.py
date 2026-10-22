@@ -32,7 +32,7 @@ def fixture(folder, same_file=False):
     (repo / "check.py").write_text("from a import add\nfrom b import mul\nassert add(3, 2) == 5\nassert mul(3, 2) == 6\n", encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "-m", "fixture")
-    return repo
+    return repo.resolve()
 
 
 class FixtureIsolationTests(unittest.TestCase):

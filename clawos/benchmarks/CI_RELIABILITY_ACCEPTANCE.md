@@ -55,4 +55,15 @@ e3178da的[首轮四分片](https://github.com/Snape-arch/agent/actions/runs/397
 
 新增严格模式负向回归：AppContainer不可用必须退出126/launch_failed_closed，Job及旧令牌启动函数均不得调用；监督相关9/9（0.090秒）通过。兼容模式本机原生专项另测通过，最终新CI共有1041项。只修改验收合同和明确限制，严格执行服务的失败封闭行为保持原要求。
 
+## 补齐纯净checkout与Windows路径依赖
+
+第二轮完整注释还揭示第0/3组失败，不能仅按最先收到的第2组堆栈断言只剩旧令牌问题：
+
+- GitHub TEMP使用RUNNER~1短名，部分组件解析为runneradmin长名后进行字符串包含/锁比较，导致误判越界、合法工作区认证失败或未检测到忙锁。回归入口统一已存在TEMP的规范路径；服务在建目录后规范化根，命令/观察路径使用同一真实根，文件锁对已存在父目录规范化。新增原生GetShortPathNameW回归，验证真实长短路径共用锁及同一所有权根。
+- checkout默认浅克隆没有任务库冻结的f3fbdab对象；工作流fetch-depth=0，保留冻结源码，不改成当前源码冒充同一任务。
+- 一项提供方测试读取未入库config.local.json；改为公开的config.local.example.json。模板仅有空密钥、环境占位符和本地端点，不读取/复制用户私有配置，实际运行仍由用户配置决定。
+- DOCX脚注视觉门禁要求真实渲染；CI原来没有LibreOffice。本轮按[Chocolatey公开包](https://community.chocolatey.org/packages/libreoffice-fresh/26.2.6)固定安装26.2.6并核验soffice存在，不删除rendered_note_content检查、不用XML结构冒充渲染。
+
+7987bba冻结生产源码的本地完整回归已全部通过：四组303/186/200/351，共1040项，分别519.639/156.638/110.692/835.161秒；各自隔离DB/output，不相加为连续负载。此不涵盖后加的路径修复。路径增量入口5/5（0.607秒，真实8.3别名用例执行、非skip），模型提供方31/31（1.152秒），文档语义4/4（7.205秒）另行通过；严格沙箱增量结果见日志。当前新轮总数1042项，最终云端仍需完整验收。安装LibreOffice仅发生在GitHub临时runner，本机已有Office安装未修改。
+
 日常数据库SHA256保持8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543；原registry保持本地脏改且摘要a72423d78ff1e7d67c646fcd7debf1824ce9e88767b0034455ff1fecc5a23d4，不提交。未重启生产或访问模型权重。

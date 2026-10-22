@@ -18,6 +18,29 @@ spec.loader.exec_module(runner)
 
 
 class RegressionRunnerTests(unittest.TestCase):
+    @unittest.skipUnless(os.name=='nt', 'Windows path aliases')
+    def test_short_path_aliases_share_ownership_and_locks(self):
+        import ctypes
+        from ctypes import wintypes
+        from services.file_transactions import _file_lock
+        from services.reliable_collaboration import ReliableCollaborationService
+        with tempfile.TemporaryDirectory(prefix='clawos-alias-regression-') as folder:
+            root=Path(folder).resolve()
+            kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+            kernel.GetShortPathNameW.argtypes=[wintypes.LPCWSTR,wintypes.LPWSTR,wintypes.DWORD]
+            kernel.GetShortPathNameW.restype=wintypes.DWORD
+            buffer=ctypes.create_unicode_buffer(32768)
+            count=kernel.GetShortPathNameW(str(root),buffer,len(buffer))
+            self.assertGreater(count,0)
+            alias=Path(buffer.value)
+            if os.path.normcase(str(alias))==os.path.normcase(str(root)):
+                self.skipTest('This volume does not expose 8.3 aliases')
+            service=ReliableCollaborationService(lambda spec:None,root=alias/'new-run-store')
+            self.assertEqual(service.root,root/'new-run-store')
+            with _file_lock(root/'coordinator',timeout=0):
+                with self.assertRaises(TimeoutError):
+                    with _file_lock(alias/'coordinator',timeout=0): pass
+
     def test_module_shards_are_complete_disjoint_and_stable(self):
         cases = []
         for module in range(35):
