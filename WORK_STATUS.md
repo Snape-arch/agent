@@ -1,5 +1,13 @@
 # ClawOS 当前工作状态（2026-10-22）
 
+## 当前交付：GitHub完整门禁通过（2026-10-22）
+
+源码d69764dac16f7a9385aa335984183e439a1c94e7的GitHub运行39805485256已完成，四个Windows分片与最终deterministic-tests均为completed/success，逐个head_sha一致。终版1042项分配304/186/201/351，分配完整无重叠；原始回执及逐组时长在clawos/output/ci-repair-20261022/final-cloud-result.json、verified-ci-summary.json。链接：https://github.com/Snape-arch/agent/actions/runs/39805485256 。历史失败/取消保留，不抹去红叉。
+
+仍在master，原registry脏改按备份字节恢复且不提交，DB摘要不变，tools/权重/凭据/DB/output排除，生产未重启。收尾仅更新Markdown验收/交接文档并标注[skip ci]，源码/测试/工作流/依赖Git对象与上述已通过提交一致，不把跳过源码测试当成通过。详见clawos/benchmarks/CI_RELIABILITY_ACCEPTANCE.md。
+
+已解决的是确定性CI失败，不代表GitHub旧令牌隔离能力通过；严格模式仍禁止退回，production_sandbox_ready=false。下一步回到P0的固定部署运行时、六类真实业务/浏览器与存储故障验收，275个历史缺失产物仍待可信恢复。
+
 ## 最新：补齐Windows别名、历史与Office依赖（2026-10-22）
 
 补齐7987bba云端全部分片日志后，第0/3组还因TEMP的RUNNER~1与长路径不一致、浅克隆缺冻结源码对象、读取未入库私有本机配置及无LibreOffice而失败；不是只有最先收到的旧令牌错误。现统一测试TEMP及服务所有权根/锁路径，新增原生8.3别名锁回归；checkout完整历史；提供公开空密钥本地示例配置替代测试读取config.local.json；CI固定LibreOffice26.2.6并保留真实脚注渲染门禁。不读取/覆盖本机私有配置，不把当前源码当冻结旧任务源码。

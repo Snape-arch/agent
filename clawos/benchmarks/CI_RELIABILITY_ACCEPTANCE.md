@@ -2,6 +2,14 @@
 
 接续主分支 dbd9d17。提交列表的红叉/黄点是检查状态，不是 Git 冲突。历史提交已纳入 master，不通过删除检查、跳过失败或重写历史改变旧记录。
 
+## 最终结论：云端通过
+
+源码提交`d69764dac16f7a9385aa335984183e439a1c94e7`的[GitHub运行39805485256](https://github.com/Snape-arch/agent/actions/runs/39805485256)已真实完成：四个Windows分片及最终`deterministic-tests`全部completed/success，逐个核对head_sha一致。终版1042项分配304/186/201/351，不重不漏；原始GitHub回执、逐组时长与核验摘要保存在忽略目录final-cloud-result.json、verified-ci-summary.json。
+
+此为确定性云端回归，不认证模型质量、真实学习增益、物理断电或GitHub旧令牌后端能力；production_sandbox_ready=false仍保持。历史失败/取消轮保留；以本源码提交的完整门禁为当前代码验收依据。
+
+收尾提交仅更新Markdown验收/交接记录，标注`[skip ci]`避免文档变更重复执行完整测试；无源码、依赖、工作流或测试改动，提交前核对这些Git对象与上述通过版本完全一致。没有用跳过测试取得源码成功状态。
+
 ## 已核对的远程证据
 
 - [8bc3c12 push 检查](https://github.com/Snape-arch/agent/actions/runs/39759639264)：cancelled，检查注释明确 `The job has exceeded the maximum execution time of 30m0s`。任务从09:59:19Z至10:29:26Z，测试步骤被取消，扩展语法步骤未执行。
@@ -70,4 +78,4 @@ e3178da的[首轮四分片](https://github.com/Snape-arch/agent/actions/runs/397
 
 强制别名的早期深目录压力轮还触发Git自身`$GIT_DIR too big`，原日志保留，不声称无限路径支持；一次私有诊断脚本误写测试方法名生成FailedTest，已更正，未计成功。上述6/6终轮使用与GitHub相当的临时根深度、真实8.3别名，不读取用户私有配置。最新提交触发的GitHub四分片与最终deterministic-tests门禁是远端验收依据，不能以本地通过替代。
 
-日常数据库SHA256保持8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543；原registry保持本地脏改且摘要a72423d78ff1e7d67c646fcd7debf1824ce9e88767b0034455ff1fecc5a23d4，不提交。未重启生产或访问模型权重。
+日常数据库SHA256保持8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543；原registry保持本地脏改且摘要a72423d78ff1e7d67c646fcd7debf1824ce9e88767b0034455ff1fefcc5a23d4，不提交。初稿手录该摘要漏一位，收尾改为与原备份逐字节核对并修正文档。未重启生产或访问模型权重。
