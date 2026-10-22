@@ -46,16 +46,23 @@ class ReliableCollaborationService:
     def __init__(self, provider_factory: Callable, *, root: str | Path,
                  store=None, max_concurrency=3):
         self.factory = provider_factory
-        # Resolve after creation: older Windows Python keeps 8.3 aliases when
-        # the final directory does not exist yet.
-        pending_root = Path(root).absolute()
-        pending_root.mkdir(parents=True, exist_ok=True)
-        self.root = pending_root.resolve(strict=True)
+        self.root = root
         self.store = store
         self.concurrency = max(1, min(int(max_concurrency), 4))
         self.workspaces = CodingWorkspaceService()
         self.workflow = CodingWorkflowService(artifact_root=self.root / "coding-evidence")
         self.context = CodingContextService()
+
+    @property
+    def root(self):
+        return self._root
+
+    @root.setter
+    def root(self, value):
+        # Preserve this invariant on reassignment as well as construction.
+        pending = Path(value).absolute()
+        pending.mkdir(parents=True, exist_ok=True)
+        self._root = pending.resolve(strict=True)
 
     @staticmethod
     def digest(value):

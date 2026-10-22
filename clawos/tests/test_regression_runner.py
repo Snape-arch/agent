@@ -37,6 +37,8 @@ class RegressionRunnerTests(unittest.TestCase):
                 self.skipTest('This volume does not expose 8.3 aliases')
             service=ReliableCollaborationService(lambda spec:None,root=alias/'new-run-store')
             self.assertEqual(service.root,root/'new-run-store')
+            service.root=alias/'reassigned-store'
+            self.assertEqual(service.root,root/'reassigned-store')
             with _file_lock(root/'coordinator',timeout=0):
                 with self.assertRaises(TimeoutError):
                     with _file_lock(alias/'coordinator',timeout=0): pass
