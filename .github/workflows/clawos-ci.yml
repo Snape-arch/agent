@@ -9,10 +9,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: clawos-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  deterministic-tests:
+  test-shards:
+    name: test-shard-${{ matrix.shard }}
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,7 +42,30 @@ jobs:
           clawos/services/agentic_coding_loop_service.py
           clawos/services/product_readiness_service.py
           clawos/api/product_readiness.py
-      - name: Run repository tests
-        run: python -m unittest discover -s clawos/tests -p "test_*.py"
       - name: Check VS Code extension syntax
         run: node --check clawos/integrations/vscode/extension.js
+      - name: Run isolated repository test shard
+        run: python clawos/scripts/run_regression.py --pattern "test_*.py" --verbose --shard-count 4 --shard-index ${{ matrix.shard }}
+      - name: Preserve test logs and selection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deterministic-tests-${{ matrix.shard }}
+          path: |
+            clawos/output/regression/*/unittest.log
+            clawos/output/regression/*/selection.json
+            clawos/output/regression/*/summary.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  deterministic-tests:
+    # Keep the existing required check name and fail if any shard fails/cancels.
+    if: always()
+    needs: test-shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every test shard to succeed
+        env:
+          SHARDS_RESULT: ${{ needs.test-shards.result }}
+        run: test "$SHARDS_RESULT" = "success"
