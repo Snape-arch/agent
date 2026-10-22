@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -13,6 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from .coding_context_service import CodingContextService
+from .coding_diagnostics_service import CodingDiagnosticsService
+from .egress_proxy import AuditedEgressProxy, EgressProxyPolicy
+from .os_sandbox import WindowsJobSandbox, WindowsRestrictedTokenSandbox
+from .windows_appcontainer_boundary import WindowsAppContainerBoundary
 from .runtime_records import RunRecord, now_iso
 
 
@@ -33,6 +38,7 @@ class CodingWorkflowService:
         self.store = store
         self.artifact_root = Path(artifact_root).expanduser().resolve()
         self.context_service = CodingContextService()
+        self.diagnostics_service = CodingDiagnosticsService()
 
     def inspect(
         self,
@@ -143,6 +149,7 @@ class CodingWorkflowService:
         max_rounds: int = 2,
         timeout_seconds: int = 180,
         actor: str = "coding-agent",
+        acceptance_criteria: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         if confirmed is not True:
             raise PermissionError("confirmed=true is required for coding writes and test execution")
@@ -182,12 +189,18 @@ class CodingWorkflowService:
                 )
                 self._apply_changes(repo, round_changes)
                 tests = [self._run_command(repo, command, timeout_seconds) for command in commands]
-                review = self._review(repo, [item["path"] for item in manifest["files"]], tests)
+                diagnostics = self.diagnostics_service.analyze(repo, tests)
+                review = self._review(
+                    repo, [item["path"] for item in manifest["files"]], tests,
+                    acceptance_criteria=acceptance_criteria,
+                    diagnostics=diagnostics,
+                )
                 rounds.append({
                     "round": round_no,
                     "changes": [item["path"] for item in round_changes],
                     "checkpoint": str(round_checkpoint / "manifest.json"),
                     "tests": tests,
+                    "diagnostics": diagnostics,
                     "review": review,
                 })
                 if review["gate"] == "pass":
@@ -220,6 +233,9 @@ class CodingWorkflowService:
             "diff_path": str(diff_path) if diff else "",
             "commit_created": False,
             "human_review_required": True,
+            "acceptance": rounds[-1]["review"].get("acceptance") if rounds else {
+                "passed": False, "criteria": [], "failures": ["no execution round completed"]
+            },
         }
         self._save_run(payload, actor)
         return payload
@@ -309,6 +325,7 @@ class CodingWorkflowService:
             temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
             temporary.write_text(item["content"], encoding="utf-8")
             os.replace(temporary, path)
+            CodingWorkflowService._invalidate_bytecode(path)
 
     @staticmethod
     def _restore(repo: Path, root: Path, manifest: dict[str, Any]) -> None:
@@ -320,10 +337,29 @@ class CodingWorkflowService:
                 temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.restore")
                 shutil.copyfile(backup, temporary)
                 os.replace(temporary, path)
+                CodingWorkflowService._invalidate_bytecode(path)
             elif path.exists():
                 path.unlink()
 
-    def _review(self, repo: Path, files: list[str], tests: list[dict[str, Any]]) -> dict[str, Any]:
+    @staticmethod
+    def _invalidate_bytecode(path: Path) -> None:
+        """Prevent same-size/same-second Python edits from reusing stale pyc."""
+        if path.suffix.lower() != ".py":
+            return
+        cache = path.parent / "__pycache__"
+        if not cache.is_dir():
+            return
+        for compiled in cache.glob(f"{path.stem}.*.pyc"):
+            try:
+                compiled.unlink()
+            except OSError:
+                continue
+
+    def _review(
+        self, repo: Path, files: list[str], tests: list[dict[str, Any]], *,
+        acceptance_criteria: list[dict[str, Any]] | None = None,
+        diagnostics: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         failures = [f"test failed: {item['command']}" for item in tests if item["exit_code"] != 0 or item.get("timed_out")]
         diff_check = subprocess.run(["git", "diff", "--check", "--", *files], cwd=repo, capture_output=True, text=True, timeout=30)
         if diff_check.returncode != 0:
@@ -336,7 +372,48 @@ class CodingWorkflowService:
             f"syntax failed: {item['path']}: {item['message']}"
             for item in syntax if not item["passed"]
         )
-        return {"gate": "pass" if not failures else "revision_required", "failures": failures, "changed_files": changed, "diff_check": diff_check.stdout + diff_check.stderr, "syntax_review": syntax, "all_tests_passed": all(item["exit_code"] == 0 and not item.get("timed_out") for item in tests)}
+        acceptance = self._acceptance_gate(
+            acceptance_criteria or [], tests=tests, changed=changed,
+            diff_check=diff_check, syntax=syntax,
+        )
+        failures.extend(acceptance["failures"])
+        return {
+            "gate": "pass" if not failures else "revision_required",
+            "failures": failures, "changed_files": changed,
+            "diff_check": diff_check.stdout + diff_check.stderr,
+            "syntax_review": syntax,
+            "all_tests_passed": all(item["exit_code"] == 0 and not item.get("timed_out") for item in tests),
+            "failure_category": (diagnostics or {}).get("failure_category", "none"),
+            "diagnostics": diagnostics or {}, "acceptance": acceptance,
+        }
+
+    @staticmethod
+    def _acceptance_gate(
+        criteria: list[dict[str, Any]], *, tests: list[dict[str, Any]],
+        changed: list[str], diff_check: subprocess.CompletedProcess,
+        syntax: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        normalized = list(criteria or [
+            {"id": "tests_pass", "type": "tests_pass"},
+            {"id": "scoped_diff", "type": "scoped_diff"},
+            {"id": "syntax_pass", "type": "syntax_pass"},
+            {"id": "diff_check", "type": "diff_check"},
+        ])
+        evidence = {
+            "tests_pass": bool(tests) and all(item.get("exit_code") == 0 and not item.get("timed_out") for item in tests),
+            "scoped_diff": bool(changed),
+            "syntax_pass": all(item.get("passed") for item in syntax),
+            "diff_check": diff_check.returncode == 0,
+        }
+        results, failures = [], []
+        for criterion in normalized:
+            kind = str(criterion.get("type") or criterion.get("id") or "")
+            passed = bool(evidence.get(kind, False))
+            item = {"id": str(criterion.get("id") or kind), "type": kind, "passed": passed}
+            results.append(item)
+            if not passed:
+                failures.append(f"acceptance criterion failed: {item['id']}")
+        return {"passed": not failures, "criteria": results, "failures": failures}
 
     @staticmethod
     def _syntax_review(repo: Path, files: list[str]) -> list[dict[str, Any]]:
@@ -365,11 +442,127 @@ class CodingWorkflowService:
     @staticmethod
     def _run_command(repo: Path, command: list[str], timeout_seconds: int) -> dict[str, Any]:
         started = time.perf_counter()
+        strict = os.environ.get("CLAWOS_REQUIRE_OS_SANDBOX", "").lower() in {"1", "true", "yes"}
+        metadata_path = repo.parent / "workspace.json"
+        if os.name == "nt" and metadata_path.is_file():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if (
+                    metadata.get("schema") == "clawos.task-workspace.v1"
+                    and Path(str(metadata.get("workspace") or "")).resolve() == repo
+                    and metadata.get("isolated") is True
+                ):
+                    appcontainer = WindowsAppContainerBoundary(
+                        os.environ.get("CLAWOS_APPCONTAINER_PROFILE") or "ClawOS.CodingSandbox"
+                    )
+                    if not os.environ.get('CLAWOS_APPCONTAINER_RUNTIME') and not os.environ.get('CLAWOS_APPCONTAINER_PROFILE'):
+                        from .sandbox_runtime import SandboxRuntime
+                        managed = SandboxRuntime().resolve()
+                        if managed is not None: appcontainer = managed
+                    appcontainer_status = appcontainer.status()
+                    if appcontainer_status.get("installed"):
+                        try:
+                            result = appcontainer.run_command(
+                                command, repo, timeout_seconds=timeout_seconds,
+                                confirmed_acl=True,
+                            )
+                            if not result.get('sandbox', {}).get('strict_boundary_verified'):
+                                raise RuntimeError('parent-attested strict boundary is required')
+                            result["sandbox"]["egress"] = {
+                                "policy": "deny-direct-network",
+                                "broker_required": True,
+                                "network_capabilities": [],
+                                "direct_socket_non_bypass_enforced": result['sandbox'].get('direct_socket_non_bypass_enforced') is True,
+                            }
+                            return result
+                        except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
+                            return {
+                                "command": command, "exit_code": 126, "stdout": "",
+                                "stderr": f"AppContainer launch failed closed: {type(exc).__name__}: {exc}",
+                                "timed_out": False,
+                                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                                "sandbox": {
+                                    "backend": "windows-appcontainer",
+                                    "os_enforced": False, "launch_failed_closed": True,
+                                    "production_sandbox_ready": False,
+                                    "downgrade_blocked": True,
+                                },
+                            }
+                    if strict:
+                        raise ValueError("strict sandbox requires an installed AppContainer; fallback blocked")
+                    proxy = AuditedEgressProxy(
+                        EgressProxyPolicy(allowed_hosts=[]),
+                        secrets.token_urlsafe(32),
+                    ).start()
+                    proxy_host, proxy_port = proxy.address
+                    proxy_url = f"http://{proxy_host}:{proxy_port}"
+                    sandbox_environment = {
+                        "PATH": os.environ.get("PATH", ""),
+                        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+                        "TEMP": os.environ.get("TEMP", ""),
+                        "TMP": os.environ.get("TMP", ""),
+                        "PYTHONIOENCODING": "utf-8",
+                        "HTTP_PROXY": proxy_url,
+                        "HTTPS_PROXY": proxy_url,
+                        "ALL_PROXY": proxy_url,
+                        "NO_PROXY": "127.0.0.1,localhost,::1",
+                    }
+                    try:
+                        try:
+                            sandbox_result = WindowsRestrictedTokenSandbox().run_command(
+                                command, repo, environment=sandbox_environment,
+                                timeout_seconds=timeout_seconds,
+                            )
+                        except (OSError, RuntimeError, ValueError) as exc:
+                            sandbox_result = WindowsJobSandbox(
+                                max_processes=8, process_memory_mb=1024,
+                            ).run(
+                                command, repo,
+                                environment=sandbox_environment,
+                                timeout_seconds=timeout_seconds,
+                            )
+                            sandbox_result["sandbox"]["restricted_token_attempted"] = True
+                            sandbox_result["sandbox"]["restricted_token_error"] = (
+                                f"{type(exc).__name__}: {exc}"
+                            )
+                            sandbox_result["sandbox"]["filesystem_write_boundary"] = (
+                                "isolated-task-worktree-application-boundary"
+                            )
+                            sandbox_result["sandbox"]["production_sandbox_ready"] = False
+                    finally:
+                        proxy.stop()
+                    sandbox_result["sandbox"]["egress"] = {
+                        "authenticated_proxy_started": True,
+                        "default_deny_external": True,
+                        "proxy_environment_configured": True,
+                        "loopback_test_bypass": True,
+                        "audit_events": len(proxy.audit),
+                        "direct_socket_non_bypass_enforced": False,
+                    }
+                    return sandbox_result
+            except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+                return {
+                    "command": command, "exit_code": 126, "stdout": "",
+                    "stderr": f"sandbox orchestration failed closed: {type(exc).__name__}: {exc}",
+                    "timed_out": False,
+                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    "sandbox": {
+                        "backend": "task-sandbox-orchestrator",
+                        "os_enforced": False, "launch_failed_closed": True,
+                        "production_sandbox_ready": False,
+                    },
+                }
+        if strict:
+            return {"command": command, "exit_code": 126, "stdout": "",
+                    "stderr": "strict sandbox requires an isolated task workspace and Windows AppContainer",
+                    "timed_out": False, "duration_ms": round((time.perf_counter()-started)*1000, 2),
+                    "sandbox": {"backend": "strict-sandbox-gate", "launch_failed_closed": True,
+                                "downgrade_blocked": True, "production_sandbox_ready": False}}
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True, text=True, timeout=max(1, min(int(timeout_seconds or 180), 900)))
-            return {"command": command, "exit_code": result.returncode, "stdout": result.stdout[-8000:], "stderr": result.stderr[-4000:], "timed_out": False, "duration_ms": round((time.perf_counter() - started) * 1000, 2)}
+            return {"command": command, "exit_code": result.returncode, "stdout": result.stdout[-8000:], "stderr": result.stderr[-4000:], "timed_out": False, "duration_ms": round((time.perf_counter() - started) * 1000, 2), "sandbox": {"backend": "subprocess-policy-boundary", "os_enforced": False, "production_sandbox_ready": False}}
         except subprocess.TimeoutExpired as exc:
-            return {"command": command, "exit_code": 124, "stdout": str(exc.stdout or "")[-8000:], "stderr": str(exc.stderr or "")[-4000:], "timed_out": True, "duration_ms": round((time.perf_counter() - started) * 1000, 2)}
+            return {"command": command, "exit_code": 124, "stdout": str(exc.stdout or "")[-8000:], "stderr": str(exc.stderr or "")[-4000:], "timed_out": True, "duration_ms": round((time.perf_counter() - started) * 1000, 2), "sandbox": {"backend": "subprocess-policy-boundary", "os_enforced": False, "production_sandbox_ready": False}}
 
     def _save_run(self, payload: dict[str, Any], actor: str) -> None:
         if not self.store:

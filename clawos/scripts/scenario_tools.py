@@ -1736,6 +1736,8 @@ def paper_intelligence(payload):
     action = payload.get("action", "readiness")
     if action == "structure":
         return service.analyze_document(int(payload.get("document_id")))
+    if action == "semantic_graph":
+        return service.semantic_graph(int(payload.get("document_id")), bool(payload.get("compact", False)))
     if action == "align_claims":
         return service.align_claims(payload.get("claims") or [], payload.get("document_ids") or [], float(payload.get("threshold", 0.34)))
     if action == "compare":
@@ -1815,12 +1817,15 @@ def office_productivity(payload):
     from services.office_productivity_service import OfficeProductivityService
     from security.policy import ToolSecurityPolicy
     store = MemoryStore(_memory_db_path())
-    service = OfficeProductivityService(store, list(ToolSecurityPolicy().allowed_roots))
+    output_root = Path(os.environ.get("CLAWOS_OUTPUT_DIR") or (Path(BASE_DIR).parent / "output"))
+    service = OfficeProductivityService(store, list(ToolSecurityPolicy().allowed_roots), preview_root=output_root)
     action = payload.get("action", "inspect")
+    if action == "capabilities":
+        return service.capabilities()
     if action == "create":
         return service.create(payload.get("output_path", ""), title=payload.get("title", ""), sections=payload.get("sections") or [], data=payload.get("data"), metadata=payload.get("metadata") or {}, confirmed=bool(payload.get("confirmed")))
     if action == "edit":
-        return service.edit(payload.get("file_path", ""), payload.get("output_path", ""), replacements=payload.get("replacements") or {}, updates=payload.get("updates") or [], confirmed=bool(payload.get("confirmed")))
+        return service.edit(payload.get("file_path", ""), payload.get("output_path", ""), replacements=payload.get("replacements") or {}, updates=payload.get("updates") or [], comments=payload.get("comments") or [], revisions=payload.get("revisions") or [], recalculate=bool(payload.get("recalculate")), confirmed=bool(payload.get("confirmed")))
     if action == "inspect":
         return service.inspect(payload.get("file_path", ""))
     if action == "quality_audit":
@@ -1850,7 +1855,7 @@ def coding_workflow(payload):
     if action == "plan":
         return service.plan(payload.get("repo_path", ""), payload.get("objective", ""), payload.get("changes") or [], payload.get("test_commands") or [])
     if action == "execute":
-        return service.execute(payload.get("repo_path", ""), payload.get("objective", ""), payload.get("changes") or [], payload.get("test_commands") or [], confirmed=bool(payload.get("confirmed")), repair_rounds=payload.get("repair_rounds") or [], max_rounds=payload.get("max_rounds", 2), timeout_seconds=payload.get("timeout_seconds", 180), actor=payload.get("actor", "coding-agent"))
+        return service.execute(payload.get("repo_path", ""), payload.get("objective", ""), payload.get("changes") or [], payload.get("test_commands") or [], confirmed=bool(payload.get("confirmed")), repair_rounds=payload.get("repair_rounds") or [], max_rounds=payload.get("max_rounds", 2), timeout_seconds=payload.get("timeout_seconds", 180), actor=payload.get("actor", "coding-agent"), acceptance_criteria=payload.get("acceptance_criteria") or [])
     if action == "rollback":
         return service.rollback(payload.get("repo_path", ""), payload.get("checkpoint", ""), confirmed=bool(payload.get("confirmed")), actor=payload.get("actor", "user"))
     return {"error": f"unknown action: {action}"}
@@ -1860,14 +1865,39 @@ def autonomous_subagents(payload):
     from memoryos.memory_store import MemoryStore
     from providers import create_model_provider
     from services.autonomous_subagent_service import AutonomousSubagentService
-    provider = create_model_provider({
-        "provider": os.environ.get("MODEL_PROVIDER", "qwen"),
-        "base_url": os.environ.get("MODEL_BASE_URL", "http://127.0.0.1:8000/v1"),
-        "model": os.environ.get("MODEL_NAME", "Qwen3.5-9B-Q4_K_M"),
-        "api_key": os.environ.get("MODEL_API_KEY", ""),
-        "requires_api_key": os.environ.get("MODEL_REQUIRES_API_KEY", "false").lower() == "true",
-    })
-    service = AutonomousSubagentService(lambda _spec: provider, store=MemoryStore(_memory_db_path()), checkpoint_root=Path(BASE_DIR).parent / "output" / "subagents")
+    output_root = Path(os.environ.get("CLAWOS_OUTPUT_DIR") or (Path(BASE_DIR).parent / "output"))
+    provider = None
+    if payload.get('team_profile') != 'reliable_coding' or payload.get('action', 'run') == 'run':
+        provider = create_model_provider({
+            "provider": os.environ.get("MODEL_PROVIDER", "qwen"),
+            "base_url": os.environ.get("MODEL_BASE_URL", "http://127.0.0.1:8000/v1"),
+            "model": os.environ.get("MODEL_NAME", "Qwen3.5-9B-Q4_K_M"),
+            "api_key": os.environ.get("MODEL_API_KEY", ""),
+            "requires_api_key": os.environ.get("MODEL_REQUIRES_API_KEY", "false").lower() == "true",
+        })
+    if payload.get("team_profile") == "reliable_coding":
+        from services.reliable_collaboration import ReliableCollaborationService
+        service = ReliableCollaborationService(lambda _spec: provider,
+            store=MemoryStore(_memory_db_path()), root=output_root / "collaboration-runs")
+        action = payload.get('action', 'run')
+        if action != 'run':
+            from services.collaboration_delivery import CollaborationDelivery
+            delivery = CollaborationDelivery(service)
+            run_id = payload.get('run_id', '')
+            if action == 'prepare_delivery':
+                return asyncio.run(delivery.prepare(run_id, confirmed=payload.get('confirmed') is True))
+            if action == 'inspect_delivery':
+                return delivery.inspect(run_id)
+            if action == 'approve_delivery':
+                return delivery.approve(run_id, manifest_digest=payload.get('manifest_digest'),
+                    actor=payload.get('actor'), confirmed=payload.get('confirmed') is True)
+            raise ValueError('unknown reliable collaboration action')
+        return asyncio.run(service.run(payload.get("repo_path", ""), payload.get("objective", ""),
+            allowed_paths=payload.get("allowed_paths") or [], test_commands=payload.get("test_commands") or [],
+            confirmed=payload.get("confirmed") is True, resume_run=payload.get("resume_run", ""),
+            actor=payload.get("actor", "coordinator"), limits=payload.get("limits") or None,
+            requirements=payload.get('requirements')))
+    service = AutonomousSubagentService(lambda _spec: provider, store=MemoryStore(_memory_db_path()), checkpoint_root=output_root / "subagents")
     return asyncio.run(service.run(payload.get("objective", ""), payload.get("roles") or [], shared_evidence=payload.get("shared_evidence") or [], confirmed_side_effect_tools=payload.get("confirmed_tools") or [], run_budget=payload.get("budget") or {}, resume_checkpoint=payload.get("resume_checkpoint", ""), actor=payload.get("actor", "coordinator")))
 
 

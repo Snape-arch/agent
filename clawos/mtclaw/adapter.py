@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import time
+import uuid
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
@@ -19,6 +21,7 @@ class MTClawAdapter:
         self.timeout_s = float(config.get("timeout_s", 120.0))
         self.fallback_on_error = _as_bool(config.get("fallback_on_error", True))
         self._http = http_client
+        self._sessions = {}
 
     async def health(self) -> dict[str, Any]:
         if not self.enabled:
@@ -37,6 +40,8 @@ class MTClawAdapter:
                 "status": payload.get("status", "ok"),
                 "ready": payload.get("ready", payload.get("warmup_ok", True)),
                 "tools_loaded": payload.get("tools_loaded"),
+                "request_trace_version": payload.get('request_trace_version',0),
+                "caller_context_version": payload.get('caller_context_version',0),
                 "latency_ms": round((time.perf_counter() - started) * 1000, 2),
             }
         except Exception as exc:
@@ -54,8 +59,22 @@ class MTClawAdapter:
         session_id: str,
         options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        # MTClaw keeps per-session context in memory. Serialize turns from this
+        # client so parallel requests cannot overwrite that shared context.
+        lock, count = self._sessions.get(session_id, (asyncio.Lock(), 0))
+        self._sessions[session_id] = (lock, count+1)
+        try:
+            async with lock:
+                return await self._route(messages, session_id, options)
+        finally:
+            _, count = self._sessions[session_id]
+            if count == 1: self._sessions.pop(session_id)
+            else: self._sessions[session_id] = (lock, count-1)
+
+    async def _route(self, messages, session_id, options=None):
         started = time.perf_counter()
         request_started_at = datetime.now(timezone.utc).isoformat()
+        request_id = uuid.uuid4().hex
         options = options or {}
         payload = {
             "model": options.get("model") or self.model,
@@ -67,6 +86,7 @@ class MTClawAdapter:
         headers = {
             "Content-Type": "application/json",
             "x-openclaw-session-id": session_id,
+            "x-clawos-request-id": request_id,
         }
         try:
             response = await self._client().post(
@@ -77,13 +97,18 @@ class MTClawAdapter:
             )
             response.raise_for_status()
             raw = response.json()
-            trace = await self._fetch_trace(session_id, request_started_at)
+            content = _assistant_content(raw)
+            if not content.strip():
+                raise ValueError('MTClaw returned no visible assistant content')
+            trace = await self._fetch_trace(session_id, request_started_at, request_id)
             return {
                 "ok": True,
                 "provider": "mtclaw",
                 "model": raw.get("model", payload["model"]),
                 "raw": raw,
-                "content": _assistant_content(raw),
+                "content": content,
+                "request_id": request_id,
+                "trace_status": "verified" if trace else "no_current_tool_evidence",
                 "trace": trace,
                 "duration_ms": round((time.perf_counter() - started) * 1000, 2),
                 "error": "",
@@ -100,7 +125,7 @@ class MTClawAdapter:
                 "error": type(exc).__name__,
             }
 
-    async def _fetch_trace(self, session_id: str, since: str) -> list[dict[str, Any]]:
+    async def _fetch_trace(self, session_id: str, since: str, request_id: str = '') -> list[dict[str, Any]]:
         try:
             async def fetch(params: dict[str, Any]) -> list[dict[str, Any]]:
                 response = await self._client().get(
@@ -110,14 +135,13 @@ class MTClawAdapter:
                 response.raise_for_status()
                 return response.json().get("entries") or []
 
-            entries = await fetch({"since": since, "limit": 20})
-            matched = [entry for entry in entries if str(entry.get("session_key", "")) == str(session_id)]
-            # Router history clocks may have coarser precision than the client
-            # request timestamp. Retry without `since`, still scoped to the
-            # exact session, instead of silently losing a real tool trace.
-            if not matched:
-                entries = await fetch({"limit": 50})
-                matched = [entry for entry in entries if str(entry.get("session_key", "")) == str(session_id)]
+            # Request identity is mandatory for attribution, even when an old
+            # router ignores these filters. A missing trace is better than
+            # claiming a previous or concurrent request's tool execution.
+            params = {"request_id": request_id, "session_key": session_id, "limit": 200} if request_id else {"since": since, "limit": 200}
+            entries = await fetch(params)
+            matched = [entry for entry in entries if str(entry.get("session_key", "")) == str(session_id)
+                       and (entry.get('request_id') == request_id if request_id else str(entry.get('timestamp','')) > since)]
             return _normalize_history(matched)
         except Exception:
             return []
@@ -166,12 +190,13 @@ def _normalize_history(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 content = {"raw": str(content)}
             traces.append({
                 "timestamp": call.get("timestamp") or entry.get("timestamp", ""),
+                "request_id": entry.get("request_id", ""),
                 "session_key": entry.get("session_key", ""),
                 "user_message": entry.get("user_message", ""),
                 "function_name": call.get("name", ""),
                 "tool_input": arguments,
                 "tool_result": content,
-                "is_error": bool(result.get("is_error")),
+                "is_error": call_id not in results or 'content' not in result or bool(result.get("is_error")),
                 "tool_rounds": entry.get("tool_rounds", 0),
             })
     return traces

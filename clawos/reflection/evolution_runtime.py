@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -38,7 +39,7 @@ class RuntimePolicyController:
 
     def resolve(self, target_type: str, target_key: str, identity: str = "") -> dict[str, Any]:
         current = self._store.get_runtime_policy(target_type, target_key) or {}
-        active_payload = dict(current.get("payload") or {})
+        active_payload = dict(current.get("payload") or {}) if current.get('active', False) else {}
         selection = {
             "target_type": target_type,
             "target_key": target_key,
@@ -57,6 +58,7 @@ class RuntimePolicyController:
             if run.get("target_type") == target_type
             and run.get("target_key") == target_key
             and run.get("status") in {"shadow", "canary"}
+            and run.get("baseline_policy_version", -1) == int(current.get("version") or 0)
         ]
         if not eligible:
             return selection
@@ -195,6 +197,8 @@ class ExecutedEvolutionBenchmarkRunner:
             cwd=str(ROOT.parent),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             timeout=120,
         )
         if completed.returncode not in {0, 1}:

@@ -7,6 +7,10 @@ class ManagementService:
         self._store = store
 
     def compact_conversation(self, session_id, keep_recent=20):
+        with self._store.transaction():
+            return self._compact_conversation(session_id,max(1,int(keep_recent)))
+
+    def _compact_conversation(self, session_id, keep_recent):
         """Persist a bounded semantic summary, then delete compacted messages."""
         msgs = self._store.get_session_messages(session_id, limit=10000)
         if len(msgs) <= keep_recent:
@@ -22,11 +26,9 @@ class ManagementService:
         summary = "\n".join([
             previous,
             *lines[-40:],
-        ]).strip()
+        ]).strip()[-20000:]
         self._store.save_session_summary(session_id, summary, len(compacted))
-        deleted = self._store.delete_oldest_session_messages(
-            session_id, len(compacted)
-        )
+        deleted = self._store.archive_session_messages(session_id,[m["id"] for m in compacted])
         return {
             "compacted": True,
             "total": len(msgs),
@@ -40,7 +42,7 @@ class ManagementService:
         pref = self._store.get_preference(key)
         if pref:
             new_conf = min(1.0, pref.get("confidence", 0.5) + increment)
-            self._store.set_preference(key, pref.get("value", value), pref.get("category", "general"), new_conf)
+            self._store.set_preference(key, value, pref.get("category", "general"), new_conf)
             return {"updated": True, "key": key, "new_confidence": new_conf}
         return {"updated": False, "key": key}
 

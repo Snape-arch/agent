@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import time
 import wave
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -63,7 +64,9 @@ class MeetingAudioService:
             transcript_status=transcript_status,
             engine=transcript_meta["engine"],
         )
-        slug = safe_artifact_slug(title or audio.stem)
+        run_id = 'meeting-audio-' + uuid.uuid4().hex
+        slug = safe_artifact_slug(title or audio.stem) + '-' + run_id[-12:]
+        meeting_card['review_required'] = bool(transcript_text.strip())
         card_artifact = self.artifacts.write_markdown(
             f"{slug}/meeting_card.md",
             f"{title or audio.stem} Meeting Card",
@@ -75,7 +78,7 @@ class MeetingAudioService:
                     for item in meeting_card["actions"]
                 ]),
                 ("Risks", meeting_card["risks"]),
-                ("Speaker Turns", [f"{turn.get('speaker')}: {turn.get('text')}" for turn in diarization[:24]]),
+                ("Speaker Turns", [f"{turn.get('speaker') or '说话人未确认'}: {turn.get('text')}" for turn in diarization[:24]]),
             ],
         )
         transcript_artifact = self.artifacts.write_json(
@@ -88,22 +91,20 @@ class MeetingAudioService:
                 "transcription": transcript_meta,
             },
         )
-        workflow = self.workflow_engine.gate_rework_until_done(
-            workflow_id=f"meeting-audio-{safe_artifact_slug(str(meeting_id or slug))}",
-            name="meeting_audio_to_card",
-            gate_statuses=[{
-                "name": "transcript_available",
-                "status": "pass" if transcript_text.strip() else "blocked",
-                "score": 100 if transcript_text.strip() else 0,
-                "failures": [] if transcript_text.strip() else ["No local ASR engine or transcript was available."],
-            }],
-            artifact_saves=[card_artifact, transcript_artifact],
-        )
+        workflow_run = self.workflow_engine.start(run_id, 'meeting_audio_to_card')
+        workflow_run.transition('running', reason='transcript extraction completed')
+        workflow_run.add_gate('transcript_available', 'pass' if transcript_text.strip() else 'blocked', 100 if transcript_text.strip() else 0, [] if transcript_text.strip() else ['No transcript available'])
+        for artifact in (card_artifact, transcript_artifact): workflow_run.add_artifact(artifact)
+        if transcript_text.strip():
+            workflow_run.transition('waiting_gate', reason='awaiting human transcript/minutes review')
+            workflow_run.add_gate('human_review', 'pending', None, ['Draft is not published to knowledge'])
+        else: workflow_run.transition('blocked', reason='no transcript')
+        workflow = workflow_run.to_dict()
         run = RunRecord(
-            run_id=f"meeting-audio-{safe_artifact_slug(str(meeting_id or slug))}",
+            run_id=run_id,
             run_type="meeting_audio",
             title=title or audio.stem,
-            status="pass" if transcript_text.strip() else "blocked",
+            status="needs_review" if transcript_text.strip() else "blocked",
             actor="meeting-audio-service",
             scenario="meeting",
             inputs={"audio_path": str(audio), "transcript_path": str(transcript_path or "")},
@@ -119,7 +120,7 @@ class MeetingAudioService:
         )
         run.add_artifact("meeting_card", "Structured meeting card", card_artifact["path"], storage=card_artifact)
         run.add_artifact("transcript_json", "Transcript and diarization JSON", transcript_artifact["path"], storage=transcript_artifact)
-        run.add_evidence("meeting_audio", summary or title or audio.stem, citation=card_artifact["path"], score=1.0 if transcript_text.strip() else 0.0)
+        run.add_evidence("meeting_audio", summary or title or audio.stem, citation=card_artifact["path"], score=0.5 if transcript_text.strip() else 0.0)
         if not transcript_text.strip():
             run.add_failure_case(
                 "meeting_audio_transcription_unavailable",
@@ -130,15 +131,8 @@ class MeetingAudioService:
             )
         run_record = self.store.save_run_record(run.to_dict()) if self.store else run.to_dict()
         knowledge_item = None
-        if transcript_text.strip() and self.store:
-            knowledge_item = self.store.add_knowledge(
-                title=f"{title or audio.stem} meeting card",
-                content=json.dumps(meeting_card, ensure_ascii=False, indent=2),
-                category="meeting",
-                source=card_artifact["path"],
-                tags=["meeting", "audio", "artifact", "evidence"],
-                confidence=0.84,
-            )
+        # ASR/import is a draft. Publishing unreviewed summaries used to let
+        # recognition mistakes become authoritative retrieval evidence.
         return {
             "transcript": transcript_text,
             "transcript_status": transcript_status,
@@ -216,7 +210,7 @@ class MeetingAudioService:
         for index, segment in enumerate(segments, 1):
             text = str(getattr(segment, "text", "") or "").strip()
             if text:
-                lines.append(f"[{segment.start:.2f}-{segment.end:.2f}] Speaker {((index - 1) % 2) + 1}: {text}")
+                lines.append(f"[{segment.start:.2f}-{segment.end:.2f}] {text}")
         return lines
 
     def _transcribe_whisper_cli(self, audio: Path) -> tuple[str, dict[str, Any]]:
@@ -283,24 +277,20 @@ class MeetingAudioService:
 
     def diarize(self, transcript: str, segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
         turns = []
-        pattern = re.compile(r"^(?:\[(?P<time>[^\]]+)\]\s*)?(?P<speaker>[^:\n：]{1,40})[:：]\s*(?P<text>.+)$")
+        excluded = {"decision", "risk", "action", "决定", "风险", "行动项", "待办"}
         for line in str(transcript or "").splitlines():
-            match = pattern.match(line.strip())
-            if match:
-                speaker = match.group("speaker").strip()
-                if speaker.lower() not in {"decision", "risk", "action"} and speaker not in {"决定", "风险", "行动项", "待办"}:
-                    turns.append({"time": match.group("time") or "", "speaker": speaker, "text": match.group("text").strip(), "method": "label"})
-        if turns:
-            return turns
-        sentences = [item.strip() for item in re.split(r"(?<=[。！？.!?])\s+|[\r\n]+", str(transcript or "")) if item.strip()]
-        for index, text in enumerate(sentences):
-            segment = segments[index] if index < len(segments) else {}
-            turns.append({
-                "time": f"{segment.get('start', '')}-{segment.get('end', '')}".strip("-"),
-                "speaker": f"Speaker {index % 2 + 1}",
-                "text": text,
-                "method": "heuristic_segment_alternation",
-            })
+            text = line.strip()
+            if not text:
+                continue
+            timed = re.match(r"^\[([^\]]+)\]\s*(.*)$", text)
+            stamp = timed.group(1) if timed else ""
+            text = timed.group(2) if timed else text
+            label = re.match(r"^([^:\n：]{1,40})[:：]\s*(.+)$", text)
+            speaker = label.group(1).strip() if label else None
+            if speaker and speaker.lower() not in excluded:
+                turns.append(dict(time=stamp, speaker=speaker, text=label.group(2).strip(), method="label"))
+            else:
+                turns.append(dict(time=stamp, speaker=None, text=text, method="unattributed"))
         return turns
 
     @staticmethod
@@ -323,5 +313,7 @@ class MeetingAudioService:
             "due_dates": sorted({item.get("due_date") for item in actions if item.get("due_date")}),
             "speaker_count": len({turn.get("speaker") for turn in diarization if turn.get("speaker")}),
             "transcript_status": transcript_status,
+            "attribution_status": "needs_review" if any(not t.get("speaker") for t in diarization) else "provided_labels",
+            "unattributed_turn_count": sum(not t.get("speaker") for t in diarization),
             "transcription_engine": engine,
         }

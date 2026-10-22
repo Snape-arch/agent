@@ -74,13 +74,14 @@ class WorkspaceServicesTests(unittest.TestCase):
 
         self.assertEqual(result["transcript_status"], "transcript_imported")
         self.assertIn("Decision: Use local deployment", result["transcript"])
-        self.assertEqual({turn["speaker"] for turn in result["diarization"]}, {"Alice", "Bob"})
+        self.assertEqual({turn["speaker"] for turn in result["diarization"] if turn["speaker"]}, {"Alice", "Bob"})
         self.assertIn("Use local deployment", meeting["decisions"])
         self.assertIn("audio model may be unavailable", meeting["risks"])
         self.assertEqual(result["meeting_card"]["transcript_status"], "transcript_imported")
         self.assertTrue(card_exists)
         self.assertEqual(run["run_type"], "meeting_audio")
-        self.assertTrue(result["knowledge_item"])
+        self.assertIsNone(result["knowledge_item"])
+        self.assertTrue(result['meeting_card']['review_required'])
         self.assertTrue(any(d["connector_type"] == "calendar_ics" for d in drafts["drafts"]))
         self.assertTrue(draft_exists)
 

@@ -16,6 +16,7 @@ from services.coding_context_service import CodingContextService
 from services.coding_trace_service import CodingTraceService
 from services.coding_workflow_service import CodingWorkflowService
 from services.lsp_bridge_service import LanguageServerManager
+from services.task_service import TaskService
 
 
 def git(repo: Path, *args: str) -> str:
@@ -77,6 +78,28 @@ class ScriptedProvider:
         )
 
 
+class RecoveringProposalProvider(ScriptedProvider):
+    def __init__(self):
+        super().__init__()
+        duplicate = {
+            "path": "maths.py", "operation": "replace",
+            "old_text": "return a - b", "new_text": "return a + b",
+        }
+        self.actions = [
+            self.actions[0],
+            {
+                "action": "propose_patch",
+                "changes": [duplicate, dict(duplicate)],
+                "test_commands": [
+                    [sys.executable, "-m", "unittest", "-q", "test_maths"]
+                ],
+                "explanation": "Malformed duplicate proposal.",
+            },
+            self.actions[1],
+            self.actions[2],
+        ]
+
+
 class CompetitiveClosureTests(unittest.TestCase):
     def test_agentic_loop_observes_edits_tests_and_records_bound_trace(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -135,6 +158,69 @@ class CompetitiveClosureTests(unittest.TestCase):
             self.assertNotIn(".claude/rules/javascript.md", paths)
             self.assertLessEqual(len(store.get_session_messages("s1", 100)), 24)
             self.assertIn("message 0", store.get_session_summary("s1"))
+
+    def test_agentic_loop_repairs_invalid_proposal_inside_same_trajectory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = make_repo(root)
+            trace = CodingTraceService(root / "traces.json")
+            result = asyncio.run(AgenticCodingLoopService(
+                RecoveringProposalProvider(),
+                workflow=CodingWorkflowService(artifact_root=root / "runs"),
+                trace=trace,
+            ).run(
+                repo, "fix add", confirmed=True,
+                task_id="repair-task", session_id="repair-session",
+            ))
+            record = trace.get(result["trajectory_id"])
+
+        self.assertEqual(result["status"], "passed")
+        self.assertIn(
+            "proposal_error",
+            {item["type"] for item in result["observations"]},
+        )
+        self.assertTrue(any(
+            item["type"] == "failure"
+            and item["status"] == "recoverable"
+            and item["metadata"].get("phase") == "plan_patch"
+            for item in record["steps"]
+        ))
+        self.assertEqual(record["status"], "passed")
+
+    def test_agentic_actions_enter_learning_trace_without_fake_propensity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = make_repo(root)
+            store = MemoryStore(str(root / "memory.db"))
+            task = TaskService(store).create(
+                "evaluation-session", "Fix controlled addition bug",
+                metadata={"scenario": "coding"},
+            )
+            service = AgenticCodingLoopService(
+                ScriptedProvider(),
+                workflow=CodingWorkflowService(artifact_root=root / "runs"),
+                trace=CodingTraceService(root / "traces.json"),
+                learning_store=store,
+            )
+            result = asyncio.run(service.run(
+                repo, "fix add", confirmed=True,
+                task_id=str(task["id"]), session_id="evaluation-session",
+            ))
+            TaskService(store).finish(
+                task["id"], "succeeded",
+                result_payload={"trajectory_id": result["trajectory_id"]},
+            )
+            trajectory = store.get_agent_trajectory(task_id=task["id"])
+            quality = store.agent_learning_data_quality()
+
+        self.assertEqual(result["learning_decision_count"], 3)
+        self.assertEqual(len(trajectory["steps"]), 3)
+        self.assertTrue(all(
+            item["behavior_propensity"] == 0
+            for item in trajectory["steps"]
+        ))
+        self.assertEqual(quality["valid_propensity_count"], 0)
+        self.assertEqual(quality["valid_propensity_rate"], 0)
 
     def test_language_server_manager_reuses_process_and_supports_rich_actions(self):
         with tempfile.TemporaryDirectory() as tmp:

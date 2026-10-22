@@ -1,0 +1,29 @@
+{
+  "name": "clawos-search-evidence-policy-v1",
+  "version": 1,
+  "frozen_at": "2026-08-12",
+  "review_status": "maintainer_reviewed",
+  "cases": [
+    {"name":"stable_datetime_concept","scenario":"stable","query":"Python 的 datetime aware 和 naive 对象有什么区别？","should_search":false,"expected_reason":"stable_knowledge"},
+    {"name":"stable_dqn_summary","scenario":"stable","query":"总结 DQN 经验回放和目标网络的作用","should_search":false,"expected_reason":"stable_knowledge"},
+    {"name":"local_repo_graph","scenario":"local","query":"分析当前仓库的模块依赖关系","should_search":false,"local_context_sufficient":true,"expected_reason":"local_evidence_is_sufficient"},
+    {"name":"local_attached_paper","scenario":"local","query":"精读所附论文并概括实验方法","should_search":false,"has_attachments":true,"expected_reason":"attachments_are_primary_evidence"},
+    {"name":"stable_git_rebase","scenario":"stable","query":"解释 git rebase 和 merge 的概念差异","should_search":false,"expected_reason":"stable_knowledge"},
+    {"name":"stable_sql_join","scenario":"stable","query":"SQL left join 是什么？","should_search":false,"expected_reason":"stable_knowledge"},
+
+    {"name":"explicit_python_docs","scenario":"explicit_source","query":"请搜索 Python datetime timezone 官方文档并给出来源","should_search":true,"expected_domains":["docs.python.org"],"expected_terms":["datetime","timezone"],"minimum_answer_quality":0.65},
+    {"name":"fresh_python_release","scenario":"freshness","query":"Python 当前最新稳定版和发布说明","should_search":true,"expected_domains":["python.org"],"expected_terms":["Python","release"],"minimum_answer_quality":0.55},
+    {"name":"fresh_chrome_release","scenario":"freshness","query":"Chrome 最新稳定版发布说明","should_search":true,"expected_domains":["chromereleases.googleblog.com","developer.chrome.com"],"expected_terms":["Chrome","release"],"minimum_answer_quality":0.55},
+    {"name":"official_fastapi_upload","scenario":"official","query":"请搜索 FastAPI UploadFile 官方文档并给出来源","should_search":true,"expected_domains":["fastapi.tiangolo.com"],"expected_terms":["FastAPI","UploadFile"],"minimum_answer_quality":0.65},
+    {"name":"official_react_effect","scenario":"official","query":"请搜索 React useEffect 官方参考文档并给出来源","should_search":true,"expected_domains":["react.dev"],"expected_terms":["React","useEffect"],"minimum_answer_quality":0.65},
+    {"name":"official_typescript_generics","scenario":"official","query":"Search the TypeScript generics handbook official documentation and cite sources","should_search":true,"expected_domains":["typescriptlang.org"],"expected_terms":["TypeScript","generics"],"minimum_answer_quality":0.65},
+    {"name":"high_risk_nist_ai","scenario":"high_risk","query":"采用生成式 AI 的企业应遵循哪些最新 NIST 风险管理要求？","should_search":true,"expected_domains":["nist.gov"],"expected_terms":["AI","risk","management"],"minimum_answer_quality":0.65},
+    {"name":"high_risk_cisa_reporting","scenario":"high_risk","query":"美国网络事件报告当前有哪些 CISA 官方要求？","should_search":true,"expected_domains":["cisa.gov"],"expected_terms":["cyber","incident","reporting"],"minimum_answer_quality":0.6},
+    {"name":"high_risk_china_data_law","scenario":"high_risk","query":"中国数据安全合规当前适用哪些官方法律规定？","should_search":true,"expected_domains":["gov.cn","npc.gov.cn"],"expected_terms":["数据","安全","法律"],"minimum_answer_quality":0.55},
+    {"name":"paper_rag","scenario":"research","query":"请搜索 retrieval augmented generation 原始论文并给出来源","should_search":true,"expected_domains":["arxiv.org","aclanthology.org"],"expected_terms":["retrieval","augmented","generation"],"minimum_answer_quality":0.55},
+    {"name":"product_deepseek_api","scenario":"product","query":"DeepSeek API 当前官方文档和接口说明","should_search":true,"expected_domains":["deepseek.com","api-docs.deepseek.com"],"expected_terms":["DeepSeek","API"],"minimum_answer_quality":0.6},
+    {"name":"community_python_async","scenario":"community","query":"Python asyncio 在真实项目里有哪些常见坑和实践经验？","should_search":true,"require_community":true,"community_domains":["stackoverflow.com","reddit.com","zhihu.com","csdn.net","juejin.cn","segmentfault.com","v2ex.com"],"expected_terms":["asyncio","Python"],"minimum_answer_quality":0.45},
+    {"name":"community_rust_async","scenario":"community","query":"Rust async 在生产项目中的踩坑经验和建议","should_search":true,"require_community":true,"community_domains":["users.rust-lang.org","stackoverflow.com","reddit.com","zhihu.com","juejin.cn"],"expected_terms":["Rust","async"],"minimum_answer_quality":0.45},
+    {"name":"community_rag_evaluation_cn","scenario":"community","query":"中文社区里大家如何评估 RAG 引用质量，有哪些实践经验？","should_search":true,"require_community":true,"community_domains":["zhihu.com","csdn.net","juejin.cn","segmentfault.com"],"expected_terms":["RAG","引用","评估"],"minimum_answer_quality":0.45}
+  ]
+}

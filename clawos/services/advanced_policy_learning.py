@@ -58,6 +58,14 @@ class CounterfactualTraceAudit:
                 failures["incomplete_candidate_scores"] += 1
                 continue
             try:
+                numeric_scores = all(math.isfinite(float(value)) for value in scores.values())
+            except (TypeError, ValueError):
+                numeric_scores = False
+            if (len(candidates) != len(set(candidates)) or not numeric_scores
+                    or record.get("action_name", selected) != selected):
+                failures["invalid_action_trace"] += 1
+                continue
+            try:
                 propensity = float(propensity)
             except (TypeError, ValueError):
                 propensity = 0.0
@@ -97,6 +105,7 @@ class RobustOffPolicyEvaluator:
         seed: int = 17,
         minimum_ess: float = 20.0,
         minimum_overlap: float = 0.20,
+        minimum_samples: int = 30,
         reward_model: Callable[[dict[str, Any], str], float] | None = None,
     ) -> dict[str, Any]:
         audit = CounterfactualTraceAudit.audit(records)
@@ -145,12 +154,14 @@ class RobustOffPolicyEvaluator:
                 )
             except (TypeError, ValueError):
                 continue
-            if not 0 < behavior <= 1:
+            if not 0 < behavior <= 1 or not math.isfinite(reward):
                 continue
             probabilities = candidate_policy(record, candidates)
             if set(probabilities) != set(candidates):
                 continue
-            total = sum(max(0.0, float(value)) for value in probabilities.values())
+            if not all(math.isfinite(float(value)) and float(value) >= 0 for value in probabilities.values()):
+                continue
+            total = sum(float(value) for value in probabilities.values())
             if total <= 0:
                 continue
             normalized = {
@@ -211,21 +222,28 @@ class RobustOffPolicyEvaluator:
             sum(weights) ** 2 / max(sum(value * value for value in weights), 1e-12)
             if weights else 0.0
         )
+        cluster_weights = defaultdict(float)
+        for row in rows:
+            cluster_weights[row['cluster']] += row['weight']
+        cluster_ess = (sum(cluster_weights.values()) ** 2 /
+                       max(sum(value ** 2 for value in cluster_weights.values()), 1e-12))
         overlap = _mean([row["overlap"] for row in rows])
         bootstrap = self._bootstrap(rows, bootstrap_samples, seed)
         estimates = [ips, snips, dr]
         agreement_span = max(estimates) - min(estimates) if estimates else 0.0
         support_passed = bool(
             audit["ready"]
-            and ess >= minimum_ess
-            and overlap >= minimum_overlap
+            and ess >= max(20, minimum_ess)
+            and cluster_ess >= max(20, minimum_ess)
+            and overlap >= max(0.2, minimum_overlap)
+            and len({row["cluster"] for row in rows}) >= max(30, minimum_samples)
         )
         agreement_passed = agreement_span <= 0.25
         lower = bootstrap["dr_lower_95"]
         passed = bool(
             support_passed
             and agreement_passed
-            and lower >= baseline - 0.02
+            and bootstrap.get("lift_lower_95", -1) >= -0.02
         )
         temporal = self._temporal_holdout(rows)
         return {
@@ -238,6 +256,7 @@ class RobustOffPolicyEvaluator:
             "snips": round(snips, 6),
             "doubly_robust": round(dr, 6),
             "effective_sample_size": round(ess, 6),
+            "cluster_effective_sample_size": round(cluster_ess, 6),
             "overlap_rate": round(overlap, 6),
             "agreement_span": round(agreement_span, 6),
             "bootstrap": bootstrap,
@@ -255,7 +274,7 @@ class RobustOffPolicyEvaluator:
             "gates": {
                 "support": support_passed,
                 "estimator_agreement": agreement_passed,
-                "non_regression_lower_bound": lower >= baseline - 0.02,
+                "non_regression_lower_bound": bootstrap.get("lift_lower_95", -1) >= -0.02,
             },
             "passed": passed,
             "abort_reason": (
@@ -295,6 +314,7 @@ class RobustOffPolicyEvaluator:
             return {"samples": 0, "dr_lower_95": 0.0, "dr_upper_95": 0.0}
         generator = random.Random(seed)
         estimates = []
+        lifts = []
         clusters: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
             clusters[str(row.get("cluster") or "")].append(row)
@@ -305,13 +325,17 @@ class RobustOffPolicyEvaluator:
             for _ in range(count):
                 sample.extend(clusters[keys[generator.randrange(count)]])
             estimates.append(_mean([item["dr"] for item in sample]))
+            lifts.append(_mean([item["dr"] - item["reward"] for item in sample]))
         estimates.sort()
+        lifts.sort()
         low = estimates[int(0.025 * (len(estimates) - 1))]
         high = estimates[int(0.975 * (len(estimates) - 1))]
         return {
             "samples": len(estimates),
             "dr_lower_95": round(low, 6),
             "dr_upper_95": round(high, 6),
+            "lift_lower_95": round(lifts[int(0.025 * (len(lifts) - 1))], 6),
+            "lift_upper_95": round(lifts[int(0.975 * (len(lifts) - 1))], 6),
         }
 
     @staticmethod

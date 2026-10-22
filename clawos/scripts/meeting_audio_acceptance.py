@@ -105,7 +105,9 @@ def run_suite(out: Path | None = None) -> dict:
                 and bool(item["diarization"])
                 and bool(card["decisions"])
                 and bool(card["actions"])
-                and bool(item["knowledge_item"])
+                and item['knowledge_item'] is None
+                and card.get('review_required') is True
+                and item['run_record']['status'] == 'needs_review'
                 and bool(store.get_run_record(item["run_record"]["run_id"]))
             )
             results.append({

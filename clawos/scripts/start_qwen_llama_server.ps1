@@ -61,4 +61,13 @@ if (-not $server) {
 Write-Host "Starting Qwen local OpenAI-compatible server"
 Write-Host "Model: $ModelPath"
 Write-Host "URL:   http://$HostName`:$Port/v1"
-& $server -m $ModelPath --host $HostName --port $Port -c $ContextSize -np $Parallel -ngl $GpuLayers
+$originalModelPath = $env:PATH
+try {
+    # Some installations keep CUDA companion DLLs under runtime/ while the
+    # executable is in its parent. Give this child process that local path.
+    $runtimeDir = Join-Path (Split-Path -Parent $server) 'runtime'
+    if (Test-Path -LiteralPath $runtimeDir) { $env:PATH = "$runtimeDir;$env:PATH" }
+    & $server -m $ModelPath --host $HostName --port $Port -c $ContextSize -np $Parallel -ngl $GpuLayers
+} finally {
+    $env:PATH = $originalModelPath
+}

@@ -1,0 +1,153 @@
+{
+  "schema": "clawos.document-fidelity-corpus.v1",
+  "name": "ClawOS real PDF and DOCX semantic fidelity corpus",
+  "version": "1.0.0",
+  "review_status": "codex_assisted_visual_review_maintainer_pending",
+  "maintainer_signoff": false,
+  "truth_boundary": "Fixed local files with SHA-256 identity. Labels were produced by direct text and rendered-page inspection in Codex and are not production telemetry or an independent human panel. Technical acceptance may pass, but release parity claims remain disabled until maintainer sign-off and cross-application evidence pass.",
+  "acceptance_gates": {
+    "minimum_labelled_assertions": 40,
+    "classification_accuracy": 0.9,
+    "rendered_page_accuracy": 0.9,
+    "relation_recall": 0.8,
+    "count_constraint_accuracy": 0.9
+  },
+  "documents": [
+    {
+      "id": "generative-agents-2304.03442v2",
+      "path": "参考文献/2304.03442v2.pdf",
+      "format": "pdf",
+      "sha256": "1B31E77FB24D25D7598F2C49E955D12A28B95A6DABAD34ACDAC40F44BFB7A139",
+      "review": {"method": "pdftotext plus rendered-page inspection", "reviewed_at": "2026-08-27"},
+      "assertions": [
+        {"text": "Generative Agents: Interactive Simulacra of Human Behavior", "type": "heading", "page": 1},
+        {"text": "Figure 1: Generative agents are believable simulacra", "type": "figure_caption", "page": 1},
+        {"text": "ABSTRACT", "type": "heading", "page": 1},
+        {"text": "Permission to make digital or hard copies", "type": "page_notice", "page": 1},
+        {"text": "1 INTRODUCTION", "type": "heading", "page": 2},
+        {"text": "When referring to generative agents engaging in actions", "type": "footnote", "page": 2},
+        {"text": "2 RELATED WORK", "type": "heading", "page": 3}
+      ],
+      "relations": [{"source_text": "Figure 1: Generative agents", "type": "caption_of", "target_type": "figure"}],
+      "counts": {"pages": 22, "figures": {"min": 10}, "footnotes": {"min": 4, "max": 8}, "references": {"min": 15, "max": 45}}
+    },
+    {
+      "id": "voyager-2305.16291v2",
+      "path": "参考文献/2305.16291v2.pdf",
+      "format": "pdf",
+      "sha256": "769A4E33DDEEB73870849232EECE49AFE882C2D146362E33917CCB432BA0EFB8",
+      "review": {"method": "pdftotext plus rendered-page inspection", "reviewed_at": "2026-08-27"},
+      "assertions": [
+        {"text": "VOYAGER: An Open-Ended Embodied Agent", "type": "heading", "page": 1},
+        {"text": "Abstract", "type": "heading", "page": 1},
+        {"text": "Figure 1: VOYAGER discovers new Minecraft items", "type": "figure_caption", "page": 1},
+        {"text": "1 Introduction", "type": "heading", "page": 2},
+        {"text": "2 Method", "type": "heading", "page": 3},
+        {"text": "3.1 Experimental Setup", "type": "heading", "page": 6},
+        {"text": "Table 1: Tech tree mastery", "type": "table_caption", "page": 7},
+        {"text": "4 Limitations and Future Work", "type": "heading", "page": 10}
+      ],
+      "relations": [
+        {"source_text": "Figure 1: VOYAGER discovers", "type": "caption_of", "target_type": "figure"},
+        {"source_text": "Table 1: Tech tree mastery", "type": "caption_of", "target_type": "table"}
+      ],
+      "counts": {"pages": 42, "figures": {"min": 20}, "tables": {"min": 8}, "references": {"min": 30, "max": 140}}
+    },
+    {
+      "id": "memgpt-2310.08560v2",
+      "path": "参考文献/2310.08560v2.pdf",
+      "format": "pdf",
+      "sha256": "9F674BCFF69C86F11C813DCFAD613D8841F5F8ED17979E3C4DF06A91DF7762E0",
+      "review": {"method": "pdftotext plus rendered-page inspection", "reviewed_at": "2026-08-27"},
+      "assertions": [
+        {"text": "MemGPT: Towards LLMs as Operating Systems", "type": "heading", "page": 1},
+        {"text": "Abstract", "type": "heading", "page": 1},
+        {"text": "1. Introduction", "type": "heading", "page": 1},
+        {"text": "Figure 1. MemGPT", "type": "figure_caption", "page": 2},
+        {"text": "2.1. Main context", "type": "heading", "page": 2},
+        {"text": "3. Experiments", "type": "heading", "page": 4},
+        {"text": "Table 2. Deep memory retrieval", "type": "table_caption", "page": 5},
+        {"text": "5. Conclusion", "type": "heading", "page": 8}
+      ],
+      "relations": [
+        {"source_text": "Figure 1. MemGPT", "type": "caption_of", "target_type": "figure"},
+        {"source_text": "Table 2. Deep memory retrieval", "type": "caption_of", "target_type": "table"}
+      ],
+      "counts": {"pages": 13, "figures": {"min": 7}, "tables": {"min": 5}, "references": {"min": 25, "max": 100}}
+    },
+    {
+      "id": "skillos-2605.06614v1",
+      "path": "参考文献/2605.06614v1.pdf",
+      "format": "pdf",
+      "sha256": "E55B880B9564C63F5F791C02F423D41BD356EECC07002F85C6BABFCE72EE39C6",
+      "review": {"method": "pdftotext plus rendered-page inspection", "reviewed_at": "2026-08-27"},
+      "assertions": [
+        {"text": "SkillOS: Learning Skill Curation", "type": "heading", "page": 1},
+        {"text": "1. Introduction", "type": "heading", "page": 1},
+        {"text": "2. Related Work", "type": "heading", "page": 2},
+        {"text": "3. Methodology", "type": "heading", "page": 3},
+        {"text": "4. Experiments", "type": "heading", "page": 6},
+        {"text": "Table 1 | Experiment results on ALFWorld", "type": "table_caption", "page": 7},
+        {"text": "Figure 3 | Cross-task generalization", "type": "figure_caption", "page": 9},
+        {"text": "6. Conclusion", "type": "heading", "page": 11}
+      ],
+      "relations": [
+        {"source_text": "Table 1 | Experiment results", "type": "caption_of", "target_type": "table"},
+        {"source_text": "Figure 3 | Cross-task", "type": "caption_of", "target_type": "figure"}
+      ],
+      "counts": {"pages": 33, "figures": {"min": 30}, "tables": {"min": 10}, "footnotes": {"max": 12}, "references": {"min": 35, "max": 180}}
+    },
+    {
+      "id": "skillevolver-2605.10500v1",
+      "path": "参考文献/2605.10500v1.pdf",
+      "format": "pdf",
+      "sha256": "4CDF2A8F80F1B49951952E6678A9B11B314171C597757670BD0111F20C3F3185",
+      "review": {"method": "pdftotext plus rendered-page inspection", "reviewed_at": "2026-08-27"},
+      "assertions": [
+        {"text": "SKILLEVOLVER: SKILL LEARNING", "type": "heading", "page": 1},
+        {"text": "ABSTRACT", "type": "heading", "page": 1},
+        {"text": "1 INTRODUCTION", "type": "heading", "page": 1},
+        {"text": "On 83 SkillsBench tasks spanning", "type": "paragraph", "page": 1}
+      ],
+      "counts": {"pages": 20, "figures": {"min": 2}, "tables": {"min": 2}, "footnotes": {"max": 5}, "references": {"min": 35, "max": 150}}
+    },
+    {
+      "id": "clawos-plan-final",
+      "path": "计划书和题目要求/ClawOS 项目计划书与技术说明书-最终版本.docx",
+      "format": "docx",
+      "sha256": "5BCB873D051887A7830DA1EAB16A9935DDDE74E87A429E92AF07FE91192A85A4",
+      "review": {"method": "LibreOffice rendering of all seven pages plus OOXML inspection", "reviewed_at": "2026-08-27"},
+      "assertions": [
+        {"text": "ClawOS 项目计划书与技术说明书", "type": "heading", "page": 1},
+        {"text": "一、项目背景", "type": "heading", "page": 1},
+        {"text": "1.1 AI Agent的发展现状", "type": "heading", "page": 1},
+        {"text": "3.2 四大应用场景", "type": "heading", "page": 2},
+        {"text": "五、核心模块详解", "type": "heading", "page": 3},
+        {"text": "5.2 Reflection Engine", "type": "heading", "page": 4},
+        {"text": "八、开发计划", "type": "heading", "page": 5},
+        {"text": "九、预期成果", "type": "heading", "page": 6}
+      ],
+      "counts": {"pages": 7, "headings": 22, "tables": 13}
+    },
+    {
+      "id": "clawos-plan-original",
+      "path": "计划书和题目要求/ClawOS 项目计划书与技术说明书.docx",
+      "format": "docx",
+      "sha256": "A687B6E3D6BCA12B4C6D8D6F732675BB1B7F32F85D7E990A1CF1B34B8AE42F8A",
+      "review": {"method": "LibreOffice rendering of all seven pages plus OOXML inspection", "reviewed_at": "2026-08-27"},
+      "assertions": [
+        {"text": "ClawOS 项目计划书与技术说明书", "type": "heading", "page": 1},
+        {"text": "项目名称：ClawOS", "type": "paragraph", "page": 1},
+        {"text": "英文：ClawOS: A Self-Evolving Personal Agent", "type": "paragraph", "page": 1},
+        {"text": "一、项目背景", "type": "heading", "page": 1},
+        {"text": "二、项目目标", "type": "heading", "page": 2},
+        {"text": "五、需求分析", "type": "heading", "page": 3},
+        {"text": "七、MTClaw框架定位", "type": "heading", "page": 4},
+        {"text": "十、自进化系统", "type": "heading", "page": 5},
+        {"text": "十二、RAG系统", "type": "heading", "page": 6},
+        {"text": "十五、开发计划", "type": "heading", "page": 7}
+      ],
+      "counts": {"pages": 7, "headings": 20, "tables": 0}
+    }
+  ]
+}

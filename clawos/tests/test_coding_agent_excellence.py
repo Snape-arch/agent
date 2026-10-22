@@ -2,6 +2,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import os
+import json
+from unittest.mock import patch
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -93,7 +97,7 @@ class CodingAgentExcellenceTests(unittest.TestCase):
                 [["python", "-m", "unittest", "test_calc.py"]],
                 confirmed=True,
             )
-            self.assertEqual(result["status"], "passed")
+            self.assertEqual(result["status"], "passed", result)
             self.assertTrue(result["rounds"][0]["review"]["syntax_review"][0]["passed"])
             self.assertEqual(
                 inspection["context_pack"]["schema"],
@@ -120,6 +124,152 @@ class CodingAgentExcellenceTests(unittest.TestCase):
             self.assertTrue(created["isolated"])
             self.assertTrue(committed["committed"])
             self.assertFalse(committed["remote_mutation"])
+            self.assertIn("return a - b", (repo / "calc.py").read_text(encoding="utf-8"))
+
+    def test_task_worktree_captures_dirty_baseline_without_touching_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo = self._repo(root)
+            (repo / "calc.py").write_text(
+                "import math\n\ndef add(a, b):\n    return a * b\n",
+                encoding="utf-8",
+            )
+            (repo / "notes.md").write_text("local user note\n", encoding="utf-8")
+            source_status = subprocess.run(
+                ["git", "status", "--short"], cwd=repo, check=True,
+                capture_output=True, text=True,
+            ).stdout.splitlines()
+            service = CodingWorkspaceService()
+            task = service.create_task(
+                repo, root / "task-workspaces", "task-17", confirmed=True
+            )
+            workspace = Path(task["workspace"])
+            self.assertTrue(task["isolated"])
+            self.assertTrue(task["source_dirty"])
+            self.assertTrue(task["dirty_snapshot_commit"])
+            self.assertIn("return a * b", (workspace / "calc.py").read_text(encoding="utf-8"))
+            self.assertEqual(
+                (workspace / "notes.md").read_text(encoding="utf-8"),
+                "local user note\n",
+            )
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "status", "--short"], cwd=workspace, check=True,
+                    capture_output=True, text=True,
+                ).stdout,
+                "",
+            )
+            (workspace / "calc.py").write_text(
+                "import math\n\ndef add(a, b):\n    return a + b\n",
+                encoding="utf-8",
+            )
+            (workspace / "agent-output.txt").write_text(
+                "recover me\n", encoding="utf-8"
+            )
+            changes = service.changes(task)
+            source = service.verify_source(task)
+            listed = service.list_tasks(root / "task-workspaces")
+            self.assertEqual(len(listed), 1)
+            self.assertEqual(listed[0]["id"], Path(task["workspace_root"]).name)
+            self.assertEqual(changes["changed_files"], ["calc.py"])
+            self.assertTrue(Path(changes["patch_path"]).is_file())
+            self.assertFalse(source["source_mutated"])
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "status", "--short"], cwd=repo, check=True,
+                    capture_output=True, text=True,
+                ).stdout.splitlines(),
+                source_status,
+            )
+            rollback = service.rollback_task(
+                Path(task["workspace_root"]) / "workspace.json", confirmed=True
+            )
+            self.assertTrue(rollback["recoverable"])
+            self.assertIn(
+                "return a * b", (workspace / "calc.py").read_text(encoding="utf-8")
+            )
+            self.assertFalse((workspace / "agent-output.txt").exists())
+            recovery = Path(rollback["recovery_manifest"])
+            self.assertTrue(recovery.is_file())
+            self.assertTrue(
+                (recovery.parent / "untracked" / "agent-output.txt").is_file()
+            )
+
+    def test_task_worktree_runs_tests_through_restricted_backend(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo = self._repo(root)
+            workspace_service = CodingWorkspaceService()
+            task = workspace_service.create_task(
+                repo, root / "task-workspaces", "sandbox-18", confirmed=True
+            )
+            workspace = Path(task["workspace"])
+            workflow = CodingWorkflowService(artifact_root=root / "artifacts")
+            # This test exercises the actual legacy restricted-token backend.
+            # Installed profiles and strict-mode settings on the host must not
+            # silently select a different backend for this regression.
+            with patch.dict(os.environ, {"CLAWOS_REQUIRE_OS_SANDBOX": "0"}), patch(
+                "services.coding_workflow_service.WindowsAppContainerBoundary.status",
+                return_value={"installed": False},
+            ):
+                result = workflow.execute(
+                    workspace,
+                    "fix addition in isolated sandbox",
+                    [{
+                        "path": "calc.py", "operation": "replace",
+                        "old_text": "return a - b", "new_text": "return a + b",
+                    }],
+                    [["python", "-m", "unittest", "test_calc.py"]],
+                    confirmed=True,
+                )
+            self.assertEqual(result["status"], "passed", result)
+            sandbox = result["rounds"][0]["tests"][0]["sandbox"]
+            if os.name == "nt":
+                self.assertTrue(sandbox["os_enforced"])
+                self.assertEqual(
+                    sandbox["backend"], "windows-restricted-token-low-integrity",
+                    sandbox,
+                )
+                if sandbox["backend"] == "windows-restricted-token-low-integrity":
+                    self.assertFalse(sandbox["network_non_bypass_enforced"])
+                else:
+                    self.assertTrue(sandbox["restricted_token_attempted"])
+                    self.assertTrue(sandbox["restricted_token_error"])
+                self.assertTrue(sandbox["egress"]["default_deny_external"])
+                self.assertTrue(
+                    sandbox["egress"]["proxy_environment_configured"]
+                )
+                self.assertFalse(
+                    sandbox["egress"]["direct_socket_non_bypass_enforced"]
+                )
+            self.assertFalse(workspace_service.verify_source(task)["source_mutated"])
+
+    def test_workspace_retention_archives_dirty_tasks_before_pruning(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo = self._repo(root)
+            service = CodingWorkspaceService()
+            workspace_root = root / "task-workspaces"
+            clean = service.create_task(repo, workspace_root, "clean", confirmed=True)
+            dirty = service.create_task(repo, workspace_root, "dirty", confirmed=True)
+            (Path(dirty["workspace"]) / "calc.py").write_text(
+                "def add(a, b):\n    return a + b\n", encoding="utf-8"
+            )
+            expired = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+            for item in (clean, dirty):
+                metadata_path = Path(item["workspace_root"]) / "workspace.json"
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                metadata["lifecycle"]["last_activity_at"] = expired
+                metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+            preview = service.prune_tasks(workspace_root, max_age_hours=24)
+            self.assertTrue(preview["dry_run"])
+            self.assertEqual(len(preview["candidates"]), 2)
+            result = service.prune_tasks(
+                workspace_root, max_age_hours=24, dry_run=False, confirmed=True
+            )
+            self.assertEqual(len(result["removed"]), 2)
+            self.assertEqual(result["recoverable_dirty_workspaces"], 1)
+            self.assertTrue((workspace_root / ".archives").is_dir())
             self.assertIn("return a - b", (repo / "calc.py").read_text(encoding="utf-8"))
 
     def test_counterfactual_audit_and_robust_ope(self):

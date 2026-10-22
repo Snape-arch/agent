@@ -88,6 +88,15 @@ class SelfEvolutionManager:
         self._assert_allowed_target(run["target_type"])
         evidence = self._normalize_benchmarks(benchmarks or run.get("benchmarks") or {})
         gate = self._evaluate_gate(evidence)
+        if run['target_key']=='coding.proposal' or run['target_key'].startswith('coding.strategy.'):
+            from services.coding_rollout_service import coding_gate
+            coding=coding_gate(self._store,run_id)
+            gate['checks'].append(dict(benchmark='coding_execution',metric='coding_behavior_verified',
+                direction='required_true',baseline=False,candidate=coding['passed'],passed=coding['passed']))
+            gate['required_benchmarks'].append('coding_execution')
+            if not coding['passed']:gate['missing_benchmarks'].append('coding_execution')
+            gate['coding_execution']=coding
+            gate['passed']=gate['passed'] and coding['passed']
         passed = bool(gate["passed"])
         return self._store.update_self_evolution_run(
             run_id,
@@ -101,12 +110,14 @@ class SelfEvolutionManager:
 
     def start_shadow(self, run_id):
         run = self._require(run_id)
+        self._assert_current_baseline(run)
         self._assert_allowed_target(run["target_type"])
         gate = run.get("gate_result") or {}
         if not gate.get("passed"):
             raise ValueError("self-evolution run has not passed the regression gate")
         if run.get("status") not in {"validated", "shadow"}:
             raise ValueError("self-evolution run must be validated before shadow release")
+        self._assert_coding_regression(run)
         return self._store.update_self_evolution_run(
             run_id,
             status="shadow",
@@ -117,10 +128,16 @@ class SelfEvolutionManager:
         )
 
     def promote_canary(self, run_id, traffic_percent=10):
+        with self._store.transaction():
+            return self._promote_canary_locked(run_id, traffic_percent)
+
+    def _promote_canary_locked(self, run_id, traffic_percent=10):
         run = self._require(run_id)
+        self._assert_current_baseline(run)
         self._assert_allowed_target(run["target_type"])
         if run.get("status") not in {"shadow", "canary"}:
             raise ValueError("self-evolution run must be in shadow before canary")
+        self._assert_coding_regression(run)
         if self._paired_quality_sample_count(run["id"]) < self.MIN_CANARY_SAMPLES:
             raise ValueError(
                 f"canary requires at least {self.MIN_CANARY_SAMPLES} runtime quality samples"
@@ -138,10 +155,16 @@ class SelfEvolutionManager:
         )
 
     def activate(self, run_id, actor_id="system", reason=""):
+        with self._store.transaction():
+            return self._activate_locked(run_id, actor_id, reason)
+
+    def _activate_locked(self, run_id, actor_id="system", reason=""):
         run = self._require(run_id)
+        self._assert_current_baseline(run)
         self._assert_allowed_target(run["target_type"])
         if run.get("status") != "canary":
             raise ValueError("self-evolution run must complete canary before activation")
+        self._assert_coding_regression(run)
         if self._paired_quality_sample_count(run["id"]) < self.MIN_ACTIVATION_SAMPLES:
             raise ValueError(
                 f"activation requires at least {self.MIN_ACTIVATION_SAMPLES} runtime quality samples"
@@ -157,11 +180,19 @@ class SelfEvolutionManager:
     def publish(self, run_id, actor_id="system", reason=""):
         return self.activate(run_id, actor_id=actor_id, reason=reason)
 
+    def _assert_current_baseline(self, run):
+        current = self._store.get_runtime_policy(run['target_type'], run['target_key'])
+        if run.get('baseline_policy_version', -1) != (int(current['version']) if current else 0):
+            raise ValueError('runtime policy changed; create and benchmark a fresh candidate')
+
+    def rollback(self, run_id, actor_id="user", reason=""):
+        return self._store.rollback_self_evolution_run(run_id, actor_id, reason)
+
     def record_quality_signal(self, run_id, signal_type, value, metadata=None, created_by="system"):
         run = self._store.record_self_evolution_quality_signal(
             run_id, signal_type, value, metadata=metadata, created_by=created_by
         )
-        if run.get("status") == "canary" and not self._quality_gate_passed(run):
+        if run.get("status") == "canary" and not self._quality_gate_passed(run, require_support=False):
             run = self._store.update_self_evolution_run(
                 run_id,
                 status="rolled_back",
@@ -315,42 +346,33 @@ class SelfEvolutionManager:
             candidate["fallback_order"] = ["local", "manual_review"]
         return candidate
 
-    def _quality_gate_passed(self, run):
-        signals = run.get("quality_signals") or {}
-        for signal, limit in self.QUALITY_LIMITS.items():
-            item = signals.get(signal) or {}
-            if float(item.get("latest", item.get("average", 0)) or 0) > limit:
-                return False
-        retrieval = signals.get("retrieval_hit_rate") or {}
-        if retrieval and float(retrieval.get("latest", retrieval.get("average", 1)) or 0) < 0.80:
+    def quality_evidence(self, run_id, stage=None):
+        from services.learning_governance import paired_quality_report, stratified_quality_report
+        run = self._require(run_id)
+        rows = self._store.list_self_evolution_quality_signals(run_id, limit=50000)
+        observed_stage = stage or run.get("release_stage")
+        report = paired_quality_report(rows, stage=observed_stage)
+        report['stratified_gate'] = stratified_quality_report(rows, stage=observed_stage)
+        report['passed'] = report['passed'] and report['stratified_gate']['passed']
+        return report
+
+    def _quality_gate_passed(self, run, require_support=True):
+        from services.learning_governance import runtime_health_passed
+        rows = self._store.list_self_evolution_quality_signals(run["id"], limit=50000)
+        if not runtime_health_passed(rows):
             return False
-        rows = self._store.list_self_evolution_quality_signals(
-            run["id"], limit=500
+        report = self.quality_evidence(run["id"])
+        if require_support:
+            return report["passed"]
+        segment_gate = report['stratified_gate']
+        if segment_gate['identity_segment_conflict']:
+            return False
+        supported_segments = [metric for segment in segment_gate['segments'].values()
+                              for metric in segment['metrics'].values() if metric['independent_clusters'] >= 30]
+        return not report["rejected"] and all(metric['passed'] for metric in supported_segments) and all(
+            item["confidence_lower"] >= -report["tolerance"]
+            for item in report["metrics"].values() if item["independent_clusters"] >= 30
         )
-        grouped = {}
-        for row in rows:
-            variant = str((row.get("metadata") or {}).get("variant") or "")
-            if variant not in {"control", "candidate"}:
-                continue
-            grouped.setdefault(
-                (str(row.get("signal_type") or ""), variant), []
-            ).append(float(row.get("value") or 0))
-        for signal in {
-            key[0] for key in grouped
-            if (key[0], "control") in grouped
-            and (key[0], "candidate") in grouped
-        }:
-            control = sum(grouped[(signal, "control")]) / len(
-                grouped[(signal, "control")]
-            )
-            candidate = sum(grouped[(signal, "candidate")]) / len(
-                grouped[(signal, "candidate")]
-            )
-            if signal in self.QUALITY_LIMITS and candidate > control + 0.02:
-                return False
-            if signal == "retrieval_hit_rate" and candidate < control - 0.02:
-                return False
-        return True
 
     def _quality_sample_count(self, run_id):
         from services.learning_governance import independent_evidence_ids
@@ -359,26 +381,19 @@ class SelfEvolutionManager:
         return len(independent_evidence_ids(rows))
 
     def _paired_quality_sample_count(self, run_id):
-        from services.learning_governance import independent_evidence_ids
-
-        rows = self._store.list_self_evolution_quality_signals(
-            run_id, limit=500
-        )
-        control = independent_evidence_ids(
-            row for row in rows
-            if (row.get("metadata") or {}).get("variant") == "control"
-        )
-        candidate = independent_evidence_ids(
-            row for row in rows
-            if (row.get("metadata") or {}).get("variant") == "candidate"
-        )
-        return len(control & candidate)
+        return self.quality_evidence(run_id)["matched_task_count"]
 
     def _require(self, run_id):
         run = self._store.get_self_evolution_run(run_id)
         if not run:
             raise ValueError("self-evolution run not found")
         return run
+
+    def _assert_coding_regression(self, run):
+        if run['target_key']=='coding.proposal' or run['target_key'].startswith('coding.strategy.'):
+            from services.coding_rollout_service import coding_gate
+            if not coding_gate(self._store,run['id'])['passed']:
+                raise ValueError('coding regression evidence is missing, stale, or insufficient')
 
     @classmethod
     def _assert_allowed_target(cls, target_type):

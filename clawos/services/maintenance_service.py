@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sqlite3
+import uuid
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -101,8 +102,8 @@ class MaintenanceService:
             target_dir = (self.base_dir / target_dir).resolve()
         target_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        safe_label = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in (label or "manual"))
-        target = target_dir / f"memoryos-{stamp}-{safe_label}.db"
+        safe_label = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in (label or "manual"))[:80]
+        target = target_dir / f"memoryos-{stamp}-{safe_label}-{uuid.uuid4().hex[:12]}.db"
         source_conn = sqlite3.connect(str(self.db_path))
         try:
             dest_conn = sqlite3.connect(str(target))
@@ -112,12 +113,15 @@ class MaintenanceService:
                 dest_conn.close()
         finally:
             source_conn.close()
+        self._assert_sqlite_ok(target)
         meta = {
             "ok": True,
             "path": str(target),
             "bytes": target.stat().st_size,
             "source": str(self.db_path),
             "created_at": self._now(),
+            "integrity": "ok",
+            "scope": "sqlite_only; uploaded source files and external vector assets are not included",
         }
         (target.with_suffix(target.suffix + ".json")).write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         return meta
@@ -130,14 +134,33 @@ class MaintenanceService:
             source = (self.base_dir / source).resolve()
         if not source.exists() or not source.is_file():
             raise RuntimeError(f"backup file does not exist: {source}")
+        if source.resolve() == self.db_path.resolve():
+            raise ValueError("restore source must differ from the live database")
+        if not self.store or getattr(self.store._transaction_state, 'connection', None) is not None:
+            raise RuntimeError("restore requires an idle MemoryStore outside a transaction")
         self._assert_sqlite_ok(source)
-        pre_restore = self.backup_database(label=label or "pre-restore") if self.db_path.exists() else {}
+        with closing(sqlite3.connect(source.resolve().as_uri() + '?mode=ro', uri=True)) as check:
+            tables = {r[0] for r in check.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not {'profiles', 'conversations', 'knowledge'}.issubset(tables):
+            raise ValueError('backup is not a ClawOS memory database')
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_target = self.db_path.with_suffix(self.db_path.suffix + ".restore_tmp")
-        shutil.copy2(source, temp_target)
-        self._assert_sqlite_ok(temp_target)
-        temp_target.replace(self.db_path)
-        self.apply_migrations()
+        temp_target = self.db_path.with_name(f".{self.db_path.name}.{uuid.uuid4().hex}.restore_tmp")
+        try:
+            # SQLite backup includes committed WAL pages. File replacement can leave
+            # live connections attached to a different database or replay stale WAL.
+            with closing(sqlite3.connect(source.resolve().as_uri() + '?mode=ro', uri=True)) as src, closing(sqlite3.connect(temp_target)) as dst:
+                src.backup(dst)
+            from memoryos.memory_store import MemoryStore
+            staged = MemoryStore(str(temp_target))
+            MaintenanceService(store=staged, db_path=temp_target, base_dir=self.base_dir, config=self.config).apply_migrations()
+            self._assert_sqlite_ok(temp_target)
+            with self.store._lock:
+                pre_restore = self.backup_database(label=label or "pre-restore")
+                with closing(sqlite3.connect(temp_target)) as src, closing(sqlite3.connect(self.db_path, timeout=10)) as dst:
+                    src.backup(dst)
+        finally:
+            for suffix in ('', '-wal', '-shm'):
+                Path(str(temp_target) + suffix).unlink(missing_ok=True)
         return {
             "ok": True,
             "restored_from": str(source),
@@ -146,6 +169,57 @@ class MaintenanceService:
             "pre_restore_backup": pre_restore,
             "restored_at": self._now(),
         }
+
+    def database_health(self) -> dict[str, Any]:
+        """Read-only inventory; reports counts, never stored user text or secrets."""
+        with closing(sqlite3.connect(self.db_path.resolve().as_uri() + '?mode=ro', uri=True)) as conn:
+            conn.execute('BEGIN')
+            integrity = [r[0] for r in conn.execute('PRAGMA integrity_check')]
+            foreign_keys = [dict(table=r[0], rowid=r[1], parent=r[2]) for r in conn.execute('PRAGMA foreign_key_check')]
+            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            wanted = ('conversations', 'conversation_archive', 'knowledge', 'documents', 'document_chunks',
+                      'knowledge_records_v2', 'academy_materials', 'academy_material_events', 'academy_recall_attempts', 'academy_documents')
+            counts = {name: conn.execute('SELECT COUNT(*) FROM ' + name).fetchone()[0] for name in wanted if name in names}
+            unlinked = 0
+            if {'knowledge', 'knowledge_legacy_links_v2'}.issubset(names):
+                unlinked = conn.execute('SELECT COUNT(*) FROM knowledge k LEFT JOIN knowledge_legacy_links_v2 l ON l.legacy_knowledge_id=k.id WHERE l.knowledge_id IS NULL').fetchone()[0]
+            missing_sources = 0
+            if 'documents' in names:
+                missing_sources = sum(1 for (path,) in conn.execute("SELECT file_path FROM documents WHERE file_path<>''") if not Path(path).is_file())
+            missing_artifacts=0
+            if 'run_artifacts' in names:
+                missing_artifacts=sum(1 for (path,) in conn.execute("SELECT uri FROM run_artifacts WHERE uri<>''")
+                    if '://' not in path and Path(path).is_absolute() and not Path(path).is_file())
+            logical = {}
+            for child, parent, key in [('document_chunks','documents','document_id'),
+                                       ('academy_material_events','academy_materials','material_id'),
+                                       ('academy_recall_attempts','academy_materials','material_id'),
+                                       ('academy_document_versions','academy_documents','document_id'),
+                                       ('knowledge_sources_v2','knowledge_records_v2','knowledge_id')]:
+                if {child,parent}.issubset(names):
+                    logical['orphan_'+child] = conn.execute(f'SELECT COUNT(*) FROM {child} c LEFT JOIN {parent} p ON p.id=c.{key} WHERE p.id IS NULL').fetchone()[0]
+            vector = dict(available=False)
+            if 'knowledge_vector_outbox_v2' in names:
+                pending, failed = conn.execute("SELECT COUNT(*),COALESCE(SUM(error<>''),0) FROM knowledge_vector_outbox_v2 WHERE processed_at='' ").fetchone()
+                vector=dict(available=True,pending=pending,failed=failed)
+            warnings = []
+            if missing_sources:
+                warnings.append('document_source_files_missing')
+            if missing_artifacts:
+                warnings.append('registered_artifact_files_missing')
+            if unlinked:
+                warnings.append('legacy_knowledge_not_linked')
+            if vector.get('failed'):
+                warnings.append('vector_projection_failed')
+            elif vector.get('pending'):
+                warnings.append('vector_projection_pending')
+        sqlite_ok=integrity==['ok'] and not foreign_keys
+        links_ok=not any(logical.values())
+        return dict(ok=sqlite_ok and links_ok and not missing_sources, sqlite_ok=sqlite_ok,
+                    status='failed' if not sqlite_ok or not links_ok or missing_sources else 'degraded' if warnings else 'healthy',
+                    logical_checks=logical, vector_projection=vector, warnings=warnings, integrity=integrity,
+                    foreign_key_errors=foreign_keys, counts=counts, unlinked_legacy_knowledge=unlinked,
+                    missing_document_files=missing_sources, missing_artifact_files=missing_artifacts, checked_at=self._now())
 
     def config_check(self) -> dict[str, Any]:
         checks: list[dict[str, Any]] = []

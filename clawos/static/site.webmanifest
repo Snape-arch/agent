@@ -4,8 +4,8 @@
   "description": "Local-first personal agent workbench and AI Academy.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f5f6f8",
-  "theme_color": "#315cf5",
+  "background_color": "#fbfaf5",
+  "theme_color": "#fbfaf5",
   "icons": [
     {"src": "/assets/brand/clawos-app-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
   ]

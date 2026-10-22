@@ -420,6 +420,10 @@ body.aether-console{font-size:14px;line-height:1.55}
 .aether-console .knowledge-organizer-sheet .knowledge-layout{display:block!important}.aether-console .knowledge-organizer-sheet .knowledge-editor{display:grid!important;grid-template-columns:1fr 1fr;gap:12px;padding:18px!important}.aether-console .knowledge-organizer-sheet .knowledge-editor .wide,.aether-console .knowledge-organizer-sheet .knowledge-editor .action-row{grid-column:1/-1}
 .aether-console .knowledge-organizer-sheet textarea{min-height:150px}.modal-open{overflow:hidden!important}
 
+.aether-console #view-knowledge .knowledge-front-stage{grid-template-columns:1.1fr 1fr 1fr!important}
+.aether-console #view-knowledge .knowledge-health-card{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:10px;padding:20px;background:#fff;border:1px solid var(--c-line);border-radius:12px}.aether-console #view-knowledge .knowledge-health-card>b{font-size:16px}.aether-console #view-knowledge .knowledge-health-card>span{color:#596679;font-size:13px;line-height:1.55}.aether-console .knowledge-health-actions{display:flex;gap:8px;flex-wrap:wrap}
+.aether-console .knowledge-governance{position:fixed;inset:0;z-index:121;display:none;place-items:center;padding:24px}.aether-console .knowledge-governance.on{display:grid}.aether-console .knowledge-governance-sheet{position:relative;width:min(980px,calc(100vw - 48px));max-height:calc(100vh - 48px);display:grid;gap:16px;padding:22px;background:#fff;border:1px solid var(--c-line);border-radius:16px;box-shadow:0 24px 70px rgba(20,24,31,.18);overflow:auto}.aether-console .knowledge-health-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.aether-console .knowledge-health-grid>div{padding:14px;background:var(--c-soft);border:1px solid var(--c-line);border-radius:10px}.aether-console .knowledge-health-grid span{display:block;color:var(--c-muted);font-size:11px}.aether-console .knowledge-health-grid b{display:block;margin-top:5px;font-size:20px}
+
 /* Focus, truncation and keyboard confidence. */
 .aether-console button:focus-visible,.aether-console a:focus-visible,.aether-console input:focus-visible,.aether-console textarea:focus-visible,.aether-console select:focus-visible{outline:3px solid rgba(49,92,245,.28)!important;outline-offset:2px!important;border-color:#315cf5!important}
 .aether-console .side-brand b,.aether-console .session b,.aether-console .task-summary b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -440,6 +444,9 @@ body.aether-console{font-size:14px;line-height:1.55}
   .aether-console .workbench-quick{grid-template-columns:1fr!important}.aether-console .workbench-intro h2{font-size:27px}.aether-console .compose-inner{grid-template-columns:auto minmax(0,1fr) auto!important}.aether-console .web-search-toggle{grid-column:2}.aether-console #stop{display:none}
   .aether-console #view-knowledge .library-head{align-items:stretch!important;flex-direction:column}.aether-console #view-knowledge .library-tabs{justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap!important;padding-bottom:4px}.aether-console #view-knowledge .library-tabs button{flex:0 0 auto;min-width:max-content;white-space:nowrap;word-break:keep-all}.aether-console #view-knowledge .knowledge-primary-search{grid-template-columns:1fr!important}.aether-console #view-knowledge .knowledge-primary-search>*{grid-column:1!important}
 }
+
+@media(max-width:1100px){.aether-console #view-knowledge .knowledge-front-stage{grid-template-columns:1fr 1fr!important}}
+@media(max-width:760px){.aether-console #view-knowledge .knowledge-front-stage{grid-template-columns:1fr!important}.aether-console .knowledge-health-grid{grid-template-columns:1fr 1fr}.aether-console .knowledge-governance{padding:12px}.aether-console .knowledge-governance-sheet{width:calc(100vw - 24px);max-height:calc(100vh - 24px);padding:16px}}
 
 /* Brand system, professional scenario cards and unified runtime evidence. */
 .aether-console .aether-logo{
@@ -487,3 +494,138 @@ body.aether-console{font-size:14px;line-height:1.55}
 @media(max-width:1320px){.aether-console .real-evidence-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:860px){.aether-console .real-evidence-grid{grid-template-columns:1fr}.aether-console .real-evidence-head{align-items:flex-start;flex-direction:column}}
 @media(prefers-reduced-motion:reduce){.aether-console .aether-logo,.aether-console .board-card,.aether-console .board-action,.aether-console .runtime-chip-row span{transition:none!important}.aether-console .side-brand:hover .aether-logo,.aether-console .board-card:hover,.aether-console .board-action:hover{transform:none!important}}
+
+/* Conversation-first P0-P1 closure: chat is the product surface, operations stay on demand. */
+.aether-console #view-chat.view.on{width:100%;max-width:none!important}
+.aether-console #view-chat .workbench-shell{width:min(100%,1120px);height:calc(100vh - 124px)!important;min-height:620px!important;display:grid;grid-template-rows:auto minmax(0,1fr);gap:14px;overflow:visible!important}
+.aether-console #view-chat .workbench-intro{align-items:center;padding:0 4px}
+.aether-console #view-chat .workbench-intro h2{font-size:clamp(24px,2.4vw,34px);letter-spacing:-.035em}
+.aether-console #view-chat .workbench-intro p{margin-top:6px}
+.aether-console .conversation-actions{display:flex;align-items:center;gap:8px}
+.aether-console #view-chat .chat-progress-toggle{position:static;min-height:38px;padding:0 12px;color:#465264;background:#fff;border:1px solid var(--c-line);border-radius:9px}
+.aether-console #view-chat .intent-panel{min-height:0;display:flex;flex-direction:column;overflow:visible}
+.aether-console #view-chat .workbench-chat,.aether-console #view-chat .workbench-chat:has(.msg){flex:1;min-height:0!important;max-height:none!important;padding:24px clamp(18px,4vw,48px)!important;overscroll-behavior:contain}
+.aether-console #view-chat .chat-inner{width:min(100%,880px);min-height:100%;margin:0 auto}
+.aether-console #view-chat .workbench-empty{min-height:100%!important;align-items:center;text-align:center}
+.aether-console #view-chat .workbench-empty>b{font-size:24px}
+.aether-console #view-chat .workbench-empty>span{margin-top:7px;font-size:13px}
+.aether-console #view-chat .workbench-quick{width:min(100%,760px);grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:26px}
+.aether-console #view-chat .workbench-quick button{min-height:64px;padding:12px 14px;border-radius:12px!important}
+.aether-console #view-chat .workbench-quick button b{font-size:13px}
+.aether-console #view-chat .intent-panel .composer{flex:0 0 auto;padding:12px clamp(14px,4vw,44px) 10px!important}
+.aether-console #view-chat .composer>*{width:min(100%,880px);margin-left:auto;margin-right:auto}
+.aether-console #view-chat .compose-inner{grid-template-columns:42px minmax(240px,1fr) auto 72px auto}
+.aether-console #view-chat .compose-inner textarea{min-height:48px;max-height:180px;padding:13px 14px;font-size:14px}
+.aether-console #view-chat .composer-help{text-align:center}
+.aether-console #view-chat .chat-progress-panel{right:18px;top:58px;width:min(420px,calc(100% - 36px));max-height:min(620px,calc(100vh - 150px))}
+.aether-console .execution-settings{margin-top:14px;padding-top:13px;border-top:1px solid var(--c-line)}
+.aether-console .execution-settings summary{cursor:pointer;color:#465264;font-size:12px;font-weight:700}
+.aether-console .execution-settings .autonomy-options{margin-top:12px}
+.aether-console .execution-settings p{margin:10px 0 4px;font-size:11px;line-height:1.55}
+.aether-console #view-chat .workbench-chat .msg{padding:18px 0!important}
+.aether-console #view-chat .workbench-chat .msg.agent .message-body{max-width:100%!important}
+.aether-console #view-chat .workbench-chat .msg.user .message-body{max-width:min(78%,720px)!important}
+.aether-console #view-chat .workbench-chat .msg .mc{font-size:15px!important;line-height:1.75!important}
+.aether-console .mc{white-space:normal!important}
+.aether-console .mc h2,.aether-console .mc h3,.aether-console .mc h4,.aether-console .mc h5{margin:1.2em 0 .5em;color:#202733;font-weight:760;line-height:1.35!important}
+.aether-console .mc h2{font-size:20px!important}.aether-console .mc h3{font-size:17px!important}.aether-console .mc h4,.aether-console .mc h5{font-size:15px!important}
+.aether-console .mc p{margin:0 0 .85em!important}.aether-console .mc p:last-child{margin-bottom:0!important}
+.aether-console .mc ul,.aether-console .mc ol{margin:.35em 0 1em;padding-left:1.55em}.aether-console .mc li{margin:.25em 0}
+.aether-console .mc blockquote{margin:.9em 0;padding:3px 0 3px 14px;color:#556171;border-left:3px solid #ccd4df}
+.aether-console .mc hr{height:1px;margin:20px 0;background:#e4e7eb;border:0}
+.aether-console .mc a{color:#2457d6!important;text-decoration-thickness:1px;text-underline-offset:3px}
+.aether-console .mc code{padding:2px 5px;color:#9d174d!important;background:#f6f1f3!important;border:1px solid #ebe0e4!important;border-radius:5px}
+.aether-console .md-code{margin:14px 0;border:1px solid #dfe3e8;border-radius:10px;overflow:hidden;background:#f7f8fa}
+.aether-console .md-code figcaption{height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;color:#657080;background:#eef0f3;border-bottom:1px solid #dfe3e8;font-size:11px}
+.aether-console .md-code pre{margin:0!important;padding:14px!important;overflow:auto!important;background:#f7f8fa!important;border:0!important;border-radius:0!important;white-space:pre!important}
+.aether-console .md-code pre code{padding:0!important;color:#27313f!important;background:transparent!important;border:0!important;border-radius:0!important;font:12.5px/1.65 "Geist Mono",Consolas,monospace!important;white-space:pre!important}
+.aether-console .md-copy{min-height:28px;padding:0 9px;color:#455063;background:#fff;border:1px solid #d7dce3;border-radius:7px;font-size:11px}
+.aether-console .md-table-wrap{max-width:100%;margin:14px 0;overflow:auto;border:1px solid #e0e4e9;border-radius:9px}
+.aether-console .mc .md-table-wrap table{min-width:520px!important;border:0!important;border-radius:0!important}
+.aether-console .mc .md-table-wrap th,.aether-console .mc .md-table-wrap td{font-size:12px!important}
+.aether-console .chat-artifacts{margin-top:14px;padding-top:12px;border-top:1px solid var(--c-line,#e5e7eb)}
+.aether-console .chat-artifacts-head,.aether-console .chat-artifact-card,.aether-console .chat-artifact-actions{display:flex;align-items:center}
+.aether-console .chat-artifacts-head{justify-content:space-between;gap:12px;margin-bottom:8px}
+.aether-console .chat-artifacts-head span,.aether-console .chat-artifact-meta span{color:#667085;font-size:12px}
+.aether-console .chat-artifact-list{display:grid;gap:8px}
+.aether-console .chat-artifact-card{gap:10px;min-height:58px;padding:9px 10px;border:1px solid #e1e5ea;border-radius:12px;background:#fff}
+.aether-console .chat-artifact-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:#eef4ff;color:#2457a7;font-size:10px;font-weight:800}
+.aether-console .chat-artifact-meta{display:grid;gap:3px;min-width:0;flex:1}.aether-console .chat-artifact-meta b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aether-console .chat-artifact-actions{gap:7px}.aether-console .chat-artifact-actions a{padding:6px 10px;border:1px solid #d0d5dd;border-radius:8px;color:inherit;text-decoration:none;font-size:12px}
+.aether-console .chat-artifact-actions a.primary{color:#fff;border-color:#2457a7;background:#2457a7}
+.aether-console .chat-coding-evidence{margin-top:12px;padding:12px;border:1px solid #dbe5f1;border-radius:12px;background:#f8fbff}
+.aether-console .chat-coding-evidence-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.aether-console .chat-coding-evidence-head span{font-size:12px;color:#2457a7}
+.aether-console .chat-coding-evidence-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.aether-console .chat-coding-evidence-grid>div{display:grid;gap:3px;padding:8px;border-radius:9px;background:#fff}.aether-console .chat-coding-evidence-grid span,.aether-console .chat-coding-evidence-files span{font-size:11px;color:#667085}.aether-console .chat-coding-evidence-grid b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aether-console .chat-coding-evidence-files{display:grid;gap:4px;margin-top:8px}.aether-console .chat-coding-evidence-files code{overflow:auto;padding:7px 8px;border-radius:8px;background:#eef3f8;font-size:11px;white-space:nowrap}
+@media(max-width:760px){
+  .aether-console #view-chat .workbench-shell{height:calc(100dvh - 116px)!important;min-height:560px!important;gap:10px}
+  .aether-console #view-chat .workbench-intro{align-items:flex-start;flex-direction:row}.aether-console #view-chat .workbench-intro h2{font-size:24px}.aether-console #view-chat .workbench-intro p{display:none}
+  .aether-console #view-chat .workbench-new{display:inline-flex}.aether-console #view-chat .workbench-chat,.aether-console #view-chat .workbench-chat:has(.msg){padding:18px 14px!important}
+  .aether-console #view-chat .workbench-quick{grid-template-columns:1fr 1fr!important;margin-top:20px}.aether-console #view-chat .compose-inner{grid-template-columns:42px minmax(0,1fr) 68px!important}
+  .aether-console #view-chat .compose-inner textarea{grid-column:1/-1;grid-row:1;order:0!important;width:100%!important}
+  .aether-console #view-chat .attach-button{grid-column:1;grid-row:2}.aether-console #view-chat .web-search-toggle{grid-column:2;grid-row:2}.aether-console #view-chat #send{grid-column:3;grid-row:2}
+  .aether-console #view-chat #stop{display:none}.aether-console #view-chat .workbench-chat .msg.user .message-body{max-width:88%!important}
+  .aether-console .chat-artifact-card{align-items:flex-start}.aether-console .chat-artifact-actions{align-self:center}
+  .aether-console .chat-coding-evidence-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:480px){
+  .aether-console #view-chat .conversation-actions{gap:5px}.aether-console #view-chat .conversation-actions button{padding:0 9px}
+  .aether-console #view-chat .workbench-quick{grid-template-columns:1fr!important}.aether-console #view-chat .workbench-quick button:nth-child(n+3){display:none}
+  .aether-console #view-chat .composer-help{display:none}.aether-console #view-chat .intent-panel .composer{padding:10px!important}
+}
+.office-editor-modal{position:fixed;inset:0;z-index:1200;display:none}.office-editor-modal.on{display:block}.office-editor-backdrop{position:absolute;inset:0;background:rgba(10,15,25,.62);backdrop-filter:blur(12px)}.office-editor-sheet{position:absolute;inset:4vh 3vw;background:var(--panel,#fff);border:1px solid rgba(120,130,150,.25);border-radius:22px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.3)}.office-editor-sheet header{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid rgba(120,130,150,.18)}.office-editor-sheet header div{display:flex;gap:12px;align-items:baseline}.office-editor-sheet header span{font-size:13px;color:var(--muted,#667085)}#office-editor-mount{height:calc(100% - 65px)}#office-editor-mount iframe{width:100%;height:100%;border:0}.chat-artifact-actions button{appearance:none;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:6px 9px;border-radius:8px}
+
+/* Preserve semantic hierarchy and contain long code/tables on narrow screens. */
+.aether-console .mc h1{font-size:22px;line-height:1.4;margin:1em 0 .5em}
+.aether-console .mc h6{font-size:14px;margin:1em 0 .5em}
+.aether-console .mc{overflow-wrap:anywhere;min-width:0}
+.aether-console .mc ul ul,.aether-console .mc ol ol,.aether-console .mc ul ol,.aether-console .mc ol ul{margin:.3em 0}
+.aether-console .mc li>p{margin:.3em 0!important}
+.aether-console .mc pre{overflow-wrap:normal;max-width:100%}
+.aether-console .mc .md-table-wrap table{min-width:0!important;width:100%;table-layout:auto}
+.aether-console .chat-response-state{color:#697586;font-size:13px;line-height:1.6;margin:10px 0}
+.aether-console .message-body{min-width:0}
+
+/* Strategy experiments follow the shared readable workbench scale. */
+.evolution-workspace .ops-form label{display:grid;gap:8px;font-size:14px;color:var(--text,#20382e)}
+.evolution-candidate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:20px}
+.evolution-candidate-card{border:1px solid #d8e5dc;border-radius:16px;background:#f7faf7;padding:20px;min-width:0;color:#20382e}
+.evolution-candidate-card h3{font-size:17px;margin:0 0 8px}.evolution-candidate-card p{font-size:13px;line-height:1.6}
+.evolution-candidate-card pre{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto}
+.evolution-candidate-card button{margin-top:16px}.evolution-workspace summary{cursor:pointer;font-weight:600;font-size:14px;padding:12px 0}
+.evolution-experiment-panel p{line-height:1.75;max-width:85ch;overflow-wrap:anywhere;font-size:14px}
+.evolution-experiment-panel label{display:grid;gap:8px;min-width:0;font-size:14px}.evolution-experiment-table{overflow:auto;margin-top:20px}
+.evolution-workspace button:disabled{opacity:.55;cursor:not-allowed}.evolution-workspace input[type=file]{max-width:100%}
+@media(max-width:600px){.evolution-candidate-grid{grid-template-columns:1fr}.evolution-experiment-panel .action-row{align-items:stretch;flex-direction:column}}
+
+.evolution-workspace .ops-form label:last-of-type{grid-column:1/-1}
+.evolution-workspace .ops-form input,.evolution-workspace .ops-form select{width:100%;min-width:0}
+.evolution-workspace .ops-form textarea{width:100%;min-height:112px;font:14px/1.6 Consolas,monospace;resize:vertical}
+.evolution-workspace .primary{background:#2d6e53;color:#fff;border-color:#2d6e53}
+.evolution-workspace .primary:hover{background:#21543e}
+.evolution-workspace #evolutionQualityTable{width:100%;min-width:0}
+.evolution-workspace .table td{white-space:normal;overflow-wrap:anywhere;max-width:260px}
+.evolution-workspace .ops-form button{width:max-content;max-width:100%}
+
+.console-page .evolution-workspace{grid-template-columns:minmax(0,1fr)}
+.console-page .evolution-workspace>*{min-width:0;max-width:100%}
+.console-page .evolution-workspace .ops-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:14px}
+.console-page .evolution-workspace .ops-form label{min-width:0;font-size:14px;line-height:1.5}
+.console-page .evolution-workspace .library-head{flex-wrap:wrap;gap:14px}
+@media(max-width:600px){.console-page .evolution-workspace .ops-form{grid-template-columns:minmax(0,1fr)}.evolution-workspace .library-head>div{min-width:0}}
+.evolution-review-panel .ops-form { grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); }
+.evolution-review-panel .action-row { flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.evolution-review-panel details { margin: 18px 0; line-height: 1.7; }
+.evolution-review-panel input[type="file"] { max-width: 100%; min-width: 0; }
+.evolution-review-panel .result-box { max-height: 380px; overflow: auto; }
+.evolution-review-summary { margin-top: 20px; padding: 20px; background: #f6f9f7; border: 1px solid #dce6df; border-radius: 12px; line-height: 1.7; }
+.evolution-review-summary h3 { margin: 0 0 10px; font-size: 16px; }
+.evolution-review-summary p { margin: 8px 0 16px; font-size: 14px; color: #46584e; }
+.evolution-review-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin: 20px 0; }
+.evolution-review-metrics div { padding: 14px; background: #fff; border: 1px solid #dce6df; border-radius: 10px; }
+.evolution-review-metrics strong { display: block; font-size: 24px; color: #174a38; }
+.evolution-review-metrics span { font-size: 13px; color: #46584e; }
+.evolution-review-gates { overflow: auto; }
+.evolution-review-summary pre { max-height: 300px; overflow: auto; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width:640px) { .evolution-review-summary { padding: 14px; } .evolution-review-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 640px) { .evolution-review-panel .ops-form { grid-template-columns: minmax(0, 1fr); } }

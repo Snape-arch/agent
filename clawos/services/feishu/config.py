@@ -1,8 +1,9 @@
 """Feishu connector configuration (v2 contract).
 
 All credentials are sourced from environment variables only. The connector never
-persists app_secret, tokens, verification token, encrypt key, or full message
-bodies into the database, logs, or API responses.
+persists app_secret, tokens, verification token or encrypt key. Whitelisted
+message bodies follow the configured retention policy; frozen approval bodies
+are stored for integrity checks and shown only to the local owner.
 
 v2 changes vs the v1 draft:
 - Adds initiator open_id, approval form control id, and three separate

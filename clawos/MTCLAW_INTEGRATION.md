@@ -2,8 +2,10 @@
 
 ## 集成目标
 
-ClawOS 不修改 MTClaw 源码，而是使用 MTClaw 官方提供的 OpenAI-compatible
-Function Router Provider 契约进行集成。
+ClawOS 使用 MTClaw 的 OpenAI-compatible Function Router Provider 契约。
+2026-10-02 链路验收后，仓库内 `MTClaw-框架代码/function_router/server.py`
+包含必要的兼容修补：请求证据隔离、调用方上下文、真实工具观测转交、工具入口和就绪检查。
+原有许可证保留；默认独立 MTClaw 的内置工具行为保留，ClawOS 生成的运行配置明确关闭内置工具。
 
 ```text
 ClawOS Web / API
@@ -22,8 +24,9 @@ ClawOS Web / API
 - 任务路由真实经过 MTClaw Function Router。
 - 工具定义由 MTClaw 加载。
 - 工具执行遵循 MTClaw stdin JSON、stdout JSON、exit code 契约。
-- 会话通过 `x-openclaw-session-id` 隔离。
-- ClawOS 使用 MTClaw Tool History 作为运行证据。
+- 会话通过 `x-openclaw-session-id` 隔离，同一适配器内的同会话请求串行。
+- `x-clawos-request-id` 贯穿路由与 Tool History；证据必须同时匹配请求和会话。
+- 缺失工具结果标为错误，旧路由器无请求标识时不认领历史执行。
 - ClawOS 的 MemoryOS、Reflection 和工作台作为 MTClaw 之上的智能增强层。
 
 ## 代码证据
@@ -39,7 +42,7 @@ ClawOS Web / API
 
 ## 低风险策略
 
-比赛版 MTClaw 暴露 24 个只读或低风险工具：
+当前 ClawOS 生成 27 个只读或低风险工具（以 `bridge_runner.SAFE_TOOLS` 和 `/api/architecture/chain` 为准）：
 
 - 时间、计算、文本统计
 - 文件列表、读取、搜索、元数据
@@ -109,6 +112,32 @@ bash scripts/start_mtclaw_stack.sh
 3. 启动 MTClaw Function Router。
 4. 完成 MTClaw 健康检查。
 5. 设置 `MTCLAW_ENABLED=true` 并启动 ClawOS。
+
+启动门禁使用 `/ready`，必须同时满足热身完成、工具已加载、路由模型可用。
+`/health` 的 HTTP 200 只代表进程能响应，请查看其 `ready`、
+`request_trace_version=2`、`caller_context_version=1`。
+已有运行目录需要重新执行 `mtclaw/prepare_runtime.py` 并重启路由器，确保
+`builtin_tools_enabled=false` 生效。Linux 启动脚本保留父进程清理路由器；本轮仅做语法校验，未做 MTT/Linux 实机验收。
+
+## 2026-10-02 真实本机链路验收
+
+原链路有四个实际缺口：无请求匹配时回退认领旧 trace；路由阶段丢失 MemoryOS/历史上下文；
+内置 `ls/cat` 拦截受限 wrapper；回答模型没有收到实际工具结果。
+本轮均已修补，实际观测以有长度限制的 JSON 数据送入回答模型，不转交可执行工具调用或未验证路由器正文。
+
+隔离端口 18907/18908 上，现有 Qwen3.5-9B-Q4_K_M（CPU）调用 `time_now`，
+实际返回 `2026-10-02 21:12:51 / Asia/Shanghai`，最终回答包含该时间及合成记忆标记 `CHAIN_OCT02`。
+请求耗时 30,466.73 ms，trace 请求与会话匹配。实际模型验收加载 3 个工具；27 个 wrapper 的生成/约束另有自动化测试，不能当作 27 个工具都经真实模型验收。
+原端口 8000/18790/18791 未启动，本轮没有重启生产服务，也没有修改或复制模型权重。
+
+复现（需要先启动隔离本地模型及路由器，脚本不自动启动服务）：
+
+```powershell
+.\clawos\.venv\Scripts\python.exe clawos/scripts/mtclaw_chain_acceptance.py --router-url http://127.0.0.1:18908 --output clawos/output/mtclaw-chain/latest.json
+```
+
+`--replay <保存的 JSON> --validation-code <该次标记>` 只校验历史证据，明确不代表新实测。
+验收脚本只连接回环地址，不读取生产记忆。详情及限制见 `benchmarks/COLLABORATION_DATA_MTCLAW_ACCEPTANCE.md`。
 
 ## Trace 验证
 

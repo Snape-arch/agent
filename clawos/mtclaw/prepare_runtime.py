@@ -80,6 +80,7 @@ def prepare(runtime_dir: Path = RUNTIME) -> dict:
     config = {
         "listen_host": "127.0.0.1",
         "listen_port": 18791,
+        "builtin_tools_enabled": False,
         "routing": {
             "base_url": os.environ.get("MODEL_BASE_URL", "https://api.deepseek.com/v1"),
             "model": os.environ.get("MODEL_NAME", "deepseek-chat"),

@@ -14,6 +14,7 @@ import json
 import os
 import sqlite3
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -66,13 +67,19 @@ class VectorStore:
     def update(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
         self.add(doc_id, text, metadata)
 
-    def search(self, query: str, top_k: int = 10, min_score: float = 0.15) -> list[dict]:
+    def search(
+        self, query: str, top_k: int = 10, min_score: float = 0.15,
+        filters: dict | None = None,
+    ) -> list[dict]:
         with self._lock:
             if not self._vectors:
                 return []
             query_vec = self._embed(query)
             scores = []
             for doc_id, vec in self._vectors.items():
+                metadata = self._metadata.get(doc_id, {})
+                if filters and any(metadata.get(key) != value for key, value in filters.items()):
+                    continue
                 sim = float(np.dot(query_vec, vec))
                 if sim >= min_score:
                     scores.append((sim, doc_id))
@@ -259,14 +266,23 @@ class ChromaVectorStore:
     def update(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
         self.add(doc_id, text, metadata)
 
-    def search(self, query: str, top_k: int = 10, min_score: float = 0.15) -> list[dict]:
+    def search(
+        self, query: str, top_k: int = 10, min_score: float = 0.15,
+        filters: dict | None = None,
+    ) -> list[dict]:
         with self._lock:
             if self.count() <= 0:
                 return []
+            query_args = {
+                "query_embeddings": [self._embedding(query or "")],
+                "n_results": max(1, int(top_k or 10)),
+                "include": ["documents", "metadatas", "distances"],
+            }
+            if filters:
+                clauses = [{str(key): {"$eq": value}} for key, value in filters.items()]
+                query_args["where"] = clauses[0] if len(clauses) == 1 else {"$and": clauses}
             result = self._collection.query(
-                query_embeddings=[self._embedding(query or "")],
-                n_results=max(1, int(top_k or 10)),
-                include=["documents", "metadatas", "distances"],
+                **query_args,
             )
             ids = (result.get("ids") or [[]])[0]
             docs = (result.get("documents") or [[]])[0]
@@ -365,6 +381,9 @@ class MemoryVectorStore:
             or str(Path(db_path).with_name("chroma"))
         )
         self.embedding_model_path = ""
+        self.index_schema_version = 2
+        self.index_name = ""
+        self.embedding_fingerprint = ""
         if requested == "chroma":
             try:
                 encoder, self.dim, self.embedding_model_path = _create_encoder_with_model(
@@ -372,7 +391,12 @@ class MemoryVectorStore:
                     self.dim,
                     embedding_model_path,
                 )
-                collection_name = f"clawos_memory_{self.embedding_provider.replace('-', '_')}_{self.dim}"
+                self.embedding_fingerprint = self._fingerprint()
+                collection_name = (
+                    f"clawos_knowledge_v2_{self.embedding_provider.replace('-', '_')}_{self.dim}_"
+                    f"{self.embedding_fingerprint[:10]}"
+                )
+                self.index_name = collection_name
                 self._store: VectorStore | ChromaVectorStore = ChromaVectorStore(
                     self.persist_dir,
                     dim=self.dim,
@@ -385,17 +409,52 @@ class MemoryVectorStore:
                 self.fallback_reason = str(exc)
         else:
             self._store = VectorStore(dim=dim)
+            self.embedding_fingerprint = self._fingerprint()
+            self.index_name = f"clawos_knowledge_v2_lightweight_{self.dim}_{self.embedding_fingerprint[:10]}"
         self._lock = threading.Lock()
         self._loaded = False
+
+    def _fingerprint(self) -> str:
+        model = Path(self.embedding_model_path) if self.embedding_model_path else None
+        model_marker = ""
+        if model and model.exists():
+            markers = []
+            for name in ("config.json", "modules.json", "model.safetensors", "tokenizer.json"):
+                candidate = model / name
+                if candidate.exists():
+                    stat = candidate.stat()
+                    markers.append(f"{name}:{stat.st_size}:{stat.st_mtime_ns}")
+            model_marker = "|".join(markers)
+        raw = f"knowledge-v2|{self.embedding_provider}|{self.dim}|{model_marker}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def _ensure_loaded(self):
         if self._loaded:
             return
         with self._lock:
-            self._load_from_db()
+            if self._store.count() <= 0 or not self._index_state_matches():
+                self._load_from_db()
+            else:
+                self._sync_outbox()
             self._loaded = True
 
+    def _index_state_matches(self) -> bool:
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=5)
+            row = conn.execute(
+                "SELECT schema_version,embedding_fingerprint FROM knowledge_vector_index_state_v2 WHERE index_name=?",
+                (self.index_name,),
+            ).fetchone()
+            return bool(row and int(row[0]) == self.index_schema_version and row[1] == self.embedding_fingerprint)
+        except sqlite3.Error:
+            return False
+        finally:
+            if conn is not None:
+                conn.close()
+
     def _load_from_db(self):
+        conn = None
         try:
             conn = sqlite3.connect(self.db_path, timeout=5)
             conn.row_factory = sqlite3.Row
@@ -411,18 +470,29 @@ class MemoryVectorStore:
                     "outcome": row["outcome"],
                     "task": row["task"][:200],
                 }})
-            rows = conn.execute(
-                "SELECT id, title, content, category, source FROM knowledge ORDER BY id"
-            ).fetchall()
-            for row in rows:
-                doc_id = f"kw_{row['id']}"
-                text = f"{row['title']} {row['content']}"
-                indexed_rows.append({"id": doc_id, "text": text, "metadata": {
-                    "type": "knowledge",
-                    "category": row["category"],
-                    "source": row["source"],
-                    "title": row["title"],
-                }})
+            has_v2 = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='knowledge_records_v2'"
+            ).fetchone()
+            if has_v2:
+                rows = conn.execute(
+                    "SELECT id FROM knowledge_records_v2 WHERE status='active' AND (valid_until='' OR valid_until>?) ORDER BY id",
+                    (datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),),
+                ).fetchall()
+                for row in rows:
+                    projection = self._knowledge_projection(conn, int(row["id"]))
+                    if projection:
+                        indexed_rows.append(projection)
+            else:
+                rows = conn.execute(
+                    "SELECT id, title, content, category, source FROM knowledge ORDER BY id"
+                ).fetchall()
+                for row in rows:
+                    doc_id = f"kw_{row['id']}"
+                    text = f"{row['title']} {row['content']}"
+                    indexed_rows.append({"id": doc_id, "text": text, "metadata": {
+                        "type": "knowledge", "category": row["category"],
+                        "source": row["source"], "title": row["title"],
+                    }})
             rows = conn.execute(
                 """
                 SELECT id, memory_type, category, key, value, source, confidence
@@ -441,15 +511,134 @@ class MemoryVectorStore:
                     "title": row["key"],
                     "confidence": row["confidence"],
                 }})
-            conn.close()
             add_many = getattr(self._store, "add_many", None)
             if callable(add_many):
                 add_many(indexed_rows)
             else:
                 for item in indexed_rows:
                     self._store.add(item["id"], item.get("text", ""), item.get("metadata") or {})
+            now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            conn.execute(
+                "UPDATE knowledge_vector_outbox_v2 SET processed_at=?,error='' WHERE processed_at=''",
+                (now,),
+            ) if has_v2 else None
+            if has_v2:
+                conn.execute(
+                    """INSERT INTO knowledge_vector_index_state_v2
+                       (index_name,schema_version,embedding_fingerprint,last_outbox_id,indexed_records,
+                        last_full_sync_at,last_incremental_sync_at,last_error,updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(index_name) DO UPDATE SET schema_version=excluded.schema_version,
+                        embedding_fingerprint=excluded.embedding_fingerprint,last_outbox_id=excluded.last_outbox_id,
+                        indexed_records=excluded.indexed_records,last_full_sync_at=excluded.last_full_sync_at,
+                        last_incremental_sync_at=excluded.last_incremental_sync_at,last_error='',updated_at=excluded.updated_at""",
+                    (self.index_name, self.index_schema_version, self.embedding_fingerprint,
+                     self._max_outbox_id(conn), self._knowledge_vector_count(), now, now, "", now),
+                )
+            conn.commit()
+            conn.close()
+            conn = None
         except sqlite3.Error:
             return
+        finally:
+            if conn is not None:
+                conn.close()
+
+    @staticmethod
+    def _max_outbox_id(conn) -> int:
+        row = conn.execute("SELECT COALESCE(MAX(id),0) FROM knowledge_vector_outbox_v2").fetchone()
+        return int(row[0] if row else 0)
+
+    def _knowledge_vector_count(self) -> int:
+        return len([
+            row for row in self._store.list_all()
+            if (row.get("metadata") or {}).get("type") == "knowledge_v2"
+        ])
+
+    def _knowledge_projection(self, conn, knowledge_id: int) -> dict | None:
+        row = conn.execute(
+            """SELECT k.*,
+               (SELECT COUNT(*) FROM knowledge_sources_v2 s WHERE s.knowledge_id=k.id) source_count,
+               (SELECT MAX(authority) FROM knowledge_sources_v2 s WHERE s.knowledge_id=k.id) max_authority,
+               (SELECT source_ref FROM knowledge_sources_v2 s WHERE s.knowledge_id=k.id ORDER BY authority DESC,id LIMIT 1) source_ref,
+               (SELECT locator FROM knowledge_sources_v2 s WHERE s.knowledge_id=k.id ORDER BY authority DESC,id LIMIT 1) locator,
+               (SELECT COALESCE(AVG(CASE WHEN outcome IN ('success','accepted','helpful','delivered') THEN 1.0
+                    WHEN outcome IN ('failed','rejected','harmful') THEN -1.0 ELSE 0.0 END),0.0)
+                    FROM knowledge_usage_v2 u WHERE u.knowledge_id=k.id) utility
+               FROM knowledge_records_v2 k WHERE k.id=?""",
+            (int(knowledge_id),),
+        ).fetchone()
+        if not row or row["status"] != "active":
+            return None
+        valid_until = str(row["valid_until"] or "")
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        if valid_until and valid_until <= now:
+            return None
+        source_ref, locator = str(row["source_ref"] or ""), str(row["locator"] or "")
+        from services.document_evidence_policy import source_usable
+        if not source_usable(conn, source_ref):
+            return None
+        citation = source_ref if not locator or "#" in source_ref else f"{source_ref}#{locator}"
+        return {
+            "id": f"kv2_{row['id']}",
+            "text": f"{row['title']}\n{row['statement']}",
+            "metadata": {
+                "type": "knowledge_v2", "knowledge_id": int(row["id"]),
+                "category": row["category"], "title": row["title"], "source": citation,
+                "status": row["status"], "owner_id": row["owner_id"], "workspace_id": row["workspace_id"],
+                "confidence": float(row["confidence"]), "authority": float(row["max_authority"] or 0.5),
+                "utility": float(row["utility"] or 0.0), "source_count": int(row["source_count"] or 0),
+                "version": int(row["current_version"]), "valid_until": valid_until,
+                "updated_at": row["updated_at"], "schema_version": self.index_schema_version,
+                "embedding_fingerprint": self.embedding_fingerprint[:16],
+            },
+        }
+
+    def _sync_outbox(self, limit: int = 1000) -> dict:
+        processed = failed = 0
+        last_id = 0
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=5)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM knowledge_vector_outbox_v2 WHERE processed_at='' ORDER BY id LIMIT ?", (int(limit),),
+            ).fetchall()
+            for event in rows:
+                last_id = int(event["id"])
+                try:
+                    projection = self._knowledge_projection(conn, int(event["knowledge_id"]))
+                    if event["operation"] == "delete" or not projection:
+                        self._store.remove(f"kv2_{event['knowledge_id']}")
+                    else:
+                        self._store.add(projection["id"], projection["text"], projection["metadata"])
+                    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+                    conn.execute(
+                        "UPDATE knowledge_vector_outbox_v2 SET processed_at=?,attempts=attempts+1,error='' WHERE id=?",
+                        (now, last_id),
+                    )
+                    processed += 1
+                except Exception as exc:
+                    conn.execute(
+                        "UPDATE knowledge_vector_outbox_v2 SET attempts=attempts+1,error=? WHERE id=?",
+                        (f"{type(exc).__name__}: {exc}"[:500], last_id),
+                    )
+                    failed += 1
+            now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            conn.execute(
+                """UPDATE knowledge_vector_index_state_v2 SET last_outbox_id=MAX(last_outbox_id,?),
+                   indexed_records=?,last_incremental_sync_at=?,last_error=?,updated_at=? WHERE index_name=?""",
+                (last_id, self._knowledge_vector_count(), now, "" if not failed else f"{failed} projection events failed", now, self.index_name),
+            )
+            conn.commit()
+            conn.close()
+            conn = None
+        except sqlite3.Error as exc:
+            return {"processed": processed, "failed": failed + 1, "error": f"{type(exc).__name__}: {exc}"}
+        finally:
+            if conn is not None:
+                conn.close()
+        return {"processed": processed, "failed": failed, "last_outbox_id": last_id}
 
     def add_experience(self, exp_id: int, task: str, lesson: str = "",
                        context: str = "", solution: str = "", outcome: str = "partial"):
@@ -470,21 +659,90 @@ class MemoryVectorStore:
             "title": title,
         })
 
-    def search(self, query: str, top_k: int = 10, min_score: float = 0.15) -> list[dict]:
+    def _sync_personal_memories(self):
+        """Re-embed changed canonical memories without rebuilding knowledge vectors."""
+        from contextlib import closing
+        with self._lock, closing(sqlite3.connect(self.db_path,timeout=5)) as connection:
+            connection.row_factory=sqlite3.Row
+            for row in connection.execute('SELECT * FROM memories'):
+                doc_id=f"mem_{row['id']}"
+                if not row['enabled']:
+                    self._store.remove(doc_id)
+                    continue
+                previous=self._store.get(doc_id)
+                text=f"{row['memory_type']} {row['category']} {row['key']} {row['value']}"
+                if previous and previous.get('text')==text and (previous.get('metadata') or {}).get('version')==row['current_version']:
+                    continue
+                self._store.add(doc_id,text,dict(type=row['memory_type'],category=row['category'],source=row['source'],
+                    title=row['key'],confidence=row['confidence'],owner_id=row['owner_id'],workspace_id=row['workspace_id'],version=row['current_version']))
+
+    def search(
+        self, query: str, top_k: int = 10, min_score: float = 0.15,
+        filters: dict | None = None,
+    ) -> list[dict]:
         self._ensure_loaded()
-        return self._store.search(query, top_k, min_score)
+        self._sync_outbox()
+        self._sync_personal_memories()
+        candidates = self._store.search(query, max(top_k*4,20), min_score, filters=filters)
+        safe = []
+        # The public vector-search API also crosses the review boundary. Never
+        # trust a stale collection's active flag/version after a source correction.
+        try:
+            from contextlib import closing
+            with closing(sqlite3.connect(self.db_path, timeout=5)) as connection:
+                connection.row_factory = sqlite3.Row
+                from services.document_evidence_policy import source_usable
+                for item in candidates:
+                    meta = item.get("metadata") or {}
+                    item_id=str(item.get("id") or "")
+                    if item_id.startswith("mem_"):
+                        memory=connection.execute("SELECT * FROM memories WHERE id=?",(int(item_id[4:]),)).fetchone()
+                        if not memory or not memory['enabled']:
+                            continue
+                        expected=f"{memory['memory_type']} {memory['category']} {memory['key']} {memory['value']}"
+                        if item.get('text') != expected:
+                            continue
+                        if filters and (filters.get('owner_id',memory['owner_id'])!=memory['owner_id'] or filters.get('workspace_id',memory['workspace_id'])!=memory['workspace_id']):
+                            continue
+                    elif item_id.startswith("exp_"):
+                        memory=connection.execute("SELECT enabled FROM memories WHERE memory_type='experience' AND key=?",('reflection:'+item_id[4:],)).fetchone()
+                        if memory and not memory['enabled']:
+                            continue
+                    if not source_usable(connection, meta.get("source", "")):
+                        continue
+                    if meta.get("type") == "knowledge_v2":
+                        projection = self._knowledge_projection(connection, int(meta.get("knowledge_id") or 0))
+                        if not projection or projection["metadata"]["version"] != meta.get("version"):
+                            continue
+                    safe.append(item)
+        except sqlite3.DatabaseError:
+            # Without authoritative state, document knowledge must stay withheld.
+            safe = [item for item in candidates if not str((item.get("metadata") or {}).get("source", "")).startswith("doc:")
+                    and (item.get("metadata") or {}).get("type") != "knowledge_v2"
+                    and not str(item.get("id", "")).startswith(("mem_", "exp_"))]
+        return safe[:top_k]
 
     def search_experiences(self, query: str, top_k: int = 5) -> list[dict]:
-        results = self.search(query, top_k)
-        return [r for r in results if r.get("metadata", {}).get("type") == "experience"]
+        return self.search(query, top_k, filters={"type": "experience"})
 
-    def search_knowledge(self, query: str, top_k: int = 5) -> list[dict]:
-        results = self.search(query, top_k)
-        return [r for r in results if r.get("metadata", {}).get("type") == "knowledge"]
+    def search_knowledge(
+        self, query: str, top_k: int = 5, owner_id: str = "default", workspace_id: str = "default",
+    ) -> list[dict]:
+        return self.search(query, top_k, filters={
+            "type": "knowledge_v2", "status": "active",
+            "owner_id": owner_id, "workspace_id": workspace_id,
+        })
 
     def refresh(self):
+        self._ensure_loaded()
+        return self._sync_outbox()
+
+    def rebuild(self):
+        """Explicit full rebuild. Normal writes use the durable outbox instead."""
         self._store.clear()
         self._loaded = False
+        self._ensure_loaded()
+        return self.stats()
 
     def close(self) -> None:
         close = getattr(self._store, "close", None)
@@ -494,6 +752,32 @@ class MemoryVectorStore:
     def stats(self) -> dict:
         self._ensure_loaded()
         rows = self._store.list_all()
+        index_state = {}
+        pending = failed_events = expected_v2 = 0
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=5)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM knowledge_vector_index_state_v2 WHERE index_name=?", (self.index_name,),
+            ).fetchone()
+            index_state = dict(row) if row else {}
+            pending = int(conn.execute(
+                "SELECT COUNT(*) FROM knowledge_vector_outbox_v2 WHERE processed_at=''"
+            ).fetchone()[0])
+            failed_events = int(conn.execute(
+                "SELECT COUNT(*) FROM knowledge_vector_outbox_v2 WHERE processed_at='' AND error<>''"
+            ).fetchone()[0])
+            expected_v2 = int(conn.execute(
+                """SELECT COUNT(*) FROM knowledge_records_v2
+                   WHERE status='active' AND (valid_until='' OR valid_until>?)""",
+                (datetime.now(timezone.utc).isoformat(),),
+            ).fetchone()[0])
+        except sqlite3.Error:
+            pass
+        finally:
+            if conn is not None:
+                conn.close()
         return {
             "provider": self.provider,
             "requested_provider": self.requested_provider,
@@ -501,9 +785,24 @@ class MemoryVectorStore:
             "embedding_provider": self.embedding_provider,
             "embedding_model_path": self.embedding_model_path if self.embedding_provider not in {"hash", "local_hash", "ngram", ""} else "",
             "embedding_dim": self.dim,
+            "index_schema_version": self.index_schema_version,
+            "index_name": self.index_name,
+            "embedding_fingerprint": self.embedding_fingerprint,
             "persist_dir": self.persist_dir if self.provider == "chroma" else "",
             "vector_count": self._store.count(),
             "experiences": len([r for r in rows if r.get("metadata", {}).get("type") == "experience"]),
-            "knowledge": len([r for r in rows if r.get("metadata", {}).get("type") == "knowledge"]),
+            "knowledge": len([r for r in rows if r.get("metadata", {}).get("type") in {"knowledge", "knowledge_v2"}]),
+            "knowledge_v2": len([r for r in rows if r.get("metadata", {}).get("type") == "knowledge_v2"]),
+            "expected_knowledge_v2": expected_v2,
             "memories": len([r for r in rows if r.get("id", "").startswith("mem_")]),
+            "outbox_pending": pending,
+            "outbox_failed": failed_events,
+            "last_full_sync_at": index_state.get("last_full_sync_at", ""),
+            "last_incremental_sync_at": index_state.get("last_incremental_sync_at", ""),
+            "last_index_error": index_state.get("last_error", ""),
+            "consistent": (
+                pending == 0
+                and failed_events == 0
+                and len([r for r in rows if r.get("metadata", {}).get("type") == "knowledge_v2"]) == expected_v2
+            ),
         }
