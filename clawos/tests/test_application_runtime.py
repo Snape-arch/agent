@@ -16,6 +16,18 @@ SPEC.loader.exec_module(runtime)
 
 
 class ApplicationRuntimeTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform=='win32','Windows launcher profile')
+    def test_actual_batch_rejects_unmarked_and_missing_interpreters_with_nonzero_exit(self):
+        with tempfile.TemporaryDirectory() as td:
+            for executable in (sys._base_executable,str(Path(td)/'missing-python.exe')):
+                env=runtime.clean_environment();env['CLAWOS_PYTHON']=executable
+                result=subprocess.run(['cmd.exe','/d','/c',str(runtime.PROJECT.parent/'start_clawos.bat'),'--check-runtime'],
+                    env=env,stdin=subprocess.DEVNULL,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=30)
+                with self.subTest(executable=executable):
+                    self.assertEqual(1,result.returncode,result.stdout+result.stderr)
+                    self.assertNotIn('[1/5]',result.stdout)
+                    self.assertNotIn('[OK] Locked application runtime verified',result.stdout)
+
     def test_locked_dependency_inventory_rejects_system_leaks_and_version_drift(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

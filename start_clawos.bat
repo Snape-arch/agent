@@ -27,13 +27,13 @@ if defined RUNTIME_CHECK_ONLY goto runtime_selection
 call :check_port %MTCLAW_PORT% MTClaw
 if errorlevel 1 (
     pause
-    exit /b 1
+    goto launcher_failed
 )
 
 call :check_port %CLAWOS_PORT% ClawOS
 if errorlevel 1 (
     pause
-    exit /b 1
+    goto launcher_failed
 )
 
 :runtime_selection
@@ -59,7 +59,7 @@ if not defined PYTHON (
     echo         Or install Python and make python/py available in PATH.
     echo.
     pause
-    exit /b 1
+    goto launcher_failed
 )
 
 if not exist "%VENV_PYTHON%" (
@@ -75,7 +75,7 @@ echo [INFO] Python runtime: %PYTHON%
 if errorlevel 1 (
     echo [ERROR] Selected Python runtime is not usable: %PYTHON%
     pause
-    exit /b 1
+    goto launcher_failed
 )
 
 rem A prepared application runtime takes precedence over the test/system fallback.
@@ -85,7 +85,7 @@ if not defined CLAWOS_PYTHON if exist "%CLAWOS_DIR%\output\app-runtimes\current.
     if errorlevel 1 (
         echo [ERROR] Prepared application runtime failed verification. No fallback was started.
         pause
-        exit /b 1
+        goto launcher_failed
     )
     set /p "PYTHON="<"%CLAWOS_DIR%\output\app-runtimes\launcher-python.txt"
 )
@@ -93,10 +93,10 @@ echo [INFO] Application Python: %PYTHON%
 if defined RUNTIME_CHECK_ONLY (
     if defined CLAWOS_PYTHON (
         "%PYTHON%" -I "%CLAWOS_DIR%\scripts\application_runtime.py" verify --python "%PYTHON%" >nul
-        if errorlevel 1 exit /b 1
+        if errorlevel 1 goto launcher_failed
     ) else if not exist "%CLAWOS_DIR%\output\app-runtimes\current.json" (
         echo [ERROR] No locked application runtime is prepared.
-        exit /b 1
+        goto launcher_failed
     )
     echo [OK] Locked application runtime verified. No service was started.
     exit /b 0
@@ -124,7 +124,7 @@ if defined LOCAL_PROFILE (
     if errorlevel 1 (
         echo [ERROR] Install local retrieval dependencies in this runtime, or set CLAWOS_PYTHON to a prepared Python executable.
         pause
-        exit /b 1
+        goto launcher_failed
     )
     set "CLAWOS_CONFIG_PATH=%CLAWOS_DIR%\config.local.json"
     set "MODEL_PROVIDER=qwen"
@@ -166,7 +166,7 @@ if defined LOCAL_PROFILE (
         call :check_port %QWEN_PORT% "Local Qwen"
         if errorlevel 1 (
             pause
-            exit /b 1
+            goto launcher_failed
         )
         echo.
         echo [LOCAL] Starting Qwen on %QWEN_BASE_URL% ...
@@ -176,7 +176,7 @@ if defined LOCAL_PROFILE (
         if errorlevel 1 (
             echo [ERROR] Local Qwen did not become healthy. Check the Qwen window and local model assets.
             pause
-            exit /b 1
+            goto launcher_failed
         )
     ) else (
         echo [LOCAL] Reusing healthy Qwen service on %QWEN_BASE_URL%
@@ -191,7 +191,7 @@ if not defined MTCLAW_DIR (
     echo [ERROR] MTClaw directory not found under:
     echo         %ROOT%
     pause
-    exit /b 1
+    goto launcher_failed
 )
 
 echo [1/5] Preparing MTClaw runtime...
@@ -199,7 +199,7 @@ echo [1/5] Preparing MTClaw runtime...
 if errorlevel 1 (
     echo [ERROR] Failed to prepare MTClaw runtime.
     pause
-    exit /b 1
+    goto launcher_failed
 )
 
 echo.
@@ -211,7 +211,7 @@ echo [3/5] Waiting for MTClaw health check...
 if errorlevel 1 (
     echo [ERROR] MTClaw did not become healthy. Check the MTClaw window for details.
     pause
-    exit /b 1
+    goto launcher_failed
 )
 
 echo.
@@ -225,7 +225,7 @@ echo [5/5] Waiting for ClawOS health check...
 if errorlevel 1 (
     echo [ERROR] ClawOS did not become healthy. Check the ClawOS window for details.
     pause
-    exit /b 1
+    goto launcher_failed
 )
 
 echo.
@@ -239,6 +239,9 @@ echo Close the MTClaw and ClawOS console windows to stop the services.
 pause
 
 exit /b 0
+
+:launcher_failed
+exit /b 1
 
 :check_port
 powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort %1 -State Listen -ErrorAction SilentlyContinue) { exit 1 }"

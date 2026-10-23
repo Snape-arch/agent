@@ -1,9 +1,12 @@
 import asyncio
+import contextlib
+import io
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -32,6 +35,35 @@ class FakeHttpClient:
 
 
 class ModelAcceptanceScriptTests(unittest.TestCase):
+    def test_failed_case_diagnostics_keep_real_reason_and_do_not_echo_tool_data(self):
+        from scripts import evaluate_model_acceptance as evaluator
+        run=dict(passed=False,metrics=dict(case_count=1,passed_count=0,pass_rate=0),case_results=[
+            dict(name='slow-fixture',scenario='meeting',tool='meeting_workflow',passed=False,
+                 latency_ms=3001,reasons=['case latency exceeded'],result={'data':'private-fixture-do-not-echo'})])
+        output=io.StringIO()
+        with patch.object(evaluator,'_run_suite',return_value=run), \
+             patch.object(evaluator.sys,'argv',['evaluate','--provider','mock','--mock-response','PASS: meeting fixture']), \
+             contextlib.redirect_stdout(output):
+            code=evaluator.main()
+        self.assertEqual(1,code)
+        self.assertIn('case latency exceeded',output.getvalue())
+        self.assertIn('latency_ms=3001',output.getvalue())
+        self.assertNotIn('private-fixture-do-not-echo',output.getvalue())
+
+    def test_provider_failure_cannot_exit_success_when_tool_cases_pass(self):
+        from scripts import evaluate_model_acceptance as evaluator
+        class FailedProvider:
+            name='fixture';model='fixture'
+            def is_configured(self):return True
+            async def complete(self,*args):return dict(ok=False,content='',error='fixture_unavailable')
+        run=dict(passed=True,metrics=dict(case_count=1,passed_count=1,pass_rate=1),case_results=[
+            dict(name='fixture',scenario='meeting',tool='meeting_workflow',passed=True,latency_ms=1,reasons=[])])
+        with patch.object(evaluator,'_run_suite',return_value=run), \
+             patch.object(evaluator,'create_model_provider',return_value=FailedProvider()), \
+             patch.object(evaluator.sys,'argv',['evaluate','--provider','mock']), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(1,evaluator.main())
+
     def test_case_prompt_requires_exact_acceptance_context(self):
         if str(ROOT) not in sys.path:
             sys.path.insert(0, str(ROOT))

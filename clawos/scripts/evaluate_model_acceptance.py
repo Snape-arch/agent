@@ -194,6 +194,9 @@ async def _main_async(args: argparse.Namespace) -> dict[str, Any]:
         "model": getattr(provider, "model", ""),
         "configured": bool(provider.is_configured()) if hasattr(provider, "is_configured") else True,
         "benchmark": run["metrics"],
+        "benchmark_cases": [{key: item.get(key) for key in
+            ("name", "scenario", "tool", "passed", "latency_ms", "reasons")}
+            for item in run["case_results"]],
         "evaluation": {
             "cases": len(case_evaluations),
             "total_score": total_score,
@@ -241,8 +244,12 @@ def main() -> int:
         )
         if evaluation["provider_errors"]:
             print(f"Provider errors: {json.dumps(evaluation['provider_errors'], ensure_ascii=False)}")
+        for case in result['benchmark_cases']:
+            if not case['passed']:
+                print(f"- FAIL {case['scenario']}::{case['name']} tool={case['tool']} "
+                      f"latency_ms={case['latency_ms']} reasons={json.dumps(case['reasons'], ensure_ascii=True)}")
 
-    return 0 if result["benchmark"].get("pass_rate") == 1.0 else 1
+    return 0 if result['ok'] else 1
 
 
 if __name__ == "__main__":

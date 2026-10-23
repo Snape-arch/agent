@@ -1,5 +1,15 @@
 # Project Context
 
+## 最新：P0本地全量通过、云端真实失败及退出码补强（2026-10-23）
+
+de3b514终版独立部署解释器全量1055/1055、0跳过，307/189/208/351四组完整无重叠，503.188/150.141/114.625/785.563秒，源码/HEAD未漂移，原registry字节恢复、日常DB不变。证据output/p0-deployment-final-20261023/full-result.json及full-source-audit.json。不能相加当连续负载或模型质量。
+
+同提交GitHub39814970787真实失败：三组通过，第3组test_model_acceptance_text_output_includes_counts报mock工具2项中1项失败/8分；旧输出无逐项原因，不能认定为延迟，也不能用本地通过覆盖云端失败。保留cloud-terminal.json、cloud-failure-annotations.json。现补失败用例/耗时/原因的CLI输出，不回显工具payload，并修正提供方失败但工具通过时的exit0。旧性能门槛不改；终版模型验收11/11（4.473秒）另验通过。
+
+实际batch负向又发现嵌套exit/b1会停止却返回0，临时最小复现/CRLF副本均保留；统一main失败goto独立出口，helper返回不改。实际未锁定/缺解释器均退出1，默认已准备环境退出0且无服务/.env动作；部署8/8（0.657秒）通过。两项增量晚于1055冻结源，需要最新云端终局，不能冒称1058已全量。继续master正常提交推送，tools/权重/凭据/DB/output和原registry排除。
+
+P0剩余仍是完整浏览器/真实模型业务、物理重启/断电和实际存储故障、275历史缺失产物可信恢复。浏览器错误页工具策略未绕过，合成HTTP32/32/实际嵌入不代表真人/语义/屏幕阅读器。production_sandbox_ready=false；详见clawos/benchmarks/P0_DEPLOYMENT_BUSINESS_ACCEPTANCE.md。
+
 ## 当前开发：P0独立部署与恢复故障闭环（2026-10-23）
 
 继续master。新增Windows x64/CPython3.12应用环境：135个精确wheel摘要/来源锁，禁系统包，真实导入/CPU张量/pip check后原子激活；启动器默认核验，实际--check-runtime通过且不启动服务/读.env。仍依赖外部基础CPython/Office/权重，不是便携解释器；可选PaddleOCR未装，ASR只验导入。恢复先落进度标记，数据库复制纳入失败边界，刷盘/原子回执，启动/健康拒绝未完成目录。部署7/7、恢复12/12、HTTP慢编码并行读取2/2，独立部署解释器原生部分写入退出73及ENOSPC/EACCES注入19/19分别通过，不累加模型成功率。

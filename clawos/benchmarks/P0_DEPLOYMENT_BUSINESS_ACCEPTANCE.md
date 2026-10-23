@@ -1,5 +1,46 @@
 # P0 deployment, business persistence and recovery faults (2026-10-23)
 
+## Latest terminal evidence and follow-up
+
+Source `de3b5149b99af5fa3d8d044c021c4bfc04a65adc` passed the fresh local frozen
+full suite on the independent application interpreter: **1055/1055, zero skips**.
+Module partitions 307/189/208/351 were complete and disjoint; individual durations
+503.188/150.141/114.625/785.563 seconds. Source bytes and HEAD stayed unchanged;
+daily DB stayed unchanged and the original registry bytes were restored.
+Evidence: `output/p0-deployment-final-20261023/full-result.json`,
+`full-source-audit.json`. These are deterministic tests, not real model quality or
+continuous-load evidence; independent shard durations are not summed as load.
+
+The same source's hosted run [39814970787](https://github.com/Snape-arch/agent/actions/runs/39814970787)
+**failed**: three shards passed; shard 3 failed
+`test_model_acceptance_text_output_includes_counts` (mock evaluator: one of two
+tool cases failed, score 8/10). The original text lacked per-case reasons; its
+root cause, including any suspected latency, is **not proved** by this annotation.
+The required final gate correctly failed. Raw terminal and annotation receipts
+are retained; local success is not substituted for this hosted failure.
+
+Follow-up CLI diagnostics retain failed case/scenario/tool, measured time and
+reasons without echoing tool payloads. Exit success now also requires the provider
+and full evaluation to pass, closing the existing `ok=false`/exit-zero path.
+The frozen benchmark thresholds and provider requirements are unchanged.
+The expanded model-acceptance module passed 11/11 (4.473 seconds); diagnostic and
+provider-failure negatives are included. This does not establish the old cloud
+failure's cause or claim a new full-suite result.
+
+An additional real CMD negative check found that nested batch failure exits could
+stop startup yet return zero. A standalone failure label now returns one for all
+main startup failures; helper subroutine return contracts are retained. Actual
+unmarked/missing interpreter checks return one without starting services; the
+default prepared-runtime selection returns zero. Deployment module 8/8 (0.657
+seconds), plus the actual prepared default batch check, passed. These are changes
+after the 1055-case frozen source and are validated separately until a new hosted
+terminal gate completes.
+
+Daily DB SHA-256 remains
+`8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543`;
+original dirty registry SHA-256 remains
+`a72423d78ff1e7d67c646fcd7debf1824ce9e88767b0034455ff1fefcc5a23d4`.
+
 P0 is not wholly accepted. This block fixes the application dependency environment
 and incomplete recovery activation; browser interaction, physical reboot/power-loss
 durability and the 275 missing historical artifacts remain separate gaps.
