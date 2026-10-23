@@ -1,6 +1,36 @@
 # P0 deployment, business persistence and recovery faults (2026-10-23)
 
-## Latest terminal evidence and follow-up
+## Final verified source and terminal gates
+
+Source **`db533d4deb2d09921c5fd6c747f9f7b0661d1cee`** passed the fresh local
+full suite using the independently prepared application interpreter:
+**1058/1058, zero skips, zero failures/errors**. The module partitions
+307/189/209/353 are complete and disjoint. JSON summary durations are
+501.688/148.906/111.031/783.375 seconds; total wall time 786.718 seconds.
+All 447 recorded source/dependency/launcher fingerprints and HEAD stayed unchanged.
+Daily DB stayed unchanged; the original dirty registry bytes were restored.
+Evidence is retained in `output/p0-final-cli-20261023/full-result.json`,
+`full-source-audit.json` and `verified-final-summary.json`.
+
+The same source's [GitHub run 39941236996](https://github.com/Snape-arch/agent/actions/runs/39941236996)
+is **completed/success**. All four Windows shards and the final
+`deterministic-tests` gate are individually completed/success with matching
+`head_sha`. Job durations including environment setup were 774/349/399/653 seconds
+for shards 0/1/2/3; the final gate ran for three seconds. These durations are not
+individual unittest durations or continuous-load evidence. Raw hosted terminal
+receipts are in `output/p0-final-cli-20261023/cloud-terminal.json`.
+
+This result includes the launcher and model-evaluator exit-code changes described
+below. Previous failures remain recorded; a later passing run does not prove the
+old hosted failure's unknown cause. The final handoff is Markdown-only with
+`[skip ci]`; code, tests, dependencies and workflow remain identical to the tested
+source. Skipping a documentation run is not reported as passing a new source run.
+
+P0 as a whole remains unaccepted against the remaining gates below. Synthetic
+HTTP evidence, process restarts and logical fault injection do not certify actual
+browser interaction, generation quality, physical durability or recovered originals.
+
+## Earlier terminal evidence and follow-up
 
 Source `de3b5149b99af5fa3d8d044c021c4bfc04a65adc` passed the fresh local frozen
 full suite on the independent application interpreter: **1055/1055, zero skips**.
@@ -25,16 +55,16 @@ and full evaluation to pass, closing the existing `ok=false`/exit-zero path.
 The frozen benchmark thresholds and provider requirements are unchanged.
 The expanded model-acceptance module passed 11/11 (4.473 seconds); diagnostic and
 provider-failure negatives are included. This does not establish the old cloud
-failure's cause or claim a new full-suite result.
+failure's cause. The final source was subsequently covered by the full run above.
 
 An additional real CMD negative check found that nested batch failure exits could
 stop startup yet return zero. A standalone failure label now returns one for all
 main startup failures; helper subroutine return contracts are retained. Actual
 unmarked/missing interpreter checks return one without starting services; the
 default prepared-runtime selection returns zero. Deployment module 8/8 (0.657
-seconds), plus the actual prepared default batch check, passed. These are changes
-after the 1055-case frozen source and are validated separately until a new hosted
-terminal gate completes.
+seconds), plus the actual prepared default batch check, passed. These changes
+followed the 1055-case frozen source and are included in the final 1058-case source
+and successful hosted gate recorded above.
 
 Daily DB SHA-256 remains
 `8167052e0c203036ad74bb1409ce74bd9cfaef585244865848ea5be7b2a8c543`;
@@ -45,6 +75,19 @@ P0 is not wholly accepted. This block fixes the application dependency environme
 and incomplete recovery activation; browser interaction, physical reboot/power-loss
 durability and the 275 missing historical artifacts remain separate gaps.
 `production_sandbox_ready=false` is unchanged.
+
+## Remaining P0 acceptance gates
+
+| Gate | Current evidence | Required evidence before acceptance |
+| --- | --- | --- |
+| Browser and real generation workflows | Synthetic HTTP 32/32; real embeddings, zero generation calls | Actual browser operations for the six business flows, real generation outputs checked against source material, saved/downloaded results and restart persistence; visual/keyboard/accessibility results reported separately |
+| System and storage durability | Process restart, interrupted child writes, logical ENOSPC/EACCES | An authorized controlled OS restart and actual storage fault test in a disposable environment, with original hashes, interruption point and recovery outcome recorded |
+| Historical artifacts | 275 missing; no trusted original or backup currently confirmed | Verify original identity before restoring, or record a separately authorized disposition; no same-name relinking, invented replacement or silent deletion |
+| Strict production sandbox | Existing strict fail-closed regression only | Independently prove required file/network/process isolation on the deployment host; keep readiness false until that evidence exists |
+
+Automated test completion recorded here applies to its exact source and environment. It
+does not close these remaining gates, establish learning outcomes, or count a
+pause between checks as sustained load.
 
 ## Implementation
 
@@ -108,7 +151,7 @@ processes shut down normally. Synthetic inputs and zero generation calls remain
 explicit; no browser, semantic-quality or multi-day result is claimed.
 
 The actual batch `--check-runtime` command passed without starting services or
-loading `.env`. Full-suite terminal results will be recorded after completion.
+loading `.env`. Final full-suite terminal results are recorded above.
 
 Historical artifact inventory remains 275 missing (11 reports/264 traces), zero
 recorded expected hashes. A bounded inventory of existing backup/output trees
@@ -116,6 +159,11 @@ inspected 52,306 filenames and found eight same-name candidates, zero verified
 identity matches. Tools/models/runtime packages were excluded. Same names are not
 trusted restoration evidence. No references were deleted or relinked. Evidence:
 `output/p0-deployment-20261022/missing-artifact-inventory.json`; daily DB unchanged.
+
+On 2026-10-23 the user could not confirm whether old directories or original backups
+still exist. No accessible trusted backup path is currently known; permanent loss
+has not been established. Missing references remain intact, the eight same-name
+candidates remain unlinked, and this recovery requirement remains unaccepted.
 
 ## Retained failures and boundaries
 
@@ -157,5 +205,5 @@ trusted restoration evidence. No references were deleted or relinked. Evidence:
   backup files and unknown/binary extensions. Defaults now exclude backups/tools
   (case-insensitive) and unrecognized extensions, and skip symlinks; explicit
   text-extension opt-in remains available. Scope regression 1/1 passed and the
-  frozen scenario module passed 7/7 (7.187 s) on a separate rerun. The ongoing first full
-  suite predates this delta and is not the final frozen-source full-suite proof.
+  frozen scenario module passed 7/7 (7.187 s) on a separate rerun. That first full
+  suite predates this delta; the final frozen-source full-suite proof is recorded above.
