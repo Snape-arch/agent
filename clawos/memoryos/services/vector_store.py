@@ -666,9 +666,17 @@ class MemoryVectorStore:
             )
             now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
             conn.execute(
-                """UPDATE knowledge_vector_index_state_v2 SET last_outbox_id=MAX(last_outbox_id,?),
-                   indexed_records=?,last_incremental_sync_at=?,last_error=?,updated_at=? WHERE index_name=?""",
-                (last_id, self._knowledge_vector_count(), now, "" if not failed else f"{failed} projection events failed", now, self.index_name),
+                """INSERT INTO knowledge_vector_index_state_v2
+                   (index_name,schema_version,embedding_fingerprint,last_outbox_id,indexed_records,
+                    last_full_sync_at,last_incremental_sync_at,last_error,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(index_name) DO UPDATE SET
+                    last_outbox_id=MAX(last_outbox_id,excluded.last_outbox_id),
+                    indexed_records=excluded.indexed_records,
+                    last_incremental_sync_at=excluded.last_incremental_sync_at,
+                    last_error=excluded.last_error,updated_at=excluded.updated_at""",
+                (self.index_name,self.index_schema_version,self.embedding_fingerprint,last_id,
+                 self._knowledge_vector_count(),"",now,"" if not failed else f"{failed} projection events failed",now),
             )
             conn.commit()
             conn.close()

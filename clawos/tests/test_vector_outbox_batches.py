@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 from memoryos.memory_store import MemoryStore
 from memoryos.services.vector_store import MemoryVectorStore,VectorStore,ChromaVectorStore
@@ -54,6 +55,17 @@ class VectorOutboxBatchTests(unittest.TestCase):
         self.backend.fail=False;result=self.vector.refresh()
         self.assertEqual(0,result['failed']);self.assertEqual(4,self.backend.count())
         self.assertTrue(all(row['processed_at'] and row['attempts']==2 and not row['error'] for row in self.events()))
+
+    def test_first_incremental_write_creates_missing_state_and_avoids_restart_rebuild(self):
+        # The legacy store may have loaded before lazy v2 schema initialization.
+        with self.store._conn() as c:c.execute('DELETE FROM knowledge_vector_index_state_v2')
+        self.add(1);self.vector.refresh(limit=8)
+        self.assertTrue(self.vector._index_state_matches())
+        restarted=MemoryVectorStore(self.store._db_path,provider='lightweight',embedding_provider='hash',dim=32)
+        restarted._store=self.backend
+        with patch.object(restarted,'_load_from_db',side_effect=AssertionError('unnecessary full rebuild')):
+            restarted.refresh(limit=8)
+        self.assertEqual([1],self.backend.batches)
 
     def test_full_load_does_not_ack_events_created_during_embedding(self):
         self.add(1);self.vector._loaded=False
