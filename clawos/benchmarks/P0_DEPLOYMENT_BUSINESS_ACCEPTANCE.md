@@ -1,6 +1,62 @@
 # P0 deployment, business persistence and recovery faults (2026-10-23)
 
-## Final verified source and terminal gates
+## Real model workflow and report responsiveness follow-up
+
+The final complete-app round `output/p0-business/c7c803bd16804dd889562b6f445ce8d3/report.json`
+passed **34/34 checks in 50.609 seconds**, with zero preview-hold time. The prepared
+application interpreter used actual Chroma/Qwen embeddings and local Qwen3.5-9B
+generation. The report requires both provider success and `mode=model_assisted`;
+a deterministic fallback cannot pass this check. The source-bound graph used one
+recorded model call and zero contract repairs. Two full application processes had
+the same startup source digest
+`799c2ca51d9977941c698898bf5fd5dd91c46961b5d50d519c142b499e8ab14f`.
+Notes, graph content/version/revision, completed tasks, reading position and
+immutable report download hashes survived the process restart.
+
+The final default no-generation compatibility round
+`output/p0-business/b804682b6d704316a5eef16d1d0046fc/report.json` passed **32/32 in
+29.078 seconds**, also with zero preview hold. Both rounds use labelled synthetic
+inputs. They establish model transport, source contracts and persistence, not
+general semantic accuracy, real teachers/learners or sustained load. Total actual
+generation-call count is not independently instrumented and is recorded as null
+in model mode; the graph's reported count is recorded separately.
+
+Report generation, paper analysis, Markdown/JSON writes, PDF rendering and
+artifact registration/hashing now run in worker threads instead of blocking the
+HTTP event loop. Regression holds a slow report export until an unrelated read
+has responded. Relevant isolated modules passed separately: responsiveness 3/3
+(0.144 s), paper intelligence 8/8 (0.375 s), artifact delivery 4/4 (0.985 s),
+model opt-in/preflight 2/2 (0.049 s). The model preflight is explicit loopback-only,
+rejects credentials/remote URLs, and writes a failed receipt without launching the
+app when the provider cannot be reached. Existing default behavior remains
+generation-free. Script SHA-256:
+`83ecdb778675b67f720998cd21e9272718431926265e78b300b235ad8e28eb08`.
+Source fingerprints are in `output/p0-real-model-20261023/final-source-audit.json`.
+
+The prepared interpreter also passed the native LPAC probe **26/26** in
+`output/strict-sandbox/db33027ead91/report.json`: parent token verification,
+file/process isolation, IPv4/IPv6 TCP/UDP denial, timeout/output limits and positive
+controls passed. Its owned discovery profile was deleted and both ACL cleanups
+returned zero. This remains the scoped Windows/Python-stdlib synthetic boundary;
+`production_sandbox_ready=false` is unchanged.
+
+Retained failures: the first restricted-context model listened but ordinary-user
+HTTP preflight timed out; the ordinary-user owned model then worked. This does
+not prove the exact Windows networking cause. The first harness unit run could
+not create a restricted TEMP fixture; its isolated normal-user rerun passed.
+Browser Use explicitly denied acquiring the existing 18942 tab under URL policy.
+No alternate browser or policy workaround was used, and no browser test passed.
+All owned app previews exited cleanly; the model was deliberately terminated via
+its owned process handle (Windows exit 1), not reported as graceful model exit.
+No production process was restarted; daily DB and original dirty registry hashes
+remain unchanged. Previous rounds are retained separately.
+
+This increment follows the 1058-case source below. It requires its own hosted
+terminal gate before claiming an updated full-suite pass. Remaining P0 gates
+still include browser operation, broader real-source/model-quality evidence,
+physical system/storage tests, trusted historical recovery and production isolation.
+
+## Previous verified source and terminal gates
 
 Source **`db533d4deb2d09921c5fd6c747f9f7b0661d1cee`** passed the fresh local
 full suite using the independently prepared application interpreter:

@@ -5018,7 +5018,8 @@ async def api_research_learning_analysis(request: Request):
         data["file_path"] = library_document.get("file_path", "")
         data["title"] = data.get("title") or library_document.get("title", "")
     try:
-        result = g_workspace_services.generate_research_learning_analysis(
+        result = await asyncio.to_thread(
+            g_workspace_services.generate_research_learning_analysis,
             document_id=data.get("document_id"),
             file_path=data.get("file_path", ""),
             title=data.get("title", ""),
@@ -5031,7 +5032,7 @@ async def api_research_learning_analysis(request: Request):
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(400, str(exc))
     if library_document:
-        intelligence = get_paper_intelligence_service().analyze_document(library_document_id)
+        intelligence = await asyncio.to_thread(get_paper_intelligence_service().analyze_document, library_document_id)
         evidence_bundle = GroundedPaperReport.build_evidence_bundle(intelligence)
         synthesis = None
         model_trace = {"ok": False, "error": "model_assistance_disabled"}
@@ -5059,15 +5060,15 @@ async def api_research_learning_analysis(request: Request):
         pdf_path = str(report_row.get("pdf_path") or "")
         if markdown_path:
             from services.file_transactions import write_text
-            write_text(markdown_path, grounded_markdown)
+            await asyncio.to_thread(write_text, markdown_path, grounded_markdown)
         structured_base = report_row.get('json_path') or markdown_path or pdf_path
         if structured_base:
             from services.file_transactions import write_text
             json_path = str(Path(structured_base).with_suffix('.json'))
-            write_text(json_path, json.dumps(synthesis, ensure_ascii=False, indent=2))
+            await asyncio.to_thread(write_text, json_path, json.dumps(synthesis, ensure_ascii=False, indent=2))
             report_row['json_path'] = json_path
         if pdf_path:
-            g_workspace_services._write_learning_analysis_pdf(Path(pdf_path), synthesis.get("title") or library_document.get("title") or "Paper report", grounded_markdown)
+            await asyncio.to_thread(g_workspace_services._write_learning_analysis_pdf, Path(pdf_path), synthesis.get("title") or library_document.get("title") or "Paper report", grounded_markdown)
         metadata = dict(report_row.get("metadata") or {})
         metadata.update({
             "mode": synthesis.get("mode"),
@@ -5126,9 +5127,11 @@ async def api_research_learning_analysis(request: Request):
             run.add_artifact("pdf_report", "Academy paper PDF report", pdf_path)
         if report.get('json_path'):
             run.add_artifact('structured_report', 'Structured paper reading report', report['json_path'])
-        result['artifacts'] = [get_artifact_delivery_service().register(path, source_tool='academy_paper_report')
-                               for path in [markdown_path, pdf_path, report.get('json_path')]
-                               if path and Path(path).is_file()]
+        def register_report_artifacts():
+            return [get_artifact_delivery_service().register(path, source_tool='academy_paper_report')
+                    for path in [markdown_path, pdf_path, report.get('json_path')]
+                    if path and Path(path).is_file()]
+        result['artifacts'] = await asyncio.to_thread(register_report_artifacts)
         result['artifacts'] = [item for item in result['artifacts'] if item]
         report['metadata']['artifacts'] = result['artifacts']
         if report.get('id'):

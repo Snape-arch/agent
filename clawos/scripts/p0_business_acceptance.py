@@ -1,6 +1,7 @@
 """Full application HTTP workflows on disposable inputs and a real local index.
 
-No provider calls, replaced services, daily databases or production restarts.
+Provider calls require an explicit credential-free loopback model URL.
+No replaced services, daily databases or production restarts.
 Synthetic inputs prove workflow mechanics, not research/teaching/model quality.
 """
 import argparse
@@ -14,10 +15,22 @@ import subprocess
 import sys
 import time
 import uuid
+from urllib.parse import urlsplit
 
 PROJECT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(PROJECT/'scripts'))
-from application_runtime import clean_environment,verify,digest
+from application_runtime import clean_environment,verify,digest,atomic_json
+
+
+def local_model_endpoint(value):
+    endpoint=urlsplit(value)
+    if (endpoint.scheme!='http' or endpoint.hostname not in ('127.0.0.1','::1')
+            or endpoint.username is not None or endpoint.password is not None
+            or endpoint.query or endpoint.fragment or endpoint.path!='/v1'):
+        raise ValueError('Model endpoint must be a credential-free loopback HTTP /v1 URL')
+    # Trigger validation for malformed/out-of-range ports too.
+    endpoint.port
+    return value.rstrip('/')
 
 
 def main():
@@ -26,23 +39,38 @@ def main():
     parser.add_argument('--port',type=int,default=18947)
     parser.add_argument('--embedding-model',required=True)
     parser.add_argument('--hold-preview',type=int,default=0)
+    parser.add_argument('--local-model-url',type=local_model_endpoint,
+                        help='Opt in to real report/graph generation on this loopback provider only')
     args=parser.parse_args()
     if not 1024<=args.port<=65535 or not 0<=args.hold_preview<=900:parser.error('Invalid QA port/hold duration')
     executable=Path(args.python).resolve(strict=True);receipt=verify(executable)
     embedding=Path(args.embedding_model).resolve(strict=True)
+    acceptance_source_sha256=digest(Path(__file__))
     root=PROJECT/'output'/'p0-business'/uuid.uuid4().hex;root.mkdir(parents=True)
     source_before={str(p):digest(p) for p in (PROJECT/'memoryos.db',PROJECT/'skills/skill_registry.jsonl') if p.is_file()}
-    config=dict(model_provider=dict(provider='qwen',base_url='http://127.0.0.1:18949/v1',model='disabled-acceptance',api_key='',requires_api_key=False),
+    import httpx
+    model_name='disabled-acceptance'
+    if args.local_model_url:
+        try:
+            with httpx.Client(trust_env=False,timeout=15) as model_client:
+                response=model_client.get(args.local_model_url+'/models');response.raise_for_status()
+                model_name=response.json()['data'][0]['id']
+                if not isinstance(model_name,str) or not model_name:raise ValueError('Provider has no model ID')
+        except (httpx.HTTPError,ValueError,KeyError,IndexError,TypeError) as exc:
+            result=dict(passed=False,stage='model_preflight',error=type(exc).__name__,
+                        model_generation_calls=0,processes=[],production_restarted=False)
+            atomic_json(root/'report.json',result)
+            print(json.dumps(dict(result,report=str(root/'report.json'))))
+            return 1
+    config=dict(model_provider=dict(provider='qwen',base_url=args.local_model_url or 'http://127.0.0.1:18949/v1',model=model_name,api_key='',requires_api_key=False),
         mtclaw=dict(enabled=False),vector_store=dict(provider='chroma',chroma_dir=str(root/'vectors'),
         embedding_provider='qwen3',embedding_model_path=str(embedding),embedding_dim=1024))
     (root/'config.json').write_text(json.dumps(config),encoding='utf-8')
     env=clean_environment();env.update(CLAWOS_CONFIG_PATH=str(root/'config.json'),CLAWOS_DATA_DIR=str(root),
         CLAWOS_MEMORY_DB=str(root/'memory.db'),CLAWOS_OUTPUT_DIR=str(root/'output'),FEISHU_LIVE='false',
         CLAWOS_EMBEDDING_DEVICE='cpu',OMP_NUM_THREADS='2')
-    import httpx
     from reportlab.pdfgen import canvas
-    from application_runtime import atomic_json
-    checks={};instances=[];processes=[];state={};error='';started=time.monotonic()
+    checks={};instances=[];processes=[];state={};model_evidence={};error='';started=time.monotonic();preview_hold_seconds=0
     def record(name,passed):
         checks[name]=bool(passed)
         atomic_json(root/'progress.json',dict(checks=checks,elapsed_seconds=time.monotonic()-started))
@@ -117,8 +145,12 @@ server.run()
                             record('rich_note_roundtrip_and_conflict',conflict.status_code==409 and len(updated['blocks'])==4)
                             exported=client.get(f'/api/academy/learning/documents/{note["id"]}/export');exported.raise_for_status()
                             record('rich_note_export',b'```python' in exported.content and b'Claims' in exported.content)
-                            # Real report generation and registered immutable downloads, no model.
-                            report=api('POST','/api/workspace/research/learning-analysis',json=dict(library_document_id=doc['id'],output_dir=str(root/'reports'),formats=['markdown','pdf','json'],model_assisted=False,depth=3,question_count=12))
+                            # Registered immutable downloads; real generation only on explicit opt-in.
+                            report=api('POST','/api/workspace/research/learning-analysis',json=dict(library_document_id=doc['id'],output_dir=str(root/'reports'),formats=['markdown','pdf','json'],model_assisted=bool(args.local_model_url),depth=3,question_count=12))
+                            if args.local_model_url:
+                                atomic_json(root/'model-report.json',report)
+                                model_evidence['report']=report['report']['metadata']['model']
+                                record('real_model_report_without_fallback',model_evidence['report']['ok'] is True and report['analysis']['mode']=='model_assisted')
                             state['artifacts']={a['download_url']:a['sha256'] for a in report['artifacts']}
                             record('report_three_formats',len(state['artifacts'])==3 and bool(report['analysis']['source_index']))
                             for path,expected in state['artifacts'].items():
@@ -134,16 +166,25 @@ server.run()
                             state['checkpoint']=checkpoint['run']['run_id']
                             found=api('GET','/api/documents/search',params=dict(q='annotators'))
                             record('source_search_with_citation',any(c['document_id']==doc['id'] and c.get('citation') for c in found['chunks']))
-                            # Whole-book manual graph workflow with source-bound nodes.
+                            # Same source-bound graph contract for manual and real-model workflows.
                             textbook=b'# Evidence\nEvidence supports conclusions.\n# Conditions\nMissing evidence requires refusal.'
                             material=api('POST','/api/academy/learning/materials',files={'file':('textbook.md',textbook,'text/markdown')})['document'];state['material']=material['id']
                             base=f'/api/academy/learning/lab/books/{material["id"]}'
                             lab=api('GET',base);graph=lab['graph'];chapters=graph['index']['chapters'];passage=material['payload']['passages'][0]
-                            nodes=[dict(id='evidence',title='Evidence',chapter=chapters[0]['id'],explanation='Source-based fixture.',source=dict(citation=passage['id'],quote='Evidence supports conclusions.')),dict(id='conditions',title='Conditions',chapter=chapters[1]['id'],explanation='Source-based fixture.',source=dict(citation=passage['id'],quote='Missing evidence requires refusal.'))]
-                            graph_value=dict(nodes=nodes,edges=[],covered_chapters=[c['id'] for c in chapters])
-                            api('POST',base+'/graph',json=dict(graph=graph_value,version=graph['version'],revision=graph['revision']))
-                            route=api('GET',base+'/route',params=dict(goal='conditions'))
-                            record('textbook_source_graph_and_route',[n['id'] for n in route['nodes']]==['conditions'])
+                            if args.local_model_url:
+                                proposed=api('POST',base+'/graph-propose',json=dict(chapters=[c['id'] for c in chapters]))
+                                atomic_json(root/'model-graph.json',proposed)
+                                model_evidence['graph']={k:proposed.get(k) for k in ('run_id','model_calls','contract_repairs')}
+                                graph=api('GET',base)['graph']
+                                record('real_model_graph_source_contract',bool(graph['nodes']) and set(graph['covered_chapters'])=={c['id'] for c in chapters} and proposed.get('model_calls',0)>=1 and all(e['status']=='proposed' for e in graph['edges']))
+                            else:
+                                nodes=[dict(id='evidence',title='Evidence',chapter=chapters[0]['id'],explanation='Source-based fixture.',source=dict(citation=passage['id'],quote='Evidence supports conclusions.')),dict(id='conditions',title='Conditions',chapter=chapters[1]['id'],explanation='Source-based fixture.',source=dict(citation=passage['id'],quote='Missing evidence requires refusal.'))]
+                                graph_value=dict(nodes=nodes,edges=[],covered_chapters=[c['id'] for c in chapters])
+                                api('POST',base+'/graph',json=dict(graph=graph_value,version=graph['version'],revision=graph['revision']))
+                                graph=api('GET',base)['graph']
+                            state['graph']={k:graph[k] for k in ('nodes','edges','covered_chapters','version','revision')}
+                            goal=graph['nodes'][-1]['id'];route=api('GET',base+'/route',params=dict(goal=goal))
+                            record('textbook_source_graph_and_route',bool(route['nodes']) and route['nodes'][-1]['id']==goal)
                         else:
                             record('knowledge_survives_restart',any(r['id']==state['knowledge'] for r in api('GET','/api/knowledge')['items']))
                             record('rich_document_survives_restart',len(api('GET',f'/api/academy/learning/documents/{state["note"]}')['blocks'])==4)
@@ -151,7 +192,8 @@ server.run()
                             for path,expected in state['artifacts'].items():
                                 response=client.get(path);response.raise_for_status()
                                 record('persistent_download_'+expected[:12],hashlib.sha256(response.content).hexdigest()==expected)
-                            record('textbook_graph_survives_restart',len(api('GET',f'/api/academy/learning/lab/books/{state["material"]}')['graph']['nodes'])==2)
+                            graph=api('GET',f'/api/academy/learning/lab/books/{state["material"]}')['graph']
+                            record('textbook_graph_survives_restart',{k:graph[k] for k in state['graph']}==state['graph'])
                             checkpoint=api('GET',f'/api/academy/paper/checkpoints/{state["checkpoint"]}')
                             record('reading_checkpoint_survives_restart',checkpoint['checkpoint']['reading']['page']==3)
                             record('new_process_same_source',instances[0]['instance_id']!=instances[1]['instance_id'] and instances[0]['startup_source_digest']==instances[1]['startup_source_digest'])
@@ -163,8 +205,9 @@ server.run()
                             atomic_json(root/'state.json',state)
                             if args.hold_preview:
                                 print(json.dumps(dict(preview_ready=True,url=str(client.base_url),workspace=str(root))),flush=True)
-                                end=time.monotonic()+args.hold_preview
-                                while time.monotonic()<end and process.poll() is None:time.sleep(.5)
+                                hold_started=time.monotonic();end=hold_started+args.hold_preview
+                                while time.monotonic()<end and process.poll() is None and not (root/'release-preview').exists():time.sleep(.5)
+                                preview_hold_seconds+=time.monotonic()-hold_started
                     finally:
                         if process.poll() is None:
                             stop_file.write_text('Stop this owned preview.',encoding='utf-8')
@@ -193,8 +236,15 @@ server.run()
         for path,before in source_before.items():record('unchanged_'+Path(path).name,digest(path)==before)
     result=dict(passed=not error and all(checks.values()),checks=checks,error=error,instances=instances,processes=processes,
         runtime_lock_sha256=receipt['lock_sha256'],elapsed_seconds=time.monotonic()-started,
-        synthetic_inputs=True,full_application_lifespan=True,real_http=True,actual_chroma_qwen=True,
-        model_generation_calls=0,browser_verified=False,model_quality_verified=False,production_restarted=False)
+        preview_hold_seconds=preview_hold_seconds,continuous_load_verified=False,
+        acceptance_source_sha256=acceptance_source_sha256,
+        acceptance_source_unchanged=acceptance_source_sha256==digest(Path(__file__)),
+        synthetic_inputs=True,full_application_lifespan=True,real_http=True,
+        actual_chroma_qwen=all(checks.get(f'actual_chroma_qwen_ready_{phase}') for phase in range(2)),
+        model_generation_calls=0 if not args.local_model_url else None,
+        model_workflow_evidence=model_evidence,model_generation_enabled=bool(args.local_model_url),
+        browser_verified=False,model_quality_verified=False,production_restarted=False)
+    result['passed']=result['passed'] and result['acceptance_source_unchanged']
     atomic_json(root/'report.json',result)
     print(json.dumps(dict(passed=result['passed'],error=error,checks=checks,report=str(root/'report.json'))))
     return 0 if result['passed'] else 1

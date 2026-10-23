@@ -15,6 +15,26 @@ class Store:
 
 
 class WriteResponsivenessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_report_export_keeps_read_routes_responsive(self):
+        started=threading.Event();release=threading.Event()
+        class SlowReports:
+            def generate_research_learning_analysis(self,**kwargs):
+                started.set()
+                if not release.wait(5):raise RuntimeError('test report was never released')
+                return dict(report={},preview='Fixture export')
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=server.app),base_url='http://127.0.0.1') as client:
+            with patch.object(server,'g_memory_store',Store()),patch.object(server,'g_workspace_services',SlowReports()):
+                pending=asyncio.create_task(client.post('/api/workspace/research/learning-analysis',json=dict(formats=['pdf'])))
+                try:
+                    self.assertTrue(await asyncio.to_thread(started.wait,2))
+                    response=await asyncio.wait_for(client.get('/api/knowledge'),1)
+                    self.assertEqual(200,response.status_code)
+                    self.assertFalse(pending.done(),'report export blocked the HTTP event loop')
+                finally:
+                    release.set()
+                    response=await pending
+                self.assertEqual(200,response.status_code)
+
     async def assert_responsive(self,method,path,**kwargs):
         started=threading.Event();release=threading.Event()
         class SlowVector:
