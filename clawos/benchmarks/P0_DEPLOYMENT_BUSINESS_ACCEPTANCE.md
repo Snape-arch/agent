@@ -21,6 +21,14 @@ general semantic accuracy, real teachers/learners or sustained load. Total actua
 generation-call count is not independently instrumented and is recorded as null
 in model mode; the graph's reported count is recorded separately.
 
+The actual final report PDF was rendered separately with Poppler and both A4
+pages visually inspected. Chinese text, citation/source-index blocks, headings
+and page breaks were legible with no observed clipping or overlap on these two
+pages. Rendered images remain under `output/p0-real-model-20261023/tmp/pdfs`.
+Poppler emitted missing display-font warnings for Symbol/ArialUnicode; no visual
+glyph defect was observed in this fixture. `pdfinfo` reports an untagged PDF,
+so this is not PDF/UA or screen-reader acceptance, nor browser interaction.
+
 Report generation, paper analysis, Markdown/JSON writes, PDF rendering and
 artifact registration/hashing now run in worker threads instead of blocking the
 HTTP event loop. Regression holds a slow report export until an unrelated read
@@ -49,12 +57,29 @@ No alternate browser or policy workaround was used, and no browser test passed.
 All owned app previews exited cleanly; the model was deliberately terminated via
 its owned process handle (Windows exit 1), not reported as graceful model exit.
 No production process was restarted; daily DB and original dirty registry hashes
-remain unchanged. Previous rounds are retained separately.
+remain unchanged. Ordinary-user exclusive binds verified that all three owned
+ports (18942/18943/18947) were released; receipt `owned-ports-closed.json` is in the
+same evidence directory. Previous rounds are retained separately.
 
-This increment follows the 1058-case source below. It requires its own hosted
-terminal gate before claiming an updated full-suite pass. Remaining P0 gates
-still include browser operation, broader real-source/model-quality evidence,
-physical system/storage tests, trusted historical recovery and production isolation.
+Source `9963e719a37ff25d80c4b714981682cd4dd01cb2` passed its own frozen local full
+suite **1061/1061, zero skips/failures/errors**. Partitions 309/190/209/353 are
+complete and disjoint; JSON durations 492.938/146.016/110.860/783.266 seconds,
+overall wall time 786.485 seconds. All 448 file fingerprints and HEAD stayed
+unchanged; daily DB unchanged and original registry bytes restored. Receipts:
+`output/p0-real-model-20261023/full-result.json` and `full-source-audit.json`.
+Its own [hosted run 39945871186](https://github.com/Snape-arch/agent/actions/runs/39945871186)
+is completed/success: all four Windows shards and the final `deterministic-tests`
+gate completed successfully, with every `head_sha` matching the source above.
+Raw receipts and independent verification are in the same evidence directory's
+`cloud-terminal.json` and `verified-final-summary.json`; the old run is not used
+to certify this increment. The final handoff is three Markdown files only with
+`[skip ci]`, keeping tested code identical. Remaining P0 gates still include browser
+operation, broader real-source/model-quality evidence, physical system/storage
+tests, trusted historical recovery and production isolation.
+
+The user confirmed on 2026-10-23 that no independent restart/fault-injection test
+machine or Windows VM is currently available and explicitly requested that those
+gates remain unaccepted. No current-host reboot or physical disk fault is performed.
 
 ## Previous verified source and terminal gates
 
