@@ -754,10 +754,11 @@ class WorkspaceServices:
         else:
             pdf_engine = ""
         json_path = ''
+        document_export=self._learning_report_document(document)
         if 'json' in formats:
             json_file = out / f'{safe_name}.json'
             from services.file_transactions import write_text
-            write_text(json_file, json.dumps(dict(document=document,outline=outline,questions=questions,
+            write_text(json_file, json.dumps(dict(document=document_export,outline=outline,questions=questions,
                                                  concepts=concepts), ensure_ascii=False, indent=2))
             json_path = str(json_file)
         metadata = {
@@ -790,7 +791,20 @@ class WorkspaceServices:
         item = dict(row)
         item["metadata"] = json.loads(item["metadata"] or "{}")
         item['json_path'] = json_path
-        return {"report": item, "document": document, "preview": report[:1200]}
+        return {"report": item, "document": document_export, "preview": report[:1200]}
+
+    @staticmethod
+    def _learning_report_document(document,metadata_reference='research_documents.metadata'):
+        # Full glyph/geometry metadata stays in its authoritative DB row. A
+        # report references that snapshot instead of copying megabytes into JSON.
+        metadata=document.get('metadata') or {}
+        if isinstance(metadata,str):
+            try:metadata=json.loads(metadata)
+            except ValueError:pass
+        encoded=json.dumps(metadata,ensure_ascii=False,sort_keys=True).encode('utf-8')
+        value={k:v for k,v in document.items() if k!='metadata'}
+        value['metadata']=dict(included=False,source_sha256=hashlib.sha256(encoded).hexdigest(),source_bytes=len(encoded),reference=metadata_reference)
+        return value
 
     def _resolve_research_document(self, document_id=None, file_path="", title=""):
         with self.store._conn() as c:

@@ -4,6 +4,7 @@ import json
 import re
 import hashlib
 from typing import Any
+from .paper_numeric_evidence import audit_numeric_support
 
 
 REPORT_SECTION_KEYS = ("methodology", "experiments", "findings", "limitations", "contributions")
@@ -78,7 +79,7 @@ class GroundedPaperReport:
     """Build and validate a model-assisted paper report against local citations."""
 
     @staticmethod
-    def build_evidence_bundle(intelligence: dict[str, Any]) -> dict[str, Any]:
+    def build_evidence_bundle(intelligence: dict[str, Any], source_chunks=None) -> dict[str, Any]:
         document = dict(intelligence.get("document") or {})
         sections = dict(intelligence.get("sections") or {})
         selected: dict[str, list[dict[str, str]]] = {}
@@ -120,6 +121,12 @@ class GroundedPaperReport:
             })
             for value in citations:
                 allowed[value] = allowed.get(value) or claim
+        # Use actual evidence-ready chunks rather than a shorter extracted claim
+        # as the authoritative cited text. Geometry never enters the model input.
+        for chunk in list(source_chunks or [])[:1000]:
+            citation=_canonical_citation(chunk.get('citation',''),document.get('id'))
+            if citation and chunk.get('content'):
+                allowed[citation]=_clean_text(chunk['content'],1800)
         return {
             "schema": "clawos.paper-evidence-bundle.v1",
             "document": {
@@ -139,15 +146,40 @@ class GroundedPaperReport:
         }
 
     @staticmethod
-    def prompt(bundle: dict[str, Any], language: str = "zh-CN") -> list[dict[str, str]]:
-        compact = {key: value for key, value in bundle.items() if key != "allowed_citations"}
+    def model_evidence(bundle):
+        allowed=bundle.get('allowed_citations') or {}
+        rows=[dict(citation=c,excerpt=text) for c,text in allowed.items() if len(text.strip())>=18]
+        cues=('achiev','score','accuracy','bleu','f1','times','reduc','improv','结果','准确','显存')
+        def score(row):
+            text=row['excerpt'].lower();page=re.search(r'#page=(\d+)',row['citation'])
+            return sum(cue in text for cue in cues)*2 + (3 if page and int(page[1])<=2 else 0)
+        rows.sort(key=score,reverse=True)
+        # Reserve room for a mechanism and a boundary as well as headline results.
+        preferred=rows[:2]
+        for cues in (('we propose','we introduce','architecture','rank decomposition','pre-train'),('limitation','however','future work','cannot','does not')):
+            candidate=next((r for r in rows if r not in preferred and any(cue in r['excerpt'].lower() for cue in cues)),None)
+            if candidate:preferred.append(candidate)
+        ordered=preferred+[r for r in rows if r not in preferred]
+        compact=dict(document={k:_clean_text(v,200) if isinstance(v,str) else v for k,v in bundle.get('document',{}).items()},evidence=[])
+        for row in ordered:
+            candidate=dict(row,excerpt=_clip_words(row['excerpt'],1800))
+            trial=dict(compact,evidence=compact['evidence']+[candidate])
+            if len(json.dumps(trial,ensure_ascii=False).encode('utf-8'))<=7000:
+                compact['evidence'].append(candidate)
+        compact['selection']=dict(algorithm='budgeted_source_excerpts_v1',available=len(allowed),included=len(compact['evidence']),full_paper_coverage=False)
+        return compact
+
+    @classmethod
+    def prompt(cls,bundle: dict[str, Any], language: str = "zh-CN") -> list[dict[str, str]]:
+        compact = cls.model_evidence(bundle)
         system = (
             "You are a rigorous research-paper analyst. Return one JSON object only. "
             "Every factual item must cite one or more citation strings that occur verbatim in the evidence bundle. "
             "Separate author-stated facts from your inference. Never invent datasets, metrics, baselines, limitations, or results. "
             "Retain dataset, sample, baseline, metric, parameter and other experimental conditions with every result. "
             "When one conclusion depends on evidence from multiple pages, cite every supporting page rather than only the result page. "
-            "If evidence is missing, say so explicitly. Write concise professional Chinese."
+            "The excerpts are budget-selected, not the full paper. If evidence is missing, say so explicitly. "
+            "Report the principal results with their metric and experimental setting when present. Write concise professional Chinese."
         )
         schema = {
             "summary": "one-sentence paper summary",
@@ -184,7 +216,18 @@ class GroundedPaperReport:
             return None
         if not isinstance(payload, dict):
             return None
-        return cls.normalize(payload, bundle, mode="model_assisted")
+        if not all(isinstance(payload.get(key),str) and payload[key].strip() for key in ('summary','research_problem')):
+            return None
+        if not all(isinstance(payload.get(key),list) for key in REPORT_SECTION_KEYS):
+            return None
+        rows=[row for key in REPORT_SECTION_KEYS for row in payload[key]]
+        if not rows or any(not isinstance(row,dict) or not isinstance(row.get('text'),str) or not row['text'].strip() for row in rows):
+            return None
+        selected=cls.model_evidence(bundle)
+        bound=dict(bundle,allowed_citations={r['citation']:r['excerpt'] for r in selected['evidence']})
+        report=cls.normalize(payload,bound,mode="model_assisted")
+        report['evidence_selection']=selected['selection']
+        return report
 
     @classmethod
     def fallback(cls, bundle: dict[str, Any]) -> dict[str, Any]:
@@ -253,13 +296,18 @@ class GroundedPaperReport:
                 citations = item.get("citations") or ([item.get("citation")] if item.get("citation") else [])
                 citations = valid_citations(citations)
                 requested = str(item.get("status") or "supported")
-                status = requested if requested in {"supported", "inference", "not_found"} else "supported"
+                status = requested if requested in {"supported", "inference", "not_found", "review_required"} else "supported"
                 if status == "supported" and not citations:
-                    status = "inference"
+                    status = "review_required"
                 rows.append({"text": text, "citations": citations, "status": status})
                 if item.get("conditions"):
                     values = item['conditions'] if isinstance(item['conditions'], list) else [item['conditions']]
                     rows[-1]["conditions"] = [_clean_text(value, 500) for value in values[:12] if _clean_text(value, 500)]
+                audit=audit_numeric_support(text+' '+' '.join(rows[-1].get('conditions',[])),[allowed[c] for c in citations])
+                audit['missing_citation']=not bool(citations) and requested=='supported'
+                audit['review_required']=audit['review_required'] or audit['missing_citation']
+                rows[-1]['evidence_audit']=audit
+                if audit['review_required'] and status!='not_found':rows[-1]['status']='review_required'
             return rows
 
         normalized = {
@@ -288,8 +336,17 @@ class GroundedPaperReport:
         normalized['document_id'] = bundle.get('document', {}).get('id')
         normalized['source_digest'] = hashlib.sha256(json.dumps(allowed, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         normalized['source_index'] = [dict(citation=c, excerpt=allowed[c]) for c in cited]
+        for key in ('summary','research_problem'):
+            citations=normalized[key+'_citations']
+            audit=audit_numeric_support(normalized[key],[allowed[c] for c in citations])
+            audit['missing_citation']=not bool(citations)
+            audit['review_required']=audit['review_required'] or audit['missing_citation']
+            normalized[key+'_audit']=audit
+        normalized['verdict_audit']=audit_numeric_support(normalized['verdict'],[allowed[c] for c in cited])
         normalized['citation_audit'] = dict(cited_items=sum(bool(r['citations']) for r in rows),
                                            total_items=len(rows), missing_sections=[k for k in REPORT_SECTION_KEYS if not normalized[k]],
+                                           review_required_items=sum(r['status']=='review_required' for r in rows),
+                                           numeric_literal_scope='cited_fragments_only',
                                            semantic_entailment_verified=False)
         return normalized
 
@@ -310,12 +367,14 @@ class GroundedPaperReport:
             "",
             "## 一句话结论",
             "",
-            str(report.get("summary") or ""),
+            ('**待核查**：' if report.get('summary_audit',{}).get('review_required') else '')+str(report.get("summary") or ""),
             "",
             "## 研究问题",
             "",
-            str(report.get("research_problem") or ""),
+            ('**待核查**：' if report.get('research_problem_audit',{}).get('review_required') else '')+str(report.get("research_problem") or ""),
         ]
+        if report.get('evidence_selection'):
+            lines.insert(4,'> 本报告使用了有预算限制的原文片段；未覆盖部分需回到全文核查。')
         for key, label in labels.items():
             lines.extend(["", f"## {label}", ""])
             rows = list(report.get(key) or [])
@@ -323,14 +382,19 @@ class GroundedPaperReport:
                 lines.append("- 当前解析证据未能稳定定位该部分。")
                 continue
             for item in rows:
-                status = {"supported": "原文支持", "inference": "分析推断", "not_found": "待核查"}.get(item.get("status"), "待核查")
+                status = {"supported": "原文支持", "inference": "分析推断", "not_found": "待核查", "review_required":"待核查"}.get(item.get("status"), "待核查")
                 citations = " ".join(f"[{citation}]" for citation in item.get("citations") or [])
                 lines.append(f"- **{status}**：{item.get('text', '')}{(' ' + citations) if citations else ''}")
                 if item.get('conditions'):
                     lines.append("  - 实验条件：" + "；".join(item['conditions']))
+                audit=item.get('evidence_audit') or {}
+                if audit.get('unsupported_quantities'):
+                    lines.append('  - 核查提示：所引片段未覆盖这些数字或单位：'+'、'.join(audit['unsupported_quantities'][:12])+'。')
+                elif audit.get('missing_citation'):
+                    lines.append('  - 核查提示：缺少可核对的原文引用。')
         lines.extend(["", "## 仍需核查的问题", ""])
         lines.extend(f"- {item}" for item in report.get("open_questions") or ["无"])
-        lines.extend(["", "## 综合判断", "", str(report.get("verdict") or ""), ""])
+        lines.extend(["", "## 综合判断", "", ('**待核查**：' if report.get('verdict_audit',{}).get('review_required') else '')+str(report.get("verdict") or ""), ""])
         lines.extend(["## 引用核查与原文索引", "",
                       f"证据快照 SHA-256：`{report.get('source_digest', '')}`", "",
                       "模型概述和研究问题也需回原文核查；缺少证据的部分不得作为已验证结论。", ""])

@@ -148,12 +148,12 @@ class SentenceTransformerEncoder:
 
     def embed(self, text: str) -> list[float]:
         model = self._load()
-        vector = model.encode([text or ""], normalize_embeddings=True)[0]
+        vector = model.encode([text or ""], normalize_embeddings=True, show_progress_bar=False)[0]
         return np.asarray(vector, dtype=float).tolist()
 
     def embed_many(self, texts: list[str]) -> list[list[float]]:
         model = self._load()
-        vectors = model.encode([text or "" for text in texts], normalize_embeddings=True, batch_size=16)
+        vectors = model.encode([text or "" for text in texts], normalize_embeddings=True, batch_size=16, show_progress_bar=False)
         return np.asarray(vectors, dtype=float).tolist()
 
 
@@ -258,10 +258,8 @@ class ChromaVectorStore:
 
     def remove(self, doc_id: str) -> None:
         with self._lock:
-            try:
-                self._collection.delete(ids=[str(doc_id)])
-            except Exception:
-                return
+            # A failed delete must remain pending in the durable outbox.
+            self._collection.delete(ids=[str(doc_id)])
 
     def update(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
         self.add(doc_id, text, metadata)
@@ -411,7 +409,7 @@ class MemoryVectorStore:
             self._store = VectorStore(dim=dim)
             self.embedding_fingerprint = self._fingerprint()
             self.index_name = f"clawos_knowledge_v2_lightweight_{self.dim}_{self.embedding_fingerprint[:10]}"
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._loaded = False
 
     def _fingerprint(self) -> str:
@@ -428,15 +426,23 @@ class MemoryVectorStore:
         raw = f"knowledge-v2|{self.embedding_provider}|{self.dim}|{model_marker}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-    def _ensure_loaded(self):
+    def _ensure_loaded(self, sync_limit=1000):
         if self._loaded:
             return
         with self._lock:
-            if self._store.count() <= 0 or not self._index_state_matches():
-                self._load_from_db()
-            else:
-                self._sync_outbox()
-            self._loaded = True
+            if self._loaded:
+                return
+            with self._projection_lock():
+                if self._store.count() <= 0 or not self._index_state_matches():
+                    self._load_from_db()
+                else:
+                    self._sync_outbox_locked(sync_limit)
+                self._loaded = True
+
+    def _projection_lock(self):
+        from services.file_transactions import _file_lock
+        database = Path(self.db_path).resolve()
+        return _file_lock(database, timeout=120, lock_dir=database.parent / '.clawos-vector-locks')
 
     def _index_state_matches(self) -> bool:
         conn = None
@@ -458,6 +464,10 @@ class MemoryVectorStore:
         try:
             conn = sqlite3.connect(self.db_path, timeout=5)
             conn.row_factory = sqlite3.Row
+            # Writes arriving while embeddings are computed must remain pending.
+            # Reading this before projections is conservative and replay is idempotent.
+            has_outbox = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='knowledge_vector_outbox_v2'").fetchone()
+            outbox_watermark = self._max_outbox_id(conn) if has_outbox else 0
             indexed_rows = []
             rows = conn.execute(
                 "SELECT id, task, lesson, context, solution, outcome FROM experiences ORDER BY id"
@@ -519,8 +529,8 @@ class MemoryVectorStore:
                     self._store.add(item["id"], item.get("text", ""), item.get("metadata") or {})
             now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
             conn.execute(
-                "UPDATE knowledge_vector_outbox_v2 SET processed_at=?,error='' WHERE processed_at=''",
-                (now,),
+                "UPDATE knowledge_vector_outbox_v2 SET processed_at=?,error='' WHERE processed_at='' AND id<=?",
+                (now, outbox_watermark),
             ) if has_v2 else None
             if has_v2:
                 conn.execute(
@@ -533,7 +543,7 @@ class MemoryVectorStore:
                         indexed_records=excluded.indexed_records,last_full_sync_at=excluded.last_full_sync_at,
                         last_incremental_sync_at=excluded.last_incremental_sync_at,last_error='',updated_at=excluded.updated_at""",
                     (self.index_name, self.index_schema_version, self.embedding_fingerprint,
-                     self._max_outbox_id(conn), self._knowledge_vector_count(), now, now, "", now),
+                     outbox_watermark, self._knowledge_vector_count(), now, now, "", now),
                 )
             conn.commit()
             conn.close()
@@ -595,6 +605,10 @@ class MemoryVectorStore:
         }
 
     def _sync_outbox(self, limit: int = 1000) -> dict:
+        with self._lock, self._projection_lock():
+            return self._sync_outbox_locked(limit)
+
+    def _sync_outbox_locked(self, limit: int) -> dict:
         processed = failed = 0
         last_id = 0
         conn = None
@@ -604,26 +618,52 @@ class MemoryVectorStore:
             rows = conn.execute(
                 "SELECT * FROM knowledge_vector_outbox_v2 WHERE processed_at='' ORDER BY id LIMIT ?", (int(limit),),
             ).fetchall()
+            last_id = max((int(event['id']) for event in rows), default=0)
+            # Every event for a record projects its current authoritative version.
+            # Coalesce only the fetched window; later events remain durable/pending.
+            groups = {}
             for event in rows:
-                last_id = int(event["id"])
+                groups.setdefault(int(event['knowledge_id']), []).append(event)
+
+            receipts = []
+            def receipt(events, error=''):
+                nonlocal processed, failed
+                now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+                receipts.extend((now if not error else '', error, int(event['id'])) for event in events)
+                if error: failed += len(events)
+                else: processed += len(events)
+
+            pending = []
+            for knowledge_id, events in groups.items():
                 try:
-                    projection = self._knowledge_projection(conn, int(event["knowledge_id"]))
-                    if event["operation"] == "delete" or not projection:
-                        self._store.remove(f"kv2_{event['knowledge_id']}")
+                    projection = self._knowledge_projection(conn, knowledge_id)
+                    if events[-1]['operation'] == 'delete' or not projection:
+                        self._store.remove(f'kv2_{knowledge_id}')
+                        receipt(events)
                     else:
-                        self._store.add(projection["id"], projection["text"], projection["metadata"])
-                    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-                    conn.execute(
-                        "UPDATE knowledge_vector_outbox_v2 SET processed_at=?,attempts=attempts+1,error='' WHERE id=?",
-                        (now, last_id),
-                    )
-                    processed += 1
+                        pending.append((projection, events))
                 except Exception as exc:
-                    conn.execute(
-                        "UPDATE knowledge_vector_outbox_v2 SET attempts=attempts+1,error=? WHERE id=?",
-                        (f"{type(exc).__name__}: {exc}"[:500], last_id),
-                    )
-                    failed += 1
+                    receipt(events, f'{type(exc).__name__}: {exc}'[:500])
+            for offset in range(0, len(pending), 32):
+                batch = pending[offset:offset+32]
+                events = [event for _, group in batch for event in group]
+                try:
+                    add_many = getattr(self._store, 'add_many', None)
+                    if callable(add_many):
+                        add_many([projection for projection, _ in batch])
+                    else:
+                        for projection, _ in batch:
+                            self._store.add(projection['id'], projection['text'], projection['metadata'])
+                    receipt(events)
+                except Exception as exc:
+                    # Partial backend writes are safe to replay by stable ID; none
+                    # of this batch's events are acknowledged until it succeeds.
+                    receipt(events, f'{type(exc).__name__}: {exc}'[:500])
+            # Never hold a SQLite write transaction while running the encoder.
+            conn.executemany(
+                "UPDATE knowledge_vector_outbox_v2 SET processed_at=?,attempts=attempts+1,error=? WHERE id=?",
+                receipts,
+            )
             now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
             conn.execute(
                 """UPDATE knowledge_vector_index_state_v2 SET last_outbox_id=MAX(last_outbox_id,?),
@@ -733,9 +773,9 @@ class MemoryVectorStore:
             "owner_id": owner_id, "workspace_id": workspace_id,
         })
 
-    def refresh(self):
-        self._ensure_loaded()
-        return self._sync_outbox()
+    def refresh(self, limit: int = 1000):
+        self._ensure_loaded(sync_limit=0)
+        return self._sync_outbox(limit)
 
     def rebuild(self):
         """Explicit full rebuild. Normal writes use the durable outbox instead."""

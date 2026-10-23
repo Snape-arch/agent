@@ -5,7 +5,7 @@ import argparse, asyncio, base64, hashlib, importlib.util, json, logging, os, re
 from dataclasses import asdict
 from pathlib import Path
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Annotated
 
 # Bound the default numerical thread pools before importing NumPy/SciPy/Torch.
 # Explicit operator settings are preserved. No machine/global environment edits.
@@ -110,6 +110,7 @@ g_office_productivity_service: OfficeProductivityService | None = None
 g_feishu_connector_service: Any = None
 g_feishu_long_connect: Any = None  # FeishuLongConnectManager, started only when live
 g_background_worker_task: asyncio.Task | None = None
+g_document_index_worker = None
 g_background_worker_status: dict[str, Any] = {
     "running": False,
     "worker_id": "",
@@ -1765,7 +1766,10 @@ async def lifespan(app: FastAPI):
         embedding_model_path=embedding_model_path,
         embedding_dim=int(vector_cfg.get("embedding_dim") or 0),
     )
-    g_vector_store.refresh()  # Load existing data
+    g_vector_store.refresh(limit=8)  # Bound incremental work before serving HTTP.
+    global g_document_index_worker
+    from services.document_index_worker import DocumentIndexWorker
+    g_document_index_worker = DocumentIndexWorker(g_memory_store,g_vector_store)
     reranker = None
     reranker_provider = str(vector_cfg.get("reranker_provider") or "").strip().lower()
     if reranker_provider and reranker_provider not in {"none", "off", "false", "0"}:
@@ -1860,7 +1864,9 @@ async def lifespan(app: FastAPI):
         len(tools_def),
         g_mtclaw_adapter.enabled,
     )
+    g_document_index_worker.start()
     yield
+    await g_document_index_worker.close()
     try:
         stop_feishu_long_connect()
     except Exception:
@@ -5033,7 +5039,8 @@ async def api_research_learning_analysis(request: Request):
         raise HTTPException(400, str(exc))
     if library_document:
         intelligence = await asyncio.to_thread(get_paper_intelligence_service().analyze_document, library_document_id)
-        evidence_bundle = GroundedPaperReport.build_evidence_bundle(intelligence)
+        source_chunks=await asyncio.to_thread(g_memory_store.get_document_chunks,library_document_id,1000)
+        evidence_bundle = GroundedPaperReport.build_evidence_bundle(intelligence,source_chunks)
         synthesis = None
         model_trace = {"ok": False, "error": "model_assistance_disabled"}
         if data.get("model_assisted", True) is not False:
@@ -5100,7 +5107,8 @@ async def api_research_learning_analysis(request: Request):
         }
         result["report_content"] = grounded_markdown
         result["preview"] = synthesis.get("summary") or grounded_markdown[:1200]
-        result["library_document"] = library_document
+        from workspace_services import WorkspaceServices
+        result["library_document"] = await asyncio.to_thread(WorkspaceServices._learning_report_document,library_document,metadata_reference='documents.metadata')
         report = result.get("report") or {}
         stamp = time.time_ns()
         run = RunRecord(
@@ -6381,10 +6389,14 @@ async def api_runtime_evidence_chain_verify(request: Request):
 async def api_document_upload(
     files: list[UploadFile] = File(...),
     category: str = Form("domain"),
+    indexing_mode: Annotated[str, Form()] = "auto",
 ):
     if not g_memory_store:
         raise HTTPException(503, "MemoryOS not initialized")
     from memoryos.document_ingestion import ingest_file, safe_filename
+
+    if indexing_mode not in {'auto','wait','background'}:
+        raise HTTPException(400,'indexing_mode must be auto, wait or background')
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     documents = []
@@ -6410,9 +6422,37 @@ async def api_document_upload(
             documents.append(doc)
         except Exception as exc:
             errors.append({"filename": file.filename, "error": str(exc)})
-    if g_vector_store:
+    deferred = indexing_mode=='background' or indexing_mode=='auto' and sum(int(d.get('chunk_count') or 0) for d in documents)>=16
+    if indexing_mode=='auto' and g_document_index_worker is not None and g_document_index_worker.store is g_memory_store:
+        backlog=await asyncio.to_thread(g_document_index_worker.status)
+        deferred=deferred or backlog['running'] or backlog['pending']>=16
+    indexing = None
+    if g_vector_store and deferred:
+        worker=get_document_index_worker();worker.start()
+        indexing=await asyncio.to_thread(worker.status)
+    elif g_vector_store:
         await asyncio.to_thread(g_vector_store.refresh)
-    return JSONResponse({"documents": documents, "errors": errors, "count": len(documents)})
+    return JSONResponse({"documents": documents, "errors": errors, "count": len(documents),"indexing":indexing},status_code=202 if deferred and documents else 200)
+
+
+def get_document_index_worker():
+    global g_document_index_worker
+    if not g_memory_store or not g_vector_store:raise HTTPException(503,'Document index not initialized')
+    if g_document_index_worker is None or g_document_index_worker.store is not g_memory_store or g_document_index_worker.vector is not g_vector_store:
+        from services.document_index_worker import DocumentIndexWorker
+        g_document_index_worker=DocumentIndexWorker(g_memory_store,g_vector_store)
+    return g_document_index_worker
+
+
+@app.get('/api/documents/indexing')
+async def api_document_indexing_status():
+    return JSONResponse(await asyncio.to_thread(get_document_index_worker().status))
+
+
+@app.post('/api/documents/indexing/retry')
+async def api_document_indexing_retry():
+    worker=get_document_index_worker();worker.start()
+    return JSONResponse(await asyncio.to_thread(worker.status),status_code=202)
 
 
 @app.post("/api/academy/paper/annotations")

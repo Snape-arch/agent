@@ -1,0 +1,39 @@
+{
+  "schema": "clawos.real-paper-quality.v1",
+  "scope": "Three maintainer-selected public ML papers; transport and selected citation-bound facts, not general semantic or teaching certification.",
+  "papers": [
+    {
+      "key": "transformer",
+      "paper_id": "1706.03762v7",
+      "source_url": "https://arxiv.org/pdf/1706.03762v7",
+      "sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+      "pages": 15,
+      "facts": [
+        {"key": "german_bleu", "patterns": ["(?<![0-9])28\\.4(?![0-9])", "BLEU"], "source_patterns": ["28\\.4", "BLEU"]},
+        {"key": "french_bleu", "patterns": ["(?<![0-9])41\\.8(?![0-9])", "BLEU"], "source_patterns": ["41\\.8", "BLEU"]}
+      ]
+    },
+    {
+      "key": "bert",
+      "paper_id": "1810.04805v2",
+      "source_url": "https://arxiv.org/pdf/1810.04805v2",
+      "sha256": "5692a5514787a8c6727b4ff3b726a3385798bc68e12138d1d4af83947e2acf6e",
+      "pages": 16,
+      "facts": [
+        {"key": "glue_score", "patterns": ["(?<![0-9])80\\.5(?![0-9])", "GLUE"], "source_patterns": ["80\\.5", "GLUE"]},
+        {"key": "squad_f1", "patterns": ["(?<![0-9])93\\.2(?![0-9])", "SQuAD"], "source_patterns": ["93\\.2", "SQuAD"]}
+      ]
+    },
+    {
+      "key": "lora",
+      "paper_id": "2106.09685v2",
+      "source_url": "https://arxiv.org/pdf/2106.09685v2",
+      "sha256": "e9a0d3128767db616085dc0f4e6e455e672e89af823e8ed1282793682787395a",
+      "pages": 26,
+      "facts": [
+        {"key": "trainable_reduction", "patterns": ["(?:10,?000|1\\s*万|一万)", "(?:参数|parameter)"], "source_patterns": ["10,?000", "parameter"]},
+        {"key": "memory_reduction", "patterns": ["(?:3|三)\\s*(?:倍|times|x|×)", "(?:显存|内存|memory)"], "source_patterns": ["3", "memory"]}
+      ]
+    }
+  ]
+}

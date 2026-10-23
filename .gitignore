@@ -24,6 +24,7 @@ config.local.json
 *.db
 *.db-wal
 *.db-shm
+.clawos-vector-locks/
 clawos/mtclaw_runtime/
 
 # Generated outputs and accidental literal environment paths

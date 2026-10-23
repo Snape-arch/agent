@@ -871,7 +871,37 @@ async function academyOpenPaperDocument(documentId,initialPage=1) {
   academyLoadPaperTimeline(Number(documentId)).catch(() => null);
   academyRefreshPaperAudit().catch(() => null);
   academySetText("academyPaperStatus", `Opened local paper doc:${documentId}; ${academyPaperState.chunks.length} chunks loaded.`);
+  academyTrackPaperIndexing().catch(() => null);
 }
+let academyPaperIndexPoll = 0;
+async function academyTrackPaperIndexing(retry = false) {
+  const label = document.getElementById("academyPaperIndexStatus");
+  const button = document.getElementById("academyPaperIndexRetry");
+  if (!label || !academyPaperState.document?.id) return;
+  const generation = ++academyPaperIndexPoll;
+  const documentId = academyPaperState.document.id;
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (generation !== academyPaperIndexPoll || academyPaperState.document?.id !== documentId) return;
+    try {
+      const status = await academyApi(retry && attempt === 0 ? "/api/documents/indexing/retry" : "/api/documents/indexing",
+        retry && attempt === 0 ? { method: "POST", body: JSON.stringify({}) } : {});
+      if (generation !== academyPaperIndexPoll || academyPaperState.document?.id !== documentId) return;
+      label.textContent = status.state === "ready" ? "检索索引已就绪" : status.state === "failed" ? "索引处理失败，阅读仍可继续" : `索引处理中 · ${Number(status.pending || 0)} 项待处理`;
+      if (button) button.hidden = status.state !== "failed";
+      if (status.state === "ready" || status.state === "failed") return;
+    } catch (_error) {
+      label.textContent = "索引状态暂不可用，阅读仍可继续";
+      if (button) button.hidden = false;
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+  if (generation === academyPaperIndexPoll) {
+    label.textContent = "索引仍在后台处理，可稍后重试查询";
+    if (button) button.hidden = false;
+  }
+}
+window.addEventListener("pagehide", () => { academyPaperIndexPoll++; });
 async function academyUploadPaper() {
   const fileInput = document.getElementById("academyPaperFile");
   const file = fileInput?.files?.[0];
@@ -903,7 +933,9 @@ async function academyUploadPaper() {
   academyRenderPaperChunks();
   academyGeneratePaperRead();
   academyLightPaperGraph("parsed");
-  academySetText("academyPaperStatus", `解析完成：document #${academyPaperState.document.id}，chunk ${academyPaperState.chunks.length} 条。`);
+  const indexingNote = uploaded.indexing && uploaded.indexing.state !== "ready" ? " 可开始阅读；知识检索索引仍在后台处理，尚未完成。" : "";
+  academySetText("academyPaperStatus", `解析完成：document #${academyPaperState.document.id}，chunk ${academyPaperState.chunks.length} 条。${indexingNote}`);
+  academyTrackPaperIndexing().catch(() => null);
   academyLoadPaperHistory().catch(() => null);
   academyLoadPaperCheckpoints(Number(academyPaperState.document.id)).catch(() => null);
   academyLoadPaperProjectBoard(Number(academyPaperState.document.id)).catch(() => null);
