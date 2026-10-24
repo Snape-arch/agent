@@ -2,6 +2,12 @@
 
 ## 当前开发：索引状态首次创建与真实进程续跑（2026-10-24）
 
+最终收尾：最新提交 `7e1135581fabc9a9ba9c4d00b57d3d546bf57fd1` 已推送 master，GitHub Actions 运行 `40109902117` 的四个 Windows 分片与 `deterministic-tests` 全部 completed/success；`bcb334f` 运行因后续提交触发并发取消，不计通过。当前本地 `HEAD...origin/master=0/0`，仅保留原始 `clawos/skills/skill_registry.jsonl` 脏改；日常 DB SHA256 `8167052e0c203036AD74BB1409CE74BD9CFAEF585244865848EA5BE7B2A8C543`、原 registry SHA256 `a72423d78ff1e7d67c646fcd7debf1824ce9e88767b0034455ff1fefcc5a23d4` 未变。
+
+真实索引续跑仍未通过：第一轮由 1813 待处理降到 933 后 HTTP 连接断开；修正驱动后第二轮由 917 降到 781，20 分钟预算耗尽，应用正常收尾，事件未丢失且失败数为 0。CPU Qwen 嵌入吞吐仍是剩余瓶颈；批次已从 8 提升到 32，但未再虚构清零或向量全量一致。CUDA 尝试因独立运行时不可用而明确失败，未静默降级。下次应在独立机器/GPU 或更长窗口继续，并记录最终向量 ID/版本完整性。
+
+报告 PDF 仅抽查 6/13 页：中英文可读、无观察到的重叠/截断；LoRA 页面仍含原始 `$...$` 公式标记，因此公式排版与 PDF/UA、屏幕阅读器、浏览器验收仍未通过。浏览器工具仍受策略拒绝；真实 OS 重启/磁盘故障由用户保留未验收；275 项历史原件无可信备份；语义蕴含、教师校准、真实学习效果和多天负载仍未验证。
+
 GitHub 对提交 `5d9af15` 的唯一失败已定位为既有跨进程 CAS 在 Windows `os.replace` 瞬时 `PermissionError`（公开 job 注释，`test_cross_process_cas_has_one_winner`）；本机同测试此前通过。已增加 8 次递增退避重试和瞬时拒绝专项，当前本机文件/历史回归 **21/21** 通过；下一轮云端必须重新核对，不能借用旧红叉或旧绿灯。
 
 同一轮本机回归又暴露 artifact registry 并发写入的同类替换竞态，已在 `ArtifactDeliveryService._write` 增加相同有限重试；修复后文件/历史回归仍为 **21/21**。因此 9b3f6ea 的云端结果不作为最终通过，需以包含两条替换路径的新提交为准。
