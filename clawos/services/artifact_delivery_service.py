@@ -133,7 +133,19 @@ class ArtifactDeliveryService:
                 json.dump(payload,handle,ensure_ascii=False,indent=2)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(temporary,self.registry_path)
+            replace_error = None
+            for attempt in range(8):
+                try:
+                    os.replace(temporary,self.registry_path)
+                    replace_error = None
+                    break
+                except PermissionError as exc:
+                    replace_error = exc
+                    if attempt == 7:
+                        raise
+                    time.sleep(0.025 * (attempt + 1))
+            if replace_error is not None:
+                raise replace_error
         finally:
             temporary.unlink(missing_ok=True)
 
