@@ -2,6 +2,8 @@
 
 ## 当前开发：索引状态首次创建与真实进程续跑（2026-10-24）
 
+最新源码 `a3b88ceb23f490703b306ad85957cbc25f81bd5e` 的真实索引续跑已通过：隔离三篇真实 PDF 数据根 `output/real-paper-quality/49d72bc10e9a47fdbd5a35e6637b55cf`，初始待处理 773，CPU Qwen3 嵌入耗时 **1059.828 秒**降至 `ready/pending=0/failed=0`；health `consistent=true`、无 fallback，预期与实际向量均 **1653**，ID/版本一致，应用正常收尾且端口释放，日常 DB/registry/source 均未变。该轮是 API/本地应用的真实来源长索引验收，不是浏览器、多设备、屏幕阅读器、OS 重启或多天多人负载验收。
+
 最终收尾：最新提交 `7e1135581fabc9a9ba9c4d00b57d3d546bf57fd1` 已推送 master，GitHub Actions 运行 `40109902117` 的四个 Windows 分片与 `deterministic-tests` 全部 completed/success；`bcb334f` 运行因后续提交触发并发取消，不计通过。当前本地 `HEAD...origin/master=0/0`，仅保留原始 `clawos/skills/skill_registry.jsonl` 脏改；日常 DB SHA256 `8167052e0c203036AD74BB1409CE74BD9CFAEF585244865848EA5BE7B2A8C543`、原 registry SHA256 `a72423d78ff1e7d67c646fcd7debf1824ce9e88767b0034455ff1fefcc5a23d4` 未变。
 
 真实索引续跑仍未通过：第一轮由 1813 待处理降到 933 后 HTTP 连接断开；修正驱动后第二轮由 917 降到 781，20 分钟预算耗尽，应用正常收尾，事件未丢失且失败数为 0。CPU Qwen 嵌入吞吐仍是剩余瓶颈；批次已从 8 提升到 32，但未再虚构清零或向量全量一致。CUDA 尝试因独立运行时不可用而明确失败，未静默降级。下次应在独立机器/GPU 或更长窗口继续，并记录最终向量 ID/版本完整性。
