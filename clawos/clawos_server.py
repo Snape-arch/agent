@@ -1769,7 +1769,7 @@ async def lifespan(app: FastAPI):
     g_vector_store.refresh(limit=8)  # Bound incremental work before serving HTTP.
     global g_document_index_worker
     from services.document_index_worker import DocumentIndexWorker
-    g_document_index_worker = DocumentIndexWorker(g_memory_store,g_vector_store)
+    g_document_index_worker = DocumentIndexWorker(g_memory_store,g_vector_store,batch_limit=32)
     reranker = None
     reranker_provider = str(vector_cfg.get("reranker_provider") or "").strip().lower()
     if reranker_provider and reranker_provider not in {"none", "off", "false", "0"}:
@@ -6440,7 +6440,7 @@ def get_document_index_worker():
     if not g_memory_store or not g_vector_store:raise HTTPException(503,'Document index not initialized')
     if g_document_index_worker is None or g_document_index_worker.store is not g_memory_store or g_document_index_worker.vector is not g_vector_store:
         from services.document_index_worker import DocumentIndexWorker
-        g_document_index_worker=DocumentIndexWorker(g_memory_store,g_vector_store)
+        g_document_index_worker=DocumentIndexWorker(g_memory_store,g_vector_store,batch_limit=32)
     return g_document_index_worker
 
 

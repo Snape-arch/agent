@@ -3,7 +3,7 @@ import asyncio
 
 
 class DocumentIndexWorker:
-    def __init__(self,store,vector,batch_limit=8):
+    def __init__(self,store,vector,batch_limit=32):
         self.store=store;self.vector=vector;self.batch_limit=batch_limit
         self.task=None;self.last_error='';self.last_result=None
 
