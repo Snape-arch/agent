@@ -131,6 +131,11 @@ class SentenceTransformerEncoder:
             or os.environ.get("EMBEDDING_DEVICE")
             or "cpu"
         ).strip()
+        try:
+            requested_batch = int(os.environ.get("CLAWOS_EMBEDDING_BATCH_SIZE", "32"))
+        except (TypeError, ValueError):
+            requested_batch = 32
+        self.batch_size = max(1, min(requested_batch, 128))
         self._model = None
         self._lock = threading.RLock()
 
@@ -153,7 +158,7 @@ class SentenceTransformerEncoder:
 
     def embed_many(self, texts: list[str]) -> list[list[float]]:
         model = self._load()
-        vectors = model.encode([text or "" for text in texts], normalize_embeddings=True, batch_size=16, show_progress_bar=False)
+        vectors = model.encode([text or "" for text in texts], normalize_embeddings=True, batch_size=self.batch_size, show_progress_bar=False)
         return np.asarray(vectors, dtype=float).tolist()
 
 

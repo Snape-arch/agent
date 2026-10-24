@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+import os
 from pathlib import Path
 import tempfile
 import threading
@@ -6,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from memoryos.memory_store import MemoryStore
-from memoryos.services.vector_store import MemoryVectorStore,VectorStore,ChromaVectorStore
+from memoryos.services.vector_store import MemoryVectorStore,VectorStore,ChromaVectorStore,SentenceTransformerEncoder
 from services.knowledge_core_service import KnowledgeCoreService
 
 
@@ -31,6 +32,20 @@ class VectorOutboxBatchTests(unittest.TestCase):
     def tearDown(self):self.temp.cleanup()
     def add(self,index,source='first'):
         return self.core.absorb(title=f'Measurement {index}',statement=f'The measured fixture result is {index} units.',category='research',source_ref=f'https://example.test/{index}/{source}')
+
+    def test_embedding_batch_size_is_bounded_and_configurable(self):
+        calls=[]
+        class Model:
+            def encode(self,*args,**kwargs):
+                calls.append(kwargs['batch_size']);return [[0.0]*4 for _ in args[0]]
+        with patch.dict(os.environ,{'CLAWOS_EMBEDDING_BATCH_SIZE':'64'}):
+            encoder=SentenceTransformerEncoder('fixture-model',dim=4);encoder._model=Model()
+            encoder.embed_many(['a','b'])
+            self.assertEqual([64],calls)
+        with patch.dict(os.environ,{'CLAWOS_EMBEDDING_BATCH_SIZE':'999'}):
+            encoder=SentenceTransformerEncoder('fixture-model',dim=4);encoder._model=Model()
+            encoder.embed_many(['a'])
+            self.assertEqual([64,128],calls)
     def events(self):
         with self.store._conn() as c:return [dict(row) for row in c.execute('SELECT * FROM knowledge_vector_outbox_v2 ORDER BY id')]
 
