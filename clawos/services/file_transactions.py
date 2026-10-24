@@ -85,7 +85,23 @@ def write_text(path, content, *, append=False, expected_sha256="", create_only=F
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(temporary, target)
+            # Windows scanners and indexers can briefly hold either the target
+            # or the sibling temporary file. The write is still atomic, but a
+            # single replace attempt would turn that transient condition into
+            # a false CAS failure for cooperating processes.
+            replace_error = None
+            for attempt in range(8):
+                try:
+                    os.replace(temporary, target)
+                    replace_error = None
+                    break
+                except PermissionError as exc:
+                    replace_error = exc
+                    if attempt == 7:
+                        raise
+                    time.sleep(0.025 * (attempt + 1))
+            if replace_error is not None:
+                raise replace_error
         finally:
             temporary.unlink(missing_ok=True)
         return dict(result, written=True, exists=True)

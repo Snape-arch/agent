@@ -97,6 +97,22 @@ except ValueError as exc:
                 for job in jobs:
                     if job.poll() is None: job.kill();job.wait()
 
+    def test_replace_retries_transient_windows_permission(self):
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td) / 'retry.md'
+            real_replace = os.replace
+            calls = {'count': 0}
+            def flaky_replace(source, destination):
+                calls['count'] += 1
+                if calls['count'] < 3:
+                    raise PermissionError(5, 'fixture lock')
+                return real_replace(source, destination)
+            with patch('services.file_transactions.os.replace', side_effect=flaky_replace):
+                result = write_text(target, 'retry')
+            self.assertTrue(result['written'])
+            self.assertEqual(3, calls['count'])
+            self.assertEqual('retry', target.read_text(encoding='utf-8'))
+
     def test_large_append_rejected_without_changing_file(self):
         with tempfile.TemporaryDirectory() as td:
             file=Path(td)/'data.txt';write_text(file,'1234')
