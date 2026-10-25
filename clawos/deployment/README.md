@@ -1,6 +1,6 @@
 # Windows application runtime
 
-`windows-py312.lock.txt` locks all 135 distributions, including the installer and
+`windows-py312.lock.txt` locks all 141 distributions, including the installer and
 transitive dependencies, to the resolved Windows x64 wheels and their SHA-256.
 The adjacent JSON records wheel provenance and normalized dependency-input hashes.
 This is separate from the smaller CI test environment.

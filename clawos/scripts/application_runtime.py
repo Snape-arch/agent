@@ -134,7 +134,7 @@ def probe():
                    location=str(Path(d.locate_file('')).resolve())) for d in metadata.distributions()]
     packages = validate_inventory(expected, actual, prefix, system, list(sys.version_info[:3]), platform.machine())
     # Exercise binary extensions as well as discovery. No app startup or model download.
-    modules = ('fastapi', 'uvicorn', 'httpx', 'numpy', 'reportlab', 'pypdf', 'pymupdf',
+    modules = ('fastapi', 'uvicorn', 'httpx', 'numpy', 'reportlab', 'matplotlib.mathtext', 'pypdf', 'pymupdf',
                'pdfplumber', 'openpyxl', 'docx', 'pptx', 'lxml.etree', 'lark_oapi',
                'chromadb', 'torch', 'transformers', 'sentence_transformers',
                'faster_whisper', 'tree_sitter_python', 'tree_sitter_javascript',

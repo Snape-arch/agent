@@ -1,7 +1,7 @@
 {
   "boundary": "Wheel hashes verify downloads. Base CPython, external desktop tools, models and optional PaddleOCR are separate.",
   "input_sha256": "2d58ecdf588b1016d3b1344e050f1e789b72028e886a155961dee4c7091a930a",
-  "lock_sha256": "bb8d1b6c48bcf9b77ebfedb69db91cb4d0e51d3b474d38975a0a32a10e443a2a",
+  "lock_sha256": "1236dc16430a2fb30c3d5edb344f5af27c8ee1b4544d9affdab13d4e68afb6bb",
   "packages": {
     "aiohappyeyeballs": {
       "sha256": "9243213661e29250eb41368e5daa826fc017156c3b8a11440826b2e3ed376472",
@@ -117,6 +117,12 @@
       "version": "0.4.6",
       "wheel": "colorama-0.4.6-py2.py3-none-any.whl"
     },
+    "contourpy": {
+      "sha256": "6e697d94e69f499ff6bebb899cae97a58d5d14f0e1fe9568b43a0248d2f9af8c",
+      "url": "https://files.pythonhosted.org/packages/50/a9/dab08786bb4d77ef9a046b3c1be923be4e73c5d07d91f5a54e8ea9b09e41/contourpy-1.4.0-cp312-cp312-win_amd64.whl",
+      "version": "1.4.0",
+      "wheel": "contourpy-1.4.0-cp312-cp312-win_amd64.whl"
+    },
     "cryptography": {
       "sha256": "7afa5a6602a9f29af1f3a2965f831bae7c9d5d597b7cbb716d41ab3b7d89879c",
       "url": "https://files.pythonhosted.org/packages/9a/4f/adfc442765721292fff86d314ce385d3249d22db42295c0dd057727b60f3/cryptography-50.0.2-cp311-abi3-win_amd64.whl",
@@ -128,6 +134,12 @@
       "url": "https://files.pythonhosted.org/packages/db/f8/1aec2aaf0e8a09987085dd2e4a876619fee6026f20ed28a2c2efc6235bec/ctranslate2-4.8.3-cp312-cp312-win_amd64.whl",
       "version": "4.8.3",
       "wheel": "ctranslate2-4.8.3-cp312-cp312-win_amd64.whl"
+    },
+    "cycler": {
+      "sha256": "85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30",
+      "url": "https://files.pythonhosted.org/packages/e7/05/c19819d5e3d95294a6f5947fb9b9629efb316b96de511b418c53d245aae6/cycler-0.12.1-py3-none-any.whl",
+      "version": "0.12.1",
+      "wheel": "cycler-0.12.1-py3-none-any.whl"
     },
     "durationpy": {
       "sha256": "a739fe2b8972c250ff72f8e2c488d18cf25f7b852f49ee76048775d5171df30c",
@@ -164,6 +176,12 @@
       "url": "https://files.pythonhosted.org/packages/e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl",
       "version": "25.12.19",
       "wheel": "flatbuffers-25.12.19-py2.py3-none-any.whl"
+    },
+    "fonttools": {
+      "sha256": "2bfab2f5d1d255dec82f4bd082a1c10e77df808e42210890f50a9c30bf91570e",
+      "url": "https://files.pythonhosted.org/packages/c1/3a/625a6dd0173e88dbea1826405b4bcbfa06c6ca095310ed720caba36b2e43/fonttools-4.67.0-cp312-cp312-win_amd64.whl",
+      "version": "4.67.0",
+      "wheel": "fonttools-4.67.0-cp312-cp312-win_amd64.whl"
     },
     "frozenlist": {
       "sha256": "34187385b08f866104f0c0617404c8eb08165ab1272e884abc89c112e9c00746",
@@ -261,6 +279,12 @@
       "version": "2025.9.1",
       "wheel": "jsonschema_specifications-2025.9.1-py3-none-any.whl"
     },
+    "kiwisolver": {
+      "sha256": "06a6917674de9e0fe3f66f5430787f59a9f2ddb64af9b714eaec547e29ef5c19",
+      "url": "https://files.pythonhosted.org/packages/6e/7c/7b210498f9f92e1cd7855f260fa69ef056881087b199ee20c208f0e4189a/kiwisolver-1.5.1-cp312-cp312-win_amd64.whl",
+      "version": "1.5.1",
+      "wheel": "kiwisolver-1.5.1-cp312-cp312-win_amd64.whl"
+    },
     "kubernetes": {
       "sha256": "a313a482361506340b5972cabaf20a7ee16ec8713e73325bf699b783a40464a9",
       "url": "https://files.pythonhosted.org/packages/8a/de/ac1904ac7fb651426e5698f56a268669a1ca3d63378629bacbf057b25e75/kubernetes-37.0.1-py2.py3-none-any.whl",
@@ -290,6 +314,12 @@
       "url": "https://files.pythonhosted.org/packages/3f/bf/62495e180b7000aaf30000fff849e933f74264638057176cf46852500adc/markupsafe-3.0.4-cp312-cp312-win_amd64.whl",
       "version": "3.0.4",
       "wheel": "markupsafe-3.0.4-cp312-cp312-win_amd64.whl"
+    },
+    "matplotlib": {
+      "sha256": "0d8c32b7ea6fb80b1aeff5a2ceb3fb9778e2759e899d9beff75584714afcc5ee",
+      "url": "https://files.pythonhosted.org/packages/31/3c/80816f027b3a4a28cd2a0a6ef7f89a2db22310e945cd886ec25bfb399221/matplotlib-3.10.7-cp312-cp312-win_amd64.whl",
+      "version": "3.10.7",
+      "wheel": "matplotlib-3.10.7-cp312-cp312-win_amd64.whl"
     },
     "mdurl": {
       "sha256": "84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8",
@@ -494,6 +524,12 @@
       "url": "https://files.pythonhosted.org/packages/a7/1b/0613759a059c8c952c18811c7c7dd0ba5d7945ed13a535719489f533d700/pymupdf-1.26.1-cp39-abi3-win_amd64.whl",
       "version": "1.26.1",
       "wheel": "pymupdf-1.26.1-cp39-abi3-win_amd64.whl"
+    },
+    "pyparsing": {
+      "sha256": "ece8c00a69cf01b45d0b1dedabb469c90d8caf996d4fda40f147627a122849a4",
+      "url": "https://files.pythonhosted.org/packages/38/bb/d215ee7c73b61497b28a5503f9f53523f294fcc936762b7caf90e0c1c2b5/pyparsing-3.3.3-py3-none-any.whl",
+      "version": "3.3.3",
+      "wheel": "pyparsing-3.3.3-py3-none-any.whl"
     },
     "pypdf": {
       "sha256": "ca6bf446bfb0a2d8d71d6d6bb860798d864c36a29b3d9ae8d7fc7958c59f88e7",
@@ -814,9 +850,9 @@
       "wheel": "yarl-1.25.1-cp312-cp312-win_amd64.whl"
     }
   },
-  "pip_version": "25.0.1",
+  "pip_version": "25.3",
   "platform": "win_amd64",
   "python": "3.12",
   "schema": "clawos.application-lock.v1",
-  "test_requirements_sha256": "c0ac855cf4b4780f4153d199e878717f65434160317103f9f672e3c84d416bef"
+  "test_requirements_sha256": "c1e8fd5ca8dccfbc1c3d052094fcf47f05af2372e5f55f69c540b837be08bcef"
 }

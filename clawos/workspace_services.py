@@ -1183,7 +1183,8 @@ class WorkspaceServices:
         return f"本文围绕“{first['topic']}”展开，核心学习路径应从问题动机、方法机制、实验支撑与边界局限四层理解。"
 
     def _write_learning_analysis_pdf(self, path, title, markdown):
-        if self._write_learning_analysis_typst_pdf(path, title, markdown):
+        from services.pdf_math_renderer import PdfMathRenderer
+        if not PdfMathRenderer.has_math(markdown) and self._write_learning_analysis_typst_pdf(path, title, markdown):
             return "typst"
         self._write_learning_analysis_reportlab_pdf(path, title, markdown)
         return "reportlab"
@@ -1412,7 +1413,12 @@ class WorkspaceServices:
             canvas.drawRightString(page_width - doc.rightMargin, 9 * mm, f"Page {canvas.getPageNumber()}")
             canvas.restoreState()
 
-        def md_inline(text):
+        from services.pdf_math_renderer import PdfMathRenderer
+        math_renderer = PdfMathRenderer(max_width=doc.width - 24)
+        for style in styles.values():
+            style.autoLeading = "max"
+
+        def plain_inline(text):
             # Keep portable local source labels; only safe absolute web links
             # become PDF annotations. Escape content before ReportLab markup.
             text = re.sub(r'`([^`]+)`', r'\1', str(text))
@@ -1427,6 +1433,9 @@ class WorkspaceServices:
             parts.append(xml_escape(text[start:]))
             return re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", ''.join(parts))
 
+        def md_inline(text):
+            return math_renderer.inline(str(text), plain_inline)
+
         compact_grounded = '## 引用核查与原文索引' in markdown and len(markdown)<18000
         story = []
         story.append(Spacer(1, 10))
@@ -1436,7 +1445,7 @@ class WorkspaceServices:
         story.append(Paragraph("依据上传原文整理，保留引用与核查入口。" if compact_grounded else "Structured parsing, self-questioning, evidence tracing, concepts, limits, and follow-up reading plan.", styles["Lead"]))
         if not compact_grounded:
             story.append(PageBreak())
-        markdown_lines = markdown.splitlines()
+        markdown_lines = math_renderer.markdown_lines(markdown)
         for line_index,raw in enumerate(markdown_lines):
             line = raw.strip()
             if not line:
@@ -1462,10 +1471,16 @@ class WorkspaceServices:
             elif line.startswith('> '):
                 story.append(Paragraph(md_inline(line[2:]), styles['Evidence']))
             elif line.startswith("璇佹嵁") or line.startswith("证据") or line.lower().startswith("evidence"):
-                story.append(KeepTogether([Paragraph(md_inline(line), styles["Evidence"])]))
+                # Keep heading/paragraph grouping visible to the document's
+                # pagination algorithm; a nested KeepTogether can orphan the
+                # preceding keepWithNext heading at the end of a page.
+                story.append(Paragraph(md_inline(line), styles["Evidence"]))
             else:
                 story.append(Paragraph(md_inline(line), styles["Body"]))
-        doc.build(story, onFirstPage=header_footer, onLaterPages=header_footer)
+        try:
+            doc.build(story, onFirstPage=header_footer, onLaterPages=header_footer)
+        finally:
+            math_renderer.close()
 
     @staticmethod
     def _safe_filename(name):
