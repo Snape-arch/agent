@@ -34,10 +34,51 @@ subsequent final-stream convergence addition.
 
 Counterexample regression **8/8** and document merge/realtime regression **10/10**
 passed. Simulated clock counterexamples validate only the fail-closed guard;
-they never contribute runtime to real load. The latest full local/cloud gate
-and a new frozen-source 48-hour attempt are pending at this source checkpoint.
+they never contribute runtime to real load. The full local/cloud gate and new
+frozen-source attempt are recorded below.
 No 48-hour, real browser, multi-device, screen-reader speech or browser-memory
 acceptance is implied by this API smoke.
+
+### Final source gate and actual 48-hour retry
+
+Source **4d1da82e531f1b15b0783615bd835bdf1fabab9c** passed the frozen local
+**1094/1094**, with **0 skipped/failures/errors**. Shards 321/198/211/364
+completed in 641.672/179.781/124.141/960.625 seconds; whole run **963.921s**.
+All 463 source/dependency/fixture fingerprints and HEAD stayed stable, the
+daily database stayed unchanged, and the original dirty registry bytes were
+restored. [GitHub run 40178461195](https://github.com/Snape-arch/agent/actions/runs/40178461195)
+completed successfully for all four Windows shards and the final gate, each
+verified against this source SHA. Evidence: ignored
+`output/p0-soak-20261025/{full-result,full-source-audit,cloud-terminal,verified-final-summary}.json`.
+
+Only committed code/static assets were exported to an isolated snapshot;
+540 files were checked against their exported SHA-256 values. No local config,
+credentials, database, registry or model weights were copied. The snapshot's
+own 36.219-second, 12-client API smoke also passed, including stream convergence,
+revocation and owned preview exit. Export manifest records the Git blob IDs and
+commit. This lets subsequent main-workspace edits leave the running sample alone.
+
+The actual new **172800-second / 12-client** attempt started
+**2026-10-25T09:11:09.259952Z**, with 30-second writer intervals, 300-second
+controlled reconnects and a **30-second maximum monitor gap**. It is **RUNNING,
+not accepted yet**. Progress:
+`output/p0-soak-20261025/snapshot/clawos/output/document-soak-48h-20261025/progress.json`.
+Ownership manifest records actual worker **62940** (created
+09:11:06.7048032Z) and preview **45436** (09:11:07.0694766Z), loopback port18917.
+PID37152 was the exited virtual-environment launcher, not the load worker.
+New thread heartbeat **48** was created for hourly quiet checks; the earlier
+reminder had already ceased to exist. Notify only on actionable failure or true
+completion, and delete this reminder after the terminal conclusion is pushed.
+
+Monitoring correction: a restricted-shell process lookup could not see these
+host processes and was incorrectly interpreted as termination. A host-side
+ownership query verified both still alive with matching start times, scripts
+and session; progress had continued throughout. The original mistaken witness
+is superseded by `output/p0-soak-20261025/process-visibility-correction.json`.
+A redundant `-b` attempt was refused before document writes because port18917
+served the original session; its failed report is preserved. It did not replace
+or interrupt the original attempt. Future monitors must not infer termination
+solely from a restricted `Get-Process` result.
 
 This block continues from `f6b02a4`. It improves the existing application rather than claiming parity with Feishu Docs. Source, tests and this record are deliverables; screenshots, databases and runtime reports stay in ignored `clawos/output`.
 
