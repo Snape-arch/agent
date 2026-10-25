@@ -1,5 +1,44 @@
 # Document Studio acceptance — 2026-10-03
 
+## Continuous-load evidence repair — 2026-10-25
+
+The failed October 3 attempt below remains failed. The harness now records both
+wall and monotonic intervals, rejects clock discontinuities and monitor gaps,
+and checks every authenticated writer and stream for stalled activity. Failed
+coverage cannot resume earning time. Setup and finalization do not earn load
+time. Each client must have writes, document events and cursor events; aggregate
+counters cannot conceal one idle client. Final document values, version/write
+counts and all 12 stream versions must agree. Revocation probes an already-open
+SSE connection and requires denial/closure plus HTTP 403 for read, write and
+presence. Source fingerprints include 300 handler/service/script/frontend files
+and must remain stable. Output/session reuse is refused; reports carry update
+timestamps and owned process identifiers without session secrets.
+
+On Windows an owned process-scoped execution request prevents automatic idle
+sleep and is released on exit. It does not prevent explicit suspend, shutdown
+or failure; any resulting observation gap still invalidates continuous coverage.
+No power-plan settings or production processes were changed.
+
+The final real API smoke used 12 authenticated clients, one-second writes,
+10-second controlled reconnects, and a 122.4-second target. Actual covered load
+was **122.734 seconds**; total including finalization **124.44 seconds**. Result:
+**passed, 0 errors, 823 writes, 1739 document events, 1731 cursor events,
+144 reconnects, 94 integrity checks**, sampled HTTP P95 **609ms**,
+maximum monitor gap **1.735s** (allowed 5s). All 12 final stream versions were
+**824**, and per-client writes matched the final acknowledged counters
+**[69,69,69,69,69,69,68,69,69,68,68,67]**. Final value/version checks, all four
+revocation checks and source stability passed; its owned preview exited.
+Evidence: ignored `output/document-soak-smoke-20261025-b/progress.json`.
+The earlier 180.297-second smoke is preserved separately and does not cover the
+subsequent final-stream convergence addition.
+
+Counterexample regression **8/8** and document merge/realtime regression **10/10**
+passed. Simulated clock counterexamples validate only the fail-closed guard;
+they never contribute runtime to real load. The latest full local/cloud gate
+and a new frozen-source 48-hour attempt are pending at this source checkpoint.
+No 48-hour, real browser, multi-device, screen-reader speech or browser-memory
+acceptance is implied by this API smoke.
+
 This block continues from `f6b02a4`. It improves the existing application rather than claiming parity with Feishu Docs. Source, tests and this record are deliverables; screenshots, databases and runtime reports stay in ignored `clawos/output`.
 
 ## Delivered behavior
