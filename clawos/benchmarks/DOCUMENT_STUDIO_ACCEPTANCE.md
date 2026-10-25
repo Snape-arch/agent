@@ -60,8 +60,9 @@ commit. This lets subsequent main-workspace edits leave the running sample alone
 
 The actual new **172800-second / 12-client** attempt started
 **2026-10-25T09:11:09.259952Z**, with 30-second writer intervals, 300-second
-controlled reconnects and a **30-second maximum monitor gap**. It is **RUNNING,
-not accepted yet**. Progress:
+controlled reconnects and a **30-second maximum monitor gap**. It **FAILED** at
+**2026-10-25T12:16:10.477154Z** (20:16 Beijing time), well short of 48 hours.
+Progress:
 `output/p0-soak-20261025/snapshot/clawos/output/document-soak-48h-20261025/progress.json`.
 Ownership manifest records actual worker **62940** (created
 09:11:06.7048032Z) and preview **45436** (09:11:07.0694766Z), loopback port18917.
@@ -69,6 +70,47 @@ PID37152 was the exited virtual-environment launcher, not the load worker.
 New thread heartbeat **48** was created for hourly quiet checks; the earlier
 reminder had already ceased to exist. Notify only on actionable failure or true
 completion, and delete this reminder after the terminal conclusion is pushed.
+
+#### Verified terminal failure (observed 2026-10-25T15:57Z)
+
+Actual continuous load was **11100.531 seconds** (3h05m00.531s), wall-clock
+coverage **11100.494s**, total including finalization **11101.2s**. Time after
+the stopped run, including delayed heartbeat processing, earns no load credit.
+The sole error was **stream-7 / ReadError at 11100.41s**. It is close to the
+37th scheduled 300-second reconnect boundary (443 reconnects = 12×37−1), but
+this coincidence and empty owned stderr/preview logs do not establish whether
+the cause was transport, service failure or cancellation timing. The error was
+not relabeled as a normal reconnect; no source repair or new run is claimed.
+
+- 12 authenticated API clients; **4410 writes, 42802 document events,
+  199763 cursor events, 443 controlled reconnects, 1095 integrity checks**.
+- Maximum monitor gap **10.766s**, below the 30s limit; sampled HTTP P95
+  **156ms**, database **1478656 bytes**. The short observed interval passed
+  continuity checks, but did not meet the 172800-second target.
+- Final acknowledged writes **[368,368,368,367,368,368,367,368,367,367,367,367]**
+  matched all 12 final document values and their sum4410. Final version **4411**
+  equaled 1+writes; all 12 event streams converged to4411. Per-client document,
+  cursor and reconnect counters also matched the aggregate counts.
+- All four terminal revocation checks passed: an already-open SSE stream was
+  denied and closed, and subsequent read/write/presence each returned403.
+- All **300 source fingerprints and 540 snapshot file hashes** still match
+  frozen source **4d1da82e531f1b15b0783615bd835bdf1fabab9c**. Source-map SHA-256
+  (sorted compact JSON) **0e7a6ee6a597329191cb452cef903c8aaefccfb929bffd133f1e29d3725f4a0f**;
+  snapshot-manifest SHA-256 **0b4b2c27c7e58dbcfe69e33920e05cd947e20925326d2e3fc01b3777de4b2777**.
+- Raw final progress SHA-256 **203db7464c7b486d3be41cefa7a3d9f6e8e377cb9684c28f9583c1dfe1a464dc**;
+  the report's final update is **12:16:10.488870Z**. The actual host-side check
+  at15:57Z confirmed both recorded owned processes (62940/45436) no longer exist.
+  This is verified termination, unlike the earlier restricted-process lookup.
+
+Evidence remains under ignored `output/p0-soak-20261025`: original progress,
+`terminal-acceptance.json` and `terminal-owned-processes.json`. No production
+restart or local data/registry modification occurred. This is a failed single-host
+API/SSE soak; it does not certify 48-hour operation, real browsers, physical
+multi-device collaboration, screen-reader speech, browser memory or learning
+benefit. Preserve the earlier October3 failure and duplicate-attempt records.
+Before another fresh attempt, capture the exception chain and reproduce the
+reconnect/cancellation boundary without weakening integrity or coverage guards.
+Delete heartbeat48 once this terminal conclusion has been committed and pushed.
 
 Monitoring correction: a restricted-shell process lookup could not see these
 host processes and was incorrectly interpreted as termination. A host-side
