@@ -84,6 +84,8 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
             [
                 sys.executable,
                 str(script),
+                "--suite",
+                str(ROOT / "tests" / "fixtures" / "model_acceptance_cli_v1.json"),
                 "--provider",
                 "mock",
                 "--mock-response",
@@ -116,6 +118,8 @@ class ModelAcceptanceScriptTests(unittest.TestCase):
             [
                 sys.executable,
                 str(script),
+                "--suite",
+                str(ROOT / "tests" / "fixtures" / "model_acceptance_cli_v1.json"),
                 "--provider",
                 "mock",
                 "--mock-response",

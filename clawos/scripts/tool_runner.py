@@ -1116,13 +1116,20 @@ def tool_find_todos():
     tags = input_data.get("tags", ["TODO","FIXME","HACK","NOTE","XXX","BUG"])
     file_patterns = input_data.get("file_patterns", ["*.py","*.js","*.ts","*.jsx","*.tsx","*.java","*.go","*.rs","*.c","*.cpp","*.h","*.html","*.css","*.md"])
     limit = input_data.get("limit", 50)
+    exclude = {str(name).casefold() for name in input_data.get("exclude_dirs", [
+        "node_modules", "__pycache__", "venv", ".venv", ".git",
+        "output", "uploads", "tmp", ".cache", "dist", "build", "backups", "tools",
+    ])}
     if os.path.isfile(path): files = [path]
     else:
         import fnmatch; files = []
         for root, dirs, filenames in os.walk(path):
-            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ("node_modules","__pycache__","venv",".git")]
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d.casefold() not in exclude
+                       and not os.path.islink(os.path.join(root, d))
+                       and not getattr(os.path, "isjunction", lambda _: False)(os.path.join(root, d))]
             for f in filenames:
-                if any(fnmatch.fnmatch(f, p) for p in file_patterns): files.append(os.path.join(root, f))
+                if not os.path.islink(os.path.join(root, f)) and any(fnmatch.fnmatch(f, p) for p in file_patterns):
+                    files.append(os.path.join(root, f))
     tag_rgx = re.compile("(" + "|".join(re.escape(t) for t in tags) + r")\b", re.IGNORECASE)
     results = []
     for fp in files:

@@ -1,0 +1,9 @@
+{
+  "name": "model-acceptance-cli-format-v1",
+  "description": "Real fast tool calls for CLI format/count contracts; full meeting performance remains in competition-frozen-v1 unchanged.",
+  "thresholds": {"min_pass_rate": 1.0, "max_p95_latency_ms": 5000},
+  "cases": [
+    {"name": "cli_addition", "scenario": "tool", "tool": "calc", "args": {"expression": "1+1"}, "expected": {"ok": true, "status": "success", "tool": "calc", "data_paths": ["result"]}, "max_latency_ms": 3000},
+    {"name": "cli_multiplication", "scenario": "tool", "tool": "calc", "args": {"expression": "6*7"}, "expected": {"ok": true, "status": "success", "tool": "calc", "data_paths": ["result"]}, "max_latency_ms": 3000}
+  ]
+}
