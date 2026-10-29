@@ -17,6 +17,7 @@ import time
 import uuid
 import httpx
 from document_soak_evidence import Coverage, execution_request, source_fingerprints
+from document_soak_stream import exception_evidence, read_attempt
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -59,9 +60,12 @@ async def run(args,report,write):
         response=await owner.post('/api/academy/learning/documents',json=dict(title='Authenticated collaboration soak — synthetic',blocks=blocks));response.raise_for_status();doc=response.json();nid=doc['id']
         started=time.monotonic()
         expected=[0]*args.workers;pending=[None]*args.workers;latencies=[];stop=asyncio.Event();streams_stop=asyncio.Event();clients=[]
-        def error(where,kind):
+        def error(where,kind,diagnostic=None):
             report['errors_count']+=1
-            if len(report['errors'])<100:report['errors'].append(dict(where=where,kind=str(kind)[:120],elapsed_seconds=round(time.monotonic()-started,2)))
+            if len(report['errors'])<100:
+                entry=dict(where=where,kind=str(kind)[:120],elapsed_seconds=round(time.monotonic()-started,2))
+                if diagnostic is not None:entry['diagnostic']=diagnostic
+                report['errors'].append(entry)
         async def request(client,method,path,**kwargs):
             start=time.monotonic();response=await client.request(method,path,**kwargs);latencies.append((time.monotonic()-start)*1000)
             if len(latencies)>5000:del latencies[:1000]
@@ -72,6 +76,8 @@ async def run(args,report,write):
             await request(client,'POST','/api/collaboration/join',json=dict(code=invite['code'],name=f'Soak editor {i+1}'))
         coverage=Coverage(args.workers,args.interval)
         started=coverage.started;deadline=started+args.hours*3600
+        report['stream_reconnect_mode']='complete_frame_boundary'
+        report['stream_states']=[dict(attempt=0,phase='not_started') for _ in clients]
         report.update(document_id=nid,status='running',started_at=datetime.now(timezone.utc).isoformat(),target_seconds=args.hours*3600)
         write()
         async def pause(seconds):
@@ -92,29 +98,19 @@ async def run(args,report,write):
                 await pause(args.interval)
         async def stream(i):
             last=0
+            def received(name,value):
+                if name=='document':report['document_events']+=1
+                elif name=='cursors':report['cursor_events']+=1
+                elif name=='denied':raise RuntimeError('unexpected_access_denial')
+                coverage.packet(i,name,value.get('version') if name=='document' else None)
             while time.monotonic()<deadline+10 and not streams_stop.is_set():
-                async def consume():
-                    nonlocal last
-                    async with clients[i].stream('GET',f'/api/academy/learning/documents/{nid}/events',headers={'Last-Event-ID':str(last)}) as response:
-                        response.raise_for_status();name='';data=''
-                        async for line in response.aiter_lines():
-                            if time.monotonic()>=deadline+10 or streams_stop.is_set():break
-                            coverage.packet(i,'heartbeat')
-                            if line.startswith('event:'):name=line[6:].strip()
-                            elif line.startswith('data:'):data+=line[5:].strip()
-                            elif not line and data:
-                                value=json.loads(data)
-                                if name=='document':
-                                    if value['version']<=last:raise RuntimeError('non_monotonic_event')
-                                    last=value['version'];report['document_events']+=1
-                                elif name=='cursors':report['cursor_events']+=1
-                                elif name=='denied':raise RuntimeError('unexpected_access_denial')
-                                coverage.packet(i,name,value.get('version') if name=='document' else None)
-                                name='';data=''
-                try:await asyncio.wait_for(consume(),min(args.reconnect_seconds,max(.01,deadline+10-time.monotonic())))
-                except asyncio.TimeoutError:report['controlled_reconnects']+=1;coverage.clients[i]['reconnects']+=1
+                try:
+                    reason,last=await read_attempt(clients[i],f'/api/academy/learning/documents/{nid}/events',last,args.reconnect_seconds,deadline+10,streams_stop.is_set,received,report['stream_states'][i],started)
+                    if reason=='scheduled':report['controlled_reconnects']+=1;coverage.clients[i]['reconnects']+=1
                 except asyncio.CancelledError:raise
-                except Exception as exc:error(f'stream-{i}',type(exc).__name__);stop.set();streams_stop.set();break
+                except Exception as exc:
+                    error(f'stream-{i}',type(exc).__name__,dict(**exception_evidence(exc),stream=dict(report['stream_states'][i])))
+                    stop.set();streams_stop.set();break
         tasks=[asyncio.create_task(writer(i)) for i in range(args.workers)]+[asyncio.create_task(stream(i)) for i in range(args.workers)]
         try:
             while time.monotonic()<deadline and not stop.is_set():

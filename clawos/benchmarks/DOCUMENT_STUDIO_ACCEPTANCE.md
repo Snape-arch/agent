@@ -1,5 +1,55 @@
 # Document Studio acceptance — 2026-10-03
 
+## Reconnect diagnosis and bounded mitigation — 2026-10-29
+
+The October25 3-hour failure stays failed. Its lone `ReadError` has no saved
+exception chain, so its OS error/cause cannot be reconstructed. It occurred near
+a scheduled reconnect; this alone does not establish a transport or cancellation
+root cause.
+
+An instrumented original frozen4d1da82 client ran the real isolated API with
+12 authenticated clients, 1s writer intervals and 1s reconnect intervals, targeting
+180s. It did **not reproduce ReadError**: its diagnostic wrapper recorded
+2016 actual cancellations and zero ReadErrors. Instead it failed
+`continuous_coverage / stream_6_stalled` at166.81s, with 165.187s credited and
+169.55s total: 692 writes,457 document events,48 cursor events,2016 reconnects.
+This is a different observed failure, not a substitute explanation for October25.
+Evidence: original snapshot's `output/diagnose-original-20261029-a/progress.json`
+and main workspace `output/soak-diagnosis-20261029/original-client-diagnostics.json`.
+
+The test harness now closes normal reconnects between **complete SSE frames**
+instead of using `asyncio.wait_for` to cancel an in-flight read. Multiline data
+is assembled before closing. Premature EOF, ReadError, ReadTimeout, denial and
+non-monotonic versions still fail; no transient-read-error retry was added and
+no coverage/final integrity rule was relaxed. A deterministic negative control
+shows that cleanup converting CancelledError to ReadError escapes wait_for as
+ReadError; this establishes a possible classification hazard, **not that the old
+real failure followed that synthetic chain**.
+
+Errors now capture bounded exception types/causes, errno/winerror/status codes
+and basename/line/function stack locations, plus per-client attempt/phase/last
+version. Messages, requests, headers, cookies, full file paths and locals are
+excluded. Future real errors must retain this evidence and remain failures.
+
+Validation: stream handling **8/8** (including a real loopback TCP premature-EOF
+negative control), existing coverage guards **8/8**, realtime merging **10/10**.
+New harness real12-client smoke with the same1s/1s settings passed:
+**180.484s credited,182.86s total,739 writes,1881 document events,425 cursor
+events,1891 controlled reconnects,112 integrity checks,0 errors**. Maximum
+monitor gap1.937s (limit5s); sampled HTTP P95968ms. All12 final versions740,
+acknowledged values/counts, final convergence and four revocation probes passed;
+301 source fingerprints stayed stable and the owned preview exited.
+Evidence: main workspace `output/diagnose-frame-boundary-20261029-a/progress.json`.
+The original probe includes diagnostic wrapping; single runs are not a controlled
+performance comparison or proof of general reliability improvement.
+
+Only QA harness/test/docs changed, not production collaboration services. No
+production restart or new48-hour run occurred. The previous1094-test gate belongs
+to4d1da82 and cannot certify this increment; a new full/cloud gate is still pending.
+The next long run needs a fresh start on the diagnosed source. This short API
+smoke certifies neither48 hours nor browsers, physical devices, screen-reader
+speech, browser memory or real learning benefit.
+
 ## Continuous-load evidence repair — 2026-10-25
 
 The failed October 3 attempt below remains failed. The harness now records both
