@@ -111,6 +111,8 @@ g_feishu_connector_service: Any = None
 g_feishu_long_connect: Any = None  # FeishuLongConnectManager, started only when live
 g_background_worker_task: asyncio.Task | None = None
 g_document_index_worker = None
+g_research_watch_service = None
+g_research_watch_worker = None
 g_background_worker_status: dict[str, Any] = {
     "running": False,
     "worker_id": "",
@@ -1865,7 +1867,12 @@ async def lifespan(app: FastAPI):
         g_mtclaw_adapter.enabled,
     )
     g_document_index_worker.start()
+    from services.research_watch import ResearchWatchWorker
+    global g_research_watch_worker
+    g_research_watch_worker = ResearchWatchWorker(_research_watch())
+    g_research_watch_worker.start()
     yield
+    await g_research_watch_worker.close()
     await g_document_index_worker.close()
     try:
         stop_feishu_long_connect()
@@ -5293,13 +5300,34 @@ app.include_router(collaboration_router(_collaboration))
 app.include_router(data_lab_router(lambda: _workbench_service('data'), _collaboration))
 app.include_router(meeting_router(lambda: _workbench_service('meeting'), _collaboration, lambda: _feishu_service()))
 
+def _research_watch():
+    from services.research_watch import ResearchWatch
+    global g_research_watch_service
+    if g_research_watch_service is None or g_research_watch_service.store is not g_memory_store:
+        if not g_memory_store:
+            raise HTTPException(503, '研究订阅存储尚未初始化')
+        g_research_watch_service = ResearchWatch(g_memory_store)
+    return g_research_watch_service
+
+def _research_watch_worker_status():
+    worker = g_research_watch_worker
+    return {'running': bool(worker and worker.task and not worker.task.done()),
+            'last_error': worker.last_error if worker else '', 'check_seconds': 15}
+
+from services.research_watch_api import research_watch_router
+app.include_router(research_watch_router(_research_watch, _collaboration, _research_watch_worker_status))
+
+@app.get('/academy/research')
+async def research_watch_page():
+    return FileResponse(STATIC_DIR / 'academy-research.html', headers={'Cache-Control': 'no-store'})
+
 @app.middleware('http')
 async def workbench_access(request: Request, call_next):
     path = request.url.path
     if path.startswith(('/api/','/v1/')) and path not in ('/api/collaboration/join','/api/academy/learning/lab/join','/api/academy/learning/lab/logout','/api/feishu/events'):
         try:
             uid = 'local-user' if direct_owner(request) else await run_in_threadpool(lambda: _collaboration().identity(request)['id'])
-            if uid != 'local-user' and not path.startswith(('/api/collaboration/','/api/academy/learning/documents','/api/evolution-review/','/api/academy/learning/lab/')):
+            if uid != 'local-user' and not path.startswith(('/api/collaboration/','/api/academy/learning/documents','/api/evolution-review/','/api/academy/learning/lab/','/api/research/watch')):
                 raise HTTPException(403, '协作会话仅允许访问授权文档')
         except HTTPException as e:
             return JSONResponse({'detail':e.detail},status_code=e.status_code)

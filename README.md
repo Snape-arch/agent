@@ -1,5 +1,7 @@
 # Agent / ClawOS Workspace
 
+新增 `/academy/research` 研究方向订阅：默认每 6 小时采集 Crossref/arXiv，持久分页与跨批次去重、可解释归类/人工修正、快照依据摘录、站内通知及北京时间发现日报。自动采集需应用运行；来源索引存在延迟，arXiv 首版只覆盖投稿时间窗口，不能承诺即时或全量发现。总结首版为标题/摘要摘录，领域综述和研究脉络尚待建设，见 [研究订阅验收与边界](clawos/benchmarks/RESEARCH_WATCH_ACCEPTANCE.md)。
+
 教材图谱新增章节/原文绑定的结构化模型输出、批次预算及迟到结果拒绝；本地Qwen整书26章/16批真实链路通过。73概念/55条关系仍待教师复核，不代表真实学习收益，见[真实模型验收与限制](clawos/benchmarks/EDUCATION_REAL_MODEL_ACCEPTANCE.md)。
 
 教育新增 `/academy/lab`：36个由基础到AI前沿的单元、整书目录与带原文依据的知识图谱、人工先修复核、教师校准工作台，以及冻结题组的前测/后测/至少七天延迟测、双人盲评、独立仲裁和同身份续期。计划保存实际来源快照，旧版本保留；真实教学效果尚未验证，账户不代表已认证教师或独立真人。见 [教育工作区验收与边界](clawos/benchmarks/EDUCATION_LEARNING_LAB_ACCEPTANCE.md)。现有服务需正常重启载入新增API，本轮没有重启生产。
