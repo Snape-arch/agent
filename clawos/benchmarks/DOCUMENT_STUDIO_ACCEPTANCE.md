@@ -1,5 +1,47 @@
 # Document Studio acceptance — 2026-10-03
 
+## Verified full gate and fresh actual 48-hour run — 2026-10-29
+
+Source **9bff1df718ec9d9f0a8fddd6e916589f77d41914** passed frozen local
+**1102/1102, zero skips/failures/errors**. Shards 321/198/211/372 took
+518.484/153.281/115.297/804.609s; whole run **808.688s**. All 465
+source/dependency/fixture hashes and HEAD stayed stable, daily DB stayed
+unchanged, and original dirty registry bytes were restored. All four Windows
+jobs and the final gate in [GitHub run 40822184803](https://github.com/Snape-arch/agent/actions/runs/40822184803)
+completed successfully, each checked against this source SHA. Evidence: ignored
+`output/p0-soak-retry-20261029/{full-result,full-source-audit,cloud-terminal,verified-final-summary}.json`.
+
+The independent snapshot exports only committed code/static assets: 542 files
+checked by SHA-256 and Git blob IDs; no local config, credentials, registry,
+database or weights copied. Its real 12-client smoke passed: 36.156s credited,
+149 writes, 377 document events, 85 cursor events, 382 reconnects, zero errors;
+final convergence/revocation and owned-preview exit passed. Export manifest:
+`output/p0-soak-retry-20261029/snapshot-manifest.json`.
+
+The fresh **172800-second / 12-authenticated-client** API/SSE run started at
+**2026-10-29T05:30:38.491081Z** (13:30:38 Beijing), with 30-second writer
+intervals and 300-second complete-frame-boundary reconnects, maximum monitor
+gap 30s. Status is **RUNNING, NOT ACCEPTED YET**. Earlier failures contribute
+no runtime or counts. Progress:
+`output/p0-soak-retry-20261029/snapshot/clawos/output/document-soak-48h-20261029/progress.json`.
+Worker **47628** started 05:30:36.0505765Z; preview **5500** started
+05:30:36.3995605Z, loopback port18921. PID21904 is only the venv launcher.
+Host-side command/session/start-time ownership was verified in outer
+`soak-owned-process.json`; restricted process visibility cannot prove exit.
+Parse timestamps as UTC values or retain ISO JSON strings.
+
+New heartbeat **48** checks quietly each hour, notifying only actionable failure
+or genuine terminal results; delete after terminal reporting is pushed. Check
+301 source hashes/542 snapshot files, both clocks, all 12 writers/streams,
+safe exception diagnostics, final values/counts/versions, stream convergence
+and four revocation probes. Any ReadError, timeout, premature EOF, denial or
+non-monotonic event remains failure. Sleep/pause/cleanup/after-exit time earns
+no load credit. October25 ReadError and October29 old-client stall remain
+failed and unchanged; a common root cause is not established. This ongoing
+single-host API/SSE run does not certify 48 hours, real browsers, physical
+devices, screen readers, browser memory or learning effects. Production was
+not restarted; other P0 exclusions remain open.
+
 ## Reconnect diagnosis and bounded mitigation — 2026-10-29
 
 The October25 3-hour failure stays failed. Its lone `ReadError` has no saved
@@ -44,8 +86,9 @@ The original probe includes diagnostic wrapping; single runs are not a controlle
 performance comparison or proof of general reliability improvement.
 
 Only QA harness/test/docs changed, not production collaboration services. No
-production restart or new48-hour run occurred. The previous1094-test gate belongs
-to4d1da82 and cannot certify this increment; a new full/cloud gate is still pending.
+production restart or new48-hour run occurred at this diagnosis checkpoint.
+The previous1094-test gate belongs to4d1da82 and cannot certify this increment;
+the new full/cloud gate was pending then and is superseded by the section above.
 The next long run needs a fresh start on the diagnosed source. This short API
 smoke certifies neither48 hours nor browsers, physical devices, screen-reader
 speech, browser memory or real learning benefit.
