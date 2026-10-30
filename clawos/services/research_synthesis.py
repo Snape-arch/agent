@@ -2,6 +2,7 @@
 import json
 import re
 import uuid
+from contextlib import nullcontext
 from datetime import date
 
 from services.research_watch import doi, fingerprint, normalized, packed
@@ -62,7 +63,7 @@ class ResearchSynthesis:
                 PRIMARY KEY(report_id,edge_id));
             ''')
 
-    def create(self, owner, data):
+    def create(self, owner, data, *, _conn=None):
         if not isinstance(data, dict) or set(data)-{'subscription_id', 'paper_ids', 'title', 'documents'}:
             raise ValueError('综述请求字段无效')
         sid, ids = data.get('subscription_id', ''), data.get('paper_ids', [])
@@ -76,7 +77,7 @@ class ResearchSynthesis:
             raise ValueError('每份综述最多绑定5份已解析全文，格式为论文ID与文档ID')
         if bindings and owner!='local-user':
             raise PermissionError('全局本地PDF仅允许本机所有者显式绑定；协作账户不获得其读取权限')
-        with self.store._conn() as c:
+        with (nullcontext(_conn) if _conn is not None else self.store._conn()) as c:
             if sid:
                 self.watch.owned(c, owner, sid)
             candidates = c.execute('''SELECT DISTINCT p.id FROM research_watch_papers p
@@ -134,12 +135,15 @@ class ResearchSynthesis:
                             sections[k]=(sections[k]+extra[k])[:6]
                     full=True
                 papers.append(dict(id=pid,title=p['title'],doi=p['doi'],arxiv_id=p['arxiv_id'],url=p['url'],source=p['source'],
+                    authors=p['authors'],categories=p['categories'],
                     date=publication(p['published']),groups=groups,sections=sections,sources=evidence_sources,
                     full_text_bound=full,missing=[LABELS[k] for k,v in sections.items() if not v],
                     bibliography=source_records(rows,budget=metadata_budget)))
             created=self.watch.clock()
             rid=uuid.uuid4().hex
             report=self.compose(rid,title.strip(),created,sid,papers)
+            report['selection']=dict(mode='explicit' if ids else 'subscription' if sid else 'all',subscription_id=sid,
+                paper_ids=chosen if ids else [],documents=bindings)
             c.execute('INSERT INTO research_synthesis_reports VALUES (?,?,?,?,?)',(rid,owner,created,packed(report),fingerprint(report)))
         return dict(id=rid,report=report,hash=fingerprint(report))
 

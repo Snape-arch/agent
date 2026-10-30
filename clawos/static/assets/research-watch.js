@@ -153,7 +153,7 @@
     $('watch-page').textContent = `第 ${offset / pageSize + 1} 页`;
   }
   function renderMessages() {
-    $('watch-unread').textContent = `${state.unread} 条未读`;
+    $('watch-unread').textContent = `${state.unread+(state.review_updates?.unread || 0)} 条未读`;
     const root = $('watch-notifications'); root.replaceChildren();
     state.notifications.forEach(n => {
       const row = el('div', undefined, 'watch-message');
@@ -165,7 +165,11 @@
         $('watch-feed-heading').scrollIntoView({behavior: 'smooth', block: 'start'});
       })); root.append(row);
     });
-    if (!state.notifications.length) root.append(el('p', '有新发现后，会在这里通知你。', 'muted'));
+    for (const n of state.review_updates?.items || []) {
+      const row=el('div',undefined,'watch-message');row.append(el('div',`${n.read_at ? '已读' : '未读'} · 综述证据更新 · ${n.title} · ${when(n.created)}`));
+      row.append(button('查看综述变化',async()=>{await openReport(n.report_id);await renderDelta(n.update_id,$('synthesis-report').querySelector('.watch-update-delta'));await api(`/update-notifications/${n.id}/read`,{});await refresh(false);}));root.append(row);
+    }
+    if (!state.notifications.length && !state.review_updates?.items.length) root.append(el('p', '有新发现或综述证据更新后，会在这里通知你。', 'muted'));
     const digests = $('watch-digests'); digests.replaceChildren();
     state.digests.forEach(d => { const row = el('div', undefined, 'watch-message'); row.append(button(`${d.day} · ${d.paper_count} 篇`, async () => { digestId = d.id; offset = 0; await loadFeed(); $('watch-feed-heading').scrollIntoView({behavior: 'smooth'}); })); digests.append(row); });
     if (!state.digests.length) digests.append(el('p', '首次发现后自动形成当日清单。', 'muted'));
@@ -178,6 +182,7 @@
       $('watch-runtime').textContent = state.worker.running ? '自动检查已运行 · 日报时区：北京时间' : '自动检查未运行；当前可查看历史。新代码需正常启动服务后启用。';
       if (state.worker.fixture) $('watch-runtime').textContent = '独立验收预览 · 人工夹具数据，不代表真实科研结果。';
       if (state.worker.public_metadata_preview) $('watch-runtime').textContent = '独立公开元数据预览 · 来源记录已保存，不代表生产部署或学术质量认证。';
+      if (state.worker.controlled_clock_replay) $('watch-runtime').textContent = '独立公开语料回放 · 调度使用受控时钟，页面可出现测试时间；没有实际等待6小时，不代表实时采集、模型或长期运行验收。';
       if (state.worker.last_error) $('watch-runtime').textContent += ` · 调度异常：${state.worker.last_error}`;
       renderSubscriptions(); renderMessages(); if (feed) await loadFeed();
     } catch (error) { if (!quiet) notice(error.message); else $('watch-runtime').textContent = '连接中断，历史界面保留；自动采集状态暂不可确认。'; }
@@ -206,6 +211,65 @@
   function download(name, text, type) {
     const url = URL.createObjectURL(new Blob([text], {type})), a = el('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  async function openReport(id) {
+    renderSynthesis(await api(`/syntheses/${id}`));await synthesisHistory();$('synthesis-history').value=id;
+    $('synthesis-report').scrollIntoView({behavior:'smooth',block:'start'});
+  }
+  function batches(root,items,render,size=20) {
+    let shown=0;const list=el('div'),more=el('button','显示更多变化');more.type='button';
+    function append(){for(const item of items.slice(shown,shown+size))list.append(render(item));shown+=size;more.hidden=shown>=items.length;}
+    more.addEventListener('click',append);append();root.append(list,more);
+  }
+  async function renderDelta(uid,root) {
+    const value=await api(`/updates/${uid}`),d=value.delta;root.replaceChildren(el('h4','这次更新了什么'),el('p',d.boundary,'watch-policy'));
+    const c=d.counts;root.append(el('p',`新增 ${c.added_papers} 篇 · 当前范围未包含 ${c.removed_papers} 篇 · 归并 ${c.merged_papers || 0} 个原标识 · ${c.changed_papers} 篇资料变化 · 新增 ${c.added_excerpts} 条分类摘录 · ${c.added_relations} 条新增来源关系`,'watch-update-counts'));
+    root.append(el('p',`比较时间：${when(value.created)}。分类摘录可能重复命中不同栏目，计数不是独立学术发现数量。`,'watch-meta'));
+    const actions=el('div',undefined,'watch-actions');actions.append(button('查看原综述',()=>openReport(value.base_id)),button('查看新综述',()=>openReport(value.report_id)),
+      button('导出更新 Markdown',async()=>{const out=await api(`/updates/${uid}/export`);download('research-update.md',out.markdown,'text/markdown;charset=utf-8');}),
+      button('导出更新依据 JSON',async()=>{const out=await api(`/updates/${uid}/export`);download('research-update.json',JSON.stringify(out.data,null,2),'application/json');}));root.append(actions);
+    function quote(claim){const e=claim.evidence,box=el('div');box.append(el('blockquote',claim.text),el('p',`原文位置 ${e.start}–${e.end} · ${e.basis}`,'watch-meta'),el('code','SHA256 '+e.sha256));if(e.snapshot_id){const a=el('a','查看该版本来源快照');a.href='/api/research/watch/snapshots/'+encodeURIComponent(e.snapshot_id);a.target='_blank';a.rel='noopener';const p=el('p');p.append(a);box.append(p);}return box;}
+    function lazy(title,build){const details=el('details');details.append(el('summary',title));let built=false;details.addEventListener('toggle',()=>{if(details.open&&!built){built=true;build(details);}});return details;}
+    const labels={problem:'研究问题',method:'方法',evidence:'评测',finding:'作者报告的发现',limitation:'局限'};
+    for(const [key,label] of [['added','新增论文'],['removed','当前范围未包含的原论文']]){
+      root.append(el('h4',label+` · ${d[key].length}`));batches(root,d[key],p=>lazy(p.title,box=>{box.append(el('p',p.doi || p.arxiv_id || p.paper_id,'watch-meta'));for(const [kind,claims] of Object.entries(p.sections)){if(claims.length)box.append(el('h5',labels[kind] || kind));for(const claim of claims)box.append(quote(claim));}}));
+    }
+    root.append(el('h4','原论文的证据与资料变化'));
+    for(const p of d.merged || [])root.append(el('p',`${p.before.title} → ${p.after.title}：${p.boundary}`,'watch-meta'));
+    batches(root,d.papers,p=>lazy(p.after.title,box=>{
+      const fields={title:'标题',doi:'DOI',arxiv_id:'arXiv标识',date:'发表时间',groups:'归类方向',authors:'作者',categories:'来源分类'};
+      box.append(el('p',`${p.text_changed ? '原文资料变化；' : ''}${p.bibliography_changed ? '引用或版本元数据变化；' : ''}${p.fields.map(k=>fields[k] || k).join('、')}`,'watch-meta'));
+      for(const k of p.fields)box.append(el('p',`${fields[k] || k}：${JSON.stringify(p.before[k==='date' ? 'date' : k])} → ${JSON.stringify(p.after[k==='date' ? 'date' : k])}`));
+      for(const [kind,section] of Object.entries(p.sections)){for(const [key,label] of [['added','新版本新增摘录'],['removed','原版本摘录（本版未提取）']]){if(section[key].length)box.append(el('h5',`${labels[kind] || kind} · ${label}`));for(const claim of section[key])box.append(quote(claim));}}
+      if(!Object.values(p.sections).some(s=>s.added.length||s.removed.length))box.append(el('p','分类摘录没有变化；不据此推断学术结论改变。','muted'));
+    }));
+    for(const [key,label] of [['added','新增来源关系'],['removed','本版未包含的原来源关系']]){
+      root.append(lazy(label+` · ${d.relations[key].length}`,group=>{batches(group,d.relations[key],e=>lazy(`${e.source_label || e.source} → ${e.target_label || e.target}`,box=>{box.append(el('p',e.kind+' · '+e.boundary,'watch-meta'));for(const ref of [...e.evidence,...(e.prior_evidence ? [e.prior_evidence] : [])]){const a=el('a','来源字段 '+ref.field);a.href='/api/research/watch/snapshots/'+encodeURIComponent(ref.snapshot_id);a.target='_blank';a.rel='noopener';const row=el('p');row.append(a);box.append(row);}}),40);}));
+    }
+    if(JSON.stringify(d.coverage_before)!==JSON.stringify(d.coverage_after))root.append(lazy('来源覆盖与预算变化',box=>{box.append(el('p','来源缺失或预算省略可能改变关系范围，不能当作撤稿或反证。','muted'),el('pre',JSON.stringify({before:d.coverage_before,after:d.coverage_after},null,2),'watch-source-text'));}));
+  }
+  function renderUpdateControls(r,root) {
+    const section=el('section',undefined,'watch-updates'),controls=el('div'),delta=el('div',undefined,'watch-update-delta');
+    section.append(el('h3','持续更新这份综述'),el('p','只检查已经采集到的资料，不额外联网采集或自动调用模型。已绑定本地全文会重新取证；旧AI正文和人工关系复核保留在原版本。','muted'),controls,delta);root.append(section);
+    async function load(){
+      const value=await api(`/syntheses/${r.id}/updates`),t=value.track;controls.replaceChildren();
+      controls.append(button('刷新更新状态',load));
+      if(value.previous)controls.append(button('与上一版比较',()=>renderDelta(value.previous.id,delta)));
+      if(value.next)controls.append(button('查看下一版本',()=>openReport(value.next.report_id)));
+      if(r.lineage)controls.append(el('p',`第 ${r.lineage.generation} 版 · 上一版本保留`,'watch-meta'),button('查看初始综述',()=>openReport(r.lineage.root_report_id)));
+      if(t && t.head_id!==r.id){controls.append(el('p','这是历史版本。'),button('打开最新综述',()=>openReport(t.head_id)));}
+      else {
+        const mode=r.selection?.mode || 'explicit';controls.append(el('p',mode==='explicit' ? '范围：原来明确选择的论文；不自动扩大选篇。' : mode==='subscription' ? '范围：原订阅，包含后来发现的论文。' : '范围：你的全部有效订阅，包含后来发现的论文。','watch-meta'));
+        controls.append(el('p',`最近检查：${when(t?.checked)}${t?.enabled ? ' · 下次检查：'+when(t.next_due) : ' · 自动检查未开启'}${t?.last_error ? ' · 检查失败：'+t.last_error+'；原版本保留，15分钟后重试。' : ''}`,'watch-meta'));
+        const check=button('检查并生成更新版本',async()=>{const out=await api(`/syntheses/${r.id}/updates/check`,{version:t?.version || 0});if(out.changed){await openReport(out.head_id);await renderDelta(out.update.id,$('synthesis-report').querySelector('.watch-update-delta'));notice('已保存新版本和证据差异，原综述保留。');await refresh(false);}else{notice('当前采集资料没有变化，未生成重复版本或通知。');await load();}});controls.append(check);
+        const form=el('form'),enabled=el('input');enabled.type='checkbox';enabled.checked=!!t?.enabled;const label=el('label',undefined,'watch-check');label.append(enabled,document.createTextNode('自动检查综述更新'));form.append(label);
+        const interval=el('select');interval.setAttribute('aria-label','综述检查频率');for(const [n,name] of [[6,'每6小时'],[12,'每12小时'],[24,'每天'],[48,'每2天'],[168,'每周']]){const o=el('option',name);o.value=n;interval.append(o);}interval.value=t?.interval_hours || 6;form.append(interval);
+        form.append(button('保存更新设置',async()=>{await api(`/syntheses/${r.id}/updates/settings`,{enabled:enabled.checked,interval_hours:Number(interval.value),version:t?.version || 0});await load();notice('更新设置已保存。仅应用运行期间检查；来源延迟和采集积压仍影响发现时间。');}));controls.append(form);
+      }
+      if(value.updates.length)controls.append(el('p','最近50次版本变化；旧版本可沿前后版本继续查看。','watch-meta'));
+      for(const u of value.updates)controls.append(button('查看版本变化 · '+when(u.created),()=>renderDelta(u.id,delta)));
+    }
+    load().catch(e=>controls.replaceChildren(el('p',e.message,'muted')));
+  }
   function renderSynthesis(value) {
     const r = value.report, root = $('synthesis-report'); root.replaceChildren(el('h3', r.title), el('p', r.boundary, 'watch-policy'));
     if (aiPoll) clearTimeout(aiPoll); aiReport = r.id;
@@ -213,6 +277,7 @@
     const actions = el('div', undefined, 'watch-actions');
     actions.append(button('导出 Markdown', async () => { const out = await api(`/syntheses/${r.id}/export`); download('research-overview.md', out.markdown, 'text/markdown;charset=utf-8'); }));
     actions.append(button('导出含依据 JSON', async () => { const out = await api(`/syntheses/${r.id}/export`); download('research-evidence.json', JSON.stringify(out.data, null, 2), 'application/json'); })); root.append(actions);
+    renderUpdateControls(r,root);
     const graph=r.bibliography_graph;
     if (graph) {
       const section=el('section',undefined,'watch-bibliography');section.append(el('h3','来源引用与版本网络'),el('p',graph.boundary,'muted'));

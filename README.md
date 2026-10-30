@@ -1,5 +1,7 @@
 # Agent / ClawOS Workspace
 
+研究综述支持版本化增量更新：按原选篇范围比较新论文、原文证据、元数据及引用/版本关系，保存新报告与差异通知；可手动检查或开启定时跟踪，旧报告及人工判断保留。相关94项与公开语料回放通过；未替代真实模型或长期学术验收，见[增量综述验收](clawos/benchmarks/RESEARCH_UPDATES_ACCEPTANCE.md)。
+
 研究综述已增加来源引用与版本网络：Crossref直接DOI引用/预印本关联、arXiv已观察修订、手动元数据刷新、逐关系快照依据及分类筛选/导出。缺失版本不补造，引用不等于方法继承，旧窗口外修订尚需手动刷新。相关78项及本轮6条公开来源记录验证通过，见[引用版本验收](clawos/benchmarks/RESEARCH_BIBLIOGRAPHY_ACCEPTANCE.md)。
 
 研究订阅页已接入本地AI综合草稿：七栏分析、引用/数值守卫、逐项模型复核、缺证据留空、持久任务及含依据导出；禁止外部模型回退。同一提供方复核不代表独立学术认证；当前真实模型调用按用户要求留未验收，见 [AI综合综述验收](clawos/benchmarks/RESEARCH_AI_ACCEPTANCE.md)。

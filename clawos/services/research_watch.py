@@ -412,6 +412,9 @@ class ResearchWatchWorker:
         while not self.stopping:
             try:
                 await asyncio.to_thread(self.service.tick)
+                if not self.stopping:
+                    from services.research_updates import ResearchUpdates
+                    await asyncio.to_thread(lambda:ResearchUpdates(self.service).tick())
                 self.last_error = ''
             except Exception as exc:
                 self.last_error = type(exc).__name__

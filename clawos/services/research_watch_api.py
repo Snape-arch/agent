@@ -42,6 +42,7 @@ def research_watch_router(service, collaboration, worker_status, ai_ready=None):
     @router.get('')
     async def state(request: Request):
         result = await call(request, 'state')
+        result['review_updates'] = await update_call(request,'notifications')
         result['worker'] = worker_status()
         return result
 
@@ -119,6 +120,32 @@ def research_watch_router(service, collaboration, worker_status, ai_ready=None):
     @router.post('/syntheses/{rid}/relations/{edge_id}')
     async def review_relation(rid: str, edge_id: str, request: Request):
         return await synthesis_call(request, 'review', rid, edge_id, await body(request))
+
+    async def update_call(request,method,*args):
+        from services.research_updates import ResearchUpdates
+        uid=await run_in_threadpool(owner,request)
+        try:return await run_in_threadpool(lambda:getattr(ResearchUpdates(service()),method)(uid,*args))
+        except PermissionError as exc:raise HTTPException(403,str(exc))
+        except LookupError as exc:raise HTTPException(404,str(exc))
+        except (ValueError,TypeError) as exc:raise HTTPException(400,str(exc))
+
+    @router.get('/syntheses/{rid}/updates')
+    async def update_status(rid:str,request:Request):return await update_call(request,'status',rid)
+
+    @router.post('/syntheses/{rid}/updates/check')
+    async def update_check(rid:str,request:Request):return await update_call(request,'check',rid,await body(request))
+
+    @router.post('/syntheses/{rid}/updates/settings')
+    async def update_settings(rid:str,request:Request):return await update_call(request,'configure',rid,await body(request))
+
+    @router.get('/updates/{uid}')
+    async def update_detail(uid:str,request:Request):return await update_call(request,'get',uid)
+
+    @router.get('/updates/{uid}/export')
+    async def export_update(uid:str,request:Request):return await update_call(request,'export',uid)
+
+    @router.post('/update-notifications/{nid}/read')
+    async def read_update(nid:str,request:Request):return await update_call(request,'read',nid)
 
     async def ai_call(request,method,*args):
         from services.research_ai import ResearchAI
