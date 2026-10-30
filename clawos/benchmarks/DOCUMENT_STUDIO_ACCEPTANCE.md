@@ -1,5 +1,66 @@
 # Document Studio acceptance — 2026-10-03
 
+## Terminal failure of frame-boundary 48-hour retry — verified 2026-10-30
+
+**FAILED, not accepted as 48 hours.** Frozen source
+`9bff1df718ec9d9f0a8fddd6e916589f77d41914`, 12 authenticated API/SSE clients,
+target 172800s, `complete_frame_boundary`. Started 2026-10-29 05:30:38.491081Z;
+finished 17:38:32.950667Z, last report update 17:38:33.100385Z (Beijing
+October 30 01:38:33). Elevated host-side queries of recorded worker47628 and
+preview5500 found both absent; report also records `preview_stopped=true`.
+This conclusion does not rely on restricted process visibility. Neither service
+was restarted, and no new round was started.
+
+The retained last-live sample records **42036.954s (11h40m36.954s)** covered,
+42036.757s wall and maximum observed check gap 11.641s against 30s allowed.
+Calendar start-to-finish is 43674.459586s; **1637.702586s after the last live
+wall sample are uncredited**, not successful load. The persisted live
+`continuous_coverage_pass=true` is not a terminal continuity certificate.
+The test did not complete final-value/count/version checks, all-12 SSE final
+convergence or the four revocation checks: these fields are absent, **unverified**.
+
+Report aggregates: **16671 writes, 162366 document events, 757236 cursor
+events, 1677 controlled reconnects, 4136 integrity checks, 12 errors**.
+All errors have ReadTimeout type (11 stream entries and writer4), around
+43674.47–43674.61 elapsed seconds. Stored stream diagnostics include
+ReadTimeout → ReadTimeout → TimeoutError → CancelledError, without sensitive
+messages, headers or cookies; stream stages are 7 opening and 5 reading,
+attempts around 140/141. Last frames are around elapsed42044–42046s. This
+documents a stall/timeout; it does **not** establish Wi-Fi loss, host sleep,
+server deadlock, or a shared root cause with earlier failures. The requests
+targeted loopback; offline Internet alone is not an established explanation.
+
+The retained per-client samples show 1388–1390 writes, 13498–13555 document
+events, 63075–63108 cursor events and 139 reconnects each. Those samples
+precede terminal errors; their write sum is16665 and live version16666, whereas
+later aggregates/diagnostics advanced. They must not be represented as exact
+terminal values or final convergence. Sample write ages4.579–30.079s and
+stream ages0.047–0.625s also describe that earlier sample, not final health.
+
+All **301 frozen source hashes and 542 snapshot hashes** still match. Saved
+local1102/1102 zero-skip and all five successful GitHub40822184803 jobs were
+rechecked against the frozen SHA; they remain prerequisite evidence, not proof
+that this long test passed. The later research-subscription commit8bf9ecd is
+outside the frozen snapshot and is not covered by this test.
+
+Raw report SHA256:
+`a6854330dd32656070032da2e70bc4701bb950a4d5a90e9de603da831d59d3f0`.
+Ignored terminal audit: `output/p0-soak-retry-20261029/terminal-audit-20261030.json`;
+original progress, source manifest, verified gate summary, launch ownership and
+initial delivery audit are retained unchanged. Initial delivery audit described
+the run while still running and is superseded for terminal status by this audit.
+The October25 3-hour ReadError report retains SHA256
+`203db7464c7b486d3be41cefa7a3d9f6e8e377cb9684c28f9583c1dfe1a464dc`;
+the October29 high-frequency cancellation/stall failure is separately preserved.
+
+This is a failed **single-machine API/SSE** run. Real browser/multi-device,
+screen-reader, browser-memory and human teaching acceptance remain separate
+and unverified. No paused/stalled/cleanup time or older run time is credited.
+Only these acceptance documents are delivered; original registry changes,
+credentials, DB, output, tools and weights are excluded. Reminder48 is removed
+after the terminal documentation push is confirmed; failure does not authorize
+an automatic replacement run.
+
 ## Verified full gate and fresh actual 48-hour run — 2026-10-29
 
 Source **9bff1df718ec9d9f0a8fddd6e916589f77d41914** passed frozen local
