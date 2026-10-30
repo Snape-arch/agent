@@ -5,6 +5,7 @@ import uuid
 from datetime import date
 
 from services.research_watch import doi, fingerprint, normalized, packed
+from services.research_bibliography import source_records,build_graph
 
 
 CUES = {
@@ -97,7 +98,7 @@ class ResearchSynthesis:
                 raise ValueError('请先采集文献或选择已有论文')
             if set(bindings)-set(chosen):
                 raise ValueError('全文绑定必须属于本次选择')
-            papers=[]
+            papers=[];metadata_budget=dict(records=200,references=5000,relations=1000)
             for pid in chosen:
                 rows=c.execute('''SELECT * FROM research_watch_snapshots WHERE owner=? AND paper_id=? ORDER BY captured DESC,id''',(owner,pid)).fetchall()
                 best=max(rows,key=lambda r:(bool(json.loads(r['payload']).get('abstract')),r['captured']))
@@ -135,7 +136,7 @@ class ResearchSynthesis:
                 papers.append(dict(id=pid,title=p['title'],doi=p['doi'],arxiv_id=p['arxiv_id'],url=p['url'],source=p['source'],
                     date=publication(p['published']),groups=groups,sections=sections,sources=evidence_sources,
                     full_text_bound=full,missing=[LABELS[k] for k,v in sections.items() if not v],
-                    references=p.get('references',[])))
+                    bibliography=source_records(rows,budget=metadata_budget)))
             created=self.watch.clock()
             rid=uuid.uuid4().hex
             report=self.compose(rid,title.strip(),created,sid,papers)
@@ -159,7 +160,7 @@ class ResearchSynthesis:
             groups.append(dict(name=name,paper_ids=[p['id'] for p in members],
                 sections={k:[dict(paper_id=p['id'],**claim) for p in members for claim in p['sections'][k]] for k in CUES},
                 gaps=[dict(paper_id=p['id'],missing=p['missing']) for p in members if p['missing']]))
-        return dict(id=rid,title=title,created=created,subscription_id=sid,algorithm='evidence-overview.v1',papers=papers,groups=groups,timeline=timeline,edges=edges,
+        return dict(id=rid,title=title,created=created,subscription_id=sid,algorithm='evidence-overview.v2',papers=papers,groups=groups,timeline=timeline,edges=edges,bibliography_graph=build_graph(papers),
             coverage=dict(papers=len(papers),with_abstract=sum(bool(p['sources'][0]['text']) for p in papers),full_text_bound=sum(p['full_text_bound'] for p in papers),
                 relationship_candidates=len(edges),relationship_cap=200),
             boundary='这是所选已采集文献的证据型综述草稿，非系统综述或领域全量结论。规则提取可能漏检；作者声称不等于独立验证。时间先后不证明因果或方法继承；缺少局限摘录不代表没有局限。全文依据为显式绑定的本地解析片段，未进行独立版面或来源认证。')
@@ -236,6 +237,14 @@ class ResearchSynthesis:
                 for evidence in review['evidence']:lines+=['  原文：'+literal(evidence['quote'])+' / '+evidence['paper_id']+' / SHA256 '+evidence['sha256']]
         lines+=['','## 文献与原始来源','']
         for p in r['papers']:lines+=['- '+literal(p['title'])+' · '+literal(p['url'])+' · ID '+p['id']]
+        graph=r.get('bibliography_graph')
+        if graph:
+            lines+=['','## 来源引用与版本网络','',graph['boundary'],'']
+            lines+=['覆盖与预算：'+json.dumps(graph['coverage'],ensure_ascii=False),'']
+            for edge in graph['edges']:
+                lines+=['- '+literal(edge['source']+' → '+edge['target'])+' / '+edge['kind']+' / 来源元数据报告']
+                if edge.get('missing_intermediate_count'):lines+=['  中间未采集版本数：'+str(edge['missing_intermediate_count'])]
+                for e in edge['evidence']+([edge['prior_evidence']] if edge.get('prior_evidence') else []):lines+=['  来源：'+e['snapshot_id']+' / '+e['field']+('['+str(e['index'])+']' if e.get('index') is not None else '')+' / SHA256 '+e['sha256']]
         # AI drafts are separately frozen jobs; the original evidence report stays intact.
         from services.research_ai import ResearchAI,SECTIONS
         ai=ResearchAI(self.watch)

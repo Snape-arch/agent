@@ -190,18 +190,18 @@ class ResearchWatch:
 
     @staticmethod
     def paper(raw, source):
+        from services.research_bibliography import metadata_fields,arxiv_parts
         title = clean(raw.get('title'), 1000)
         if not title:
             raise ValueError('来源记录缺少标题')
-        ax = re.sub(r'v\d+$', '', str(raw.get('arxiv_id', ''))).lower()
-        if ax and not re.fullmatch(r'(\d{4}\.\d{4,5}|[a-z.-]+/\d{7})', ax):
-            ax = ''
+        ax,_ = arxiv_parts(raw.get('arxiv_id'))
+        fields=metadata_fields(raw)
         return dict(title=title, doi=doi(raw.get('doi')), arxiv_id=ax,
                     authors=[clean(a, 150) for a in raw.get('authors', [])[:50]],
                     abstract=clean(raw.get('abstract')), published=clean(raw.get('published'), 40),
                     updated=clean(raw.get('updated'), 40), url=safe_url(raw.get('url')),
                     categories=[clean(t, 150) for t in raw.get('categories', [])[:20]],
-                    source=source, source_id=clean(raw.get('source_id'), 600))
+                    source=source, source_id=clean(raw.get('source_id'), 600),**fields)
 
     def _ingest(self, c, job, raw):
         p, now, owner = self.paper(raw, job['source']), self.clock(), job['owner']

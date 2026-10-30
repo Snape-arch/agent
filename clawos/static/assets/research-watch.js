@@ -101,6 +101,29 @@
     item.classification.forEach(c => evidence.append(el('div', c.method === 'manual' ? `${c.name}：由用户修正。` : `${c.name}：${c.evidence.map(e => `${e.term} 命中 ${e.field}`).join('；') || '未命中设置的方向关键词。'}`)));
     const source = el('a', '打开完整元数据快照'); source.href = '/api/research/watch/snapshots/' + encodeURIComponent(item.snapshot_id); source.target = '_blank'; source.rel = 'noopener'; evidence.append(source);
     card.append(evidence);
+    const metadataPanel = el('details', undefined, 'watch-evidence'); metadataPanel.append(el('summary','引用与版本元数据'));
+    const metadataView = el('div');
+    async function loadMetadata() {
+      const data = await api(`/papers/${item.paper_id}/metadata`); metadataView.replaceChildren();
+      if (data.omitted_artifacts) metadataView.append(el('p',`另有 ${data.omitted_artifacts} 个记录未在此视图展示。`));
+      for (const record of data.records) {
+        const version = record.arxiv_id ? record.arxiv_id + (record.arxiv_version ? 'v'+record.arxiv_version : '（版本号未知）') : record.doi;
+        metadataView.append(el('p',`${record.source} · ${version} · 更新：${record.updated || '未知'} · 本次采集：${when(record.captured)}`,'watch-meta'));
+        metadataView.append(el('p',record.references_available ? `已收录 ${record.references.length} 条参考文献；其中 ${record.references.filter(r => r.doi).length} 条有DOI${record.references_truncated ? '，来源或本地收录不完整' : ''}。` : '参考文献元数据缺失或不可用，不能认为没有引用。','watch-meta'));
+      }
+    }
+    metadataPanel.append(button('查看已采集的元数据',loadMetadata),metadataView);
+    const metadataForm=el('form'), metadataSource=el('select'), version=el('input'); metadataSource.add(new Option('Crossref · DOI参考文献与版本关系','crossref'));metadataSource.add(new Option('arXiv · 指定修订版或最新元数据','arxiv'));metadataSource.value=p.arxiv_id ? 'arxiv' : 'crossref';
+    metadataSource.setAttribute('aria-label','元数据来源');const sourceLabel=el('label','元数据来源');sourceLabel.append(metadataSource);metadataForm.append(sourceLabel);
+    const versionLabel=el('label','arXiv版本号（留空获取最新；不会补造未采集版本）');version.type='number';version.min='1';version.max='9999';version.step='1';versionLabel.append(version);metadataForm.append(versionLabel);versionLabel.hidden=metadataSource.value!=='arxiv';metadataSource.addEventListener('change',()=>versionLabel.hidden=metadataSource.value!=='arxiv');
+    const refreshMeta=el('button','刷新此论文元数据');refreshMeta.type='submit';metadataForm.append(refreshMeta);
+    metadataForm.addEventListener('submit',async event=>{
+      event.preventDefault();refreshMeta.disabled=true;
+      try { const result=await api(`/papers/${item.paper_id}/metadata`,{source:metadataSource.value,version:metadataSource.value==='arxiv' && version.value ? Number(version.value) : null});
+        if (result.paper_id!==item.paper_id) { if (selected.delete(item.paper_id)) selected.add(result.paper_id);await loadFeed(); }
+        else await loadMetadata(); notice(result.boundary);
+      } catch (error) { notice(error.message); } finally { refreshMeta.disabled=false; }
+    });metadataPanel.append(el('p','只按已有DOI/arXiv标识查询，不下载全文、不按同名猜测。旧日报与综述不会改写。','muted'),metadataForm);card.append(metadataPanel);
     const sub = state.subscriptions.find(s => s.id === item.subscription_id);
     if (sub) {
       const edit = el('details', undefined, 'watch-evidence'); edit.append(el('summary', '修正归类'));
@@ -154,6 +177,7 @@
       state = await api();
       $('watch-runtime').textContent = state.worker.running ? '自动检查已运行 · 日报时区：北京时间' : '自动检查未运行；当前可查看历史。新代码需正常启动服务后启用。';
       if (state.worker.fixture) $('watch-runtime').textContent = '独立验收预览 · 人工夹具数据，不代表真实科研结果。';
+      if (state.worker.public_metadata_preview) $('watch-runtime').textContent = '独立公开元数据预览 · 来源记录已保存，不代表生产部署或学术质量认证。';
       if (state.worker.last_error) $('watch-runtime').textContent += ` · 调度异常：${state.worker.last_error}`;
       renderSubscriptions(); renderMessages(); if (feed) await loadFeed();
     } catch (error) { if (!quiet) notice(error.message); else $('watch-runtime').textContent = '连接中断，历史界面保留；自动采集状态暂不可确认。'; }
@@ -189,6 +213,34 @@
     const actions = el('div', undefined, 'watch-actions');
     actions.append(button('导出 Markdown', async () => { const out = await api(`/syntheses/${r.id}/export`); download('research-overview.md', out.markdown, 'text/markdown;charset=utf-8'); }));
     actions.append(button('导出含依据 JSON', async () => { const out = await api(`/syntheses/${r.id}/export`); download('research-evidence.json', JSON.stringify(out.data, null, 2), 'application/json'); })); root.append(actions);
+    const graph=r.bibliography_graph;
+    if (graph) {
+      const section=el('section',undefined,'watch-bibliography');section.append(el('h3','来源引用与版本网络'),el('p',graph.boundary,'muted'));
+      const coverage=graph.coverage;section.append(el('p',`${coverage.observed_artifacts} 个已采集文献形态 · ${coverage.edges} 条来源关系 · ${coverage.unresolved_reference_occurrences} 次引用指向范围外DOI · ${coverage.references_without_doi} 条参考文献缺DOI`,'watch-meta'));
+      if (coverage.omitted_edges || coverage.omitted_artifacts) section.append(el('p',`当前预算未展示：${coverage.omitted_edges} 条关系、${coverage.omitted_artifacts} 个文献形态。`,'watch-meta'));
+      section.append(el('p',`缺少参考文献元数据的记录：${coverage.missing_reference_metadata_records}；不完整参考文献记录：${coverage.partial_reference_records}。缺失不能当作零引用。`,'watch-meta'));
+      if (coverage.partial_relation_records) section.append(el('p',`${coverage.partial_relation_records} 个记录的版本关联超出采集预算，未完整展示。`,'watch-meta'));
+      for (const family of graph.families) section.append(el('p',`arXiv ${family.arxiv_id} · 已采集版本：${family.observed_versions.map(v=>'v'+v).join(' → ')}`));
+      const nodes=new Map(graph.nodes.map(n=>[n.id,n]));
+      const names={cites:'参考文献引用',doi_association:'arXiv元数据DOI关联','is-preprint-of':'预印本 → 出版文献关联','is-version-of':'来源版本关联','is-identical-to':'来源标识同一性声明',observed_revision_order:'已采集修订版顺序'};
+      const filterLabel=el('label','关系类型'),filter=el('select');filter.setAttribute('aria-label','关系类型');
+      for (const [value,text] of [['all','全部来源关系'],['versions','版本与预印本关联'],['cites','参考文献引用']]) { const option=el('option',text);option.value=value;filter.append(option); }
+      filterLabel.append(filter);section.append(filterLabel);
+      let shown=0,visibleEdges=graph.edges;const list=el('div'), more=el('button','显示更多关系');more.type='button';
+      function appendEdges() {
+        for (const edge of visibleEdges.slice(shown,shown+40)) {
+          const detail=el('details');const a=nodes.get(edge.source),b=nodes.get(edge.target);
+          const nodeLabel=(node,id)=>(node?.title || id)+(node?.version ? ' · v'+node.version : '');
+          detail.append(el('summary',`${names[edge.kind] || edge.kind}：${nodeLabel(a,edge.source)} → ${nodeLabel(b,edge.target)}`));
+          detail.append(el('p',`${edge.source} → ${edge.target}`,'watch-meta'),el('p',edge.boundary || '来源元数据报告，非独立学术认证。','muted'));
+          if (edge.missing_intermediate_count) detail.append(el('p',`中间有 ${edge.missing_intermediate_count} 个版本未采集。`));
+          for (const e of [...edge.evidence,...(edge.prior_evidence ? [edge.prior_evidence] : [])]) { const prefix=edge.prior_evidence ? (e===edge.prior_evidence ? '先前版本来源' : '当前版本来源') : '查看来源快照';const a=el('a',`${prefix} · ${e.field}${e.index===null ? '' : '['+e.index+']'}`);a.href='/api/research/watch/snapshots/'+encodeURIComponent(e.snapshot_id);a.target='_blank';a.rel='noopener';const row=el('p');row.append(a);detail.append(row); }
+          list.append(detail);
+        } shown+=40;more.disabled=shown>=visibleEdges.length;more.hidden=more.disabled;
+      }
+      filter.addEventListener('change',()=>{ visibleEdges=graph.edges.filter(e=>filter.value==='all' || (filter.value==='cites' ? e.kind==='cites' : e.kind!=='cites'));shown=0;list.replaceChildren();appendEdges();if (!visibleEdges.length) list.append(el('p','当前筛选没有来源关系。','muted')); });
+      appendEdges();more.addEventListener('click',appendEdges);section.append(list,more);if (!graph.edges.length) section.append(el('p','当前快照尚无可解析来源关系。可刷新论文元数据后重新生成综述。','muted'));root.append(section);
+    }
     const aiSection = el('section', undefined, 'watch-ai-synthesis');
     aiSection.append(el('h3','AI 综合综述'),el('p','使用本地模型综合冻结证据，再校验引用、数值并单独请求模型复核。不进行外部模型回退；正文仍需人工审阅。','muted'));
     const aiStatus = el('p','检查本地模型状态…','watch-meta'), aiOutput = el('div'); aiOutput.setAttribute('aria-live','polite');
@@ -248,7 +300,7 @@
     const timeline = el('section'); timeline.append(el('h3', '发表／投稿时间线'));
     const list = el('ol', undefined, 'watch-timeline');
     for (const t of r.timeline) list.append(el('li', `${t.date.value || '日期未知'}（${{day:'日',month:'月',year:'年',unknown:'未知'}[t.date.precision]}精度） · ${t.title}`)); timeline.append(list); root.append(timeline);
-    const relations = el('section'); relations.append(el('h3', '研究关联与复核'), el('p', '方向重叠仅生成相关候选。确认扩展、比较或冲突需要两端原文证据和人工理由；确认记录仍是人工判断。', 'muted'));
+    const relations = el('section'); relations.append(el('h3', '学术关系候选与人工复核'), el('p', '与来源引用、版本网络分开。方向重叠仅生成相关候选。确认扩展、比较或冲突需要两端原文证据和人工理由；确认记录仍是人工判断。', 'muted'));
     if (!r.edges.length) relations.append(el('p', '尚无方向重叠候选；这不表示论文间没有学术关联。'));
     for (const edge of r.edges) {
       const left = r.papers.find(p => p.id === edge.source), right = r.papers.find(p => p.id === edge.target), review = value.reviews?.[edge.id];

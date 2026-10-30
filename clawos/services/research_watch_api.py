@@ -74,6 +74,20 @@ def research_watch_router(service, collaboration, worker_status, ai_ready=None):
         data = await body(request)
         return await call(request, 'reclassify', sid, pid, data.get('labels'))
 
+    async def metadata_call(request,method,*args):
+        from services.research_metadata import ResearchMetadata
+        uid=await run_in_threadpool(owner,request)
+        try:return await run_in_threadpool(lambda:getattr(ResearchMetadata(service()),method)(uid,*args))
+        except LookupError as exc:raise HTTPException(404,str(exc))
+        except (ValueError,TypeError) as exc:raise HTTPException(400,str(exc))
+        except Exception as exc:raise HTTPException(502,'元数据来源暂不可用：'+type(exc).__name__)
+
+    @router.get('/papers/{pid}/metadata')
+    async def paper_metadata(pid:str,request:Request):return await metadata_call(request,'get',pid)
+
+    @router.post('/papers/{pid}/metadata')
+    async def refresh_metadata(pid:str,request:Request):return await metadata_call(request,'refresh',pid,await body(request))
+
     async def synthesis_call(request, method, *args):
         from services.research_synthesis import ResearchSynthesis
         uid = await run_in_threadpool(owner, request)
