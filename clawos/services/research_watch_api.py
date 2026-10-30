@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.concurrency import run_in_threadpool
 
 
-def research_watch_router(service, collaboration, worker_status):
+def research_watch_router(service, collaboration, worker_status, ai_ready=None):
     router = APIRouter(prefix='/api/research/watch')
 
     def owner(request):
@@ -105,5 +105,35 @@ def research_watch_router(service, collaboration, worker_status):
     @router.post('/syntheses/{rid}/relations/{edge_id}')
     async def review_relation(rid: str, edge_id: str, request: Request):
         return await synthesis_call(request, 'review', rid, edge_id, await body(request))
+
+    async def ai_call(request,method,*args):
+        from services.research_ai import ResearchAI
+        uid=await run_in_threadpool(owner,request)
+        try:return await run_in_threadpool(lambda:getattr(ResearchAI(service()),method)(uid,*args))
+        except LookupError as exc:raise HTTPException(404,str(exc))
+        except (ValueError,TypeError) as exc:raise HTTPException(400,str(exc))
+
+    @router.get('/ai/status')
+    async def ai_status(request:Request):
+        await run_in_threadpool(owner,request)
+        return ai_ready() if ai_ready else dict(ready=False,reason='此预览未接入本地模型')
+
+    @router.post('/syntheses/{rid}/ai',status_code=202)
+    async def start_ai(rid:str,request:Request):
+        await run_in_threadpool(owner,request)
+        data=await body(request)
+        if data!={'confirmed':True}:raise HTTPException(400,'请明确确认使用本地模型综合此份冻结语料')
+        status=ai_ready() if ai_ready else dict(ready=False)
+        if not status.get('ready'):raise HTTPException(503,'本地模型或后台综合服务未就绪；不会回退外部模型')
+        return await ai_call(request,'enqueue',rid)
+
+    @router.get('/syntheses/{rid}/ai')
+    async def list_ai(rid:str,request:Request):return await ai_call(request,'list',rid)
+
+    @router.get('/ai/jobs/{jid}')
+    async def get_ai(jid:str,request:Request):return await ai_call(request,'get',jid)
+
+    @router.post('/ai/jobs/{jid}/cancel')
+    async def cancel_ai(jid:str,request:Request):return await ai_call(request,'cancel',jid)
 
     return router

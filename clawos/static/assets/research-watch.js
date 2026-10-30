@@ -5,6 +5,7 @@
   let state = null, offset = 0, digestId = '', loading = false, busy = false;
   const pageSize = 20;
   const selected = new Set();
+  let aiPoll = null, aiReport = '';
   function el(tag, text, cls) {
     const node = document.createElement(tag);
     if (text !== undefined) node.textContent = text;
@@ -183,10 +184,52 @@
   }
   function renderSynthesis(value) {
     const r = value.report, root = $('synthesis-report'); root.replaceChildren(el('h3', r.title), el('p', r.boundary, 'watch-policy'));
+    if (aiPoll) clearTimeout(aiPoll); aiReport = r.id;
     root.append(el('p', `${r.coverage.papers} 篇文献 · ${r.coverage.with_abstract} 篇有摘要 · ${r.coverage.full_text_bound} 篇绑定解析全文 · 最多展示200条关系候选`, 'watch-meta'));
     const actions = el('div', undefined, 'watch-actions');
     actions.append(button('导出 Markdown', async () => { const out = await api(`/syntheses/${r.id}/export`); download('research-overview.md', out.markdown, 'text/markdown;charset=utf-8'); }));
     actions.append(button('导出含依据 JSON', async () => { const out = await api(`/syntheses/${r.id}/export`); download('research-evidence.json', JSON.stringify(out.data, null, 2), 'application/json'); })); root.append(actions);
+    const aiSection = el('section', undefined, 'watch-ai-synthesis');
+    aiSection.append(el('h3','AI 综合综述'),el('p','使用本地模型综合冻结证据，再校验引用、数值并单独请求模型复核。不进行外部模型回退；正文仍需人工审阅。','muted'));
+    const aiStatus = el('p','检查本地模型状态…','watch-meta'), aiOutput = el('div'); aiOutput.setAttribute('aria-live','polite');
+    const startAI = button('使用本地模型生成综合综述',async () => {
+      const job = await api(`/syntheses/${r.id}/ai`,{confirmed:true}); await showAI(job); notice('AI综合已排队，最多两次模型调用；可取消。');
+    }); startAI.disabled = true;
+    aiSection.append(aiStatus,startAI,button('重新检查模型状态',async () => renderSynthesis(await api(`/syntheses/${r.id}`))),aiOutput); root.append(aiSection);
+    const names = {overview:'核心概览',questions:'核心问题',methods:'方法与分歧',evidence:'实验证据',disagreements:'结论差异',limitations:'局限',next_questions:'值得研究的问题'};
+    async function showAI(job) {
+      if (aiReport !== r.id) return;
+      aiOutput.replaceChildren(el('p',`任务状态：${{queued:'等待模型',running:'生成与复核中',completed:'草稿已形成',failed:'未完成',cancelled:'已取消'}[job.status] || job.status}`));
+      if (job.result?.outcome === 'insufficient_evidence') aiOutput.firstChild.textContent = '任务状态：证据不足，未形成正文。';
+      if (['queued','running'].includes(job.status)) {
+        aiOutput.append(button('取消本次综合',async () => { await api(`/ai/jobs/${job.id}/cancel`,{}); await showAI(await api(`/ai/jobs/${job.id}`)); }));
+        if (aiPoll) clearTimeout(aiPoll);
+        aiPoll = setTimeout(async () => { try { await showAI(await api(`/ai/jobs/${job.id}`)); } catch (e) { notice(e.message); } },2500);
+      }
+      if (job.error) aiOutput.append(el('p','失败类型：'+job.error+'。未用规则摘录冒充成功生成。','muted'));
+      const result = job.result;
+      if (!result || job.status !== 'completed') return;
+      aiOutput.append(el('p',result.boundary,'watch-policy'));
+      aiOutput.append(el('p',`本次选用 ${result.coverage.selected_excerpts}/${result.coverage.available_excerpts} 条证据，覆盖 ${result.coverage.selected_papers}/${result.coverage.corpus_papers} 篇；${result.excluded.length} 条判断未采用。`,'watch-meta'));
+      for (const [key,label] of Object.entries(names)) {
+        aiOutput.append(el('h4',label));
+        if (!result.sections[key].length) aiOutput.append(el('p','证据不足或未通过检查，留空。','muted'));
+        for (const claim of result.sections[key]) {
+          const article = el('article'); article.append(el('p',claim.text));
+          article.append(el('span',claim.kind === 'inference' ? '研究推断 · 待人工复核' : '模型综合 · 待人工复核','watch-tag'));
+          const detail = el('details'); detail.append(el('summary','查看此判断的原文依据'));
+          for (const cid of claim.citations) {
+            const ref = result.references.find(e => e.id === cid); detail.append(el('p',`${cid} · ${ref.title} · ${ref.evidence.basis === 'parsed_full_text' ? '解析全文' : '摘要'}`),el('blockquote',ref.quote));
+            detail.append(el('div',`${ref.evidence.field}[${ref.evidence.start}:${ref.evidence.end}]`,'watch-meta'));
+          } article.append(detail); aiOutput.append(article);
+        }
+      }
+    }
+    (async () => {
+      try { const status = await api('/ai/status'); if (aiReport !== r.id) return; startAI.disabled = !status.ready; aiStatus.textContent = status.ready ? `本地模型：${status.model || '已配置'} · 每次最多两次调用` : status.reason || '本地模型尚未就绪';
+        const jobs = await api(`/syntheses/${r.id}/ai`); if (jobs.items.length) await showAI(jobs.items[0]);
+      } catch (error) { aiStatus.textContent = error.message; }
+    })();
     const labels = {problem:'研究问题',method:'方法路线',evidence:'评测依据',finding:'作者报告的发现',limitation:'局限与缺口'};
     for (const group of r.groups) {
       const section = el('section', undefined, 'watch-overview-group'); section.append(el('h3', `${group.name} · ${group.paper_ids.length} 篇`));

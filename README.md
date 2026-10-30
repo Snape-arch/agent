@@ -1,5 +1,7 @@
 # Agent / ClawOS Workspace
 
+研究订阅页已接入本地AI综合草稿：七栏分析、引用/数值守卫、逐项模型复核、缺证据留空、持久任务及含依据导出；禁止外部模型回退。同一提供方复核不代表独立学术认证；当前真实模型调用按用户要求留未验收，见 [AI综合综述验收](clawos/benchmarks/RESEARCH_AI_ACCEPTANCE.md)。
+
 新增 `/academy/research` 研究方向订阅：默认每 6 小时采集 Crossref/arXiv，持久分页与跨批次去重、可解释归类/人工修正、快照依据摘录、站内通知及北京时间发现日报。支持选篇生成冻结的五类证据综述、显式绑定解析全文、发表时间线、人工关系复核及MD/JSON导出。自动采集需应用运行；来源索引存在延迟，不能承诺即时或全量发现。当前为规则提取草稿，非系统综述或已证实继承图，见 [研究订阅](clawos/benchmarks/RESEARCH_WATCH_ACCEPTANCE.md) 与 [综述脉络验收](clawos/benchmarks/RESEARCH_SYNTHESIS_ACCEPTANCE.md)。
 
 教材图谱新增章节/原文绑定的结构化模型输出、批次预算及迟到结果拒绝；本地Qwen整书26章/16批真实链路通过。73概念/55条关系仍待教师复核，不代表真实学习收益，见[真实模型验收与限制](clawos/benchmarks/EDUCATION_REAL_MODEL_ACCEPTANCE.md)。

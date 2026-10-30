@@ -113,6 +113,7 @@ g_background_worker_task: asyncio.Task | None = None
 g_document_index_worker = None
 g_research_watch_service = None
 g_research_watch_worker = None
+g_research_ai_worker = None
 g_background_worker_status: dict[str, Any] = {
     "running": False,
     "worker_id": "",
@@ -1871,7 +1872,12 @@ async def lifespan(app: FastAPI):
     global g_research_watch_worker
     g_research_watch_worker = ResearchWatchWorker(_research_watch())
     g_research_watch_worker.start()
+    from services.research_ai import ResearchAI, ResearchAIWorker
+    global g_research_ai_worker
+    g_research_ai_worker = ResearchAIWorker(ResearchAI(_research_watch()), _research_ai_model)
+    g_research_ai_worker.start()
     yield
+    await g_research_ai_worker.close()
     await g_research_watch_worker.close()
     await g_document_index_worker.close()
     try:
@@ -5315,7 +5321,25 @@ def _research_watch_worker_status():
             'last_error': worker.last_error if worker else '', 'check_seconds': 15}
 
 from services.research_watch_api import research_watch_router
-app.include_router(research_watch_router(_research_watch, _collaboration, _research_watch_worker_status))
+
+def _research_ai_ready():
+    from urllib.parse import urlsplit
+    provider=g_routing_provider
+    local=bool(provider and urlsplit(getattr(provider,'base_url','')).hostname in ('127.0.0.1','localhost','::1'))
+    running=bool(g_research_ai_worker and g_research_ai_worker.task and not g_research_ai_worker.task.done())
+    reason=('本地模型已配置，实际连通性在调用时验证。' if local and running else '当前未配置本地模型。' if not local else '后台综合服务未运行，请在正常启动应用后重试。')
+    return dict(ready=bool(local and running and provider.is_configured()),local_only=True,worker_running=running,
+                model=str(getattr(provider,'model','')).replace('\\','/').rsplit('/',1)[-1] if local else '',reason=reason+'不进行外部回退；不代表已通过学术质量验收。')
+
+async def _research_ai_model(messages, tools, **options):
+    if not _research_ai_ready()['ready']:raise RuntimeError('local_model_not_ready')
+    provider=g_routing_provider
+    result=await provider.complete(messages,dict(options,tools=[]),http_client=http_client)
+    if not result['ok']:raise RuntimeError('local_model_request_failed')
+    raw=dict(result['raw']);raw['clawos_model']={k:result.get(k) for k in ('provider','model','usage','duration_ms')}
+    return raw
+
+app.include_router(research_watch_router(_research_watch, _collaboration, _research_watch_worker_status, _research_ai_ready))
 
 @app.get('/academy/research')
 async def research_watch_page():

@@ -236,4 +236,21 @@ class ResearchSynthesis:
                 for evidence in review['evidence']:lines+=['  原文：'+literal(evidence['quote'])+' / '+evidence['paper_id']+' / SHA256 '+evidence['sha256']]
         lines+=['','## 文献与原始来源','']
         for p in r['papers']:lines+=['- '+literal(p['title'])+' · '+literal(p['url'])+' · ID '+p['id']]
+        # AI drafts are separately frozen jobs; the original evidence report stays intact.
+        from services.research_ai import ResearchAI,SECTIONS
+        ai=ResearchAI(self.watch)
+        jobs=ai.list(owner,rid)['items']
+        completed=next((j for j in jobs if j['status']=='completed'),None)
+        if completed:
+            value['ai_synthesis']=completed
+            result=completed['result'];refs={e['id']:e for e in result['references']}
+            lines+=['','## AI综合草稿','',literal(result['boundary']),'']
+            for key,label in SECTIONS.items():
+                lines+=['### '+label,'']
+                if not result['sections'][key]:lines+=['证据不足或未通过检查，留空。','']
+                for claim in result['sections'][key]:
+                    lines+=['- '+literal(claim['text'])+('（研究推断，待人工复核）' if claim['kind']=='inference' else '（模型草稿，待人工复核）')]
+                    for cid in claim['citations']:
+                        ref=refs[cid];e=ref['evidence']
+                        lines+=['  '+cid+' '+literal(ref['title'])+'：'+literal(ref['quote'])+f" / {e.get('snapshot_id',e.get('citation',''))}[{e['start']}:{e['end']}] / SHA256 {e['sha256']}"]
         return dict(markdown='\n'.join(lines),data=value)
