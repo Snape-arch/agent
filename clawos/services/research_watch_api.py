@@ -19,6 +19,8 @@ def research_watch_router(service, collaboration, worker_status):
         uid = await run_in_threadpool(owner, request)
         try:
             return await run_in_threadpool(lambda: getattr(service(), method)(uid, *args))
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc))
         except LookupError as exc:
             raise HTTPException(404, str(exc))
         except (ValueError, TypeError) as exc:
@@ -71,5 +73,37 @@ def research_watch_router(service, collaboration, worker_status):
     async def classify(sid: str, pid: str, request: Request):
         data = await body(request)
         return await call(request, 'reclassify', sid, pid, data.get('labels'))
+
+    async def synthesis_call(request, method, *args):
+        from services.research_synthesis import ResearchSynthesis
+        uid = await run_in_threadpool(owner, request)
+        try:
+            return await run_in_threadpool(lambda: getattr(ResearchSynthesis(service()), method)(uid, *args))
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc))
+        except LookupError as exc:
+            raise HTTPException(404, str(exc))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, str(exc))
+
+    @router.get('/syntheses')
+    async def syntheses(request: Request):
+        return await synthesis_call(request, 'list')
+
+    @router.post('/syntheses', status_code=201)
+    async def create_synthesis(request: Request):
+        return await synthesis_call(request, 'create', await body(request))
+
+    @router.get('/syntheses/{rid}')
+    async def get_synthesis(rid: str, request: Request):
+        return await synthesis_call(request, 'get', rid)
+
+    @router.get('/syntheses/{rid}/export')
+    async def export_synthesis(rid: str, request: Request):
+        return await synthesis_call(request, 'export', rid)
+
+    @router.post('/syntheses/{rid}/relations/{edge_id}')
+    async def review_relation(rid: str, edge_id: str, request: Request):
+        return await synthesis_call(request, 'review', rid, edge_id, await body(request))
 
     return router

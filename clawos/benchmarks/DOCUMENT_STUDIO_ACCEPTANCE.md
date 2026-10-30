@@ -1,5 +1,14 @@
 # Document Studio acceptance — 2026-10-03
 
+## User clarification — 2026-10-30
+
+The user states that they deliberately shut down the computer overnight because
+of fan noise and instructs **no retest for now**. Record this as the user-provided
+environmental interruption context; the raw timeout evidence and incomplete
+48-hour acceptance remain unchanged. This attempt is not evidence establishing
+a software defect. Reminder48 was deleted after the terminal documentation push;
+do not restore it or start a replacement run without a new request.
+
 ## Terminal failure of frame-boundary 48-hour retry — verified 2026-10-30
 
 **FAILED, not accepted as 48 hours.** Frozen source
