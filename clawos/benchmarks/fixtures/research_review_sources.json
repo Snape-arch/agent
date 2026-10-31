@@ -1,0 +1,93 @@
+{
+  "schema": "public-excerpt-capture.v1",
+  "checked_date": "2026-10-31",
+  "normalization": "HTMLParser text, collapsed whitespace",
+  "records": [
+    {
+      "id": "attention-v1",
+      "url": "https://arxiv.org/abs/1706.03762v1",
+      "captured": "2026-10-31T05:31:45.734789+00:00",
+      "verified": true,
+      "raw_sha256": "f9016d878e3f7a21b8b48852a964176029078fc51a2df6fc1f1f11d0698e5baf",
+      "text_sha256": "aecb763acdae819deb6f11a2b0baccc9561830eee221e049436af716f2fb934a",
+      "fragment_sha256": "22c7a18420c947b72e80afe65913064e8d4c6df306e10669195777288356d424",
+      "start": 1412,
+      "end": 1458
+    },
+    {
+      "id": "attention-v7",
+      "url": "https://arxiv.org/abs/1706.03762v7",
+      "captured": "2026-10-31T05:31:51.014672+00:00",
+      "verified": true,
+      "raw_sha256": "5d8311b2ad2f9d4845f8291c68329c7dcf0853f1167fa517ad87b5adb3e18f15",
+      "text_sha256": "ffdf1f3d5c91ca223d49dc3ab79096c236964f362e8bf92f864a9b474fa0d404",
+      "fragment_sha256": "c38b11eb70544e2495265ffbfc01b6a040f1d54595865147e9923fba164656e4",
+      "start": 1414,
+      "end": 1460
+    },
+    {
+      "id": "gpt3",
+      "url": "https://arxiv.org/abs/2005.14165v4",
+      "captured": "2026-10-31T05:31:56.312464+00:00",
+      "verified": true,
+      "raw_sha256": "b93c55e60cca40ab0f9361e067c058ae1bcf664da14fae08c70dcbfa6ca6bdd0",
+      "text_sha256": "1b28e9b716a03f27c6c6bb37d40a720cc37621a81c3fb35f759ce3e3c4e16c5d",
+      "fragment_sha256": "30cbcffd927d88e343281a1bb52791953415ac91d8487e8ab66cb3a6ee4024d9",
+      "start": 1671,
+      "end": 1761
+    },
+    {
+      "id": "chile",
+      "url": "https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.1001023",
+      "captured": "2026-10-31T05:32:01.074921+00:00",
+      "verified": true,
+      "raw_sha256": "0c0bf1bda693d1ec1e75d3e50c62c6e87d880f534f9294b779c2f61b51d4ce6f",
+      "text_sha256": "51f6ecf64c44038e0c8e61aacd7f8982cce2b804295e966d034b880b7b368f0b",
+      "fragment_sha256": "37abf49aabc764a9b57583cccd05e0b315386f02930578336f0159e936ee30f9",
+      "start": 5637,
+      "end": 5754
+    },
+    {
+      "id": "vitamin",
+      "url": "https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.1003536",
+      "captured": "2026-10-31T05:32:09.033925+00:00",
+      "verified": true,
+      "raw_sha256": "51abfee6d07c1084de18466e57ce172dfd420b495234cf74f65a20085e9b1764",
+      "text_sha256": "c0f7e6133d233e649bbdb6c0ee8c8483e840c106cb7d70442f6642c32df21e96",
+      "fragment_sha256": "4a411d8425c6a6973fb9b5b8c1b9916d635b5cf520e553319ec61d83ec3dca68",
+      "start": 7318,
+      "end": 7459
+    },
+    {
+      "id": "correction",
+      "url": "https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.1003624",
+      "captured": "2026-10-31T05:32:16.437944+00:00",
+      "verified": true,
+      "raw_sha256": "d297eff3f7663707467146b6fb6b683e04decde7d50ac627d7a82c9e05a63931",
+      "text_sha256": "b60c7216cf1c1647e3691dd8457d5ea62f182993e6f22af934405162430d1cd1",
+      "fragment_sha256": "b412bff70e0b8e325def846565c681e0d2d42f55f7f8384c6862c412a28b03df",
+      "start": 1895,
+      "end": 1929
+    },
+    {
+      "id": "carbon",
+      "url": "https://essd.copernicus.org/articles/15/5301/2023/",
+      "captured": "2026-10-31T05:32:21.823126+00:00",
+      "verified": true,
+      "raw_sha256": "b1ef1c7216bb6d5cd1af014a3b3f638d7cdc5818af76e2467b934e2a052ed4dd",
+      "text_sha256": "72667ec047c9497339df04542025be36b01e6ba8bc4b1e704888172e35c8be43",
+      "fragment_sha256": "59ab79777bb3e86d3a92de6c872508364e26c8d91d6b3ba909c94be10da21791",
+      "start": 34877,
+      "end": 34951
+    },
+    {
+      "id": "ipcc",
+      "url": "https://report.ipcc.ch/ar6syr/headline.html",
+      "captured": "2026-10-31T05:32:32.273983+00:00",
+      "verified": false,
+      "error": "HTTPError",
+      "http_status": 403
+    }
+  ],
+  "boundary": "Source excerpt existence only; no expert labels or real-model evaluation."
+}

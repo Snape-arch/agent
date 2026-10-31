@@ -154,6 +154,32 @@ def research_watch_router(service, collaboration, worker_status, ai_ready=None):
         except LookupError as exc:raise HTTPException(404,str(exc))
         except (ValueError,TypeError) as exc:raise HTTPException(400,str(exc))
 
+    async def review_call(request,method,*args):
+        from services.research_review import ResearchReview
+        uid=await run_in_threadpool(owner,request)
+        try:return await run_in_threadpool(lambda:getattr(ResearchReview(service()),method)(uid,*args))
+        except PermissionError as exc:raise HTTPException(403,str(exc))
+        except LookupError as exc:raise HTTPException(404,str(exc))
+        except (ValueError,TypeError) as exc:raise HTTPException(400,str(exc))
+
+    @router.get('/reviews')
+    async def review_rounds(request:Request):return await review_call(request,'list')
+
+    @router.post('/reviews',status_code=201)
+    async def create_review(request:Request):return await review_call(request,'create',await body(request))
+
+    @router.get('/reviews/{rid}')
+    async def get_review(rid:str,request:Request):return await review_call(request,'get',rid)
+
+    @router.get('/reviews/{rid}/export')
+    async def export_review(rid:str,request:Request):return await review_call(request,'export',rid)
+
+    @router.post('/reviews/{rid}/cases/{cid}')
+    async def vote_review(rid:str,cid:str,request:Request):return await review_call(request,'vote',rid,cid,await body(request))
+
+    @router.post('/reviews/{rid}/revoke/{actor}')
+    async def revoke_review(rid:str,actor:str,request:Request):return await review_call(request,'revoke',rid,actor)
+
     @router.get('/ai/status')
     async def ai_status(request:Request):
         await run_in_threadpool(owner,request)

@@ -277,6 +277,7 @@
     const actions = el('div', undefined, 'watch-actions');
     actions.append(button('导出 Markdown', async () => { const out = await api(`/syntheses/${r.id}/export`); download('research-overview.md', out.markdown, 'text/markdown;charset=utf-8'); }));
     actions.append(button('导出含依据 JSON', async () => { const out = await api(`/syntheses/${r.id}/export`); download('research-evidence.json', JSON.stringify(out.data, null, 2), 'application/json'); })); root.append(actions);
+    actions.append(button('评审这份证据报告',()=>window.dispatchEvent(new CustomEvent('research-review-source',{detail:{kind:'report',report_id:r.id}}))));
     renderUpdateControls(r,root);
     const graph=r.bibliography_graph;
     if (graph) {
@@ -326,6 +327,7 @@
       if (job.error) aiOutput.append(el('p','失败类型：'+job.error+'。未用规则摘录冒充成功生成。','muted'));
       const result = job.result;
       if (!result || job.status !== 'completed') return;
+      aiOutput.append(button('评审这份AI草稿',()=>window.dispatchEvent(new CustomEvent('research-review-source',{detail:{kind:'ai',report_id:r.id,job_id:job.id}}))));
       aiOutput.append(el('p',result.boundary,'watch-policy'));
       aiOutput.append(el('p',`本次选用 ${result.coverage.selected_excerpts}/${result.coverage.available_excerpts} 条证据，覆盖 ${result.coverage.selected_papers}/${result.coverage.corpus_papers} 篇；${result.excluded.length} 条判断未采用。`,'watch-meta'));
       for (const [key,label] of Object.entries(names)) {
