@@ -266,4 +266,12 @@ class ResearchSynthesis:
                     for cid in claim['citations']:
                         ref=refs[cid];e=ref['evidence']
                         lines+=['  '+cid+' '+literal(ref['title'])+'：'+literal(ref['quote'])+f" / {e.get('snapshot_id',e.get('citation',''))}[{e['start']}:{e['end']}] / SHA256 {e['sha256']}"]
+            if result.get('review_queue'):
+                lines+=['','## 暂缓主张与复核依据（未进入正文）','','触发风险不等于学术错误；人工评审不会自动改写原报告。','']
+                for claim in result['review_queue']:
+                    labels=[s['label'] for s in (claim.get('boundary_audit') or {}).get('signals',[])]
+                    lines+=['- '+literal(claim['text']),'  暂缓原因：'+literal('；'.join(labels) or claim['reason'])]
+                    for cid in claim['evidence_ids']:
+                        ref=refs[cid];e=ref['evidence']
+                        lines+=['  '+cid+' '+literal(ref['quote'])+f" / {e.get('snapshot_id',e.get('citation',''))}[{e['start']}:{e['end']}] / SHA256 {e['sha256']}"]
         return dict(markdown='\n'.join(lines),data=value)

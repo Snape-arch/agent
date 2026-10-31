@@ -5,6 +5,7 @@ from services.research_watch import packed,fingerprint
 from services.research_synthesis import ResearchSynthesis
 from services.research_ai import ResearchAI,catalog,normalize,SECTIONS
 from services.research_review_examples import candidate_suite
+from services.research_claim_guard import VERSION as GUARD_VERSION
 
 VERDICTS={'supported','contradicted','insufficient','needs_full_text'}
 ISSUES={'quantity','unit','polarity','scope','population','causality','uncertainty','version','correction','time','comparison','citation','none'}
@@ -40,18 +41,22 @@ class ResearchReview:
                 refs=[dict(e,paper_id=e['id']) for e in case['evidence']]
                 kept,excluded=normalize(proposal,refs)
                 case['mechanical_check']=dict(kept=bool(kept),reasons=[e['reason'] for e in excluded],semantic_entailment_verified=False,
+                    guard_version=GUARD_VERSION,
                     boundary='只运行现有引用/数值/部分否定守卫；放行不代表语义成立，拟定标签仍待真人确认。')
         else:
             rid=data.get('report_id','');report=self.synthesis.get(owner,rid)
             source=dict(report_id=rid,report_hash=report['hash'])
             if kind=='ai':
                 job=ResearchAI(self.watch).get(owner,data.get('job_id',''))
-                if job['status']!='completed' or job['report_id']!=rid or job['report_hash']!=report['hash'] or not job['result'].get('sections'):raise ValueError('需要属于该冻结综述的完整AI草稿')
+                if job['status']!='completed' or job['report_id']!=rid or job['report_hash']!=report['hash'] or not isinstance(job['result'],dict) or not job['result'].get('sections'):raise ValueError('需要属于该冻结综述的完整AI草稿')
                 result=job['result'];refs={r['id']:r for r in result['references']};source['job_id']=job['id'];source['result_hash']=fingerprint(result)
                 for section,claims in result['sections'].items():
                     for claim in claims:
                         cases.append(dict(id=claim['id'],domain=domain,claim=claim['text'],evidence=[dict(refs[cid]) for cid in claim['citations']],
                             tags=['citation'],origin='frozen_ai_job',section=section))
+                for claim in result.get('review_queue',[]):
+                    cases.append(dict(id=claim['id'],domain=domain,claim=claim['text'],evidence=[dict(refs[cid]) for cid in claim['evidence_ids']],
+                        tags=['citation'],origin='withheld_ai_claim',section=claim['section'],withheld_reason=claim['reason'],boundary_audit=claim.get('boundary_audit')))
             else:
                 refs,_=catalog(report['report'])
                 cases=[dict(id='R'+str(i+1),domain=domain,claim=r['quote'],evidence=[r],tags=['citation'],origin='rule_extracted_quote') for i,r in enumerate(refs)]
@@ -112,7 +117,9 @@ class ResearchReview:
             # Once submitted, an assessment is immutable. No pre-submit peer hints.
             reveal=role=='owner' or role=='adjudicator' and len(peer)==2 or own is not None
             view=dict(case)
-            if role!='owner':view.pop('curator_proposal',None);view.pop('mechanical_check',None)
+            if role!='owner':
+                for private in ('curator_proposal','mechanical_check','boundary_audit','withheld_reason'):view.pop(private,None)
+                if view['origin']=='withheld_ai_claim':view['origin']='frozen_ai_job'
             view.update(own_vote=own,peer_votes=peer if reveal else [],adjudication=judge if reveal else None,status=status if reveal else 'blind_review',verdict=verdict if reveal else None)
             cases.append(view);results.append(dict(case_id=case['id'],domain=case['domain'],status=status,verdict=verdict,paired=len(peer)==2,agreement=len(peer)==2 and peer[0]['verdict']==peer[1]['verdict']))
         def metrics(items):

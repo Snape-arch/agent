@@ -63,11 +63,12 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(owner['summary']['agreement_rate'],1)
         self.assertFalse(owner['summary']['human_independence_verified']);self.assertFalse(owner['human_validation_complete'])
 
-    def test_mechanical_negative_control_exposes_remaining_semantic_gap(self):
+    def test_mechanical_flag_does_not_certify_semantic_correctness(self):
         r=self.setup_review(assigned=False)
         control=next(c for c in r['cases'] if c['id']=='BIO-02')
         self.assertEqual(control['curator_proposal']['verdict'],'contradicted')
-        self.assertTrue(control['mechanical_check']['kept'])
+        self.assertFalse(control['mechanical_check']['kept'])
+        self.assertIn('polarity_requires_review',control['mechanical_check']['reasons'])
         self.assertFalse(control['mechanical_check']['semantic_entailment_verified'])
 
     def test_disagreement_requires_distinct_adjudicator_after_both_votes(self):

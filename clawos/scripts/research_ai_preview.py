@@ -21,6 +21,7 @@ from services.collaboration import direct_owner
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port',type=int,required=True);parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--boundary-controls',action='store_true',help='Include an explicit synthetic negation-flip control')
     args=parser.parse_args();root=args.output.resolve();root.mkdir(parents=True,exist_ok=True)
     if not 1024<=args.port<=65535:parser.error('invalid port')
     db=root/'preview.db'
@@ -28,7 +29,7 @@ def main():
     store=MemoryStore(str(db))
     class Sources:
         def page(self,*_):return dict(rows=[dict(title='[人工样例] Evidence study A',doi='10.9999/ai-fixture-a',authors=['Synthetic Author'],published='2025',
-            abstract='We study evidence retrieval. We propose a synthetic method for UI validation. This artificial fixture cannot demonstrate real research quality.',url='https://example.org/a',categories=['cs.IR']),
+            abstract='We study evidence retrieval. We propose a synthetic method for UI validation. Results show the method did not reduce pain. This artificial fixture cannot demonstrate real research quality.',url='https://example.org/a',categories=['cs.IR']),
             dict(title='[人工样例] Evidence study B',doi='10.9999/ai-fixture-b',authors=['Synthetic Author'],published='2026-02',
             abstract='We study evidence retrieval. We introduce an artificial comparison framework. However this sample is limited to software acceptance.',url='https://example.org/b',categories=['cs.IR'])],cursor='',complete=True)
     watch=ResearchWatch(store,Sources(),source_interval=0)
@@ -42,6 +43,9 @@ def main():
         else:
             value={k:[] for k in SECTIONS}
             value['overview']=[dict(text=data['evidence'][0]['quote'],citations=[data['evidence'][0]['id']],kind='reported')]
+            if args.boundary_controls:
+                source=next(e for e in data['evidence'] if 'did not reduce pain' in e['quote'])
+                value['overview'].append(dict(text='该方法降低了疼痛。',citations=[source['id']],kind='reported'))
         return dict(choices=[dict(message=dict(content=json.dumps(value)),finish_reason='stop')],clawos_model=dict(provider='synthetic-fixture',model='人工夹具（非真实模型）',usage=dict(total_tokens=0)))
     ai=ResearchAI(watch);worker=ResearchAIWorker(ai,model)
     @asynccontextmanager

@@ -327,7 +327,8 @@
       if (job.error) aiOutput.append(el('p','失败类型：'+job.error+'。未用规则摘录冒充成功生成。','muted'));
       const result = job.result;
       if (!result || job.status !== 'completed') return;
-      aiOutput.append(button('评审这份AI草稿',()=>window.dispatchEvent(new CustomEvent('research-review-source',{detail:{kind:'ai',report_id:r.id,job_id:job.id}}))));
+      if($('notice').textContent.startsWith('AI综合已排队'))notice(result.review_queue?.length ? `综合已完成，${result.review_queue.length} 项主张暂缓，未进入正文。` : '综合草稿已完成，仍需人工复核。');
+      aiOutput.append(button(result.review_queue?.length ? '评审暂缓主张与现有正文' : '评审这份AI草稿',()=>window.dispatchEvent(new CustomEvent('research-review-source',{detail:{kind:'ai',report_id:r.id,job_id:job.id}}))));
       aiOutput.append(el('p',result.boundary,'watch-policy'));
       aiOutput.append(el('p',`本次选用 ${result.coverage.selected_excerpts}/${result.coverage.available_excerpts} 条证据，覆盖 ${result.coverage.selected_papers}/${result.coverage.corpus_papers} 篇；${result.excluded.length} 条判断未采用。`,'watch-meta'));
       for (const [key,label] of Object.entries(names)) {
@@ -342,6 +343,11 @@
             detail.append(el('div',`${ref.evidence.field}[${ref.evidence.start}:${ref.evidence.end}]`,'watch-meta'));
           } article.append(detail); aiOutput.append(article);
         }
+      }
+      if(result.review_queue?.length){
+        const queue=el('section');queue.className='watch-claim-queue';queue.append(el('h4',`暂缓主张 · ${result.review_queue.length} 项（未进入正文）`),el('p','触发风险不等于学术错误。保留原主张与其引用，可送入独立评审；评审不会自动改写原报告。','muted'));
+        const reasons={unsupported_quantity:'数值未被本项引用覆盖',missing_or_unknown_citation:'引用缺失或无效',model_uncertain:'模型复核尚不确定',model_unsupported:'模型复核未支持该主张',comparison_requires_two_papers:'比较需要两篇论文的依据'};
+        for(const claim of result.review_queue){const detail=el('details');detail.append(el('summary',claim.text));const signals=claim.boundary_audit?.signals || [];detail.append(el('p',signals.map(s=>s.label).join('；') || reasons[claim.reason] || '主张边界仍需人工复核。','watch-meta'));for(const id of claim.evidence_ids){const ref=result.references.find(e=>e.id===id);if(!ref)continue;detail.append(el('p',`${id} · ${ref.title}`),el('blockquote',ref.quote),el('p',`${ref.evidence.field}[${ref.evidence.start}:${ref.evidence.end}]`,'watch-meta'));}if(!claim.evidence_ids.length)detail.append(el('p','没有可定位的有效引用；不能据此确认主张。','muted'));queue.append(detail);}aiOutput.append(queue);
       }
     }
     (async () => {

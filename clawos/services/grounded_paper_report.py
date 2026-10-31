@@ -5,6 +5,7 @@ import re
 import hashlib
 from typing import Any
 from .paper_numeric_evidence import audit_numeric_support
+from .research_claim_guard import audit_claim_boundaries
 
 
 REPORT_SECTION_KEYS = ("methodology", "experiments", "findings", "limitations", "contributions")
@@ -284,6 +285,14 @@ class GroundedPaperReport:
             values = value if isinstance(value, list) else [value] if isinstance(value, str) else []
             return list(dict.fromkeys(str(c) for c in values if str(c) in allowed))[:4]
 
+        def audit_statement(text,citations,*,inference=False):
+            fragments=[allowed[c] for c in citations]
+            audit=audit_numeric_support(text,fragments)
+            boundary=None if inference else audit_claim_boundaries(text,fragments)
+            audit['boundary_audit']=boundary
+            audit['review_required']=audit['review_required'] or bool(boundary and boundary['review_required'])
+            return audit
+
         def normalize_rows(value: Any) -> list[dict[str, Any]]:
             if not isinstance(value, list):
                 value = [value] if value else []
@@ -303,7 +312,7 @@ class GroundedPaperReport:
                 if item.get("conditions"):
                     values = item['conditions'] if isinstance(item['conditions'], list) else [item['conditions']]
                     rows[-1]["conditions"] = [_clean_text(value, 500) for value in values[:12] if _clean_text(value, 500)]
-                audit=audit_numeric_support(text+' '+' '.join(rows[-1].get('conditions',[])),[allowed[c] for c in citations])
+                audit=audit_statement(text+' '+' '.join(rows[-1].get('conditions',[])),citations,inference=status=='inference')
                 audit['missing_citation']=not bool(citations) and requested=='supported'
                 audit['review_required']=audit['review_required'] or audit['missing_citation']
                 rows[-1]['evidence_audit']=audit
@@ -338,11 +347,11 @@ class GroundedPaperReport:
         normalized['source_index'] = [dict(citation=c, excerpt=allowed[c]) for c in cited]
         for key in ('summary','research_problem'):
             citations=normalized[key+'_citations']
-            audit=audit_numeric_support(normalized[key],[allowed[c] for c in citations])
+            audit=audit_statement(normalized[key],citations)
             audit['missing_citation']=not bool(citations)
             audit['review_required']=audit['review_required'] or audit['missing_citation']
             normalized[key+'_audit']=audit
-        normalized['verdict_audit']=audit_numeric_support(normalized['verdict'],[allowed[c] for c in cited])
+        normalized['verdict_audit']=audit_statement(normalized['verdict'],cited)
         normalized['citation_audit'] = dict(cited_items=sum(bool(r['citations']) for r in rows),
                                            total_items=len(rows), missing_sections=[k for k in REPORT_SECTION_KEYS if not normalized[k]],
                                            review_required_items=sum(r['status']=='review_required' for r in rows),
