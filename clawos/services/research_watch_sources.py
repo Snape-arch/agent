@@ -22,7 +22,10 @@ SOURCE_INFO = {
 
 
 def clean(value, limit=16000):
-    return re.sub(r'\s+', ' ', html.unescape(re.sub(r'<[^>]*>', ' ', str(value or '')))).strip()[:limit]
+    # Numeric comparisons in author abstracts (e.g. "<50k ... >1m") are
+    # evidence, not markup. Require a syntactically plausible tag name.
+    tags = r'</?[A-Za-z][A-Za-z0-9:._-]*(?:\s+[^<>]*?)?\s*/?>'
+    return re.sub(r'\s+', ' ', html.unescape(re.sub(tags, ' ', str(value or '')))).strip()[:limit]
 
 
 def iso(epoch):

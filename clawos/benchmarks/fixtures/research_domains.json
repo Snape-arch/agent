@@ -1,0 +1,1902 @@
+{
+  "version": "domain-reading.v1",
+  "authorship": "assistant_curated_not_model_or_expert_validated",
+  "scope": "三个AI方法方向的代表性阅读种子集，不是穷尽检索或2026年前沿全集。",
+  "protocol": "先冻结初稿，再对照综述全文。选综述时已看到标题、摘要及搜索片段；不声称盲测。综述从不进入初稿证据集合。",
+  "domains": [
+    {
+      "id": "rag",
+      "name": "检索增强生成（RAG）",
+      "query": "retrieval augmented generation",
+      "prerequisites": [
+        "向量与相似度",
+        "编码器与序列生成",
+        "训练集、评测集和数据泄漏"
+      ],
+      "categories": [
+        "知识检索与预训练",
+        "检索生成耦合",
+        "查询改写",
+        "检索决策与评估"
+      ],
+      "papers": [
+        {
+          "id": "realm",
+          "arxiv_id": "2002.08909",
+          "name": "REALM",
+          "category": "知识检索与预训练",
+          "summary": "把检索器纳入语言模型预训练，讨论如何通过外部文本补充知识。",
+          "title": "REALM: Retrieval-Augmented Language Model Pre-Training",
+          "authors": [
+            "Guu, Kelvin",
+            "Lee, Kenton",
+            "Tung, Zora",
+            "Pasupat, Panupong",
+            "Chang, Ming-Wei"
+          ],
+          "date": "2020-02-10",
+          "version": "2002.08909v1",
+          "url": "https://arxiv.org/abs/2002.08909v1",
+          "evidence": {
+            "quote": "we augment language model pre-training with a latent knowledge retriever",
+            "start": 342,
+            "end": 414,
+            "field": "abstract",
+            "quote_sha256": "eba0c2c16103eb7bdb153ee9e83f5cf1333bac254afe407eb7b700f6ad1327cd",
+            "text_sha256": "5f8d5a3e009b05ab6987183a9be87c33f0e7afb9c40f8cbbf5585991ef39ed70",
+            "raw_sha256": "23016cdf4110fb99af8caa0fad38997b310045acb9555d233ac662896339bf88",
+            "source_url": "https://arxiv.org/abs/2002.08909v1",
+            "captured": "2026-10-31T06:29:21.929388+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "dpr",
+          "arxiv_id": "2004.04906",
+          "name": "DPR",
+          "category": "知识检索与预训练",
+          "summary": "用双编码器进行稠密段落检索；是检索组件研究，并不等于完整生成系统。",
+          "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+          "authors": [
+            "Karpukhin, Vladimir",
+            "Oğuz, Barlas",
+            "Min, Sewon",
+            "Lewis, Patrick",
+            "Wu, Ledell",
+            "Edunov, Sergey",
+            "Chen, Danqi",
+            "Yih, Wen-tau"
+          ],
+          "date": "2020-04-10",
+          "version": "2004.04906v3",
+          "url": "https://arxiv.org/abs/2004.04906v3",
+          "evidence": {
+            "quote": "embeddings are learned from a small number of questions and passages by a simple dual-encoder framework",
+            "start": 303,
+            "end": 406,
+            "field": "abstract",
+            "quote_sha256": "1785510f27e5e8060bdaae29c34e3957091a8eb637e95bc0c46fee8cda8e36a2",
+            "text_sha256": "1d92ab3f358bc517ca0fd9d5169dfe04832dadfdb47fd8baf2488f9d9f76fbc2",
+            "raw_sha256": "769c22fd7b352a6d61add95a3116af5d85f4e1f540f9d52a6faa392999ed5aab",
+            "source_url": "https://arxiv.org/abs/2004.04906v3",
+            "captured": "2026-10-31T06:29:26.543877+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "rag-original",
+          "arxiv_id": "2005.11401",
+          "name": "RAG",
+          "category": "检索生成耦合",
+          "summary": "结合参数化模型和外部非参数记忆，比较按序列和按词条件化的生成方式。",
+          "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+          "authors": [
+            "Lewis, Patrick",
+            "Perez, Ethan",
+            "Piktus, Aleksandra",
+            "Petroni, Fabio",
+            "Karpukhin, Vladimir",
+            "Goyal, Naman",
+            "Küttler, Heinrich",
+            "Lewis, Mike",
+            "Yih, Wen-tau",
+            "Rocktäschel, Tim",
+            "Riedel, Sebastian",
+            "Kiela, Douwe"
+          ],
+          "date": "2020-05-22",
+          "version": "2005.11401v4",
+          "url": "https://arxiv.org/abs/2005.11401v4",
+          "evidence": {
+            "quote": "models which combine pre-trained parametric and non-parametric memory for language generation",
+            "start": 763,
+            "end": 856,
+            "field": "abstract",
+            "quote_sha256": "8743ae748d76d6e2db010672d54e5aae98307ae2ca2bfd5b02c1d40fa2c4576f",
+            "text_sha256": "766b22c091b5e3c8cdd736cd8c8d1529a5abe2f4895f6bd8f01df31f93851d55",
+            "raw_sha256": "8fe67b6e6cba908511e7a7bb688a6306cd15309ae9096b4e57970469dce23e55",
+            "source_url": "https://arxiv.org/abs/2005.11401v4",
+            "captured": "2026-10-31T06:29:31.202577+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "fid",
+          "arxiv_id": "2007.01282",
+          "name": "Fusion-in-Decoder",
+          "category": "检索生成耦合",
+          "summary": "围绕开放域问答，研究生成模型如何利用多条检索段落。",
+          "title": "Leveraging Passage Retrieval with Generative Models for Open Domain Question Answering",
+          "authors": [
+            "Izacard, Gautier",
+            "Grave, Edouard"
+          ],
+          "date": "2020-07-02",
+          "version": "2007.01282v2",
+          "url": "https://arxiv.org/abs/2007.01282v2",
+          "evidence": {
+            "quote": "generative models are good at aggregating and combining evidence from multiple passages",
+            "start": 623,
+            "end": 710,
+            "field": "abstract",
+            "quote_sha256": "da49dc234ca3f348f740d866c99ba27377f05b395e03f96f8b9af3be40d49bf3",
+            "text_sha256": "6a2761de45678f85877801c08576553c7ecdd6c60b7d679265b0ca4d2eab4452",
+            "raw_sha256": "9fdefe266e7b7e3015ceb91ac5403db2a4c42c4b6ff2e649fe10319ec1c1490a",
+            "source_url": "https://arxiv.org/abs/2007.01282v2",
+            "captured": "2026-10-31T06:29:35.887704+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "retro",
+          "arxiv_id": "2112.04426",
+          "name": "RETRO",
+          "category": "检索生成耦合",
+          "summary": "在语言建模中使用大规模外部检索库，研究参数规模与检索的配合。",
+          "title": "Improving language models by retrieving from trillions of tokens",
+          "authors": [
+            "Borgeaud, Sebastian",
+            "Mensch, Arthur",
+            "Hoffmann, Jordan",
+            "Cai, Trevor",
+            "Rutherford, Eliza",
+            "Millican, Katie",
+            "Driessche, George van den",
+            "Lespiau, Jean-Baptiste",
+            "Damoc, Bogdan",
+            "Clark, Aidan",
+            "Casas, Diego de Las",
+            "Guy, Aurelia",
+            "Menick, Jacob",
+            "Ring, Roman",
+            "Hennigan, Tom",
+            "Huang, Saffron",
+            "Maggiore, Loren",
+            "Jones, Chris",
+            "Cassirer, Albin",
+            "Brock, Andy",
+            "Paganini, Michela",
+            "Irving, Geoffrey",
+            "Vinyals, Oriol",
+            "Osindero, Simon",
+            "Simonyan, Karen",
+            "Rae, Jack W.",
+            "Elsen, Erich",
+            "Sifre, Laurent"
+          ],
+          "date": "2021-12-08",
+          "version": "2112.04426v3",
+          "url": "https://arxiv.org/abs/2112.04426v3",
+          "evidence": {
+            "quote": "conditioning on document chunks retrieved from a large corpus",
+            "start": 46,
+            "end": 107,
+            "field": "abstract",
+            "quote_sha256": "c76e77b5edf63d580cb3efd28f3d33aae01c5d7445ceec915200eef16dc7db6c",
+            "text_sha256": "a75657f4f84f1bd40bcaa00d8115d0d9f3f1a3edab86924d5d68a503dfce453a",
+            "raw_sha256": "6c7a832050eaa1225c00015ba51fafaadee4da3e5146638f56f7b1351869467c",
+            "source_url": "https://arxiv.org/abs/2112.04426v3",
+            "captured": "2026-10-31T06:29:40.701235+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "hyde",
+          "arxiv_id": "2212.10496",
+          "name": "HyDE",
+          "category": "查询改写",
+          "summary": "先生成假设文档再编码检索，关注不依赖相关性标注的稠密检索。",
+          "title": "Precise Zero-Shot Dense Retrieval without Relevance Labels",
+          "authors": [
+            "Gao, Luyu",
+            "Ma, Xueguang",
+            "Lin, Jimmy",
+            "Callan, Jamie"
+          ],
+          "date": "2022-12-20",
+          "version": "2212.10496v1",
+          "url": "https://arxiv.org/abs/2212.10496v1",
+          "evidence": {
+            "quote": "generate a hypothetical document",
+            "start": 483,
+            "end": 515,
+            "field": "abstract",
+            "quote_sha256": "dc3ba4e904bfdd0d3948cf151311e04f631b1531c2f915c59215ddffb4ba2001",
+            "text_sha256": "8e63a0b4e12a085d6ab549264f7c09ca28b834e7c53029f33f9abcad43045af8",
+            "raw_sha256": "7df8ca35a04609ba72c26b1b6f20cb884b4d6af1e48b460b4286f99e1a1220b8",
+            "source_url": "https://arxiv.org/abs/2212.10496v1",
+            "captured": "2026-10-31T06:29:45.397601+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "ragas",
+          "arxiv_id": "2309.15217",
+          "name": "RAGAS",
+          "category": "检索决策与评估",
+          "summary": "提出无参考答案的RAG评估框架；自动评估不能替代人工事实核验。",
+          "title": "Ragas: Automated Evaluation of Retrieval Augmented Generation",
+          "authors": [
+            "Es, Shahul",
+            "James, Jithin",
+            "Espinosa-Anke, Luis",
+            "Schockaert, Steven"
+          ],
+          "date": "2023-09-26",
+          "version": "2309.15217v2",
+          "url": "https://arxiv.org/abs/2309.15217v2",
+          "evidence": {
+            "quote": "a framework for reference-free evaluation of Retrieval Augmented Generation (RAG) pipelines",
+            "start": 64,
+            "end": 155,
+            "field": "abstract",
+            "quote_sha256": "70bd91650e26ddc22f55ef10bced15c212f8294b7f36965d6e1031e0ed885591",
+            "text_sha256": "9c6df951d4376008bf1cb7f8b808167321fed949ab8d6491b3b156c98e1c37b0",
+            "raw_sha256": "51f0d7a686ebc9341f5596a066e858fe1c9d3132e82b95ad72559f48fb248d69",
+            "source_url": "https://arxiv.org/abs/2309.15217v2",
+            "captured": "2026-10-31T06:29:52.979450+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "self-rag",
+          "arxiv_id": "2310.11511",
+          "name": "Self-RAG",
+          "category": "检索决策与评估",
+          "summary": "通过反思标记学习按需检索及自我评价，连接检索决策与生成检查。",
+          "title": "Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection",
+          "authors": [
+            "Asai, Akari",
+            "Wu, Zeqiu",
+            "Wang, Yizhong",
+            "Sil, Avirup",
+            "Hajishirzi, Hannaneh"
+          ],
+          "date": "2023-10-17",
+          "version": "2310.11511v1",
+          "url": "https://arxiv.org/abs/2310.11511v1",
+          "evidence": {
+            "quote": "adaptively retrieves passages on-demand",
+            "start": 796,
+            "end": 835,
+            "field": "abstract",
+            "quote_sha256": "507f0de38d2bdf39e7be389eb85bc1f378c25fd0593546db8ced3fc67891d94b",
+            "text_sha256": "814a0385136a61001126f1bf731b56ffa68fd09e048d30a5d9272706cfdc64c4",
+            "raw_sha256": "6d3054cb5738cb8373d8b757eca3a5fba3f142304c8727e68476a5487272ca1c",
+            "source_url": "https://arxiv.org/abs/2310.11511v1",
+            "captured": "2026-10-31T06:29:57.571012+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        }
+      ],
+      "supplements": [
+        {
+          "id": "knnlm",
+          "arxiv_id": "1911.00172",
+          "name": "kNN-LM",
+          "category": "概率层融合（补充）",
+          "summary": "插值语言模型和近邻模型的预测分布，补上初稿遗漏的概率层融合路线。",
+          "title": "Generalization through Memorization: Nearest Neighbor Language Models",
+          "authors": [
+            "Khandelwal, Urvashi",
+            "Levy, Omer",
+            "Jurafsky, Dan",
+            "Zettlemoyer, Luke",
+            "Lewis, Mike"
+          ],
+          "date": "2019-11-01",
+          "version": "1911.00172v2",
+          "url": "https://arxiv.org/abs/1911.00172v2",
+          "evidence": {
+            "quote": "by linearly interpolating it with a",
+            "start": 78,
+            "end": 113,
+            "field": "abstract",
+            "quote_sha256": "4e5b5b01da44ef546d35a1b69896a51a9c3a49913a45ea5709f5670d9b4456da",
+            "text_sha256": "404389459153c3f1de7955aa7538905a4c3bbac51b1db086e93bd5faf4e476cf",
+            "raw_sha256": "172044a2910d1ef34e6573de0a727703fafafa1f68a0f2fc6292c640811f083d",
+            "source_url": "https://arxiv.org/abs/1911.00172v2",
+            "captured": "2026-10-31T06:35:01.675506+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "after_survey"
+        },
+        {
+          "id": "rest",
+          "arxiv_id": "2311.08252",
+          "name": "REST",
+          "category": "检索式推测解码（补充）",
+          "summary": "检索草稿token以加速解码，补上初稿遗漏的检索替代部分生成路线。",
+          "title": "REST: Retrieval-Based Speculative Decoding",
+          "authors": [
+            "He, Zhenyu",
+            "Zhong, Zexuan",
+            "Cai, Tianle",
+            "Lee, Jason D.",
+            "He, Di"
+          ],
+          "date": "2023-11-14",
+          "version": "2311.08252v2",
+          "url": "https://arxiv.org/abs/2311.08252v2",
+          "evidence": {
+            "quote": "REST harnesses the power of retrieval to generate draft tokens",
+            "start": 364,
+            "end": 426,
+            "field": "abstract",
+            "quote_sha256": "691fe1f6ced0f1609df32df4aaeb304abb4cce694d8f9fe6c51289550d1e4841",
+            "text_sha256": "cb7ec15517ac9ff3228292d7affbfdda41a3fa2e5dc9b7a06f42d7c3d3f41df9",
+            "raw_sha256": "44005954f3daa7fd0b2343f321c56c84fce5abbfbd91874f23f45b98ce20dc4c",
+            "source_url": "https://arxiv.org/abs/2311.08252v2",
+            "captured": "2026-10-31T06:35:06.368867+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "after_survey"
+        }
+      ],
+      "follow_up": "对照后补充kNN-LM与REST：原先按流水线阶段分类，容易忽略概率融合与解码加速。它们与RAG/FiD是不同融合位置，不能排成单线升级史。",
+      "paths": [
+        {
+          "name": "从找资料到用资料",
+          "papers": [
+            "dpr",
+            "rag-original",
+            "fid"
+          ],
+          "kind": "reading_order",
+          "reason": "先理解检索组件，再比较生成阶段如何融合材料。"
+        },
+        {
+          "name": "从固定检索到决策与核查",
+          "papers": [
+            "rag-original",
+            "hyde",
+            "self-rag",
+            "ragas"
+          ],
+          "kind": "problem_progression",
+          "reason": "分别考察查什么、何时查、如何评估；不是声称这些论文逐篇继承。"
+        },
+        {
+          "name": "外部记忆与模型训练",
+          "papers": [
+            "realm",
+            "retro"
+          ],
+          "kind": "parallel_approaches",
+          "reason": "比较检索参与预训练和语言建模的方式。"
+        }
+      ],
+      "overview": [
+        {
+          "text": "本组文献把RAG分为检索表示、检索与生成耦合、查询构造、决策及评估四层。REALM与DPR分别研究知识检索参与训练和段落检索，不能把检索器效果直接当作生成答案正确率。",
+          "papers": [
+            "realm",
+            "dpr"
+          ]
+        },
+        {
+          "text": "原始RAG将参数记忆与外部索引结合，FiD考察多段落生成，RETRO把检索扩展到语言建模。三者服务的任务和模型条件不同，不能依据各自摘要中的效果描述排出统一优劣。",
+          "papers": [
+            "rag-original",
+            "fid",
+            "retro"
+          ]
+        },
+        {
+          "text": "HyDE、Self-RAG和RAGAS分别把注意力移到查询表示、按需检索与自我评价、系统评估。后续实验应固定语料和预算，分别测检索相关性、答案依据、拒答及成本；这些实验建议尚未执行。",
+          "papers": [
+            "hyde",
+            "self-rag",
+            "ragas"
+          ],
+          "kind": "synthesis_and_proposed_experiment"
+        }
+      ],
+      "limits": [
+        "以文本开放域任务为主，未覆盖多模态RAG、图检索和行业部署。",
+        "尚无统一数据与预算下的复现比较；正文引用不自动证明推论。"
+      ],
+      "survey": {
+        "title": "Retrieval-Augmented Generation for AI-Generated Content: A Survey",
+        "url": "https://link.springer.com/article/10.1007/s41019-025-00335-5",
+        "venue": "Data Science and Engineering",
+        "doi": "10.1007/s41019-025-00335-5",
+        "publication_status": "待出版商页面核验",
+        "publication": {
+          "DOI": "10.1007/s41019-025-00335-5",
+          "title": [
+            "Retrieval-Augmented Generation for AI-Generated Content: A Survey"
+          ],
+          "container-title": [
+            "Data Science and Engineering"
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2026,
+                1,
+                2
+              ]
+            ]
+          },
+          "type": "journal-article"
+        },
+        "publication_raw_sha256": "0f6688f3a2354b45ce51ba01b451e7c694480a2c10560312888afc10c51550d3",
+        "publication_captured": "2026-10-31T06:36:28.443971+00:00",
+        "body_raw_sha256": "451f0d1df140c1295bb602442d5179ed9e486cec0996fb8be890ee9f5cf6f9c0",
+        "body_text_sha256": "506f402d2bf050e2da1382f425fdab96abddedc8f7ecf2be0fde9144f82f91e1",
+        "captured": "2026-10-31T06:32:33.584560+00:00",
+        "status": "published_record_verified",
+        "body_basis": "publisher_open_full_text"
+      },
+      "validation": [
+        {
+          "axis": "输入融合",
+          "initial_status": "covered",
+          "papers": [
+            "rag-original",
+            "self-rag"
+          ],
+          "supplements": [],
+          "assessment": "初稿有输入侧检索生成与按需检索入口。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.1.1",
+          "evidence": {
+            "quote": "Query-Based RAG",
+            "start": 18187,
+            "end": 18202,
+            "field": "normalized_full_page",
+            "quote_sha256": "e7bf368474b50260d82f2bbd35e483c46b2763092aa6e251137c114d557f70f6",
+            "text_sha256": "506f402d2bf050e2da1382f425fdab96abddedc8f7ecf2be0fde9144f82f91e1",
+            "raw_sha256": "451f0d1df140c1295bb602442d5179ed9e486cec0996fb8be890ee9f5cf6f9c0",
+            "source_url": "https://link.springer.com/article/10.1007/s41019-025-00335-5",
+            "captured": "2026-10-31T06:32:33.584560+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "隐表示融合",
+          "initial_status": "covered",
+          "papers": [
+            "fid",
+            "retro"
+          ],
+          "supplements": [],
+          "assessment": "FiD与RETRO提供代表性入口，未穷尽变体。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.1.2",
+          "evidence": {
+            "quote": "Latent Representation-Based RAG",
+            "start": 21092,
+            "end": 21123,
+            "field": "normalized_full_page",
+            "quote_sha256": "42ebac09cb213f7ecbb669828e344512513e2d037d9d1858a292dd105b4ae367",
+            "text_sha256": "506f402d2bf050e2da1382f425fdab96abddedc8f7ecf2be0fde9144f82f91e1",
+            "raw_sha256": "451f0d1df140c1295bb602442d5179ed9e486cec0996fb8be890ee9f5cf6f9c0",
+            "source_url": "https://link.springer.com/article/10.1007/s41019-025-00335-5",
+            "captured": "2026-10-31T06:32:33.584560+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "概率层融合",
+          "initial_status": "gap",
+          "papers": [],
+          "supplements": [
+            "knnlm"
+          ],
+          "assessment": "初稿缺少这一融合位置，补读kNN-LM；代表篇目不等于覆盖整类。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.1.3",
+          "evidence": {
+            "quote": "Logit-Based RAG",
+            "start": 24768,
+            "end": 24783,
+            "field": "normalized_full_page",
+            "quote_sha256": "e0939512385f4d69fdff102abb4d484e67b916341d30c31f0be179741b4a858f",
+            "text_sha256": "506f402d2bf050e2da1382f425fdab96abddedc8f7ecf2be0fde9144f82f91e1",
+            "raw_sha256": "451f0d1df140c1295bb602442d5179ed9e486cec0996fb8be890ee9f5cf6f9c0",
+            "source_url": "https://link.springer.com/article/10.1007/s41019-025-00335-5",
+            "captured": "2026-10-31T06:32:33.584560+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "检索式解码加速",
+          "initial_status": "gap",
+          "papers": [],
+          "supplements": [
+            "rest"
+          ],
+          "assessment": "初稿没有检索草稿解码，补读REST。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.1.4",
+          "evidence": {
+            "quote": "Speculative RAG",
+            "start": 26225,
+            "end": 26240,
+            "field": "normalized_full_page",
+            "quote_sha256": "64b22d505eb8576a76285d1866dc9ef7b43746a045286c960560763da7f9f765",
+            "text_sha256": "506f402d2bf050e2da1382f425fdab96abddedc8f7ecf2be0fde9144f82f91e1",
+            "raw_sha256": "451f0d1df140c1295bb602442d5179ed9e486cec0996fb8be890ee9f5cf6f9c0",
+            "source_url": "https://link.springer.com/article/10.1007/s41019-025-00335-5",
+            "captured": "2026-10-31T06:32:33.584560+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "增强流水线",
+          "initial_status": "partial",
+          "papers": [
+            "hyde",
+            "self-rag",
+            "ragas"
+          ],
+          "supplements": [],
+          "assessment": "已有查询、决策和评估，但生成器优化、结果改写等仍不完整。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.2",
+          "evidence": {
+            "quote": "RAG Enhancements",
+            "start": 27313,
+            "end": 27329,
+            "field": "normalized_full_page",
+            "quote_sha256": "4ae45b81d7fb4dca8b45100e14cc547e31e1f89c78296b2a6d55eef408a493a7",
+            "text_sha256": "506f402d2bf050e2da1382f425fdab96abddedc8f7ecf2be0fde9144f82f91e1",
+            "raw_sha256": "451f0d1df140c1295bb602442d5179ed9e486cec0996fb8be890ee9f5cf6f9c0",
+            "source_url": "https://link.springer.com/article/10.1007/s41019-025-00335-5",
+            "captured": "2026-10-31T06:32:33.584560+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "跨模态应用",
+          "initial_status": "out_of_scope",
+          "papers": [],
+          "supplements": [],
+          "assessment": "初稿主要选文本任务，不能代表综述的代码、音频、图像等应用。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "4",
+          "evidence": {
+            "quote": "Applications",
+            "start": 44175,
+            "end": 44187,
+            "field": "normalized_full_page",
+            "quote_sha256": "98e33b0f3104fcf1b812ba2c679c0f15a94f583559b731d6580df2d8307d3edf",
+            "text_sha256": "506f402d2bf050e2da1382f425fdab96abddedc8f7ecf2be0fde9144f82f91e1",
+            "raw_sha256": "451f0d1df140c1295bb602442d5179ed9e486cec0996fb8be890ee9f5cf6f9c0",
+            "source_url": "https://link.springer.com/article/10.1007/s41019-025-00335-5",
+            "captured": "2026-10-31T06:32:33.584560+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        }
+      ],
+      "declared_relations": []
+    },
+    {
+      "id": "peft",
+      "name": "参数高效微调（PEFT）",
+      "query": "parameter efficient fine tuning",
+      "prerequisites": [
+        "梯度与优化器",
+        "Transformer权重矩阵",
+        "显存、精度和量化"
+      ],
+      "categories": [
+        "新增适配参数",
+        "软提示",
+        "选择性更新与缩放",
+        "低秩与资源优化"
+      ],
+      "papers": [
+        {
+          "id": "adapters",
+          "arxiv_id": "1902.00751",
+          "name": "Adapters",
+          "category": "新增适配参数",
+          "summary": "冻结原网络，为各任务添加小型适配模块。",
+          "title": "Parameter-Efficient Transfer Learning for NLP",
+          "authors": [
+            "Houlsby, Neil",
+            "Giurgiu, Andrei",
+            "Jastrzebski, Stanislaw",
+            "Morrone, Bruna",
+            "de Laroussilhe, Quentin",
+            "Gesmundo, Andrea",
+            "Attariyan, Mona",
+            "Gelly, Sylvain"
+          ],
+          "date": "2019-02-02",
+          "version": "1902.00751v2",
+          "url": "https://arxiv.org/abs/1902.00751v2",
+          "evidence": {
+            "quote": "we propose transfer with adapter modules",
+            "start": 236,
+            "end": 276,
+            "field": "abstract",
+            "quote_sha256": "639884cb68dd3819b7938a5e4febf45bac2c8aec4dd51b5664af4e8f2398dcb6",
+            "text_sha256": "070f807eb0ec4dc53acc94a0312b7c87ad0819934405257ded0e1740f8e70e94",
+            "raw_sha256": "c7b22c9e2b133957b2f9ce72b5d0f50392e4080019321e802d86b970795946e2",
+            "source_url": "https://arxiv.org/abs/1902.00751v2",
+            "captured": "2026-10-31T06:30:02.282030+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "prefix",
+          "arxiv_id": "2101.00190",
+          "name": "Prefix-Tuning",
+          "category": "软提示",
+          "summary": "冻结语言模型，通过可训练连续前缀适配生成任务。",
+          "title": "Prefix-Tuning: Optimizing Continuous Prompts for Generation",
+          "authors": [
+            "Li, Xiang Lisa",
+            "Liang, Percy"
+          ],
+          "date": "2021-01-01",
+          "version": "2101.00190v1",
+          "url": "https://arxiv.org/abs/2101.00190v1",
+          "evidence": {
+            "quote": "keeps language model parameters frozen, but optimizes a small continuous task-specific vector",
+            "start": 350,
+            "end": 443,
+            "field": "abstract",
+            "quote_sha256": "9e112401703d68c8befe5424bcc6d8e541f8c6cadb413033a6c89b6f6730a765",
+            "text_sha256": "c439a42b68ccd1c88d79f42e27fd6b5831885e935d575f42c207df52a9a1bdf7",
+            "raw_sha256": "ff29832454e0bf85d20ecf235f6f3b0658e162e4dd07c65447c640a8dab76c92",
+            "source_url": "https://arxiv.org/abs/2101.00190v1",
+            "captured": "2026-10-31T06:30:06.873335+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "prompt",
+          "arxiv_id": "2104.08691",
+          "name": "Prompt Tuning",
+          "category": "软提示",
+          "summary": "学习输入端软提示，并研究模型规模对适配效果的影响。",
+          "title": "The Power of Scale for Parameter-Efficient Prompt Tuning",
+          "authors": [
+            "Lester, Brian",
+            "Al-Rfou, Rami",
+            "Constant, Noah"
+          ],
+          "date": "2021-04-18",
+          "version": "2104.08691v2",
+          "url": "https://arxiv.org/abs/2104.08691v2",
+          "evidence": {
+            "quote": "learning \"soft prompts\" to condition frozen language models",
+            "start": 79,
+            "end": 138,
+            "field": "abstract",
+            "quote_sha256": "27f530221fa5ab4d64afcbc7b80757e23a93b3b1f66c237edce0a33ee88312ec",
+            "text_sha256": "ccf20fd92d81ab5c8203d1608844ee815538549d9df5dfa24f9ebf41dcb7dfd3",
+            "raw_sha256": "3edfe725f5d52fabf0cf9e40d4e978f56d9c56d98e66266f8cbc29b1cae0ce99",
+            "source_url": "https://arxiv.org/abs/2104.08691v2",
+            "captured": "2026-10-31T06:30:14.377091+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "bitfit",
+          "arxiv_id": "2106.10199",
+          "name": "BitFit",
+          "category": "选择性更新与缩放",
+          "summary": "仅更新偏置参数，考察极少参数更新的适配能力。",
+          "title": "BitFit: Simple Parameter-efficient Fine-tuning for Transformer-based Masked Language-models",
+          "authors": [
+            "Ben-Zaken, Elad",
+            "Ravfogel, Shauli",
+            "Goldberg, Yoav"
+          ],
+          "date": "2021-06-18",
+          "version": "2106.10199v5",
+          "url": "https://arxiv.org/abs/2106.10199v5",
+          "evidence": {
+            "quote": "only the bias-terms of the model (or a subset of them) are being modified",
+            "start": 54,
+            "end": 127,
+            "field": "abstract",
+            "quote_sha256": "c218758c09e34f980a056d8b9c04b6446966571d996f72ab408449c95efa5d8f",
+            "text_sha256": "d8e55d4a10251ef84560abe404e330943849580ee856fdc12744dead8f2818ac",
+            "raw_sha256": "160a987f524737fcd9512f5d08ce4dedcc1933a5469a625bc6a65408c7cdccfe",
+            "source_url": "https://arxiv.org/abs/2106.10199v5",
+            "captured": "2026-10-31T06:30:18.964544+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "lora",
+          "arxiv_id": "2106.09685",
+          "name": "LoRA",
+          "category": "低秩与资源优化",
+          "summary": "冻结基础权重，以可训练低秩矩阵表示任务更新。",
+          "title": "LoRA: Low-Rank Adaptation of Large Language Models",
+          "authors": [
+            "Hu, Edward J.",
+            "Shen, Yelong",
+            "Wallis, Phillip",
+            "Allen-Zhu, Zeyuan",
+            "Li, Yuanzhi",
+            "Wang, Shean",
+            "Wang, Lu",
+            "Chen, Weizhu"
+          ],
+          "date": "2021-06-17",
+          "version": "2106.09685v2",
+          "url": "https://arxiv.org/abs/2106.09685v2",
+          "evidence": {
+            "quote": "freezes the pre-trained model weights and injects trainable rank decomposition matrices",
+            "start": 459,
+            "end": 546,
+            "field": "abstract",
+            "quote_sha256": "30ec4eb27011517ff078eeb6cc8a6fbbf84b43b84ead4ade6e30cb2c59a1ba89",
+            "text_sha256": "b52ab87811b316fa0170a1eb0340f0c484463f708f9fb763f17d3c48e5a8e247",
+            "raw_sha256": "70bb70b4fd6d41b8a0f53fc5148017bf6ef5b73acba822027397f861aee135c6",
+            "source_url": "https://arxiv.org/abs/2106.09685v2",
+            "captured": "2026-10-31T06:30:23.535450+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "ia3",
+          "arxiv_id": "2205.05638",
+          "name": "IA³",
+          "category": "选择性更新与缩放",
+          "summary": "通过学习向量缩放内部激活，探索少样本高效适配。",
+          "title": "Few-Shot Parameter-Efficient Fine-Tuning is Better and Cheaper than In-Context Learning",
+          "authors": [
+            "Liu, Haokun",
+            "Tam, Derek",
+            "Muqeeth, Mohammed",
+            "Mohta, Jay",
+            "Huang, Tenghao",
+            "Bansal, Mohit",
+            "Raffel, Colin"
+          ],
+          "date": "2022-05-11",
+          "version": "2205.05638v2",
+          "url": "https://arxiv.org/abs/2205.05638v2",
+          "evidence": {
+            "quote": "scales activations by learned vectors",
+            "start": 825,
+            "end": 862,
+            "field": "abstract",
+            "quote_sha256": "ed78d0bbe6e81b892d416080ed3b46d01757792c7363fa32eefc14c0137ffcb3",
+            "text_sha256": "e65d1d2724240cce3015e3a01df7ddfaba136c308af21e15e839d341c3e1f799",
+            "raw_sha256": "7fe83c8f69e82beb613dad31f72ade42aa5bf0da42b89518dfd3ce9d5e5e840d",
+            "source_url": "https://arxiv.org/abs/2205.05638v2",
+            "captured": "2026-10-31T06:30:28.127638+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "adalora",
+          "arxiv_id": "2303.10512",
+          "name": "AdaLoRA",
+          "category": "低秩与资源优化",
+          "summary": "围绕重要性自适应分配低秩更新的参数预算。",
+          "title": "AdaLoRA: Adaptive Budget Allocation for Parameter-Efficient Fine-Tuning",
+          "authors": [
+            "Zhang, Qingru",
+            "Chen, Minshuo",
+            "Bukharin, Alexander",
+            "Karampatziakis, Nikos",
+            "He, Pengcheng",
+            "Cheng, Yu",
+            "Chen, Weizhu",
+            "Zhao, Tuo"
+          ],
+          "date": "2023-03-18",
+          "version": "2303.10512v2",
+          "url": "https://arxiv.org/abs/2303.10512v2",
+          "evidence": {
+            "quote": "adaptively allocates the parameter budget among weight matrices according to their importance score",
+            "start": 713,
+            "end": 812,
+            "field": "abstract",
+            "quote_sha256": "5e25a9291f8a575f7b8f495551e513bea3f4e832b29b486a0a9cbe936a02d4f2",
+            "text_sha256": "c3fe322b6212a220272ea3a93128639bf6be1f5cd82d46595b5c79f8a5ac595f",
+            "raw_sha256": "17fc4ccac44f3cddce89b14ce2e7c482a84c2358fa6ebf057553197a0c841a15",
+            "source_url": "https://arxiv.org/abs/2303.10512v2",
+            "captured": "2026-10-31T06:30:32.693570+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "qlora",
+          "arxiv_id": "2305.14314",
+          "name": "QLoRA",
+          "category": "低秩与资源优化",
+          "summary": "结合冻结的量化基础模型与低秩适配，降低微调内存需求。",
+          "title": "QLoRA: Efficient Finetuning of Quantized LLMs",
+          "authors": [
+            "Dettmers, Tim",
+            "Pagnoni, Artidoro",
+            "Holtzman, Ari",
+            "Zettlemoyer, Luke"
+          ],
+          "date": "2023-05-23",
+          "version": "2305.14314v1",
+          "url": "https://arxiv.org/abs/2305.14314v1",
+          "evidence": {
+            "quote": "backpropagates gradients through a frozen, 4-bit quantized pretrained language model into Low Rank Adapters",
+            "start": 203,
+            "end": 310,
+            "field": "abstract",
+            "quote_sha256": "02c2439540444dddeb3f5cc8d38ac179d3dfd4c02307d036da41a70e06290bfc",
+            "text_sha256": "6272079be29d11ca8f943e1c3e9ebb29ac5113ef009a0e85a6fb8b4fc88723ce",
+            "raw_sha256": "6388775a19989a46dfb02d9e30c0021d32095f6edd44d7f248181de8b517ccc5",
+            "source_url": "https://arxiv.org/abs/2305.14314v1",
+            "captured": "2026-10-31T06:30:39.618266+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        }
+      ],
+      "supplements": [
+        {
+          "id": "unipelt",
+          "arxiv_id": "2110.07577",
+          "name": "UniPELT",
+          "category": "混合适配（补充）",
+          "summary": "结合多种适配子模块并学习门控，补充初稿缺少的混合方法。",
+          "title": "UniPELT: A Unified Framework for Parameter-Efficient Language Model Tuning",
+          "authors": [
+            "Mao, Yuning",
+            "Mathias, Lambert",
+            "Hou, Rui",
+            "Almahairi, Amjad",
+            "Ma, Hao",
+            "Han, Jiawei",
+            "Yih, Wen-tau",
+            "Khabsa, Madian"
+          ],
+          "date": "2021-10-14",
+          "version": "2110.07577v3",
+          "url": "https://arxiv.org/abs/2110.07577v3",
+          "evidence": {
+            "quote": "incorporates different PELT methods as submodules",
+            "start": 560,
+            "end": 609,
+            "field": "abstract",
+            "quote_sha256": "68b6741608411b715d4128f74d162af28f83732896bbe0b4219ed56043753739",
+            "text_sha256": "30d4365fab338958bce69f39e53e6ae91513b14c1817b8fd1ec671b22d72a571",
+            "raw_sha256": "a1035a95509e2338344f8a2edb4785fd526193a26f1ebc45e6e4ee8ad333c28a",
+            "source_url": "https://arxiv.org/abs/2110.07577v3",
+            "captured": "2026-10-31T06:35:11.032326+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "after_survey"
+        },
+        {
+          "id": "spot",
+          "arxiv_id": "2110.07904",
+          "name": "SPoT",
+          "category": "任务间迁移（补充）",
+          "summary": "先在源任务学习软提示，再用于目标任务初始化，补充跨任务迁移路线。",
+          "title": "SPoT: Better Frozen Model Adaptation through Soft Prompt Transfer",
+          "authors": [
+            "Vu, Tu",
+            "Lester, Brian",
+            "Constant, Noah",
+            "Al-Rfou, Rami",
+            "Cer, Daniel"
+          ],
+          "date": "2021-10-15",
+          "version": "2110.07904v2",
+          "url": "https://arxiv.org/abs/2110.07904v2",
+          "evidence": {
+            "quote": "first learns a prompt on one or more source tasks",
+            "start": 392,
+            "end": 441,
+            "field": "abstract",
+            "quote_sha256": "e1698a680eb7f7bf01f97387c385337f882fb4907c1228aa80e734774c0a1548",
+            "text_sha256": "681ab453f3cd467c1527d9a5e848ab328a2f490624ba5b6d31a89ee4bf2b5af0",
+            "raw_sha256": "b0ed027cb9fe449216d86b24197f99214b5b23b3e23a4ac3e70a907b9fb1d3d5",
+            "source_url": "https://arxiv.org/abs/2110.07904v2",
+            "captured": "2026-10-31T06:35:15.891462+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "after_survey"
+        }
+      ],
+      "follow_up": "对照后补充UniPELT与SPoT：除适配参数放在哪里，还需要看多种方法如何组合，以及任务间怎样迁移。初稿四类是阅读入口，不能冒充综述的完整分类。",
+      "paths": [
+        {
+          "name": "适配位置的不同选择",
+          "papers": [
+            "adapters",
+            "prefix",
+            "prompt",
+            "bitfit",
+            "ia3"
+          ],
+          "kind": "parallel_approaches",
+          "reason": "比较添加模块、学习提示、选择参数与缩放激活；不是线性替代史。"
+        },
+        {
+          "name": "低秩更新、预算和显存",
+          "papers": [
+            "lora",
+            "adalora",
+            "qlora"
+          ],
+          "kind": "problem_progression",
+          "reason": "依次学习更新表示、参数预算和量化内存；AdaLoRA不是QLoRA的已证实直接前身。"
+        }
+      ],
+      "overview": [
+        {
+          "text": "PEFT的共同问题是避免为每个任务维护和训练整套基础权重。本组从新增模块、连续提示、选择性更新及低秩更新四个入口比较适配位置；方法分类是阅读组织，不是唯一标准。",
+          "papers": [
+            "adapters",
+            "prefix",
+            "prompt",
+            "bitfit",
+            "lora",
+            "ia3"
+          ]
+        },
+        {
+          "text": "低秩更新不等于量化。LoRA研究权重更新的低秩表示，AdaLoRA研究预算如何分配，QLoRA则将量化基础模型与适配器结合。可训练参数少不能单独推出端到端显存、吞吐和精度都更优。",
+          "papers": [
+            "lora",
+            "adalora",
+            "qlora"
+          ]
+        },
+        {
+          "text": "合理比较应固定基础模型、任务、数据、训练步数和硬件，同时报告可训练参数、峰值显存、训练时间及任务指标。不同规模和任务上的作者结果不能直接拼成统一排行榜；以上比较计划尚未实测。",
+          "papers": [
+            "prompt",
+            "lora",
+            "qlora"
+          ],
+          "kind": "synthesis_and_proposed_experiment"
+        }
+      ],
+      "limits": [
+        "主要覆盖NLP/语言模型，未系统收集视觉、多模态与多任务组合。",
+        "未覆盖稀疏结构搜索、混合方法和完整系统优化，不能声称PEFT全集。"
+      ],
+      "survey": {
+        "title": "Parameter-efficient fine-tuning in large language models: a survey of methodologies",
+        "url": "https://link.springer.com/article/10.1007/s10462-025-11236-4",
+        "venue": "Artificial Intelligence Review",
+        "doi": "10.1007/s10462-025-11236-4",
+        "publication_status": "出版商列明2025-05-03正式发表；使用开放全文作外部对照",
+        "publication": {
+          "DOI": "10.1007/s10462-025-11236-4",
+          "title": [
+            "Parameter-efficient fine-tuning in large language models: a survey of methodologies"
+          ],
+          "container-title": [
+            "Artificial Intelligence Review"
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2025,
+                5,
+                3
+              ]
+            ]
+          },
+          "type": "journal-article"
+        },
+        "publication_raw_sha256": "e114e7495c531076be511f77c542e9a1249a9736cb31842f0cba32bb8604860c",
+        "publication_captured": "2026-10-31T06:36:34.134610+00:00",
+        "body_raw_sha256": "d59a985dd538df8be0ce8fc973aaffd063241d9f52a8fe5d2c31d33dbf13c834",
+        "body_text_sha256": "b30a957fb1dc80fe813c9577946aa227739476dccc8529d306b9727fb8cd7ca2",
+        "captured": "2026-10-31T06:32:40.615035+00:00",
+        "status": "published_record_verified",
+        "body_basis": "publisher_open_full_text"
+      },
+      "validation": [
+        {
+          "axis": "新增参数",
+          "initial_status": "covered",
+          "papers": [
+            "adapters",
+            "prefix",
+            "prompt",
+            "ia3"
+          ],
+          "supplements": [],
+          "assessment": "初稿把软提示单列作教学入口，综述把它纳入新增参数，属于分类粒度差异。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.1",
+          "evidence": {
+            "quote": "Additive PEFT",
+            "start": 51841,
+            "end": 51854,
+            "field": "normalized_full_page",
+            "quote_sha256": "207212adc77de4faa4a13335e2c3f47b1a7a90be042503c05b38c4d64dce934e",
+            "text_sha256": "b30a957fb1dc80fe813c9577946aa227739476dccc8529d306b9727fb8cd7ca2",
+            "raw_sha256": "d59a985dd538df8be0ce8fc973aaffd063241d9f52a8fe5d2c31d33dbf13c834",
+            "source_url": "https://link.springer.com/article/10.1007/s10462-025-11236-4",
+            "captured": "2026-10-31T06:32:40.615035+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "重参数化",
+          "initial_status": "covered",
+          "papers": [
+            "lora",
+            "adalora"
+          ],
+          "supplements": [],
+          "assessment": "已有低秩表示与预算分配，不能代表全部重参数化方法。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.2",
+          "evidence": {
+            "quote": "Reparameterized PEFT",
+            "start": 51961,
+            "end": 51981,
+            "field": "normalized_full_page",
+            "quote_sha256": "76386b2cc23ba8e3e6eb0d53bdec6a3068d3b47755e445cf950a91f46f841b7c",
+            "text_sha256": "b30a957fb1dc80fe813c9577946aa227739476dccc8529d306b9727fb8cd7ca2",
+            "raw_sha256": "d59a985dd538df8be0ce8fc973aaffd063241d9f52a8fe5d2c31d33dbf13c834",
+            "source_url": "https://link.springer.com/article/10.1007/s10462-025-11236-4",
+            "captured": "2026-10-31T06:32:40.615035+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "选择性更新",
+          "initial_status": "covered",
+          "papers": [
+            "bitfit"
+          ],
+          "supplements": [],
+          "assessment": "偏置更新是代表样本；稀疏结构搜索仍欠缺。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.3",
+          "evidence": {
+            "quote": "Selective PEFT",
+            "start": 52129,
+            "end": 52143,
+            "field": "normalized_full_page",
+            "quote_sha256": "b5b8118ac8e6812b9f38fcff03249722e418f595b408ed9c9869be131158f7e0",
+            "text_sha256": "b30a957fb1dc80fe813c9577946aa227739476dccc8529d306b9727fb8cd7ca2",
+            "raw_sha256": "d59a985dd538df8be0ce8fc973aaffd063241d9f52a8fe5d2c31d33dbf13c834",
+            "source_url": "https://link.springer.com/article/10.1007/s10462-025-11236-4",
+            "captured": "2026-10-31T06:32:40.615035+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "混合方法",
+          "initial_status": "gap",
+          "papers": [],
+          "supplements": [
+            "unipelt"
+          ],
+          "assessment": "补读UniPELT，避免把单种适配方式视为互斥选择。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.4",
+          "evidence": {
+            "quote": "Hybrid PEFT",
+            "start": 52259,
+            "end": 52270,
+            "field": "normalized_full_page",
+            "quote_sha256": "cf40b24c174d47ced6902ce3f7175fd5d54b13cf306a80a7c1abdccec17a331d",
+            "text_sha256": "b30a957fb1dc80fe813c9577946aa227739476dccc8529d306b9727fb8cd7ca2",
+            "raw_sha256": "d59a985dd538df8be0ce8fc973aaffd063241d9f52a8fe5d2c31d33dbf13c834",
+            "source_url": "https://link.springer.com/article/10.1007/s10462-025-11236-4",
+            "captured": "2026-10-31T06:32:40.615035+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "量化适配",
+          "initial_status": "partial",
+          "papers": [
+            "qlora"
+          ],
+          "supplements": [],
+          "assessment": "已有QLoRA，但量化技术不能压缩成一篇方法的全部结论。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.5",
+          "evidence": {
+            "quote": "Quantization PEFT",
+            "start": 52398,
+            "end": 52415,
+            "field": "normalized_full_page",
+            "quote_sha256": "4d39207898ae3a3f38bbe7a00ea3104365d7a28de21c13a9d49ae5cdc89349e1",
+            "text_sha256": "b30a957fb1dc80fe813c9577946aa227739476dccc8529d306b9727fb8cd7ca2",
+            "raw_sha256": "d59a985dd538df8be0ce8fc973aaffd063241d9f52a8fe5d2c31d33dbf13c834",
+            "source_url": "https://link.springer.com/article/10.1007/s10462-025-11236-4",
+            "captured": "2026-10-31T06:32:40.615035+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "任务间迁移",
+          "initial_status": "gap",
+          "papers": [],
+          "supplements": [
+            "spot"
+          ],
+          "assessment": "补读SPoT作为提示迁移入口，多任务领域仍有大量未覆盖工作。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3.6",
+          "evidence": {
+            "quote": "Multi-task PEFT",
+            "start": 52472,
+            "end": 52487,
+            "field": "normalized_full_page",
+            "quote_sha256": "8b8ab47575fbef0e5066eaab64334d7057503099be3036af5955f789d2c9dd73",
+            "text_sha256": "b30a957fb1dc80fe813c9577946aa227739476dccc8529d306b9727fb8cd7ca2",
+            "raw_sha256": "d59a985dd538df8be0ce8fc973aaffd063241d9f52a8fe5d2c31d33dbf13c834",
+            "source_url": "https://link.springer.com/article/10.1007/s10462-025-11236-4",
+            "captured": "2026-10-31T06:32:40.615035+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        }
+      ],
+      "declared_relations": [
+        {
+          "source": "prefix",
+          "target": "prompt",
+          "kind": "author_described_simplification",
+          "status": "author_statement_not_independently_proven",
+          "evidence": {
+            "quote": "simplification of the recently proposed \"prefix tuning\" of Li and Liang (2021)",
+            "start": 931,
+            "end": 1009,
+            "field": "abstract",
+            "quote_sha256": "e51078fec147f53d55d2868eefc4ade4c02b1ff1c4bbdd15daa42b30520bd52c",
+            "text_sha256": "ccf20fd92d81ab5c8203d1608844ee815538549d9df5dfa24f9ebf41dcb7dfd3",
+            "raw_sha256": "3edfe725f5d52fabf0cf9e40d4e978f56d9c56d98e66266f8cbc29b1cae0ce99",
+            "source_url": "https://arxiv.org/abs/2104.08691v2",
+            "captured": "2026-10-31T06:30:14.377091+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "source": "prompt",
+          "target": "spot",
+          "kind": "author_described_builds_on",
+          "status": "author_statement_not_independently_proven",
+          "evidence": {
+            "quote": "Building on the Prompt Tuning approach of Lester et al. (2021)",
+            "start": 121,
+            "end": 183,
+            "field": "abstract",
+            "quote_sha256": "aef91aa85f776c9a98b24988ba2ca334f28c8f710341f77785dbf34f53420827",
+            "text_sha256": "681ab453f3cd467c1527d9a5e848ab328a2f490624ba5b6d31a89ee4bf2b5af0",
+            "raw_sha256": "b0ed027cb9fe449216d86b24197f99214b5b23b3e23a4ac3e70a907b9fb1d3d5",
+            "source_url": "https://arxiv.org/abs/2110.07904v2",
+            "captured": "2026-10-31T06:35:15.891462+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        }
+      ]
+    },
+    {
+      "id": "diffusion",
+      "name": "扩散生成模型",
+      "query": "diffusion generative models",
+      "prerequisites": [
+        "概率分布与噪声",
+        "梯度与分数函数",
+        "微分方程和数值采样"
+      ],
+      "categories": [
+        "概率扩散与分数建模",
+        "采样与连续时间",
+        "潜空间生成",
+        "条件控制"
+      ],
+      "papers": [
+        {
+          "id": "diffusion-2015",
+          "arxiv_id": "1503.03585",
+          "name": "Diffusion Probabilistic Models",
+          "category": "概率扩散与分数建模",
+          "summary": "利用逐步破坏和恢复数据的扩散过程建立生成模型。",
+          "title": "Deep Unsupervised Learning using Nonequilibrium Thermodynamics",
+          "authors": [
+            "Sohl-Dickstein, Jascha",
+            "Weiss, Eric A.",
+            "Maheswaranathan, Niru",
+            "Ganguli, Surya"
+          ],
+          "date": "2015-03-12",
+          "version": "1503.03585v8",
+          "url": "https://arxiv.org/abs/1503.03585v8",
+          "evidence": {
+            "quote": "learn a reverse diffusion process that restores structure in data",
+            "start": 533,
+            "end": 598,
+            "field": "abstract",
+            "quote_sha256": "d39218a810c289c11776fc71e81310fb11c3fe3bf59c42a9440a73cedebcc77c",
+            "text_sha256": "137e9eec744075e31a89053cc9e996de5697de33f58023e79c70499048cf75dd",
+            "raw_sha256": "6c2b6e6e4c40d50051328f7ebe2b691cf8cfffac08a74ddde4fffe381f5a865e",
+            "source_url": "https://arxiv.org/abs/1503.03585v8",
+            "captured": "2026-10-31T06:30:47.667365+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "score",
+          "arxiv_id": "1907.05600",
+          "name": "Score Matching / NCSN",
+          "category": "概率扩散与分数建模",
+          "summary": "学习数据分布的分数函数，并通过Langevin动力学生成样本。",
+          "title": "Generative Modeling by Estimating Gradients of the Data Distribution",
+          "authors": [
+            "Song, Yang",
+            "Ermon, Stefano"
+          ],
+          "date": "2019-07-12",
+          "version": "1907.05600v3",
+          "url": "https://arxiv.org/abs/1907.05600v3",
+          "evidence": {
+            "quote": "samples are produced via Langevin dynamics using gradients of the data distribution estimated with score matching",
+            "start": 42,
+            "end": 155,
+            "field": "abstract",
+            "quote_sha256": "da448de631a71abeedd1794ba1a06df6741b0a48edd0a6e311596347b64d69f6",
+            "text_sha256": "4be6e02e2d87497cf893e6f8d3d96deabd938cc53f0c55eefaf7dfba50c2e2c9",
+            "raw_sha256": "d501cc1c517cbe4ba7d57db497fea893c96d8b027dde12681972498e24665356",
+            "source_url": "https://arxiv.org/abs/1907.05600v3",
+            "captured": "2026-10-31T06:30:52.285555+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "ddpm",
+          "arxiv_id": "2006.11239",
+          "name": "DDPM",
+          "category": "概率扩散与分数建模",
+          "summary": "展示去噪扩散概率模型，并讨论与去噪分数匹配的联系。",
+          "title": "Denoising Diffusion Probabilistic Models",
+          "authors": [
+            "Ho, Jonathan",
+            "Jain, Ajay",
+            "Abbeel, Pieter"
+          ],
+          "date": "2020-06-19",
+          "version": "2006.11239v2",
+          "url": "https://arxiv.org/abs/2006.11239v2",
+          "evidence": {
+            "quote": "a novel connection between diffusion probabilistic models and denoising score matching with Langevin dynamics",
+            "start": 279,
+            "end": 388,
+            "field": "abstract",
+            "quote_sha256": "c0e89d9857013b01a16d20331bed6bdfa0b2d84b15c32787f76fe8c9402edb18",
+            "text_sha256": "3a50b647f9d733f159c2489601bde0857b17dd704fd742747319a93b28af77ea",
+            "raw_sha256": "1d90b00e8fd3a70b202531e8548ca5008ce331daa8e89cd6266c91fb3de9d89b",
+            "source_url": "https://arxiv.org/abs/2006.11239v2",
+            "captured": "2026-10-31T06:30:56.873047+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "ddim",
+          "arxiv_id": "2010.02502",
+          "name": "DDIM",
+          "category": "采样与连续时间",
+          "summary": "通过非马尔可夫过程，在保持训练目标关联的同时改变采样方式。",
+          "title": "Denoising Diffusion Implicit Models",
+          "authors": [
+            "Song, Jiaming",
+            "Meng, Chenlin",
+            "Ermon, Stefano"
+          ],
+          "date": "2020-10-06",
+          "version": "2010.02502v4",
+          "url": "https://arxiv.org/abs/2010.02502v4",
+          "evidence": {
+            "quote": "the same training procedure as DDPMs",
+            "start": 353,
+            "end": 389,
+            "field": "abstract",
+            "quote_sha256": "c8f098e5e659ca077e38d48fec6d8f3cc9f1c9b850a903001a394b8de0f45151",
+            "text_sha256": "6a175e159d1540d25a04e3ac7b9642f46c2c82aba58ff549cde9f1991bc5c104",
+            "raw_sha256": "83567a8987f955253d28b6a7d6daa13ab306c98fe4ea339ab77c2681a07dfd7a",
+            "source_url": "https://arxiv.org/abs/2010.02502v4",
+            "captured": "2026-10-31T06:31:01.547307+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "sde",
+          "arxiv_id": "2011.13456",
+          "name": "Score-based SDE",
+          "category": "采样与连续时间",
+          "summary": "用随机微分方程统一分数生成框架，并讨论概率流常微分方程。",
+          "title": "Score-Based Generative Modeling through Stochastic Differential Equations",
+          "authors": [
+            "Song, Yang",
+            "Sohl-Dickstein, Jascha",
+            "Kingma, Diederik P.",
+            "Kumar, Abhishek",
+            "Ermon, Stefano",
+            "Poole, Ben"
+          ],
+          "date": "2020-11-26",
+          "version": "2011.13456v2",
+          "url": "https://arxiv.org/abs/2011.13456v2",
+          "evidence": {
+            "quote": "this framework encapsulates previous approaches in score-based generative modeling and diffusion probabilistic modeling",
+            "start": 700,
+            "end": 819,
+            "field": "abstract",
+            "quote_sha256": "6d7920dabffeca3981e4d071d699378b3e9a3d1395b0d4290b60e8ab420b4e60",
+            "text_sha256": "5efc36a634a45a0ac5e67c6a2063cb49a3a04ef8df4a5085fc33cbb6c3ef3dca",
+            "raw_sha256": "2c6211c9c6cba67029ccef941e33a4446a02a6c235f0ba6d597cad2c402fcdf5",
+            "source_url": "https://arxiv.org/abs/2011.13456v2",
+            "captured": "2026-10-31T06:31:06.107238+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "ldm",
+          "arxiv_id": "2112.10752",
+          "name": "Latent Diffusion",
+          "category": "潜空间生成",
+          "summary": "在预训练自动编码器的潜空间中进行扩散，以降低高分辨率生成成本。",
+          "title": "High-Resolution Image Synthesis with Latent Diffusion Models",
+          "authors": [
+            "Rombach, Robin",
+            "Blattmann, Andreas",
+            "Lorenz, Dominik",
+            "Esser, Patrick",
+            "Ommer, Björn"
+          ],
+          "date": "2021-12-20",
+          "version": "2112.10752v2",
+          "url": "https://arxiv.org/abs/2112.10752v2",
+          "evidence": {
+            "quote": "we apply them in the latent space of powerful pretrained autoencoders",
+            "start": 613,
+            "end": 682,
+            "field": "abstract",
+            "quote_sha256": "665a2213d06babaf53ef83a9d2eb6ef4e6b01397a8738ef15822b934f0fb321e",
+            "text_sha256": "585143d800043bc39f24ae1e367299afbf7ae6c0d04dcb3c3531ab94cffea97c",
+            "raw_sha256": "9dee697e0a7865ad6b3340a3bdc55b288c6e6cb03470f3515bd14e44a38f45f1",
+            "source_url": "https://arxiv.org/abs/2112.10752v2",
+            "captured": "2026-10-31T06:31:10.752070+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "dpm-solver",
+          "arxiv_id": "2206.00927",
+          "name": "DPM-Solver",
+          "category": "采样与连续时间",
+          "summary": "设计扩散常微分方程求解器，关注少步数高质量采样。",
+          "title": "DPM-Solver: A Fast ODE Solver for Diffusion Probabilistic Model Sampling in Around 10 Steps",
+          "authors": [
+            "Lu, Cheng",
+            "Zhou, Yuhao",
+            "Bao, Fan",
+            "Chen, Jianfei",
+            "Li, Chongxuan",
+            "Zhu, Jun"
+          ],
+          "date": "2022-06-02",
+          "version": "2206.00927v3",
+          "url": "https://arxiv.org/abs/2206.00927v3",
+          "evidence": {
+            "quote": "a fast dedicated high-order solver for diffusion ODEs",
+            "start": 853,
+            "end": 906,
+            "field": "abstract",
+            "quote_sha256": "ac5d1eda2e86d742317389c4c2999a316f3e2a367c2968292c36ed997781df2b",
+            "text_sha256": "eed591a5d98e40d2e06f4a8ddd8d5a08133144729fc5b480b56d05bec8d5df9a",
+            "raw_sha256": "62d439b8a0a25805b9b7be197c9653d370ddaa776b9a60e0fb23410d33d33156",
+            "source_url": "https://arxiv.org/abs/2206.00927v3",
+            "captured": "2026-10-31T06:31:15.400034+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        },
+        {
+          "id": "controlnet",
+          "arxiv_id": "2302.05543",
+          "name": "ControlNet",
+          "category": "条件控制",
+          "summary": "在预训练文本到图像扩散模型上学习空间条件控制。",
+          "title": "Adding Conditional Control to Text-to-Image Diffusion Models",
+          "authors": [
+            "Zhang, Lvmin",
+            "Rao, Anyi",
+            "Agrawala, Maneesh"
+          ],
+          "date": "2023-02-10",
+          "version": "2302.05543v3",
+          "url": "https://arxiv.org/abs/2302.05543v3",
+          "evidence": {
+            "quote": "add spatial conditioning controls to large, pretrained text-to-image diffusion models",
+            "start": 56,
+            "end": 141,
+            "field": "abstract",
+            "quote_sha256": "068db1a0f0158cb85c93a11ee1de65d4305b5ca1ad428ba4f0718ae7bd2e9f71",
+            "text_sha256": "7bc42744b4359b542460e3ca145fc802540ac94939f4c8be7761548ce074d69c",
+            "raw_sha256": "fec234ea8655feb2ed3feed38f21d5bfae072fe8ab21c7777f6d86d0e9a3031a",
+            "source_url": "https://arxiv.org/abs/2302.05543v3",
+            "captured": "2026-10-31T06:31:20.049925+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "initial"
+        }
+      ],
+      "supplements": [
+        {
+          "id": "improved-ddpm",
+          "arxiv_id": "2102.09672",
+          "name": "Improved DDPM",
+          "category": "训练与似然（补充）",
+          "summary": "讨论简单修改、反向过程方差学习、似然及样本质量，补上初稿较弱的训练目标维度。",
+          "title": "Improved Denoising Diffusion Probabilistic Models",
+          "authors": [
+            "Nichol, Alex",
+            "Dhariwal, Prafulla"
+          ],
+          "date": "2021-02-18",
+          "version": "2102.09672v1",
+          "url": "https://arxiv.org/abs/2102.09672v1",
+          "evidence": {
+            "quote": "competitive log-likelihoods while maintaining high sample quality",
+            "start": 211,
+            "end": 276,
+            "field": "abstract",
+            "quote_sha256": "38a1d9721094ff7ab8ebae7b70356fe259f53732db38c5413d757817b13b7b49",
+            "text_sha256": "d63d11a7b07949deaf965f428977b85717f134bdfb0c18ba63dad825cc00c1ba",
+            "raw_sha256": "ad8732a376dcb662092b248ca1723d44dc66346e00e22c9eb877c273e11ecf06",
+            "source_url": "https://arxiv.org/abs/2102.09672v1",
+            "captured": "2026-10-31T06:35:20.730572+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "after_survey"
+        },
+        {
+          "id": "d3pm",
+          "arxiv_id": "2107.03006",
+          "name": "D3PM",
+          "category": "离散结构（补充）",
+          "summary": "在离散状态空间设计噪声转移过程，补充初稿局限于连续图像的视角。",
+          "title": "Structured Denoising Diffusion Models in Discrete State-Spaces",
+          "authors": [
+            "Austin, Jacob",
+            "Johnson, Daniel D.",
+            "Ho, Jonathan",
+            "Tarlow, Daniel",
+            "Berg, Rianne van den"
+          ],
+          "date": "2021-07-07",
+          "version": "2107.03006v3",
+          "url": "https://arxiv.org/abs/2107.03006v3",
+          "evidence": {
+            "quote": "diffusion-like generative models for discrete data",
+            "start": 235,
+            "end": 285,
+            "field": "abstract",
+            "quote_sha256": "8cadcbf792df17f514510dfcddc9664812fb4cbb93cec80582bc2d4f8738b1a6",
+            "text_sha256": "fc6a5be656feab7be8fcde7b6abb259ee187718daa8a7e5a925f868b84dc9f32",
+            "raw_sha256": "d7fb3036be23823bdfdccb576e4900b0a6d9eadc53134548779386037d7e1e1a",
+            "source_url": "https://arxiv.org/abs/2107.03006v3",
+            "captured": "2026-10-31T06:35:25.362602+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          },
+          "basis": "author_abstract_only",
+          "phase": "after_survey"
+        }
+      ],
+      "follow_up": "对照后补充Improved DDPM与D3PM：高效采样并不能覆盖训练与似然优化，连续图像也不能代表所有数据结构。视频、三维与科学应用仍需扩展，不能因新增两篇便宣称全面。",
+      "paths": [
+        {
+          "name": "生成基础的两条线",
+          "papers": [
+            "diffusion-2015",
+            "score",
+            "ddpm",
+            "sde"
+          ],
+          "kind": "reading_order",
+          "reason": "比较扩散概率建模和分数建模，再学习联系与统一表述。"
+        },
+        {
+          "name": "推理成本与采样",
+          "papers": [
+            "ddpm",
+            "ddim",
+            "sde",
+            "dpm-solver"
+          ],
+          "kind": "problem_progression",
+          "reason": "训练过程、采样过程和求解器需要分开理解。"
+        },
+        {
+          "name": "从像素成本到可控生成",
+          "papers": [
+            "ddpm",
+            "ldm",
+            "controlnet"
+          ],
+          "kind": "reading_order",
+          "reason": "从基础图像生成读到潜空间和空间条件控制，不声称逐篇因果继承。"
+        }
+      ],
+      "overview": [
+        {
+          "text": "扩散概率模型和分数模型提供两条理解生成过程的入口，DDPM讨论去噪扩散与分数匹配的联系，SDE工作提供连续时间的统一框架。学习路径应解释目标和采样机制，不能仅按年份串成单一祖先树。",
+          "papers": [
+            "diffusion-2015",
+            "score",
+            "ddpm",
+            "sde"
+          ]
+        },
+        {
+          "text": "采样效率与表示空间是不同维度。DDIM和DPM-Solver关注采样过程及求解效率，LDM把扩散移到潜空间，ControlNet关注空间条件控制；这些维度可以组合，但本组不声称其组合已在项目中复现。",
+          "papers": [
+            "ddim",
+            "dpm-solver",
+            "ldm",
+            "controlnet"
+          ]
+        },
+        {
+          "text": "评价应同时说明数据、分辨率、采样步数、耗时、样本质量及条件服从度。不同数据和模型下的质量指标不能直接横比；训练成本、数据偏差和生成安全也需要专门材料，本轮尚未完成这些实验或风险评估。",
+          "papers": [
+            "ddpm",
+            "dpm-solver",
+            "ldm",
+            "controlnet"
+          ],
+          "kind": "synthesis_and_proposed_experiment"
+        }
+      ],
+      "limits": [
+        "以连续图像扩散为主，未系统纳入离散、音频、视频、三维和科学应用。",
+        "未覆盖全部引导方法、训练改进和最新流匹配；没有执行生成实验。"
+      ],
+      "survey": {
+        "title": "Diffusion Models: A Comprehensive Survey of Methods and Applications",
+        "url": "https://arxiv.org/html/2209.00796v15",
+        "venue": "ACM Computing Surveys",
+        "doi": "10.1145/3626235",
+        "arxiv_id": "2209.00796v15",
+        "publication_status": "期刊DOI与arXiv修订版分开核对；v15不是期刊原版的逐字副本证明",
+        "publication": {
+          "DOI": "10.1145/3626235",
+          "title": [
+            "Diffusion Models: A Comprehensive Survey of Methods and Applications"
+          ],
+          "container-title": [
+            "ACM Computing Surveys"
+          ],
+          "published": {
+            "date-parts": [
+              [
+                2023,
+                11,
+                9
+              ]
+            ]
+          },
+          "type": "journal-article"
+        },
+        "publication_raw_sha256": "5861aa4d486a21eba4ee18f4a0d5aac75aa834f8355340a68d3f475501f2ec80",
+        "publication_captured": "2026-10-31T06:36:43.505731+00:00",
+        "body_raw_sha256": "c8e9e28809f7c5f08776c18411f98cc0e64a7b2e800cd4ec868027ce48e8a099",
+        "body_text_sha256": "1a5aae49b601f88a3b90c85917b3e0d8db9828a4d08ac273d2c5791f1892e79e",
+        "captured": "2026-10-31T06:32:47.721606+00:00",
+        "status": "published_record_verified",
+        "body_basis": "revised_arxiv_v15_not_publisher_version"
+      },
+      "validation": [
+        {
+          "axis": "生成基础",
+          "initial_status": "covered",
+          "papers": [
+            "diffusion-2015",
+            "score",
+            "ddpm",
+            "sde"
+          ],
+          "supplements": [],
+          "assessment": "扩散、分数和SDE入口已列入。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "2",
+          "evidence": {
+            "quote": "Foundations of Diffusion Models",
+            "start": 347,
+            "end": 378,
+            "field": "normalized_full_page",
+            "quote_sha256": "f80d4faa3eeea6c661cf9747abcca30a57ccd1eaa4bb5b3930f5378eedecaf32",
+            "text_sha256": "1a5aae49b601f88a3b90c85917b3e0d8db9828a4d08ac273d2c5791f1892e79e",
+            "raw_sha256": "c8e9e28809f7c5f08776c18411f98cc0e64a7b2e800cd4ec868027ce48e8a099",
+            "source_url": "https://arxiv.org/html/2209.00796v15",
+            "captured": "2026-10-31T06:32:47.721606+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "高效采样",
+          "initial_status": "partial",
+          "papers": [
+            "ddim",
+            "dpm-solver"
+          ],
+          "supplements": [],
+          "assessment": "已有免训练采样路线，未收集蒸馏等学习式采样。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "3",
+          "evidence": {
+            "quote": "Efficient Sampling",
+            "start": 548,
+            "end": 566,
+            "field": "normalized_full_page",
+            "quote_sha256": "7f2267c8cc2778f07fd977c86bb620a13290dfc779e3829181e0796a83933316",
+            "text_sha256": "1a5aae49b601f88a3b90c85917b3e0d8db9828a4d08ac273d2c5791f1892e79e",
+            "raw_sha256": "c8e9e28809f7c5f08776c18411f98cc0e64a7b2e800cd4ec868027ce48e8a099",
+            "source_url": "https://arxiv.org/html/2209.00796v15",
+            "captured": "2026-10-31T06:32:47.721606+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "训练与似然",
+          "initial_status": "partial",
+          "papers": [
+            "ddpm",
+            "sde"
+          ],
+          "supplements": [
+            "improved-ddpm"
+          ],
+          "assessment": "初稿提到训练目标和SDE，但未专门组织似然改进，补读Improved DDPM。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "4",
+          "evidence": {
+            "quote": "Improved Likelihood",
+            "start": 768,
+            "end": 787,
+            "field": "normalized_full_page",
+            "quote_sha256": "b74ac04387e562446ccf9bbea820e8448b59453c9c024d7692c7dfc857e06467",
+            "text_sha256": "1a5aae49b601f88a3b90c85917b3e0d8db9828a4d08ac273d2c5791f1892e79e",
+            "raw_sha256": "c8e9e28809f7c5f08776c18411f98cc0e64a7b2e800cd4ec868027ce48e8a099",
+            "source_url": "https://arxiv.org/html/2209.00796v15",
+            "captured": "2026-10-31T06:32:47.721606+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "特殊数据结构",
+          "initial_status": "gap",
+          "papers": [],
+          "supplements": [
+            "d3pm"
+          ],
+          "assessment": "补读离散状态D3PM；不因此覆盖不变性、流形等所有结构。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "5",
+          "evidence": {
+            "quote": "Special Structures",
+            "start": 916,
+            "end": 934,
+            "field": "normalized_full_page",
+            "quote_sha256": "dcb538388c917d348466f606f9845279e55dc1558fd935b20db641bbb419bfeb",
+            "text_sha256": "1a5aae49b601f88a3b90c85917b3e0d8db9828a4d08ac273d2c5791f1892e79e",
+            "raw_sha256": "c8e9e28809f7c5f08776c18411f98cc0e64a7b2e800cd4ec868027ce48e8a099",
+            "source_url": "https://arxiv.org/html/2209.00796v15",
+            "captured": "2026-10-31T06:32:47.721606+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "潜空间",
+          "initial_status": "covered",
+          "papers": [
+            "ldm"
+          ],
+          "supplements": [],
+          "assessment": "已有LDM作为潜空间入口。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "8",
+          "evidence": {
+            "quote": "Latent Representations",
+            "start": 2666,
+            "end": 2688,
+            "field": "normalized_full_page",
+            "quote_sha256": "1a7b41986831e4307c1289cdf8e56721bca869d2d79571fac8f2451ef2378f1d",
+            "text_sha256": "1a5aae49b601f88a3b90c85917b3e0d8db9828a4d08ac273d2c5791f1892e79e",
+            "raw_sha256": "c8e9e28809f7c5f08776c18411f98cc0e64a7b2e800cd4ec868027ce48e8a099",
+            "source_url": "https://arxiv.org/html/2209.00796v15",
+            "captured": "2026-10-31T06:32:47.721606+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        },
+        {
+          "axis": "应用",
+          "initial_status": "partial",
+          "papers": [
+            "controlnet",
+            "ldm"
+          ],
+          "supplements": [],
+          "assessment": "有图像条件控制；视频、三维、时间序列及科学应用仍未系统整理。",
+          "judgment": "assistant_curated_not_expert_gold",
+          "section": "7",
+          "evidence": {
+            "quote": "Applications",
+            "start": 56,
+            "end": 68,
+            "field": "normalized_full_page",
+            "quote_sha256": "98e33b0f3104fcf1b812ba2c679c0f15a94f583559b731d6580df2d8307d3edf",
+            "text_sha256": "1a5aae49b601f88a3b90c85917b3e0d8db9828a4d08ac273d2c5791f1892e79e",
+            "raw_sha256": "c8e9e28809f7c5f08776c18411f98cc0e64a7b2e800cd4ec868027ce48e8a099",
+            "source_url": "https://arxiv.org/html/2209.00796v15",
+            "captured": "2026-10-31T06:32:47.721606+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        }
+      ],
+      "declared_relations": [
+        {
+          "source": "ddpm",
+          "target": "ddim",
+          "kind": "author_described_shared_training",
+          "status": "author_statement_not_independently_proven",
+          "evidence": {
+            "quote": "the same training procedure as DDPMs",
+            "start": 353,
+            "end": 389,
+            "field": "abstract",
+            "quote_sha256": "c8f098e5e659ca077e38d48fec6d8f3cc9f1c9b850a903001a394b8de0f45151",
+            "text_sha256": "6a175e159d1540d25a04e3ac7b9642f46c2c82aba58ff549cde9f1991bc5c104",
+            "raw_sha256": "83567a8987f955253d28b6a7d6daa13ab306c98fe4ea339ab77c2681a07dfd7a",
+            "source_url": "https://arxiv.org/abs/2010.02502v4",
+            "captured": "2026-10-31T06:31:01.547307+00:00",
+            "verified": true,
+            "verification": "exact_excerpt_in_captured_source_not_semantic_certification"
+          }
+        }
+      ]
+    }
+  ],
+  "audit": {
+    "built": "2026-10-31T06:49:43.090521+00:00",
+    "initial_freeze": {
+      "created": "2026-10-31T06:29:50.000257+00:00",
+      "sha256": "4eeaac94f0ad15db7ec3bb21b631654aa4ba2ac56820061212d1ba7762d4e2d6",
+      "protocol": "先冻结初稿，再对照综述全文。选综述时已看到标题、摘要及搜索片段；不声称盲测。综述从不进入初稿证据集合。"
+    },
+    "initial_material_sha256": "472c99058a797d1cf96c664939173a05f61e2eb7bba298d02239b7773b04575d",
+    "primary_papers": 24,
+    "supplemental_papers": 6,
+    "surveys": 3,
+    "real_model_calls": 0,
+    "independent_human_reviews": 0,
+    "semantic_validation_passed": false,
+    "boundary": "原摘要+外部综述结构对照；覆盖判断为助手拟定，非盲评、专家金标准、统一实验或综述一致率。"
+  }
+}

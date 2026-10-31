@@ -58,6 +58,25 @@ def research_watch_router(service, collaboration, worker_status, ai_ready=None):
     async def feed(request: Request, subscription_id: str = '', offset: int = Query(0, ge=0, le=1000000), limit: int = Query(30, ge=1, le=100)):
         return await call(request, 'feed', subscription_id, offset, limit)
 
+    async def domain_call(request, method, *args):
+        from services import research_domains
+        await run_in_threadpool(owner, request)
+        try: return await run_in_threadpool(lambda: getattr(research_domains, method)(*args))
+        except LookupError as exc: raise HTTPException(404, str(exc))
+        except ValueError as exc: raise HTTPException(400, str(exc))
+
+    @router.get('/domains')
+    async def domains(request: Request): return await domain_call(request, 'catalog')
+
+    @router.get('/domains/{domain_id}')
+    async def domain(domain_id: str, request: Request): return await domain_call(request, 'get', domain_id)
+
+    @router.get('/domains/{domain_id}/export')
+    async def export_domain(domain_id: str, request: Request):
+        value = await domain_call(request, 'get', domain_id)
+        value['markdown'] = await domain_call(request, 'markdown', domain_id)
+        return value
+
     @router.get('/digests/{did}')
     async def digest(did: str, request: Request, offset: int = Query(0, ge=0, le=1000000), limit: int = Query(30, ge=1, le=100)):
         return await call(request, 'digest', did, offset, limit)

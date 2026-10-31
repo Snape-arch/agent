@@ -1,0 +1,88 @@
+{
+  "version": "domain-reading.v1",
+  "authorship": "assistant_curated_not_model_or_expert_validated",
+  "scope": "三个AI方法方向的代表性阅读种子集，不是穷尽检索或2026年前沿全集。",
+  "protocol": "先冻结初稿，再对照综述全文。选综述时已看到标题、摘要及搜索片段；不声称盲测。综述从不进入初稿证据集合。",
+  "domains": [
+    {
+      "id": "rag", "name": "检索增强生成（RAG）", "query": "retrieval augmented generation",
+      "prerequisites": ["向量与相似度", "编码器与序列生成", "训练集、评测集和数据泄漏"],
+      "categories": ["知识检索与预训练", "检索生成耦合", "查询改写", "检索决策与评估"],
+      "papers": [
+        {"id":"realm","arxiv_id":"2002.08909","name":"REALM","category":"知识检索与预训练","summary":"把检索器纳入语言模型预训练，讨论如何通过外部文本补充知识。"},
+        {"id":"dpr","arxiv_id":"2004.04906","name":"DPR","category":"知识检索与预训练","summary":"用双编码器进行稠密段落检索；是检索组件研究，并不等于完整生成系统。"},
+        {"id":"rag-original","arxiv_id":"2005.11401","name":"RAG","category":"检索生成耦合","summary":"结合参数化模型和外部非参数记忆，比较按序列和按词条件化的生成方式。"},
+        {"id":"fid","arxiv_id":"2007.01282","name":"Fusion-in-Decoder","category":"检索生成耦合","summary":"围绕开放域问答，研究生成模型如何利用多条检索段落。"},
+        {"id":"retro","arxiv_id":"2112.04426","name":"RETRO","category":"检索生成耦合","summary":"在语言建模中使用大规模外部检索库，研究参数规模与检索的配合。"},
+        {"id":"hyde","arxiv_id":"2212.10496","name":"HyDE","category":"查询改写","summary":"先生成假设文档再编码检索，关注不依赖相关性标注的稠密检索。"},
+        {"id":"ragas","arxiv_id":"2309.15217","name":"RAGAS","category":"检索决策与评估","summary":"提出无参考答案的RAG评估框架；自动评估不能替代人工事实核验。"},
+        {"id":"self-rag","arxiv_id":"2310.11511","name":"Self-RAG","category":"检索决策与评估","summary":"通过反思标记学习按需检索及自我评价，连接检索决策与生成检查。"}
+      ],
+      "paths": [
+        {"name":"从找资料到用资料","papers":["dpr","rag-original","fid"],"kind":"reading_order","reason":"先理解检索组件，再比较生成阶段如何融合材料。"},
+        {"name":"从固定检索到决策与核查","papers":["rag-original","hyde","self-rag","ragas"],"kind":"problem_progression","reason":"分别考察查什么、何时查、如何评估；不是声称这些论文逐篇继承。"},
+        {"name":"外部记忆与模型训练","papers":["realm","retro"],"kind":"parallel_approaches","reason":"比较检索参与预训练和语言建模的方式。"}
+      ],
+      "overview": [
+        {"text":"本组文献把RAG分为检索表示、检索与生成耦合、查询构造、决策及评估四层。REALM与DPR分别研究知识检索参与训练和段落检索，不能把检索器效果直接当作生成答案正确率。","papers":["realm","dpr"]},
+        {"text":"原始RAG将参数记忆与外部索引结合，FiD考察多段落生成，RETRO把检索扩展到语言建模。三者服务的任务和模型条件不同，不能依据各自摘要中的效果描述排出统一优劣。","papers":["rag-original","fid","retro"]},
+        {"text":"HyDE、Self-RAG和RAGAS分别把注意力移到查询表示、按需检索与自我评价、系统评估。后续实验应固定语料和预算，分别测检索相关性、答案依据、拒答及成本；这些实验建议尚未执行。","papers":["hyde","self-rag","ragas"],"kind":"synthesis_and_proposed_experiment"}
+      ],
+      "limits": ["以文本开放域任务为主，未覆盖多模态RAG、图检索和行业部署。", "尚无统一数据与预算下的复现比较；正文引用不自动证明推论。"],
+      "survey": {"title":"Retrieval-Augmented Generation for AI-Generated Content: A Survey","url":"https://link.springer.com/article/10.1007/s41019-025-00335-5","venue":"Data Science and Engineering","doi":"10.1007/s41019-025-00335-5","publication_status":"待出版商页面核验"}
+    },
+    {
+      "id":"peft", "name":"参数高效微调（PEFT）", "query":"parameter efficient fine tuning",
+      "prerequisites":["梯度与优化器", "Transformer权重矩阵", "显存、精度和量化"],
+      "categories":["新增适配参数", "软提示", "选择性更新与缩放", "低秩与资源优化"],
+      "papers":[
+        {"id":"adapters","arxiv_id":"1902.00751","name":"Adapters","category":"新增适配参数","summary":"冻结原网络，为各任务添加小型适配模块。"},
+        {"id":"prefix","arxiv_id":"2101.00190","name":"Prefix-Tuning","category":"软提示","summary":"冻结语言模型，通过可训练连续前缀适配生成任务。"},
+        {"id":"prompt","arxiv_id":"2104.08691","name":"Prompt Tuning","category":"软提示","summary":"学习输入端软提示，并研究模型规模对适配效果的影响。"},
+        {"id":"bitfit","arxiv_id":"2106.10199","name":"BitFit","category":"选择性更新与缩放","summary":"仅更新偏置参数，考察极少参数更新的适配能力。"},
+        {"id":"lora","arxiv_id":"2106.09685","name":"LoRA","category":"低秩与资源优化","summary":"冻结基础权重，以可训练低秩矩阵表示任务更新。"},
+        {"id":"ia3","arxiv_id":"2205.05638","name":"IA³","category":"选择性更新与缩放","summary":"通过学习向量缩放内部激活，探索少样本高效适配。"},
+        {"id":"adalora","arxiv_id":"2303.10512","name":"AdaLoRA","category":"低秩与资源优化","summary":"围绕重要性自适应分配低秩更新的参数预算。"},
+        {"id":"qlora","arxiv_id":"2305.14314","name":"QLoRA","category":"低秩与资源优化","summary":"结合冻结的量化基础模型与低秩适配，降低微调内存需求。"}
+      ],
+      "paths":[
+        {"name":"适配位置的不同选择","papers":["adapters","prefix","prompt","bitfit","ia3"],"kind":"parallel_approaches","reason":"比较添加模块、学习提示、选择参数与缩放激活；不是线性替代史。"},
+        {"name":"低秩更新、预算和显存","papers":["lora","adalora","qlora"],"kind":"problem_progression","reason":"依次学习更新表示、参数预算和量化内存；AdaLoRA不是QLoRA的已证实直接前身。"}
+      ],
+      "overview":[
+        {"text":"PEFT的共同问题是避免为每个任务维护和训练整套基础权重。本组从新增模块、连续提示、选择性更新及低秩更新四个入口比较适配位置；方法分类是阅读组织，不是唯一标准。","papers":["adapters","prefix","prompt","bitfit","lora","ia3"]},
+        {"text":"低秩更新不等于量化。LoRA研究权重更新的低秩表示，AdaLoRA研究预算如何分配，QLoRA则将量化基础模型与适配器结合。可训练参数少不能单独推出端到端显存、吞吐和精度都更优。","papers":["lora","adalora","qlora"]},
+        {"text":"合理比较应固定基础模型、任务、数据、训练步数和硬件，同时报告可训练参数、峰值显存、训练时间及任务指标。不同规模和任务上的作者结果不能直接拼成统一排行榜；以上比较计划尚未实测。","papers":["prompt","lora","qlora"],"kind":"synthesis_and_proposed_experiment"}
+      ],
+      "limits":["主要覆盖NLP/语言模型，未系统收集视觉、多模态与多任务组合。", "未覆盖稀疏结构搜索、混合方法和完整系统优化，不能声称PEFT全集。"],
+      "survey":{"title":"Parameter-Efficient Fine-Tuning for Large Models: A Comprehensive Survey","url":"https://arxiv.org/html/2403.14608v7","venue":"Transactions on Machine Learning Research","arxiv_id":"2403.14608v7","publication_status":"待期刊原始记录核验"}
+    },
+    {
+      "id":"diffusion", "name":"扩散生成模型", "query":"diffusion generative models",
+      "prerequisites":["概率分布与噪声", "梯度与分数函数", "微分方程和数值采样"],
+      "categories":["概率扩散与分数建模", "采样与连续时间", "潜空间生成", "条件控制"],
+      "papers":[
+        {"id":"diffusion-2015","arxiv_id":"1503.03585","name":"Diffusion Probabilistic Models","category":"概率扩散与分数建模","summary":"利用逐步破坏和恢复数据的扩散过程建立生成模型。"},
+        {"id":"score","arxiv_id":"1907.05600","name":"Score Matching / NCSN","category":"概率扩散与分数建模","summary":"学习数据分布的分数函数，并通过Langevin动力学生成样本。"},
+        {"id":"ddpm","arxiv_id":"2006.11239","name":"DDPM","category":"概率扩散与分数建模","summary":"展示去噪扩散概率模型，并讨论与去噪分数匹配的联系。"},
+        {"id":"ddim","arxiv_id":"2010.02502","name":"DDIM","category":"采样与连续时间","summary":"通过非马尔可夫过程，在保持训练目标关联的同时改变采样方式。"},
+        {"id":"sde","arxiv_id":"2011.13456","name":"Score-based SDE","category":"采样与连续时间","summary":"用随机微分方程统一分数生成框架，并讨论概率流常微分方程。"},
+        {"id":"ldm","arxiv_id":"2112.10752","name":"Latent Diffusion","category":"潜空间生成","summary":"在预训练自动编码器的潜空间中进行扩散，以降低高分辨率生成成本。"},
+        {"id":"dpm-solver","arxiv_id":"2206.00927","name":"DPM-Solver","category":"采样与连续时间","summary":"设计扩散常微分方程求解器，关注少步数高质量采样。"},
+        {"id":"controlnet","arxiv_id":"2302.05543","name":"ControlNet","category":"条件控制","summary":"在预训练文本到图像扩散模型上学习空间条件控制。"}
+      ],
+      "paths":[
+        {"name":"生成基础的两条线","papers":["diffusion-2015","score","ddpm","sde"],"kind":"reading_order","reason":"比较扩散概率建模和分数建模，再学习联系与统一表述。"},
+        {"name":"推理成本与采样","papers":["ddpm","ddim","sde","dpm-solver"],"kind":"problem_progression","reason":"训练过程、采样过程和求解器需要分开理解。"},
+        {"name":"从像素成本到可控生成","papers":["ddpm","ldm","controlnet"],"kind":"reading_order","reason":"从基础图像生成读到潜空间和空间条件控制，不声称逐篇因果继承。"}
+      ],
+      "overview":[
+        {"text":"扩散概率模型和分数模型提供两条理解生成过程的入口，DDPM讨论去噪扩散与分数匹配的联系，SDE工作提供连续时间的统一框架。学习路径应解释目标和采样机制，不能仅按年份串成单一祖先树。","papers":["diffusion-2015","score","ddpm","sde"]},
+        {"text":"采样效率与表示空间是不同维度。DDIM和DPM-Solver关注采样过程及求解效率，LDM把扩散移到潜空间，ControlNet关注空间条件控制；这些维度可以组合，但本组不声称其组合已在项目中复现。","papers":["ddim","dpm-solver","ldm","controlnet"]},
+        {"text":"评价应同时说明数据、分辨率、采样步数、耗时、样本质量及条件服从度。不同数据和模型下的质量指标不能直接横比；训练成本、数据偏差和生成安全也需要专门材料，本轮尚未完成这些实验或风险评估。","papers":["ddpm","dpm-solver","ldm","controlnet"],"kind":"synthesis_and_proposed_experiment"}
+      ],
+      "limits":["以连续图像扩散为主，未系统纳入离散、音频、视频、三维和科学应用。", "未覆盖全部引导方法、训练改进和最新流匹配；没有执行生成实验。"],
+      "survey":{"title":"Diffusion Models: A Comprehensive Survey of Methods and Applications","url":"https://arxiv.org/html/2209.00796v14","venue":"ACM Computing Surveys","doi":"10.1145/3626235","arxiv_id":"2209.00796","publication_status":"待出版商记录与可读版本核验"}
+    }
+  ]
+}
