@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "profile": "quick",
+  "generatedAt": "2026-07-30T15:27:43.243252+00:00",
+  "database": {
+    "runs": 500,
+    "metrics": 10000,
+    "insertRuns": {
+      "medianMs": 0.804,
+      "p95Ms": 0.804,
+      "samples": 1
+    },
+    "insertMetrics": {
+      "medianMs": 11.803,
+      "p95Ms": 11.803,
+      "samples": 1
+    },
+    "deepPageQuery": {
+      "medianMs": 0.077,
+      "p95Ms": 0.221,
+      "samples": 20
+    },
+    "runMetricQuery": {
+      "medianMs": 0.01,
+      "p95Ms": 0.045,
+      "samples": 20
+    }
+  },
+  "dataEngine": {
+    "rows": 20000,
+    "query": {
+      "medianMs": 9.033,
+      "p95Ms": 11.233,
+      "samples": 5
+    },
+    "groups": 20,
+    "stats": {
+      "scannedRows": 20000,
+      "matchedRows": 10000,
+      "resultRows": 20,
+      "truncated": false
+    }
+  },
+  "assetPipeline": {
+    "parts": 40,
+    "bytes": 17336,
+    "compile": {
+      "medianMs": 2.135,
+      "p95Ms": 2.532,
+      "samples": 3
+    },
+    "generator": {
+      "quality": "standard",
+      "vertices": 320,
+      "faces": 480,
+      "bytes": 17336,
+      "generator": "clawvision-mesh-v1",
+      "format": "glb",
+      "uvGenerated": true,
+      "normalsRepaired": true,
+      "pbrTextureBaked": true
+    },
+    "quality": {
+      "format": "glb",
+      "score": 100,
+      "metrics": {
+        "vertices": 320,
+        "faces": 480,
+        "primitives": 1,
+        "materials": 1,
+        "textures": 1,
+        "bytes": 17336
+      },
+      "contract": {
+        "valid": true,
+        "issues": [],
+        "counts": {
+          "accessors": 4,
+          "bufferViews": 5,
+          "buffers": 1,
+          "materials": 1,
+          "textures": 1,
+          "images": 1
+        }
+      },
+      "issues": [],
+      "threshold": 75,
+      "passed": true,
+      "actions": []
+    }
+  },
+  "passed": true
+}

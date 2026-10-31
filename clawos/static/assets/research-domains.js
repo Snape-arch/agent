@@ -13,7 +13,7 @@
     const v = await r.json(); if (!r.ok) throw new Error(typeof v.detail === 'string' ? v.detail : '阅读包暂时不可用'); return v;
   }
   function link(label, url) {
-    const p = new URL(url); if (p.protocol !== 'https:' || p.username || p.password) return node('span', label);
+    const p = new URL(url, location.href); if ((p.protocol !== 'https:' && p.origin !== location.origin) || p.username || p.password) return node('span', label);
     const a = node('a', label); a.href = p.href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a;
   }
   function details(title) { const e = node('details'); e.append(node('summary', title)); return e; }
@@ -74,6 +74,7 @@
         catch (e) { state.textContent = e.message; } finally { b.disabled = false; }
       }); controls.append(b);
     } root.append(controls);
+    root.append(link('带着这个方向做实验', '/academy/vision/?domain=' + d.id + '#home'));
   }
   trigger.addEventListener('click', async () => {
     trigger.disabled = true; state.textContent = '正在载入方向目录…';

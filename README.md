@@ -1,5 +1,7 @@
 # Agent / ClawOS Workspace
 
+ClawVision已接入`/academy/vision/`实验与视觉工作区，统一暖米白风格，提供按需独立实验服务、文献方向引用、数据集恢复与私有图表。当前仅本机所有者可控制；相关143项ClawOS回归、55项后端、55项前端及13项实际HTTP/SSE检查通过，未替代真实GPU/团队SSO/论文复现验收。见[整合范围与验收](clawos/benchmarks/CLAWVISION_INTEGRATION_ACCEPTANCE.md)。
+
 AI综合和精读报告已加入主张边界风险检查，疑似否定/范围/单位/预测/状态误述进入待核查；AI暂缓主张保留来源、可导出并送评，旧报告不改写。相关122项与人工模型流程通过，有限模式不认证学术语义，见[边界守卫与暂缓链路](clawos/benchmarks/RESEARCH_CLAIM_BOUNDARY_ACCEPTANCE.md)。
 
 研究订阅页新增主张评审工作台：AI方法/生物医学/气候科学候选、冻结报告和AI任务送评、逐项盲评/仲裁、摘录授权/撤权及导出。相关107项通过，公开片段7/8定位，IPCC抓取403仍待核验；候选标签未获专家确认，真人及真实模型语义质量留未验收，见[评审机制与边界](clawos/benchmarks/RESEARCH_REVIEW_ACCEPTANCE.md)。

@@ -1877,6 +1877,8 @@ async def lifespan(app: FastAPI):
     g_research_ai_worker = ResearchAIWorker(ResearchAI(_research_watch()), _research_ai_model)
     g_research_ai_worker.start()
     yield
+    if g_vision_runtime is not None:
+        await asyncio.to_thread(g_vision_runtime.close)
     await g_research_ai_worker.close()
     await g_research_watch_worker.close()
     await g_document_index_worker.close()
@@ -5344,6 +5346,18 @@ app.include_router(research_watch_router(_research_watch, _collaboration, _resea
 @app.get('/academy/research')
 async def research_watch_page():
     return FileResponse(STATIC_DIR / 'academy-research.html', headers={'Cache-Control': 'no-store'})
+
+from services.vision_api import vision_router
+g_vision_runtime = None
+
+def _vision_runtime():
+    global g_vision_runtime
+    if g_vision_runtime is None:
+        from services.vision_runtime import VisionRuntime
+        g_vision_runtime = VisionRuntime(DATA_DIR / 'vision')
+    return g_vision_runtime
+
+app.include_router(vision_router(_vision_runtime, _collaboration, STATIC_DIR / 'vision'))
 
 @app.middleware('http')
 async def workbench_access(request: Request, call_next):

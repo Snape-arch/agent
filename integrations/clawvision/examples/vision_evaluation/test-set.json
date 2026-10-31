@@ -1,0 +1,11 @@
+{
+  "name": "流程样例：零件分类（非真实工业数据）",
+  "task": "classification",
+  "classes": ["gear", "bolt"],
+  "samples": [
+    {"id": "part-001", "label": "gear", "conditions": {"lighting": "reflection", "angle": "side"}},
+    {"id": "part-002", "label": "gear", "conditions": {"lighting": "reflection", "angle": "front"}},
+    {"id": "part-003", "label": "bolt", "conditions": {"lighting": "normal", "angle": "side"}},
+    {"id": "part-004", "label": "bolt", "conditions": {"lighting": "normal", "angle": "front"}}
+  ]
+}

@@ -1,0 +1,6 @@
+[
+  {"sampleId": "part-001", "label": "bolt", "confidence": 0.85},
+  {"sampleId": "part-002", "label": "gear", "confidence": 0.95},
+  {"sampleId": "part-003", "label": "gear", "confidence": 0.70},
+  {"sampleId": "part-004", "label": "bolt", "confidence": 0.90}
+]

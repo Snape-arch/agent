@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "profile": "full",
+  "generatedAt": "2026-07-30T17:11:43.435423+00:00",
+  "rows": 10000000,
+  "files": 10,
+  "partitioned": true,
+  "memoryLimit": "256MB",
+  "baselineRssMb": 105.07,
+  "peakRssMb": 115.56,
+  "rssDeltaMb": 10.49,
+  "maxRssDeltaMb": 512,
+  "generationMs": 2293.86,
+  "queryMs": 110.75,
+  "matchedRows": 5000000,
+  "resultRows": 5,
+  "resultGroups": 5,
+  "sourceFiles": 10,
+  "planHasParquetScan": true,
+  "passed": true
+}

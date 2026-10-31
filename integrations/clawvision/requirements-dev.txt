@@ -1,0 +1,6 @@
+coverage>=7.6,<8
+ruff>=0.9,<1
+uvicorn>=0.35,<1
+numpy>=2,<3
+Pillow>=11,<13
+pyarrow>=17

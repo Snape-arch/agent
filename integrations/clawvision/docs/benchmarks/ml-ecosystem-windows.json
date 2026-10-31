@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "results": {
+    "lightning": {
+      "epochs": 2,
+      "globalStep": 8,
+      "checkpoint": true,
+      "passed": true
+    },
+    "transformers": {
+      "firstStep": 3,
+      "resumedStep": 5,
+      "checkpoint": true,
+      "loss": 0.28702645301818847,
+      "passed": true
+    },
+    "keras": {
+      "epochs": 3,
+      "finalLoss": 0.8301337361335754,
+      "passed": true
+    },
+    "ddp": {
+      "worldSize": 2,
+      "runId": "run_12d579ccc3a1",
+      "reportedRuns": 1,
+      "metricSteps": [
+        1
+      ],
+      "passed": true
+    },
+    "recovery": {
+      "runId": "run_eca257bebaba",
+      "resumes": 1,
+      "steps": [
+        1,
+        2
+      ],
+      "status": "completed",
+      "passed": true
+    },
+    "migration": {
+      "nativeMlflow": "run_beef61b3fe8b",
+      "nativeWandb": "run_94dea86a9f70",
+      "roundtripMlflow": "run_97a6fbedfcab",
+      "roundtripWandb": "run_2adcdd74413f",
+      "passed": true
+    }
+  },
+  "runs": 9,
+  "passed": true
+}

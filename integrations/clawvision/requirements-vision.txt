@@ -1,0 +1,3 @@
+numpy>=2,<3
+Pillow>=11,<13
+pyarrow>=17

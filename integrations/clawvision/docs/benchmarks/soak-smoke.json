@@ -1,0 +1,9 @@
+{
+  "durationMinutes": 0.05,
+  "cycles": 16,
+  "completedRuns": 16,
+  "failures": 0,
+  "activeTasks": 0,
+  "maxLatencyMs": 187.362,
+  "passed": true
+}

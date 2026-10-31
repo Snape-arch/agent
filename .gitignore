@@ -45,5 +45,13 @@ clawos/backups/
 desktop/build/
 desktop/stage/
 dist/
+integrations/clawvision/node_modules/
+integrations/clawvision/.vite/
+integrations/clawvision/coverage/
+integrations/clawvision/data/
+integrations/clawvision/runtime-libs/
+integrations/clawvision/*.tsbuildinfo
+clawos/data/vision/
+clawos/vision/
 __pycache__/
 *.py[cod]

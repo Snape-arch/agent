@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "openCascade": {
+    "formats": {
+      "step": {
+        "bytes": 73042,
+        "tolerance": {
+          "requestedLinearTolerance": 0.0001,
+          "boundingBoxMaxDeviation": 0.0,
+          "centerOfMassDeviation": 2.009604299571727e-13,
+          "volumeRelativeError": 2.293376230060673e-14,
+          "surfaceAreaRelativeError": 2.898740224461252e-14,
+          "topologyPreserved": true,
+          "passed": true
+        },
+        "topology": {
+          "solids": 1,
+          "shells": 1,
+          "faces": 22,
+          "edges": 112,
+          "vertices": 224
+        }
+      },
+      "iges": {
+        "bytes": 85536,
+        "tolerance": {
+          "requestedLinearTolerance": 0.0001,
+          "boundingBoxMaxDeviation": 7.105427357601002e-15,
+          "centerOfMassDeviation": 2.3891414768436976e-11,
+          "volumeRelativeError": 1.5545704646756851e-12,
+          "surfaceAreaRelativeError": 5.197910136355061e-12,
+          "topologyPreserved": true,
+          "passed": true
+        },
+        "topology": {
+          "solids": 0,
+          "shells": 0,
+          "faces": 22,
+          "edges": 112,
+          "vertices": 224
+        }
+      },
+      "brep": {
+        "bytes": 17022,
+        "tolerance": {
+          "requestedLinearTolerance": 0.0001,
+          "boundingBoxMaxDeviation": 0.0,
+          "centerOfMassDeviation": 0.0,
+          "volumeRelativeError": 0.0,
+          "surfaceAreaRelativeError": 0.0,
+          "topologyPreserved": true,
+          "passed": true
+        },
+        "topology": {
+          "solids": 1,
+          "shells": 1,
+          "faces": 22,
+          "edges": 112,
+          "vertices": 224
+        }
+      }
+    },
+    "fillet": {
+      "faces": 26,
+      "passed": true
+    },
+    "chamfer": {
+      "faces": 26,
+      "passed": true
+    },
+    "exactBoolean": {
+      "volume": 5717.256661176919,
+      "passed": true
+    },
+    "repair": {
+      "valid": true,
+      "passed": true
+    },
+    "passed": true
+  },
+  "manifold": {
+    "vertices": 788,
+    "faces": 1576,
+    "watertight": true,
+    "kernel": "manifold3d",
+    "passed": true
+  },
+  "semanticGlb": {
+    "vertices": 4,
+    "faces": 4,
+    "bytes": 3292,
+    "format": "glb",
+    "uvGenerated": true,
+    "normalsRepaired": true,
+    "pbrTextureBaked": true,
+    "pbrTextureChannels": [
+      "baseColor",
+      "normal",
+      "occlusion",
+      "roughness",
+      "metallic"
+    ],
+    "rigged": true,
+    "animations": 1,
+    "joints": 2,
+    "glbBytes": 3292,
+    "binaryBytes": 696,
+    "textures": 3,
+    "skins": 1,
+    "passed": true
+  },
+  "nativeGpu": {
+    "name": "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "driverVersion": "577.05",
+    "utilizationPercent": 0.0,
+    "memoryUsedMb": 0.0,
+    "memoryTotalMb": 8151.0,
+    "temperatureC": 47.0,
+    "powerWatts": 3.29,
+    "passed": true
+  },
+  "passed": true
+}

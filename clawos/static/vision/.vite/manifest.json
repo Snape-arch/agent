@@ -1,0 +1,167 @@
+{
+  "_react-vendor-Ds7D3P6J.js": {
+    "file": "assets/react-vendor-Ds7D3P6J.js",
+    "name": "react-vendor"
+  },
+  "_three-addons-CJcCuPKi.js": {
+    "file": "assets/three-addons-CJcCuPKi.js",
+    "name": "three-addons",
+    "imports": [
+      "_three-core-DyxFmU2r.js"
+    ]
+  },
+  "_three-animation-DS8KJtl_.js": {
+    "file": "assets/three-animation-DS8KJtl_.js",
+    "name": "three-animation",
+    "imports": [
+      "_three-core-DyxFmU2r.js"
+    ]
+  },
+  "_three-controls-BtBdI-gm.js": {
+    "file": "assets/three-controls-BtBdI-gm.js",
+    "name": "three-controls",
+    "imports": [
+      "_three-core-DyxFmU2r.js"
+    ]
+  },
+  "_three-core-DyxFmU2r.js": {
+    "file": "assets/three-core-DyxFmU2r.js",
+    "name": "three-core"
+  },
+  "_three-geometries-DQ297k5Z.js": {
+    "file": "assets/three-geometries-DQ297k5Z.js",
+    "name": "three-geometries",
+    "imports": [
+      "_three-core-DyxFmU2r.js"
+    ]
+  },
+  "_three-loaders-D9BNlTqe.js": {
+    "file": "assets/three-loaders-D9BNlTqe.js",
+    "name": "three-loaders",
+    "imports": [
+      "_three-core-DyxFmU2r.js",
+      "_three-addons-CJcCuPKi.js",
+      "_three-animation-DS8KJtl_.js"
+    ]
+  },
+  "_threeBudget-B5aYbFT-.js": {
+    "file": "assets/threeBudget-B5aYbFT-.js",
+    "name": "threeBudget",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "index.html": {
+    "file": "assets/index-CSkDNuxQ.js",
+    "name": "index",
+    "src": "index.html",
+    "isEntry": true,
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js"
+    ],
+    "dynamicImports": [
+      "src/visualizations/renderers/AiStudioModelView.tsx",
+      "src/visualizations/renderers/CadModelView.tsx",
+      "src/components/EmbeddingView.tsx",
+      "src/visualizations/renderers/EmbeddingEvolutionView.tsx",
+      "src/visualizations/renderers/SimulationReplayView.tsx",
+      "src/visualizations/renderers/SimulationReplayView.tsx",
+      "src/components/EvaluationLab.tsx"
+    ],
+    "css": [
+      "assets/index-Bt9GmxKR.css"
+    ]
+  },
+  "src/components/EmbeddingView.tsx": {
+    "file": "assets/EmbeddingView-B6znRULJ.js",
+    "name": "EmbeddingView",
+    "src": "src/components/EmbeddingView.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js",
+      "_three-core-DyxFmU2r.js",
+      "_three-controls-BtBdI-gm.js"
+    ]
+  },
+  "src/components/EvaluationLab.tsx": {
+    "file": "assets/EvaluationLab-BUWQlgxr.js",
+    "name": "EvaluationLab",
+    "src": "src/components/EvaluationLab.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js",
+      "index.html"
+    ],
+    "dynamicImports": [
+      "src/components/ScenePlanPreview.tsx"
+    ]
+  },
+  "src/components/ScenePlanPreview.tsx": {
+    "file": "assets/ScenePlanPreview-BWEZcLkZ.js",
+    "name": "ScenePlanPreview",
+    "src": "src/components/ScenePlanPreview.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js",
+      "_three-core-DyxFmU2r.js",
+      "_three-loaders-D9BNlTqe.js",
+      "_threeBudget-B5aYbFT-.js",
+      "_three-addons-CJcCuPKi.js",
+      "_three-animation-DS8KJtl_.js",
+      "index.html"
+    ]
+  },
+  "src/visualizations/renderers/AiStudioModelView.tsx": {
+    "file": "assets/AiStudioModelView-Du6FiG_g.js",
+    "name": "AiStudioModelView",
+    "src": "src/visualizations/renderers/AiStudioModelView.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js",
+      "_three-core-DyxFmU2r.js",
+      "_three-controls-BtBdI-gm.js",
+      "_three-geometries-DQ297k5Z.js",
+      "_threeBudget-B5aYbFT-.js",
+      "index.html"
+    ]
+  },
+  "src/visualizations/renderers/CadModelView.tsx": {
+    "file": "assets/CadModelView-S8lYtQLX.js",
+    "name": "CadModelView",
+    "src": "src/visualizations/renderers/CadModelView.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js",
+      "index.html",
+      "_three-core-DyxFmU2r.js",
+      "_three-controls-BtBdI-gm.js",
+      "_three-loaders-D9BNlTqe.js",
+      "_three-animation-DS8KJtl_.js",
+      "_threeBudget-B5aYbFT-.js",
+      "_three-addons-CJcCuPKi.js"
+    ]
+  },
+  "src/visualizations/renderers/EmbeddingEvolutionView.tsx": {
+    "file": "assets/EmbeddingEvolutionView-hNAzSZ9S.js",
+    "name": "EmbeddingEvolutionView",
+    "src": "src/visualizations/renderers/EmbeddingEvolutionView.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js",
+      "src/components/EmbeddingView.tsx",
+      "_three-core-DyxFmU2r.js",
+      "_three-controls-BtBdI-gm.js"
+    ]
+  },
+  "src/visualizations/renderers/SimulationReplayView.tsx": {
+    "file": "assets/SimulationReplayView-Em3n_1BA.js",
+    "name": "SimulationReplayView",
+    "src": "src/visualizations/renderers/SimulationReplayView.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js",
+      "_three-core-DyxFmU2r.js",
+      "_three-controls-BtBdI-gm.js"
+    ]
+  }
+}

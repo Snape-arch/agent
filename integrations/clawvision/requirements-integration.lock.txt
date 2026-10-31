@@ -1,0 +1,5 @@
+# Versions exercised by the Windows CPython 3.12 integration acceptance.
+pyarrow==26.0.0
+duckdb==2.0.0
+numpy==2.5.4
+Pillow==12.3.0

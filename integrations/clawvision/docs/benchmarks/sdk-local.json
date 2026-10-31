@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "workers": 12,
+  "runs": 36,
+  "steps": 120,
+  "metricPoints": 4320,
+  "elapsedSeconds": 4.243,
+  "runsPerSecond": 8.485,
+  "medianRunMs": 1238.975,
+  "p95RunMs": 2320.508,
+  "spooledRuns": 0,
+  "failures": [],
+  "passed": true
+}

@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "scope": "Local dirty working-tree fixtures; container CI and 60-minute soak execution pending",
+  "sdkBaseline": {
+    "schemaVersion": 2,
+    "environment": {
+      "os": "Windows",
+      "release": "11",
+      "architecture": "AMD64",
+      "cpu": "Intel64 Family 6 Model 197 Stepping 2, GenuineIntel",
+      "cpus": 16,
+      "python": "3.14.2",
+      "database": "sqlite",
+      "objectStore": "local",
+      "transport": "uvicorn",
+      "label": "local",
+      "fingerprint": "9ce62abf88518b920a165a230053bce4159ff74f462fa4e82cce3080ebc39502",
+      "revision": "65afd74a0fc170a32340a36594afd42207c1b5a9",
+      "dirty": true,
+      "apiSourceDigest": "a1ffe3c48902bff7292d79c6de3bc80016da7975d444d9c7a19e036d16317332",
+      "sdkDriverDigest": "bb5560cd2baa275497471450c03d6b886e9244ccda9092ac4743519256b8c3c1",
+      "recordedAt": "2026-10-03T16:25:02.200054+00:00"
+    },
+    "workload": {
+      "workers": 4,
+      "runs": 32,
+      "steps": 40,
+      "batch": 20,
+      "rounds": 3,
+      "warmup": 4
+    },
+    "samples": 96,
+    "metricPoints": 3840,
+    "elapsedSeconds": 12.266,
+    "roundDurationsMs": [
+      4241.714,
+      3853.631,
+      4170.182
+    ],
+    "runsPerSecond": 7.827,
+    "medianRunMs": 437.953,
+    "p95RunMs": 615.883,
+    "p95DetailMs": 108.961,
+    "spooledRuns": 0,
+    "verifiedRuns": 96,
+    "failures": [],
+    "passed": true
+  },
+  "sdkCandidate": {
+    "schemaVersion": 2,
+    "environment": {
+      "os": "Windows",
+      "release": "11",
+      "architecture": "AMD64",
+      "cpu": "Intel64 Family 6 Model 197 Stepping 2, GenuineIntel",
+      "cpus": 16,
+      "python": "3.14.2",
+      "database": "sqlite",
+      "objectStore": "local",
+      "transport": "uvicorn",
+      "label": "local",
+      "fingerprint": "9ce62abf88518b920a165a230053bce4159ff74f462fa4e82cce3080ebc39502",
+      "revision": "65afd74a0fc170a32340a36594afd42207c1b5a9",
+      "dirty": true,
+      "apiSourceDigest": "a1ffe3c48902bff7292d79c6de3bc80016da7975d444d9c7a19e036d16317332",
+      "sdkDriverDigest": "bb5560cd2baa275497471450c03d6b886e9244ccda9092ac4743519256b8c3c1",
+      "recordedAt": "2026-10-03T16:25:34.460004+00:00"
+    },
+    "workload": {
+      "workers": 4,
+      "runs": 32,
+      "steps": 40,
+      "batch": 20,
+      "rounds": 3,
+      "warmup": 4
+    },
+    "samples": 96,
+    "metricPoints": 3840,
+    "elapsedSeconds": 15.433,
+    "roundDurationsMs": [
+      4383.142,
+      5885.706,
+      5164.139
+    ],
+    "runsPerSecond": 6.22,
+    "medianRunMs": 534.54,
+    "p95RunMs": 750.987,
+    "p95DetailMs": 122.98,
+    "spooledRuns": 0,
+    "verifiedRuns": 96,
+    "failures": [],
+    "passed": true
+  },
+  "relativeGate": {
+    "schemaVersion": 1,
+    "maximumRegression": 0.35,
+    "checks": {
+      "p95RunMs": {
+        "baselineMs": 615.883,
+        "candidateMs": 750.987,
+        "ratio": 1.2194,
+        "limitMs": 831.442
+      },
+      "p95DetailMs": {
+        "baselineMs": 108.961,
+        "candidateMs": 122.98,
+        "ratio": 1.1287,
+        "limitMs": 147.097
+      }
+    },
+    "reasons": [],
+    "passed": true
+  },
+  "oneMinuteSoak": {
+    "durationMinutes": 1.0,
+    "measuredSeconds": 60.0,
+    "cycles": 121,
+    "completedRuns": 121,
+    "failures": 0,
+    "failureEvidence": [],
+    "queuedRuns": 13,
+    "completedQueuedRuns": 13,
+    "activeTasks": 0,
+    "nonSuccessfulTasks": 0,
+    "queueVerified": true,
+    "samples": 121,
+    "p95CycleMs": 320.927,
+    "maxLatencyMs": 382.644,
+    "passed": true,
+    "schemaVersion": 2,
+    "environment": {
+      "os": "Windows",
+      "release": "11",
+      "architecture": "AMD64",
+      "cpu": "Intel64 Family 6 Model 197 Stepping 2, GenuineIntel",
+      "cpus": 16,
+      "python": "3.14.2",
+      "database": "sqlite",
+      "objectStore": "local",
+      "transport": "uvicorn",
+      "label": "local",
+      "fingerprint": "9ce62abf88518b920a165a230053bce4159ff74f462fa4e82cce3080ebc39502",
+      "revision": "65afd74a0fc170a32340a36594afd42207c1b5a9",
+      "dirty": true,
+      "recordedAt": "2026-10-03T16:21:05.954982+00:00"
+    }
+  },
+  "localRestore": {
+    "tableCountsAndDigestsMatch": true,
+    "objectCountsAndDigestsMatch": true,
+    "nonemptyEvidence": true,
+    "tables": 47,
+    "objects": 3,
+    "restoreSeconds": 1.656,
+    "maxRestoreSeconds": 3600,
+    "rpoValidated": false,
+    "passed": true,
+    "mode": "sqlite-local-isolated",
+    "backupSeconds": 0.043,
+    "apiVerified": true,
+    "restoredWritesVerified": true,
+    "schemaVersion": 1
+  }
+}

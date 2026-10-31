@@ -1,5 +1,15 @@
 # Project Context
 
+## 当前交付：ClawVision核心整合与统一风格（2026-10-31）
+
+新增/academy/vision/同源React工作区与本机所有者网关，独立子服务/存储/队列、按需启动、私有stdin握手、最小环境、Windows进程树清理；不将文档协作者提升为实验控制者。原ClawVision基于65afd74工作树236文本源码/1.76MB快照（当时131未提交路径）保留来源SHA，原236文件收尾核对完全未改。副本在integrations/clawvision，原DB/权重/凭据/数据不迁入。
+
+暖米白/森林绿、共享color-system、字体/参数表/导航统一，去掉外部字体及伪存储进度；默认模拟器且持久标注模拟指标。文献方向入口可创建带阅读引用产物的通用参数实验，引用不等于RAG/PEFT/扩散论文复现。数据页新增持久目录/刷新恢复/私有图表保存与再打开，样例改为显式选择、图表明确预览范围。21份编译资源/许可与桌面源拷贝脚本交付；可选分析依赖隔离在output或worker runtime-libs，未改变生产Python。
+
+相关ClawOS143/143（20.263s）、Vision后端55/55（34.459s）、前端55/55（10.07s）、TS/构建/AST8/JS/diff通过，均不称全项目全量。最终-d真实HTTP/SSE13项通过，包括CSV、资产Range、停止/重启；真实浏览器创建10步模拟Run并保存RAG引用，3行CSV私有图表保存/恢复经HTTP回读证实。两个专属18935/18936预览按PID/创建时间/端口核对后关闭；生产/日常DB/registry摘要不变，原registry脏改保留排除。
+
+详见clawos/benchmarks/CLAWVISION_INTEGRATION_ACCEPTANCE.md。源码250文件SHA45d4ce02…、资源21文件SHA5a7d7fbe…、桥接/换行规则14文件SHA16312781…。CSV缺依赖、Range脚本错路径、HTTPX流夹具和审批中断均保留真实失败及修复；空闲等待不算负载。产品HTML固定LF，第三方生成GLSL字面量空白原样保留，最终暂存检查通过。多用户实验SSO、历史数据迁移、GPU/CAD/长测/移动屏阅/桌面成品包及真实教学仍未验收；下一阶段优先课程知识点↔专用实验模板↔证据与学习评估回写。应用下次正常启动加载新入口，不恢复压测提醒或自动加载权重。
+
 ## 当前交付：三个具体方向的文献与综述对照（2026-10-31）
 
 RAG、PEFT、扩散模型各8篇初始代表论文及助手分类/阅读路径/初稿先冻结，外部正式综述结构对照后各补2篇，共30篇、18项覆盖判断。Data Science and Engineering/Artificial Intelligence Review/ACM Computing Surveys精确DOI记录及可读来源核对；扩散正文使用arXiv v15修订版，不冒充2023期刊原版。3条作者明确表述关系与普通阅读路径分开，均不认证学术继承。站内只读阅读包按需载入，来源片段/哈希、初稿遗漏及MD/JSON导出完成，不自动写个人库/订阅或调用模型。三份独立报告见clawos/benchmarks/research_domains/；详见RESEARCH_DOMAINS_ACCEPTANCE.md。

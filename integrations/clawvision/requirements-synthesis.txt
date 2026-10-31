@@ -1,0 +1,2 @@
+# CPU synthetic RGB and geometry labels; no GPU or browser runtime required.
+numpy>=2,<3

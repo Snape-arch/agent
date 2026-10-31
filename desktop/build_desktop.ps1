@@ -47,7 +47,20 @@ foreach ($relative in $ClawFiles) {
     New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
     Copy-Item $source $target
 }
+$VisionFiles = git -C $RepoRoot -c core.quotepath=false ls-files "integrations/clawvision/**"
+foreach ($relative in $VisionFiles) {
+    if ($relative -match '(^|/)(node_modules|data|output|tests|docs|coverage|__pycache__)(/|$)' -or $relative -match '(\.db$|\.log$|\.pyc$|\.tsbuildinfo$)') { continue }
+    $source = Join-Path $RepoRoot $relative
+    if (-not (Test-Path $source -PathType Leaf)) { continue }
+    $target = Join-Path $AppRoot ($relative.Replace('/', '\'))
+    New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
+    Copy-Item $source $target
+}
 $MtFiles = git -C $RepoRoot -c core.quotepath=false ls-files "MTClaw-*/**"
+$VisionLibraries = Join-Path $ClawOS "output\vision-libs"
+if (Test-Path $VisionLibraries -PathType Container) {
+    Copy-Item -Recurse $VisionLibraries (Join-Path $AppRoot "integrations\clawvision\runtime-libs")
+}
 foreach ($relative in $MtFiles) {
     if ($relative -match '(^|/)(tmp|output|__pycache__)(/|$)' -or $relative -match '(\.env$|\.db$|\.log$|\.pyc$)') { continue }
     $source = Join-Path $RepoRoot $relative

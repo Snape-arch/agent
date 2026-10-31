@@ -1,0 +1,8 @@
+tensorboard>=2.19,<3
+transformers>=4.53,<5
+keras>=3.10,<4
+scipy>=1.15,<2
+lightning>=2.5,<3
+accelerate>=1.9,<2
+mlflow>=3.1,<4
+wandb>=0.21,<0.29

@@ -1,1 +1,6 @@
 dist/ClawOS-Setup-*.exe filter=lfs diff=lfs merge=lfs -text
+# Vite HTML contains injected LF lines; keep product text deterministic on Windows.
+clawos/static/vision/** text eol=lf
+integrations/clawvision/index.html text eol=lf
+# Preserve third-party GLSL template-string whitespace without rewriting shaders.
+clawos/static/vision/assets/three-core-*.js whitespace=-blank-at-eol
