@@ -9,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 from services.collaboration import direct_owner
 
 
-def vision_router(runtime,collaboration,static_dir):
+def vision_router(runtime,collaboration,static_dir,teaching=None):
     router=APIRouter();static=Path(static_dir).resolve()
     async def owner(request):
         if not direct_owner(request):raise HTTPException(403,'实验工作区当前仅开放给本机所有者；文档协作授权不包含实验权限')
@@ -63,4 +63,7 @@ def vision_router(runtime,collaboration,static_dir):
         target=(static/(path or 'index.html')).resolve()
         if not target.is_relative_to(static) or not target.is_file():raise HTTPException(404,'实验工作区资源未构建或不存在')
         return FileResponse(target,headers={'Cache-Control':'no-cache' if target.name=='index.html' else 'public, max-age=31536000, immutable'})
+    if teaching:
+        from services.vision_teaching_api import teaching_router
+        router.include_router(teaching_router(teaching,owner))
     return router

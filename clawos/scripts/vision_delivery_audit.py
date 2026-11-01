@@ -10,7 +10,10 @@ HELPERS=['.gitignore','.gitattributes','desktop/build_desktop.ps1','clawos/clawo
  'clawos/services/vision_runtime.py','clawos/services/vision_api.py','clawos/tests/test_vision_integration.py',
  'clawos/scripts/import_clawvision.py','clawos/scripts/build_vision_frontend.mjs',
  'clawos/scripts/vision_integration_acceptance.py','clawos/scripts/vision_delivery_audit.py',
- 'clawos/static/academy.html','clawos/static/academy-lab.html','clawos/static/assets/research-domains.js']
+ 'clawos/static/academy.html','clawos/static/academy-lab.html','clawos/static/assets/research-domains.js',
+ 'clawos/services/vision_teaching.py','clawos/services/vision_teaching_api.py','clawos/services/vision_teaching_engine.py',
+ 'clawos/scripts/vision_teaching_acceptance.py','clawos/scripts/vision_teaching_replay.py',
+ 'clawos/tests/test_vision_teaching.py','clawos/static/assets/academy-lab.js','clawos/static/assets/academy-vision-learning.js']
 
 
 def sha(raw):return hashlib.sha256(raw).hexdigest()

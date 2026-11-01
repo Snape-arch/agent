@@ -74,7 +74,7 @@
         catch (e) { state.textContent = e.message; } finally { b.disabled = false; }
       }); controls.append(b);
     } root.append(controls);
-    root.append(link('带着这个方向做实验', '/academy/vision/?domain=' + d.id + '#home'));
+    root.append(link('带着这个方向做实验', '/academy/vision/?domain=' + d.id + '#teaching'));
   }
   trigger.addEventListener('click', async () => {
     trigger.disabled = true; state.textContent = '正在载入方向目录…';

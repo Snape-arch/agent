@@ -5357,7 +5357,14 @@ def _vision_runtime():
         g_vision_runtime = VisionRuntime(DATA_DIR / 'vision')
     return g_vision_runtime
 
-app.include_router(vision_router(_vision_runtime, _collaboration, STATIC_DIR / 'vision'))
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
+def _vision_teaching():
+    from services.vision_teaching import VisionTeaching
+    return VisionTeaching(DATA_DIR / 'vision' / 'teaching.sqlite', lab=_academy_lab)
+
+app.include_router(vision_router(_vision_runtime, _collaboration, STATIC_DIR / 'vision', teaching=_vision_teaching))
 
 @app.middleware('http')
 async def workbench_access(request: Request, call_next):

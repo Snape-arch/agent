@@ -45,8 +45,9 @@ import {
 import { useRunDetails, useRunPage } from './hooks/useRuns';
 
 const EvaluationLab = lazy(() => import('./components/EvaluationLab').then((module) => ({ default: module.EvaluationLab })));
+const TeachingWorkbench = lazy(() => import('./components/TeachingWorkbench').then((module) => ({ default: module.TeachingWorkbench })));
 
-type View = 'home' | 'overview' | 'compare' | 'artifacts' | 'data' | 'three' | 'assets' | 'ai-studio' | 'settings' | 'evaluation';
+type View = 'home' | 'overview' | 'compare' | 'artifacts' | 'data' | 'three' | 'assets' | 'ai-studio' | 'settings' | 'evaluation' | 'teaching';
 
 const roleCopy: Record<CurrentUser['role'], { title: string; description: string }> = {
   viewer: { title: '查看项目进展', description: '从运行结果和已发布资产开始，不展示写入与管理入口。' },
@@ -173,7 +174,7 @@ function Artifacts({ selected }: { selected: ExperimentRun }) {
 }
 
 export function WorkspaceApp({ user }: { user: CurrentUser }) {
-  const views:View[]=['home','overview','compare','artifacts','data','three','assets','ai-studio','settings','evaluation'];
+  const views:View[]=['home','overview','compare','artifacts','data','three','assets','ai-studio','settings','evaluation',...(integrated()?['teaching' as View]:[])];
   const initialHash=location.hash.slice(1) as View;
   const [view, setViewState] = useState<View>(() => new URLSearchParams(location.search).has('shared') ? 'data' : views.includes(initialHash) ? initialHash : 'home');
   const setView=(next:View)=>{if(!['home','overview','compare','artifacts'].includes(next))setDemoMode(false);setViewState(next);if(location.hash!==`#${next}`)history.pushState({view:next},'',`#${next}`);};
@@ -276,6 +277,7 @@ export function WorkspaceApp({ user }: { user: CurrentUser }) {
         <nav id="primary-navigation" aria-label="主导航">
           <button data-testid="nav-home" aria-current={view === 'home' ? 'page' : undefined} className={view === 'home' ? 'active' : ''} onClick={() => setView('home')}><Sparkles size={17} />我的首页</button>
           <div className="nav-label">工作区</div>
+          {integrated()&&<button data-testid="nav-teaching" onClick={()=>{location.hash='teaching';}}><Beaker size={17}/>课程实验手册</button>}
           <button data-testid="nav-overview" className={view === 'overview' ? 'active' : ''} onClick={() => setView('overview')}><Activity size={17} />运行概览</button>
           <button data-testid="nav-assets" className={view === 'assets' ? 'active' : ''} onClick={() => setView('assets')}><Layers3 size={17} />资产工作台</button>
           <button data-testid="nav-evaluation" aria-current={view === 'evaluation' ? 'page' : undefined} className={view === 'evaluation' ? 'active' : ''} onClick={() => setView('evaluation')}><GitCompareArrows size={17} />视觉评估</button>
@@ -298,9 +300,10 @@ export function WorkspaceApp({ user }: { user: CurrentUser }) {
         {demoMode && <div className="workspace-notice" role="status">演示模式：实验指标和诊断产物均为模拟数据。<button onClick={toggleDemo}>返回真实工作区</button></div>}
         {!demoMode && ['overview','compare','artifacts'].includes(view) && syntheticRun(selected) && <div className="workspace-notice" role="status">模拟实验：当前准确率、损失和GPU数值由确定性模拟器生成，仅用于验证流程，不代表真实训练或设备实测。</div>}
         {!demoMode && syncError && <div className="workspace-notice" role="status">无法同步实验：{syncError}。{runs.length > 0 ? '当前显示上次成功加载的数据。' : '连接恢复后将自动重试。'}</div>}
-        <div className={`workspace-body ${view === 'home' || view === 'data' || view === 'three' || view === 'assets' || view === 'ai-studio' || view === 'evaluation' ? 'lab-workspace' : ''}`}>
-          {view !== 'home' && view !== 'data' && view !== 'three' && view !== 'assets' && view !== 'evaluation' && <aside className="runs-panel"><div className="runs-head"><div><span>RUNS</span><strong>{demoMode ? filteredRuns.length : pageState.pagination.total} 次实验</strong></div></div><RunList runs={filteredRuns} selectedId={selected?.id ?? ''} onSelect={setSelectedId} />{!demoMode && <div className="run-pagination" aria-label="Run 分页"><span>{pageState.loading ? '正在加载…' : `第 ${pageState.page} / ${Math.max(1, pageState.pagination.pages)} 页`}</span><div><button disabled={pageState.loading || !pageState.pagination.hasPrevious} onClick={() => pageState.setPage((page) => page - 1)}>上一页</button><button disabled={pageState.loading || !pageState.pagination.hasNext} onClick={() => pageState.setPage((page) => page + 1)}>下一页</button></div></div>}</aside>}
+        <div className={`workspace-body ${view === 'home' || view === 'data' || view === 'three' || view === 'assets' || view === 'ai-studio' || view === 'evaluation' || view === 'teaching' ? 'lab-workspace' : ''}`}>
+          {view !== 'home' && view !== 'data' && view !== 'three' && view !== 'assets' && view !== 'evaluation' && view !== 'teaching' && <aside className="runs-panel"><div className="runs-head"><div><span>RUNS</span><strong>{demoMode ? filteredRuns.length : pageState.pagination.total} 次实验</strong></div></div><RunList runs={filteredRuns} selectedId={selected?.id ?? ''} onSelect={setSelectedId} />{!demoMode && <div className="run-pagination" aria-label="Run 分页"><span>{pageState.loading ? '正在加载…' : `第 ${pageState.page} / ${Math.max(1, pageState.pagination.pages)} 页`}</span><div><button disabled={pageState.loading || !pageState.pagination.hasPrevious} onClick={() => pageState.setPage((page) => page - 1)}>上一页</button><button disabled={pageState.loading || !pageState.pagination.hasNext} onClick={() => pageState.setPage((page) => page + 1)}>下一页</button></div></div>}</aside>}
           <main className="content" id="workspace-content" tabIndex={-1}>
+            {view === 'teaching' && integrated() && <Suspense fallback={<p role="status">正在打开课程实验手册…</p>}><TeachingWorkbench/></Suspense>}
             {view === 'home' && <>{researchContext()&&<aside className="research-context"><strong>研究方向：{researchContext()?.name}</strong><p>{researchContext()?.question}</p><a href="/academy/research#domain-heading">查看来源文献与综述对照</a><small>方向来自阅读入口，尚不代表论文实验已复现。</small></aside>}<RoleHome user={user} runs={visibleRuns} onNavigate={setView} onDemoToggle={demoMode ? undefined : toggleDemo} demoMode={demoMode} counts={demoMode ? undefined : pageState.counts} /></>}
             {view === 'overview' && <>{!demoMode && can(user,'runs:create') && <AiExperimentCommand params={draftParams} onChange={setDraftParams} onExecute={submitParameterPlan} />}{selected?.detailLoaded === false ? <div className="run-empty" role="status">正在加载 Run 详情…</div> : selected ? <Overview runs={visibleRuns} selected={selected} onStop={stopRun} canControl={!demoMode && can(user,'runs:create')} /> : <div className="run-empty" role="status"><h1>{!runsLoaded ? '正在加载实验…' : syncError ? '暂时无法加载实验' : '尚无实验'}</h1><p>{!runsLoaded ? '正在连接工作区。' : syncError ? '请检查后端连接，恢复后会自动重试。' : can(user,'runs:create') ? '在右侧配置参数，创建第一个 Run。' : '团队创建实验后，结果将显示在这里。'}</p></div>}</>}
             {view === 'compare' && <Compare runs={comparisonRuns} focusIds={demoMode ? undefined : comparisonFocusIds} onSelection={setCompareIds} />}
@@ -319,4 +322,9 @@ export function WorkspaceApp({ user }: { user: CurrentUser }) {
   );
 }
 
-export function App(){const Gate=integrated()?ClawOSGate:AuthGate;return <Gate>{(user)=> <WorkspaceApp user={user}/>}</Gate>;}
+export function App(){
+  const [hash,setHash]=useState(location.hash);
+  useEffect(()=>{const changed=()=>setHash(location.hash);addEventListener('hashchange',changed);addEventListener('popstate',changed);return()=>{removeEventListener('hashchange',changed);removeEventListener('popstate',changed);};},[]);
+  if(integrated()&&hash==='#teaching')return <div className="app-shell teaching-shell"><a className="skip-link" href="#teaching-content" onClick={e=>{e.preventDefault();document.getElementById('teaching-content')?.focus();}}>跳到课程实验</a><aside className="sidebar"><div className="brand"><div className="brand-mark"><FlaskConical size={20}/></div><div><strong>ClawVision</strong><span>实验与验证</span></div></div><nav className="clawos-navigation" aria-label="教学实验导航"><a href="/academy/lab">学习与教材</a><a href="/academy/research#domain-heading">文献与综述</a><a href="#home">完整实验工作区</a><a href="/academy/notes">学习笔记</a></nav><p className="muted">CPU 机制实验<br/>不需要启动模型或实验子服务。</p></aside><div className="workspace"><header className="topbar"><div className="breadcrumb"><span>ClawOS</span><ChevronRight size={13}/><strong>课程实验手册</strong></div></header><main id="teaching-content" tabIndex={-1} className="content"><Suspense fallback={<p role="status">正在打开课程实验…</p>}><TeachingWorkbench/></Suspense></main></div></div>;
+  const Gate=integrated()?ClawOSGate:AuthGate;return <Gate>{(user)=> <WorkspaceApp user={user}/>}</Gate>;
+}

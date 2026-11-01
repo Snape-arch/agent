@@ -18,13 +18,13 @@ from services.vision_api import vision_router
 from services.collaboration import direct_owner
 
 
-def app_for(runtime):
+def app_for(runtime,teaching=None):
     class Identity:
         def identity(self,request):
             if not direct_owner(request):raise HTTPException(403,'local preview only')
             return dict(id='local-user')
     app=FastAPI();static=Path(__file__).resolve().parents[1]/'static'
-    app.include_router(vision_router(lambda:runtime,Identity,static/'vision'))
+    app.include_router(vision_router(lambda:runtime,Identity,static/'vision',teaching=teaching))
     @app.get('/academy')
     def academy():return FileResponse(static/'academy.html')
     @app.get('/academy/research')
