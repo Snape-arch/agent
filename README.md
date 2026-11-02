@@ -1,5 +1,7 @@
 # Agent / ClawOS Workspace
 
+ClawVision现以可视化课堂作为 `/academy/vision/` 默认入口：统一11个工具视图、保留18插件，RAG来源、低秩矩阵逐格解释和采样时间轴直接读取保存的CPU报告。支持全窗口演示、私有观察保存/恢复和SVG/PNG/JSON导出，暖米白/森林绿统一。相关108项后端、85项前端及29项实际HTTP检查通过；真实模型、团队实验授权与学习成效仍未验收，见[可视化教学整合验收](clawos/benchmarks/CLAWVISION_UNIFIED_VISUAL_ACCEPTANCE.md)。
+
 ClawVision第二阶段新增课程实验手册：RAG来源过滤、低秩适配和扩散数值采样的真实CPU机制对照，支持教材知识点来源冻结、报告导出复跑、个人反思及课程记录回看。相关99项/前端62项与19项实际HTTP检查通过；合成资料实验不代表真实模型或学习成效，见[教学实验验收](clawos/benchmarks/CLAWVISION_TEACHING_ACCEPTANCE.md)。
 
 ClawVision已接入`/academy/vision/`实验与视觉工作区，统一暖米白风格，提供按需独立实验服务、文献方向引用、数据集恢复与私有图表。当前仅本机所有者可控制；相关143项ClawOS回归、55项后端、55项前端及13项实际HTTP/SSE检查通过，未替代真实GPU/团队SSO/论文复现验收。见[整合范围与验收](clawos/benchmarks/CLAWVISION_INTEGRATION_ACCEPTANCE.md)。

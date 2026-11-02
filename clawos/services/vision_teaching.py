@@ -44,6 +44,10 @@ class VisionTeaching:
                 CREATE TABLE IF NOT EXISTS teaching_reflections(
                     report_id TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL,
                     hash TEXT NOT NULL, PRIMARY KEY(report_id,version));
+                CREATE TABLE IF NOT EXISTS teaching_visualizations(
+                    id TEXT PRIMARY KEY, actor TEXT NOT NULL, report_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL, input_hash TEXT NOT NULL, payload TEXT NOT NULL,
+                    hash TEXT NOT NULL, created TEXT NOT NULL, UNIQUE(actor,request_id));
             ''')
 
     @contextmanager
@@ -161,6 +165,72 @@ class VisionTeaching:
                        source='learner_self_report',teacher_verified=False)
             c.execute('INSERT INTO teaching_reflections VALUES (?,?,?,?)',(rid,value['version'],encode(value),digest(value)))
         return self.get(actor,rid)
+
+    @staticmethod
+    def validate_visual_state(record, state):
+        if not isinstance(state,dict) or type(state.get('arm')) is not int or state['arm'] not in (0,1):
+            raise ValueError('视图需选择已有的基线或对照')
+        result=record['report']['result'];arm=result['arms'][state['arm']];template=result['template']['id']
+        if template=='rag':
+            if set(state)!={'kind','arm','case_id'} or state['kind']!='rag-source' or state['case_id'] not in {r['case_id'] for r in arm['evidence']['rows']}:
+                raise ValueError('来源视图需选择本实验的已有问题')
+        elif template=='peft':
+            if set(state)!={'kind','arm','matrix','row','column'} or state['kind']!='low-rank' or state['matrix'] not in ('a','b','update','total'):
+                raise ValueError('低秩视图类型无效')
+            a=arm['evidence']['adapter_a'];b=arm['evidence']['adapter_b']
+            rows,columns=(len(a),len(a[0])) if state['matrix']=='a' else (len(b),len(b[0])) if state['matrix']=='b' else (len(b),len(a[0]))
+            if type(state['row']) is not int or type(state['column']) is not int or not 0<=state['row']<rows or not 0<=state['column']<columns:
+                raise ValueError('矩阵元素位置超出已保存矩阵')
+        elif template=='diffusion':
+            if set(state)!={'kind','arm','frame'} or state['kind']!='diffusion-timeline' or type(state['frame']) is not int or not 0<=state['frame']<len(arm['curve']):
+                raise ValueError('采样视图只能选择本实验保存的步骤')
+        else:raise ValueError('当前实验没有受支持的教学可视化')
+        return dict(state)
+
+    def save_visualization(self, actor, rid, data):
+        if not isinstance(data,dict) or set(data)!={'name','state','report_hash','request_id'}:raise ValueError('可视化保存字段不完整')
+        if not isinstance(data['name'],str) or not 1<=len(data['name'].strip())<=120:raise ValueError('视图名称需1–120字符')
+        if not isinstance(data['request_id'],str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',data['request_id']):raise ValueError('请求编号无效')
+        record=self.get(actor,rid)
+        if data['report_hash']!=record['hash']:raise Conflict('实验来源摘要冲突，未保存视图')
+        state=self.validate_visual_state(record,data['state']);input_hash=digest(dict(data,report_id=rid))
+        with self.lock,self.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            old=c.execute('SELECT * FROM teaching_visualizations WHERE actor=? AND request_id=?',(actor,data['request_id'])).fetchone()
+            if old:
+                if old['input_hash']!=input_hash:raise Conflict('请求编号已用于另一视图')
+                return self._visual_value(old)
+            if c.execute('SELECT COUNT(*) FROM teaching_visualizations WHERE actor=? AND report_id=?',(actor,rid)).fetchone()[0]>=200:
+                raise ValueError('每份实验最多保存200个观察视图')
+            vid=uuid.uuid4().hex;created=datetime.now(timezone.utc).isoformat()
+            value=dict(schema='clawos.teaching-visualization.v1',id=vid,report_id=rid,report_hash=record['hash'],
+                       name=data['name'].strip(),state=state,created=created,visibility='owner_only')
+            c.execute('INSERT INTO teaching_visualizations VALUES (?,?,?,?,?,?,?,?)',
+                      (vid,actor,rid,data['request_id'],input_hash,encode(value),digest(value),created))
+        return value
+
+    @staticmethod
+    def _visual_value(row):
+        value=json.loads(row['payload'])
+        if digest(value)!=row['hash']:raise ValueError('可视化视图完整性校验失败')
+        return value
+
+    def visualization(self, actor, vid):
+        with self.connect() as c:row=c.execute('SELECT * FROM teaching_visualizations WHERE id=? AND actor=?',(vid,actor)).fetchone()
+        if not row:raise LookupError('视图不存在')
+        value=self._visual_value(row);record=self.get(actor,value['report_id'])
+        if record['hash']!=value['report_hash']:raise Conflict('视图对应的实验来源摘要不一致')
+        self.validate_visual_state(record,value['state'])
+        return dict(view=value,record=record)
+
+    def visualizations(self, actor, rid, page=1):
+        self.get(actor,rid)
+        if type(page) is not int or not 1<=page<=10000:raise ValueError('页码无效')
+        with self.connect() as c:
+            total=c.execute('SELECT COUNT(*) FROM teaching_visualizations WHERE actor=? AND report_id=?',(actor,rid)).fetchone()[0]
+            rows=c.execute('SELECT * FROM teaching_visualizations WHERE actor=? AND report_id=? ORDER BY created DESC,id DESC LIMIT 20 OFFSET ?',
+                           (actor,rid,(page-1)*20)).fetchall()
+        return dict(items=[self._visual_value(r) for r in rows],page=page,total=total,has_more=page*20<total)
 
     @staticmethod
     def markdown(record):

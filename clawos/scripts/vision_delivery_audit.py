@@ -13,7 +13,7 @@ HELPERS=['.gitignore','.gitattributes','desktop/build_desktop.ps1','clawos/clawo
  'clawos/static/academy.html','clawos/static/academy-lab.html','clawos/static/assets/research-domains.js',
  'clawos/services/vision_teaching.py','clawos/services/vision_teaching_api.py','clawos/services/vision_teaching_engine.py',
  'clawos/scripts/vision_teaching_acceptance.py','clawos/scripts/vision_teaching_replay.py',
- 'clawos/tests/test_vision_teaching.py','clawos/static/assets/academy-lab.js','clawos/static/assets/academy-vision-learning.js']
+ 'clawos/tests/test_vision_teaching.py','clawos/tests/test_vision_visualizations.py','clawos/static/assets/academy-lab.js','clawos/static/assets/academy-vision-learning.js']
 
 
 def sha(raw):return hashlib.sha256(raw).hexdigest()
@@ -37,6 +37,11 @@ def main():
             path=a.original/name
             if not path.is_file() or sha(path.read_bytes())!=expected:changed.append(name)
         result['original_recheck']=dict(files=len(manifest['files']),changed=changed,all_snapshot_source_unchanged=not changed)
+        supplement=ROOT/'integrations/clawvision/SOURCE_SUPPLEMENT.json'
+        if supplement.is_file():
+            extra=json.loads(supplement.read_text(encoding='utf-8'))['files']
+            modified=[name for name,expected in extra.items() if not (a.original/name).is_file() or sha((a.original/name).read_bytes())!=expected]
+            result['original_supplement_recheck']=dict(files=len(extra),changed=modified,all_supplement_source_unchanged=not modified)
     a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps({key:{k:v for k,v in value.items() if k!='files'} if key!='original_recheck' and isinstance(value,dict) else value for key,value in result.items()},ensure_ascii=False))
 

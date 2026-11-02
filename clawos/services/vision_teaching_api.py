@@ -57,6 +57,17 @@ def teaching_router(factory, owner):
     @router.get('/reports/{rid}')
     async def get(rid:str,request:Request):return await call(request,'get',rid)
 
+    @router.get('/reports/{rid}/visualizations')
+    async def visualizations(rid:str,request:Request,page:int=1):return await call(request,'visualizations',rid,page)
+
+    @router.post('/reports/{rid}/visualizations')
+    async def save_visualization(rid:str,request:Request):
+        await owner(request)
+        return await call(request,'save_visualization',rid,await body(request))
+
+    @router.get('/visualizations/{vid}')
+    async def visualization(vid:str,request:Request):return await call(request,'visualization',vid)
+
     @router.post('/reports/{rid}/reflections')
     async def reflect(rid:str,request:Request):
         await owner(request)

@@ -93,7 +93,7 @@ export function ParameterLab({ params, onChange, onSubmit, backendOnline, select
 
   return <aside className="parameter-panel p3-panel">
     <div className="queue-config"><label>Training Provider<select aria-label="训练执行器" value={trainingProvider} onChange={(event) => setTrainingProvider(event.target.value as ParameterPlan['trainingProvider'])}>{providers.length ? providers.map((item) => <option key={item.id} value={item.id} disabled={!item.configured}>{item.label}{item.gpu ? ' · GPU' : ''}</option>) : <option value="simulator">Simulator</option>}</select></label></div>
-    <div className="panel-kicker"><Grid2X2 size={14} /> PARAMETER LAB · P3</div>
+    <div className="panel-kicker"><Grid2X2 size={14} /> 参数与执行计划</div>
     <div className="baseline-box">
       <div><span>BASELINE</span><strong>{baselineRun?.name ?? '尚未锁定'}</strong></div>
       <button disabled={!selectedRun} onClick={() => { if (selectedRun) { onSetBaseline(selectedRun); onChange(selectedRun.params); } }}><Bookmark size={13} />锁定当前 Run</button>

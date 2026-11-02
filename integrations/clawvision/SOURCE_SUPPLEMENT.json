@@ -1,0 +1,10 @@
+{
+  "source": "ClawVision original script files omitted by the first extension allowlist",
+  "captured": "2026-11-02T09:13:06.429195+00:00",
+  "original_snapshot_unchanged": true,
+  "files": {
+    "scripts/verify-plugin-architecture.mjs": "d6846a2dcaccd2ff775d30f8f2395aa8730905d293574d37aad00b1bcb2d533c",
+    "scripts/check_bundle_budget.mjs": "4a3bf37dbd273e0bce359b969d4cd0bbe26df9554138f62a68d4167b4de4cb7d"
+  },
+  "boundary": "Source scripts only; no data, credentials, databases or weights copied. Integrated script path adaptations are tracked in Git."
+}

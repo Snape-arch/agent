@@ -1,5 +1,6 @@
 """Owned HTTP preview and teaching closure, using explicitly synthetic sources."""
 import argparse
+import base64
 from datetime import datetime, timezone
 import json
 import os
@@ -25,7 +26,7 @@ from vision_teaching_replay import replay
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,required=True);parser.add_argument('--port',type=int,default=18937)
-    parser.add_argument('--preview',action='store_true');a=parser.parse_args()
+    parser.add_argument('--preview',action='store_true');parser.add_argument('--with-visual-tools',action='store_true');a=parser.parse_args()
     if a.output.exists():raise SystemExit('Use a new evidence directory')
     a.output.mkdir(parents=True)
     m=AcademyMaterials(MemoryStore(str(a.output/'education.sqlite')),a.output/'materials')
@@ -94,8 +95,49 @@ def main():
             assert runtime.process is None and not runtime.root.exists();checks['no_experiment_child_data_created']=True
             assert c.get('/academy/vision/').status_code==200 and c.get('/academy/lab?lesson=rag').status_code==200
             checks['compiled_workbench_and_course_entry']=True
+            visualizations=[];worker_evidence={}
+            if a.with_visual_tools:
+                for index,(rid,template) in enumerate(zip(records,('rag','peft','diffusion'))):
+                    record=c.get(base+'/reports/'+rid).json()
+                    state=dict(kind='rag-source',arm=0,case_id='loan') if template=='rag' else dict(kind='low-rank',arm=1,matrix='total',row=1,column=2) if template=='peft' else dict(kind='diffusion-timeline',arm=1,frame=12)
+                    data=dict(request_id='visual-acceptance-'+template,name='Synthetic '+template+' observation',report_hash=record['hash'],state=state)
+                    response=c.post(base+'/reports/'+rid+'/visualizations',json=data);assert response.status_code==200,response.status_code
+                    view=response.json();visualizations.append(view['id'])
+                    assert c.post(base+'/reports/'+rid+'/visualizations',json=data).json()==view
+                    reopened=c.get(base+'/visualizations/'+view['id']).json();assert reopened['view']['state']==state and reopened['record']==record
+                    assert c.get(base+'/reports/'+rid+'/visualizations').json()['total']==1
+                    checks[template+'_private_visual_save_idempotence_and_restore']=True
+                    bad=dict(data,report_hash='synthetic-conflict')
+                    assert c.post(base+'/reports/'+rid+'/visualizations',json=bad).status_code==409
+                    assert c.post(base+'/reports/'+rid+'/visualizations',json=data,headers={'Origin':'https://foreign.invalid'}).status_code==403
+                checks['visual_source_conflict_and_origin_rejection']=True
+                assert c.post('/api/vision/start',json={}).json()['running'];worker=runtime.process;checks['explicit_worker_start']=True
+                dataset=c.post('/api/vision/service/datasets',json=dict(name='可视化整合数据',format='csv',content='step,value,group\n1,0.3,A\n2,0.5,A\n3,0.7,B\n4,0.8,B\n'))
+                assert dataset.status_code==201,dataset.status_code;dataset=dataset.json()['data'];did=dataset['id']
+                assert dataset['rowCount']==4;checks['actual_csv_and_data_catalog']=True
+                chart=dict(id='integration-line',type='line-chart',title='真实导入数据的趋势',xField='step',yField='value')
+                viz=c.post('/api/vision/service/visualization-specs',json=dict(name='可视化整合私有图表',datasetId=did,isPublic=False,spec=dict(pluginId='dashboard',charts=[chart],datasetSnapshot=dataset,filters={},version=1)))
+                assert viz.status_code==201,viz.status_code;viz=viz.json()['data'];vid=viz['id']
+                assert viz['isPublic'] is False and c.get('/api/vision/service/visualization-specs/'+vid).json()['data']['spec']['datasetSnapshot']['rowCount']==4
+                checks['private_dataset_visualization_roundtrip']=True
+                mesh=b'o integration_triangle\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n'
+                asset=c.post('/api/vision/service/model-assets',json=dict(name='visual-teaching-triangle.obj',format='obj',content=base64.b64encode(mesh).decode()))
+                assert asset.status_code==201,asset.status_code;aid=asset.json()['data']['id']
+                content=c.get('/api/vision/service/model-assets/'+aid+'/content',headers={'Range':'bytes=0-15'})
+                assert content.status_code==206 and len(content.content)==16;checks['actual_obj_asset_and_range']=True
+                assert c.post('/api/vision/stop',json={}).json()['running'] is False and worker.poll() is not None
+                assert c.get(base+'/visualizations/'+visualizations[1]).json()['view']['state']['matrix']=='total'
+                checks['owned_worker_stop_keeps_classroom_available']=True
+                assert c.post('/api/vision/start',json={}).json()['running']
+                assert c.get('/api/vision/service/datasets/'+did).json()['data']['rowCount']==4
+                assert c.get('/api/vision/service/model-assets/'+aid).status_code==200
+                assert c.get('/api/vision/service/visualization-specs/'+vid).json()['data']['isPublic'] is False
+                assert c.post('/api/vision/stop',json={}).json()['running'] is False
+                checks['worker_restart_restores_dataset_model_and_chart']=True
+                worker_evidence=dict(dataset=did,visualization=vid,asset=aid)
             report=dict(passed=True,checks=checks,records=records,material_id=mid,elapsed_seconds=time.perf_counter()-started,
-                        model_calls=0,experiment_worker_started=False,
+                        visualizations=visualizations,worker_evidence=worker_evidence,
+                        model_calls=0,experiment_worker_started=a.with_visual_tools,
                         boundary='Single-host short HTTP/SQLite/CPU exercise using synthetic teaching material; not real browser, teacher, learning-effect, paper reproduction, GPU, multi-device or sustained-load acceptance.')
             (a.output/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps(report,ensure_ascii=False),flush=True)
         if a.preview:

@@ -1,3 +1,4 @@
+import { csvText, pngFromSvg, serializeVisualSvg } from '../visualizations/exportVisual';
 import { useEffect, useMemo, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Download, GripVertical, Link2, Plus, Save, Upload, X } from 'lucide-react';
 import { fetchDatasetPage, fetchDataset, fetchVisualization, fetchSharedVisualization, importDataset, saveVisualization, type DatasetField, type DatasetSummary, type ImportedDataset } from '../api';
@@ -99,7 +100,7 @@ export function DataLab() {
   const onDrop = (event: DragEvent, targetId: string) => { event.preventDefault(); if (!draggedId || draggedId === targetId) return; setCharts((current) => { const next = [...current]; const from = next.findIndex((item) => item.id === draggedId); const to = next.findIndex((item) => item.id === targetId); const [item] = next.splice(from, 1); next.splice(to, 0, item); return next; }); setDraggedId(undefined); };
   const startResize = (event: ReactPointerEvent, chart: ChartConfig) => {
     event.preventDefault(); event.stopPropagation();
-    const origin = { x: event.clientX, y: event.clientY, w: chart.layout?.w ?? 1, h: chart.layout?.h ?? 1 };
+    const origin = { x: event.clientX, y: event.clientY, w: chart.layout?.w ?? 2, h: chart.layout?.h ?? 1 };
     const move = (pointer: PointerEvent) => setCharts((items) => items.map((item) => item.id === chart.id ? { ...item, layout: { w: Math.max(1, Math.min(2, origin.w + Math.round((pointer.clientX - origin.x) / 220))), h: Math.max(1, Math.min(3, origin.h + Math.round((pointer.clientY - origin.y) / 150))) } } : item));
     const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
@@ -107,20 +108,19 @@ export function DataLab() {
   const artifactFor = (chart: ChartConfig): ArtifactSchema => ({ id: chart.id, type: chart.type, name: chart.title, data: { rows: filteredRows }, metadata: { xField: chart.xField, yField: chart.yField } });
 
   const exportChart = async (format: 'svg' | 'png' | 'csv') => {
-    if (format === 'csv') { const keys = dataset.schema.map((field) => field.name); const csv = [keys.join(','), ...filteredRows.map((row) => keys.map((key) => JSON.stringify(row[key] ?? '')).join(','))].join('\n'); return download(`${dataset.name}.csv`, new Blob([csv], { type: 'text/csv;charset=utf-8' })); }
+    if (format === 'csv') return download(`${dataset.name}.csv`,new Blob([csvText(filteredRows,dataset.schema.map(field=>field.name))],{type:'text/csv;charset=utf-8'}));
     const svg = document.querySelector(`[data-chart-id="${selected.id}"] svg`);
-    if (!(svg instanceof SVGElement)) return setMessage('当前图表没有可导出的 SVG');
-    const source = new XMLSerializer().serializeToString(svg);
-    if (format === 'svg') return download(`${selected.title}.svg`, new Blob([source], { type: 'image/svg+xml' }));
-    const image = new Image(); const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml' }));
-    image.onload = () => { const canvas = document.createElement('canvas'); canvas.width = 1280; canvas.height = 540; const context = canvas.getContext('2d'); if (context) { context.fillStyle = '#08110f'; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0, canvas.width, canvas.height); canvas.toBlob((blob) => blob && download(`${selected.title}.png`, blob), 'image/png'); } URL.revokeObjectURL(url); }; image.src = url;
+    if (!(svg instanceof SVGSVGElement)) return setMessage('当前图表没有可导出的 SVG');
+    const source=serializeVisualSvg(svg,{datasetId:dataset.id,previewRows:filteredRows.length,datasetRows:dataset.rowCount,chart:selected});
+    if(format==='svg')return download(`${selected.title}.svg`,source);
+    try{const box=svg.viewBox.baseVal;download(`${selected.title}.png`,await pngFromSvg(source,1280,box.height/box.width));}catch(e){setMessage(e instanceof Error?e.message:'图形导出失败');}
   };
   const save = async () => {
     const spec = { pluginId: 'dashboard', charts, datasetSnapshot: dataset, filters: filter ? { [filter.field]: filter.value } : {}, version: 1 };
     const response = await saveVisualization({ id: saved?.id, name: `${dataset.name} Dashboard`, datasetId: dataset.id, spec, isPublic: !integrated() });
     const target=new URL(location.href);target.searchParams.delete('dataset');target.searchParams.delete('shared');target.searchParams.set('visualization',response.data.id);target.hash='data';
     const link = integrated()?target.href:`${location.origin}${location.pathname}?shared=${response.data.shareToken}`;
-    setSaved({ id: response.data.id, version: response.data.version, link }); setMessage(`VisualizationSpec v${response.data.version} 已保存`);
+    setSaved({ id: response.data.id, version: response.data.version, link }); setMessage(`图表配置 v${response.data.version} 已保存`);
   };
 
   return <div className="data-lab" data-testid="data-lab">
@@ -129,14 +129,14 @@ export function DataLab() {
     <div className="dataset-strip card"><div><strong>{dataset.name}</strong><span>{dataset.rowCount} 行 · {dataset.schema.length} 字段</span></div><div className="field-chips">{dataset.schema.map((field) => <span key={field.name}>{field.name}<b>{field.type}</b></span>)}</div>{filter && <button onClick={() => setFilter(undefined)}><X size={12} />{filter.field} = {String(filter.value)}</button>}</div>
     {saved && <div className="share-strip"><Link2 size={13} /><a href={saved.link}>{integrated()?'重新打开私有图表':'打开分享图表'}</a><span>v{saved.version}</span></div>}
     <div className="data-lab-layout">
-      <aside className="chart-config card"><div className="card-head"><div><span>VISUALIZATION SPEC</span><h2>图表配置</h2></div></div>{selected && <>
+      <aside className="chart-config card"><div className="card-head"><div><span>图表与字段</span><h2>图表配置</h2></div></div>{selected && <>
         <label>标题<input value={selected.title} onChange={(event) => updateSelected({ title: event.target.value })} /></label>
         <label>图表类型<select value={selected.type} onChange={(event) => updateSelected({ type: event.target.value as ChartType })}><option value="line-chart">折线图</option><option value="bar-chart">柱状图</option><option value="scatter-chart">散点图</option><option value="heatmap-chart">热力图</option><option value="boxplot-chart">箱线图</option></select></label>
         <label>X 字段<select value={selected.xField} onChange={(event) => updateSelected({ xField: event.target.value })}>{dataset.schema.map((field) => <option key={field.name}>{field.name}</option>)}</select></label>
         <label>Y 字段<select value={selected.yField} onChange={(event) => updateSelected({ yField: event.target.value })}>{dataset.schema.map((field) => <option key={field.name}>{field.name}</option>)}</select></label>
         <div className="export-actions"><button onClick={() => exportChart('png')}><Download size={12} />PNG</button><button onClick={() => exportChart('svg')}>SVG</button><button onClick={() => exportChart('csv')}>CSV</button></div>
       </>}</aside>
-      <div className="dashboard-grid-p5">{charts.map((chart) => <section style={{ gridColumn: `span ${chart.layout?.w ?? 1}`, gridRow: `span ${chart.layout?.h ?? 1}` }} className={`card dashboard-tile ${selectedId === chart.id ? 'selected' : ''}`} data-chart-id={chart.id} draggable onDragStart={() => setDraggedId(chart.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => onDrop(event, chart.id)} onClick={() => setSelectedId(chart.id)} key={chart.id}><div className="card-head"><div><span>{chart.type}</span><h3>{chart.title}</h3></div><GripVertical size={15} /></div><PluginHost input={artifactFor(chart)} spec={{ pluginId: `core.${chart.type}`, options: { xField: chart.xField, yField: chart.yField } }} runtime={{ filters: filter ? { [filter.field]: filter.value } : {}, onFilterChange: (field, value) => setFilter({ field, value }) }} /><button className="dashboard-resize" aria-label="调整图表大小" onPointerDown={(event) => startResize(event, chart)} /></section>)}<button className="add-chart" onClick={addChart}><Plus size={16} />添加图表</button></div>
+      <div className="dashboard-grid-p5">{charts.map((chart) => <section style={{ gridColumn: `span ${chart.layout?.w ?? 2}`, gridRow: `span ${chart.layout?.h ?? 1}` }} className={`card dashboard-tile ${selectedId === chart.id ? 'selected' : ''}`} data-chart-id={chart.id} draggable onDragStart={() => setDraggedId(chart.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => onDrop(event, chart.id)} onClick={() => setSelectedId(chart.id)} key={chart.id}><div className="card-head"><div><span>{{'line-chart':'折线图','bar-chart':'柱状图','scatter-chart':'散点图','heatmap-chart':'热力图','boxplot-chart':'箱线图'}[chart.type]}</span><h3>{chart.title}</h3></div><GripVertical size={15} /></div><PluginHost input={artifactFor(chart)} spec={{ pluginId: `core.${chart.type}`, options: { xField: chart.xField, yField: chart.yField } }} runtime={{ filters: filter ? { [filter.field]: filter.value } : {}, onFilterChange: (field, value) => setFilter({ field, value }) }} /><button className="dashboard-resize" aria-label="调整图表大小" onPointerDown={(event) => startResize(event, chart)} /></section>)}<button className="add-chart" onClick={addChart}><Plus size={16} />添加图表</button></div>
     </div>
   </div>;
 }

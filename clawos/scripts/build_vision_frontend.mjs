@@ -31,6 +31,10 @@ if(fs.existsSync(destination))for(const relative of files(destination))if(!keep.
 }
 // HTML last: all newly referenced assets exist before the entry point changes.
 for(const relative of fresh.sort((a,b)=>Number(a==='index.html')-Number(b==='index.html'))){
-  const target=path.join(destination,relative);fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(path.join(stage,relative),target);
+  const target=path.join(destination,relative),built=path.join(stage,relative);fs.mkdirSync(path.dirname(target),{recursive:true});
+  // Hashed assets are immutable. Do not rewrite identical files that may be
+  // serving an open reader on Windows; byte equality also covers notices.
+  if(fs.existsSync(target)&&fs.readFileSync(target).equals(fs.readFileSync(built)))continue;
+  fs.copyFileSync(built,target);
 }
 console.log(`Published ${fresh.length} frontend files; previous assets retained in output.`);

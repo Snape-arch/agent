@@ -19,12 +19,13 @@ import {
 import { ParameterLab, type ParameterPlan } from './components/ParameterLab';
 import { DataLab } from './components/DataLab';
 import { ThreeLab } from './components/ThreeLab';
-import { AiStudio } from './components/AiStudio';
 import { AiExperimentCommand } from './components/AiExperimentCommand';
 import { AssetWorkbench } from './components/AssetWorkbench';
 import { ExperimentAssetTimeline } from './components/ExperimentAssetTimeline';
 import { AuthGate } from './components/AuthGate';
-import { ClawOSGate, IntegrationSettings } from './components/ClawOSGate';
+import { IntegrationSettings } from './components/ClawOSGate';
+import { IntegratedWorkspace } from './components/IntegratedWorkspace';
+import type { LegacyView } from './workspaceNavigation';
 import { integrated, researchContext } from './clawos';
 import { WorkspaceSettings } from './components/WorkspaceSettings';
 import { can } from './permissions';
@@ -45,9 +46,10 @@ import {
 import { useRunDetails, useRunPage } from './hooks/useRuns';
 
 const EvaluationLab = lazy(() => import('./components/EvaluationLab').then((module) => ({ default: module.EvaluationLab })));
+const AiStudio = lazy(() => import('./components/AiStudio').then(module=>({default:module.AiStudio})));
 const TeachingWorkbench = lazy(() => import('./components/TeachingWorkbench').then((module) => ({ default: module.TeachingWorkbench })));
 
-type View = 'home' | 'overview' | 'compare' | 'artifacts' | 'data' | 'three' | 'assets' | 'ai-studio' | 'settings' | 'evaluation' | 'teaching';
+type View = LegacyView;
 
 const roleCopy: Record<CurrentUser['role'], { title: string; description: string }> = {
   viewer: { title: '查看项目进展', description: '从运行结果和已发布资产开始，不展示写入与管理入口。' },
@@ -117,7 +119,7 @@ function Overview({ runs, selected, onStop, canControl=true }: { runs: Experimen
   const comparedRuns = [selected, ...runs.filter((run) => run.id !== selected.id)].filter((run) => run.detailLoaded !== false).slice(0, 3);
   return (
     <>
-      <div className="page-heading"><div><div className="eyebrow"><span className="live-dot" /> EXPERIMENT / IMAGE CLASSIFICATION</div><h1>{selected.name}</h1><p>实时追踪训练表现、资源利用率与参数影响。</p></div>{selected.status === 'running' && canControl ? <button className="stop-btn" onClick={onStop}><CircleStop size={15} />停止运行</button> : <div className="completed-badge">{{ queued: 'Run 排队中', running: '只读 · 正在运行', completed: '✓ Run 已完成', stopped: 'Run 已停止', failed: 'Run 已失败' }[selected.status]}</div>}</div>
+      <div className="page-heading"><div><div className="eyebrow"><span className="live-dot" /> 实验运行与观察</div><h1>{selected.name}</h1><p>实时追踪训练表现、资源利用率与参数影响。</p></div>{selected.status === 'running' && canControl ? <button className="stop-btn" onClick={onStop}><CircleStop size={15} />停止运行</button> : <div className="completed-badge">{{ queued: 'Run 排队中', running: '只读 · 正在运行', completed: '✓ Run 已完成', stopped: 'Run 已停止', failed: 'Run 已失败' }[selected.status]}</div>}</div>
       <div className="stat-grid">
         <Stat label="验证准确率" value={formatPercent(point?.accuracy)} note={selected.status === 'running' ? `epoch ${point?.step}/${selected.params.epochs}` : '最终结果'} accent />
         <Stat label="训练损失" value={formatNumber(point?.trainLoss)} note="越低越好" />
@@ -125,10 +127,10 @@ function Overview({ runs, selected, onStop, canControl=true }: { runs: Experimen
         <Stat label="GPU 利用率" value={point?.gpu == null ? '—' : `${point.gpu}%`} note={`batch ${selected.params.batchSize}`} />
       </div>
       <div className="dashboard-grid">
-        <section className="card chart-card span-2"><div className="card-head"><div><span>LEARNING CURVE</span><h3>验证准确率</h3></div><div className="legend">{comparedRuns.map((run) => <span key={run.id}><i style={{ background: run.color }} />{run.name}</span>)}</div></div><PluginHost input={timeSeriesArtifact(comparedRuns, 'accuracy')} /></section>
-        <section className="card console-card"><div className="card-head"><div><span>LIVE EVENTS</span><h3>运行日志</h3></div></div><PluginHost input={logArtifact(selected)} /></section>
-        <section className="card"><div className="card-head"><div><span>LOSS PROFILE</span><h3>训练 / 验证损失</h3></div></div><PluginHost input={timeSeriesArtifact([selected], 'valLoss', { height: 185 })} /></section>
-        <section className="card"><div className="card-head"><div><span>RUN PARAMETERS</span><h3>本次实验配置</h3></div></div><PluginHost input={parameterTableArtifact(selected)} /></section>
+        <section className="card chart-card span-2"><div className="card-head"><div><span>验证表现</span><h3>验证准确率</h3></div><div className="legend">{comparedRuns.map((run) => <span key={run.id}><i style={{ background: run.color }} />{run.name}</span>)}</div></div><PluginHost input={timeSeriesArtifact(comparedRuns, 'accuracy')} /></section>
+        <section className="card console-card"><div className="card-head"><div><span>运行日志</span><h3>运行日志</h3></div></div><PluginHost input={logArtifact(selected)} /></section>
+        <section className="card"><div className="card-head"><div><span>损失记录</span><h3>训练 / 验证损失</h3></div></div><PluginHost input={timeSeriesArtifact([selected], 'valLoss', { height: 185 })} /></section>
+        <section className="card"><div className="card-head"><div><span>本次配置</span><h3>本次实验配置</h3></div></div><PluginHost input={parameterTableArtifact(selected)} /></section>
       </div>
     </>
   );
@@ -149,13 +151,13 @@ function Compare({ runs, focusIds, onSelection }: { runs: ExperimentRun[]; focus
   const best = [...displayed].sort((a, b) => (latest(b)?.accuracy ?? 0) - (latest(a)?.accuracy ?? 0))[0];
   return (
     <>
-      <div className="page-heading"><div><div className="eyebrow">COMPARE / {displayed.length} RUNS</div><h1>实验对比</h1><p>将参数差异与模型表现放在同一视图中。</p></div><div className="best-badge"><Sparkles size={14} />最佳：{best?.name}</div></div>
+      <div className="page-heading"><div><div className="eyebrow">COMPARE / {displayed.length} RUNS</div><h1>实验对比</h1><p>将参数差异与模型表现放在同一视图中。</p></div><div className="best-badge"><Sparkles size={14} />当前所选最高准确率：{best?.name}</div></div>
       <section className="compare-toolbar card">
         <div className="run-picker">{runs.map((run) => <button key={run.id} className={selectedIds.includes(run.id) ? 'selected' : ''} onClick={() => toggleRun(run.id)}><i style={{ background: run.color }} />{run.name}<b>{formatPercent(latest(run)?.accuracy)}</b></button>)}</div>
         <label>曲线平滑<select value={smoothing} onChange={(event) => setSmoothing(Number(event.target.value))}><option value="1">关闭</option><option value="3">3 steps</option><option value="5">5 steps</option></select></label>
       </section>
-      <section className="card compare-chart"><div className="card-head"><div><span>ALIGNED METRICS</span><h3>验证准确率对比</h3></div><div className="legend">{displayed.map((run) => <span key={run.id}><i style={{ background: run.color }} />{run.name}</span>)}</div></div>{displayed.length ? <PluginHost input={timeSeriesArtifact(displayed, 'accuracy', { height: 270, smoothing })} /> : <div className="empty-compare">请选择至少一个 Run</div>}</section>
-      <section className="card table-card"><div className="card-head"><div><span>PARAMETER DIFF</span><h3>参数与结果</h3></div></div><PluginHost input={compareTableArtifact(displayed)} /></section>
+      <section className="card compare-chart"><div className="card-head"><div><span>所选运行的指标对照</span><h3>验证准确率对比</h3></div><div className="legend">{displayed.map((run) => <span key={run.id}><i style={{ background: run.color }} />{run.name}</span>)}</div></div>{displayed.length ? <PluginHost input={timeSeriesArtifact(displayed, 'accuracy', { height: 270, smoothing })} /> : <div className="empty-compare">请选择至少一个 Run</div>}</section>
+      <section className="card table-card"><div className="card-head"><div><span>参数与结果</span><h3>参数与结果</h3></div></div><PluginHost input={compareTableArtifact(displayed)} /></section>
       {displayed.length > 0 && displayed.at(-1)!.source !== 'local-demo' && <ExperimentAssetTimeline run={displayed.at(-1)!} baseline={displayed.length > 1 ? displayed[0] : undefined} />}
     </>
   );
@@ -173,11 +175,13 @@ function Artifacts({ selected }: { selected: ExperimentRun }) {
   );
 }
 
-export function WorkspaceApp({ user }: { user: CurrentUser }) {
+export function WorkspaceApp({ user, embedded=false, activeView, onNavigate }: { user: CurrentUser; embedded?:boolean; activeView?:View; onNavigate?:(view:View)=>void }) {
   const views:View[]=['home','overview','compare','artifacts','data','three','assets','ai-studio','settings','evaluation',...(integrated()?['teaching' as View]:[])];
   const initialHash=location.hash.slice(1) as View;
-  const [view, setViewState] = useState<View>(() => new URLSearchParams(location.search).has('shared') ? 'data' : views.includes(initialHash) ? initialHash : 'home');
-  const setView=(next:View)=>{if(!['home','overview','compare','artifacts'].includes(next))setDemoMode(false);setViewState(next);if(location.hash!==`#${next}`)history.pushState({view:next},'',`#${next}`);};
+  const [view, setViewState] = useState<View>(() => activeView || (new URLSearchParams(location.search).has('shared') ? 'data' : views.includes(initialHash) ? initialHash : 'home'));
+  const setView=(next:View)=>{if(!['home','overview','compare','artifacts'].includes(next))setDemoMode(false);setViewState(next);if(embedded){onNavigate?.(next);return;}if(location.hash!==`#${next}`)history.pushState({view:next},'',`#${next}`);};
+  useEffect(()=>{if(activeView)setViewState(activeView);},[activeView]);
+  const Content=embedded?'section':'main';
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
@@ -266,7 +270,7 @@ export function WorkspaceApp({ user }: { user: CurrentUser }) {
   const toggleDemo = () => { setDemoMode((value) => !value); setView('home'); };
 
   return (
-    <div className="app-shell" data-testid="workspace-app">
+    <div className={`app-shell ${embedded?'embedded-workspace':''}`} data-testid="workspace-app">
       <a className="skip-link" href="#workspace-content">跳到主要内容</a>
       <button ref={mobileToggleRef} className="mobile-nav-toggle" aria-expanded={mobileNavOpen} aria-controls="primary-navigation" onClick={() => setMobileNavOpen((value) => !value)}><Menu size={18} />导航</button>
       {mobileNavOpen&&<button className="nav-scrim" aria-label="关闭导航" onClick={()=>setMobileNavOpen(false)}/>}
@@ -298,11 +302,11 @@ export function WorkspaceApp({ user }: { user: CurrentUser }) {
       <div className="workspace">
         <header className="topbar"><div className="breadcrumb"><span>{integrated()?'ClawOS':'Projects'}</span><ChevronRight size={13} /><strong>{integrated()?'实验工作区':'vision-classifier'}</strong></div><label className="search"><Search size={14} /><input placeholder="搜索 Run" value={query} onChange={(event) => setQuery(event.target.value)} /></label><div className={`top-status ${backendOnline ? '' : 'offline'}`}><span className="connection-dot" />{demoMode ? '演示实验' : backendOnline ? '已连接后端' : runsLoaded ? '后端连接异常' : '正在连接…'}</div><div className="avatar">CV</div></header>
         {demoMode && <div className="workspace-notice" role="status">演示模式：实验指标和诊断产物均为模拟数据。<button onClick={toggleDemo}>返回真实工作区</button></div>}
-        {!demoMode && ['overview','compare','artifacts'].includes(view) && syntheticRun(selected) && <div className="workspace-notice" role="status">模拟实验：当前准确率、损失和GPU数值由确定性模拟器生成，仅用于验证流程，不代表真实训练或设备实测。</div>}
+        {!demoMode && ['overview','compare','artifacts'].includes(view) && (syntheticRun(selected)||view==='compare'&&comparisonRuns.some(syntheticRun)) && <div className="workspace-notice" role="status">模拟运行提示：此视图包含模拟运行；其准确率、损失和GPU数值仅用于验证流程，不代表真实训练或设备实测。比较前请核对各运行的数据与任务条件。</div>}
         {!demoMode && syncError && <div className="workspace-notice" role="status">无法同步实验：{syncError}。{runs.length > 0 ? '当前显示上次成功加载的数据。' : '连接恢复后将自动重试。'}</div>}
         <div className={`workspace-body ${view === 'home' || view === 'data' || view === 'three' || view === 'assets' || view === 'ai-studio' || view === 'evaluation' || view === 'teaching' ? 'lab-workspace' : ''}`}>
           {view !== 'home' && view !== 'data' && view !== 'three' && view !== 'assets' && view !== 'evaluation' && view !== 'teaching' && <aside className="runs-panel"><div className="runs-head"><div><span>RUNS</span><strong>{demoMode ? filteredRuns.length : pageState.pagination.total} 次实验</strong></div></div><RunList runs={filteredRuns} selectedId={selected?.id ?? ''} onSelect={setSelectedId} />{!demoMode && <div className="run-pagination" aria-label="Run 分页"><span>{pageState.loading ? '正在加载…' : `第 ${pageState.page} / ${Math.max(1, pageState.pagination.pages)} 页`}</span><div><button disabled={pageState.loading || !pageState.pagination.hasPrevious} onClick={() => pageState.setPage((page) => page - 1)}>上一页</button><button disabled={pageState.loading || !pageState.pagination.hasNext} onClick={() => pageState.setPage((page) => page + 1)}>下一页</button></div></div>}</aside>}
-          <main className="content" id="workspace-content" tabIndex={-1}>
+          <Content className="content" id="workspace-content" tabIndex={-1}>
             {view === 'teaching' && integrated() && <Suspense fallback={<p role="status">正在打开课程实验手册…</p>}><TeachingWorkbench/></Suspense>}
             {view === 'home' && <>{researchContext()&&<aside className="research-context"><strong>研究方向：{researchContext()?.name}</strong><p>{researchContext()?.question}</p><a href="/academy/research#domain-heading">查看来源文献与综述对照</a><small>方向来自阅读入口，尚不代表论文实验已复现。</small></aside>}<RoleHome user={user} runs={visibleRuns} onNavigate={setView} onDemoToggle={demoMode ? undefined : toggleDemo} demoMode={demoMode} counts={demoMode ? undefined : pageState.counts} /></>}
             {view === 'overview' && <>{!demoMode && can(user,'runs:create') && <AiExperimentCommand params={draftParams} onChange={setDraftParams} onExecute={submitParameterPlan} />}{selected?.detailLoaded === false ? <div className="run-empty" role="status">正在加载 Run 详情…</div> : selected ? <Overview runs={visibleRuns} selected={selected} onStop={stopRun} canControl={!demoMode && can(user,'runs:create')} /> : <div className="run-empty" role="status"><h1>{!runsLoaded ? '正在加载实验…' : syncError ? '暂时无法加载实验' : '尚无实验'}</h1><p>{!runsLoaded ? '正在连接工作区。' : syncError ? '请检查后端连接，恢复后会自动重试。' : can(user,'runs:create') ? '在右侧配置参数，创建第一个 Run。' : '团队创建实验后，结果将显示在这里。'}</p></div>}</>}
@@ -311,10 +315,10 @@ export function WorkspaceApp({ user }: { user: CurrentUser }) {
             {view === 'data' && <><h2 className="sr-only">数据图表与配置</h2><DataLab /></>}
             {view === 'three' && <><h2 className="sr-only">3D 模型、训练空间与仿真视图</h2><ThreeLab /></>}
             {view === 'assets' && <div className={`asset-permission ${can(user,'assets:write')?'':'read-only'} ${can(user,'assets:approve')?'can-approve':''}`}><AssetWorkbench canWrite={can(user,'assets:write')} canApprove={can(user,'assets:approve')} /></div>}
-            {view === 'ai-studio' && <><h2 className="sr-only">AI 3D 创作工具</h2><AiStudio /></>}
+            {view === 'ai-studio' && <><h2 className="sr-only">AI 3D 创作工具</h2><Suspense fallback={<p role="status">正在加载三维创作工具…</p>}><AiStudio /></Suspense></>}
             {view === 'evaluation' && <Suspense fallback={<p role="status">正在加载视觉评估…</p>}><EvaluationLab canWrite={can(user,'runs:create')} /></Suspense>}
             {view === 'settings' && can(user,'workspace:admin') && (integrated()?<IntegrationSettings/>:<WorkspaceSettings />)}
-          </main>
+          </Content>
           {!demoMode && can(user,'runs:create') && view !== 'home' && view !== 'data' && view !== 'three' && view !== 'assets' && view !== 'ai-studio' && view !== 'evaluation' && <ParameterLab params={draftParams} onChange={setDraftParams} onSubmit={submitParameterPlan} backendOnline={backendOnline} selectedRun={selected} baselineRun={baselineRun} onSetBaseline={(run) => setBaselineRunId(run.id)} />}
         </div>
       </div>
@@ -323,8 +327,6 @@ export function WorkspaceApp({ user }: { user: CurrentUser }) {
 }
 
 export function App(){
-  const [hash,setHash]=useState(location.hash);
-  useEffect(()=>{const changed=()=>setHash(location.hash);addEventListener('hashchange',changed);addEventListener('popstate',changed);return()=>{removeEventListener('hashchange',changed);removeEventListener('popstate',changed);};},[]);
-  if(integrated()&&hash==='#teaching')return <div className="app-shell teaching-shell"><a className="skip-link" href="#teaching-content" onClick={e=>{e.preventDefault();document.getElementById('teaching-content')?.focus();}}>跳到课程实验</a><aside className="sidebar"><div className="brand"><div className="brand-mark"><FlaskConical size={20}/></div><div><strong>ClawVision</strong><span>实验与验证</span></div></div><nav className="clawos-navigation" aria-label="教学实验导航"><a href="/academy/lab">学习与教材</a><a href="/academy/research#domain-heading">文献与综述</a><a href="#home">完整实验工作区</a><a href="/academy/notes">学习笔记</a></nav><p className="muted">CPU 机制实验<br/>不需要启动模型或实验子服务。</p></aside><div className="workspace"><header className="topbar"><div className="breadcrumb"><span>ClawOS</span><ChevronRight size={13}/><strong>课程实验手册</strong></div></header><main id="teaching-content" tabIndex={-1} className="content"><Suspense fallback={<p role="status">正在打开课程实验…</p>}><TeachingWorkbench/></Suspense></main></div></div>;
-  const Gate=integrated()?ClawOSGate:AuthGate;return <Gate>{(user)=> <WorkspaceApp user={user}/>}</Gate>;
+  if(integrated())return <IntegratedWorkspace renderWorkspace={(user,view,onNavigate)=><WorkspaceApp user={user} embedded activeView={view} onNavigate={onNavigate}/>}/>;
+  return <AuthGate>{user=><WorkspaceApp user={user}/>}</AuthGate>;
 }

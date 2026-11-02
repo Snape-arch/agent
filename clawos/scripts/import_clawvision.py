@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 
 ROOTS = ('backend', 'src', 'sdk', 'workers', 'scripts', 'tests', 'examples', 'docs')
-EXTENSIONS = {'.py', '.ts', '.tsx', '.css', '.html', '.json', '.md', '.txt', '.toml', '.yaml', '.yml', '.svg', '.csv', '.gltf'}
+EXTENSIONS = {'.py', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.css', '.html', '.json', '.md', '.txt', '.toml', '.yaml', '.yml', '.svg', '.csv', '.gltf'}
 CONFIG = {'README.md','CHANGELOG.md','package.json','pnpm-lock.yaml','pnpm-workspace.yaml','pyproject.toml','index.html',
           'tsconfig.json','tsconfig.app.json','tsconfig.node.json','vite.config.ts','vitest.config.ts','playwright.config.ts','playwright.production.config.ts'}
 SKIP = {'node_modules','output','data','dist','coverage','__pycache__','tools','weights'}

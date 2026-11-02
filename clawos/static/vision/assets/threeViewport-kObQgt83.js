@@ -1,0 +1,1 @@
+function t(i,n){const e=typeof ResizeObserver<"u"?new ResizeObserver(n):void 0;return e==null||e.observe(i),window.addEventListener("resize",n),()=>{e==null||e.disconnect(),window.removeEventListener("resize",n)}}export{t as o};

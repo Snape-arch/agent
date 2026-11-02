@@ -21,12 +21,12 @@ describe('Teaching evidence workbench',()=>{
     render(<App/>);await screen.findByText('固定语料的真实字符检索。');
     const paths=vi.mocked(fetch).mock.calls.map(([p])=>String(p));
     expect(paths.every(p=>p.startsWith('/api/vision/teaching/'))).toBe(true);
-    expect(screen.getByText(/不需要启动模型或实验子服务/)).toBeInTheDocument();
+    expect(screen.getByRole('navigation',{name:'可视化教学工作区'})).toBeInTheDocument();
   });
   it('moves keyboard focus to the notebook without navigating out of it',async()=>{
     render(<App/>);await screen.findByText('固定语料的真实字符检索。');
-    fireEvent.click(screen.getByRole('link',{name:'跳到课程实验'}));
-    expect(document.activeElement).toHaveAttribute('id','teaching-content');expect(location.hash).toBe('#teaching');
+    fireEvent.click(screen.getByRole('link',{name:'跳到主要内容'}));
+    expect(document.activeElement).toHaveAttribute('id','vision-content');expect(location.hash).toBe('#teaching');
   });
   it('discloses mechanism limits and requires a pre-run prediction',async()=>{
     render(<TeachingWorkbench/>);expect(await screen.findByText('固定语料的真实字符检索。')).toBeInTheDocument();
