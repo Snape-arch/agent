@@ -10,6 +10,7 @@ import json
 import time
 import unittest
 import tempfile
+import shutil
 
 
 def flatten(suite):
@@ -92,8 +93,15 @@ def main():
         return run_worker(project, args)
     root=project/'output'/'regression'/uuid.uuid4().hex
     root.mkdir(parents=True)
+    # Tools in child processes must not mutate the user's registry or generated scripts.
+    skill_root=root/'skills';skill_root.mkdir()
+    for original in [project/'skills/skill_registry.jsonl',*(project/'skills').glob('skill_*.py')]:
+        if original.is_file() and original.name!='skill_registry.py':shutil.copyfile(original,skill_root/original.name)
+    # Generated replay scripts import this sibling name. Keep the implementation
+    # in its real source package so function/tool paths remain correct.
+    (skill_root/'skill_registry.py').write_text('from skills.skill_registry import *\n',encoding='utf-8')
     env=dict(os.environ,CLAWOS_SKIP_LOCAL_ENV='1',CLAWOS_MEMORY_DB=str(root/'memoryos.db'),CLAWOS_OUTPUT_DIR=str(root/'artifacts'),PYTHONPATH=str(project)+os.pathsep+os.environ.get('PYTHONPATH',''),
-             PYTHONIOENCODING='utf-8',PYTHONUNBUFFERED='1',CLAWOS_REGRESSION_REPORT=str(root/'summary.json'))
+             PYTHONIOENCODING='utf-8',PYTHONUNBUFFERED='1',CLAWOS_REGRESSION_REPORT=str(root/'summary.json'),CLAWOS_SKILLS_DIR=str(skill_root))
     # Hosted Windows may publish TEMP as C:\\Users\\RUNNER~1. Python/Git
     # canonicalize existing paths to the long name; generate fixtures there too.
     temp_root=str(Path(tempfile.gettempdir()).resolve(strict=True))

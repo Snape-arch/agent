@@ -31,7 +31,7 @@ class AcademyReaderApiTests(unittest.TestCase):
             '/api/academy/paper/annotations','/api/academy/paper/checkpoint','/api/academy/paper/checkpoints/{run_id}'}
         for route in server.app.routes:
             if route.path in paths:app.router.routes.append(route)
-        for name,value in [('g_memory_store',self.store),('UPLOAD_DIR',self.root),('OUTPUT_ROOT',self.root/'output')]:
+        for name,value in [('g_memory_store',self.store),('UPLOAD_DIR',self.root),('DATA_DIR',self.root),('OUTPUT_ROOT',self.root/'output')]:
             p=patch.object(server,name,value);p.start();self.addCleanup(p.stop)
         self.client=TestClient(app);self.addCleanup(self.client.close)
 

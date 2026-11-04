@@ -56,6 +56,8 @@ dataset scan. Built-in examples require explicit selection and remain labeled.
 
 # 第三阶段：统一可视化教学工作区（2026-11-02）
 
+2026-11-04补充：原默认库27业务表/467记录/63对象已迁入默认ClawOS Vision存储，设置页显示回执。原库保留；离线脚本 `clawos/scripts/migrate_vision_store.py` 拒绝覆盖已有目标、缺对象/未知非空业务表或源变化，不导入账号/凭据，不恢复旧任务或公开分享。详细命令、1266项整体回归、完整应用重启及真实资产回读见 `clawos/benchmarks/INTEGRATION_AND_VISION_MIGRATION_ACCEPTANCE.md`。其他自定义数据目录需要显式指定新目标，不会自动扫描用户磁盘。
+
 `/academy/vision/` 默认进入可视化课堂，文献包和课程直达 `?domain=rag|peft|diffusion#visuals`。一个ClawOS导航连接课堂、手册、数据、三维、评估、资产、三维创作、运行、比较、产物和设置，共11个视图。原standalone模式保留。专注演示填满程序页面，Esc返回；暖米白/森林绿、字体与图表统一。课堂/手册不需要实验子服务，其余工具在同页显式启用服务，不自动加载模型。
 
 课堂读取已保存CPU报告：RAG逐题来源/版本/分数/答案及失败检查，A、B、B×A和总权重的逐格热力图及真实测试损失，扩散积分时间轴/均值/方差/终点分布与成本。切对照保留当前问题或对应位置。数据表、SVG/PNG和完整JSON便于核对；不以预设动画数值冒充计算。

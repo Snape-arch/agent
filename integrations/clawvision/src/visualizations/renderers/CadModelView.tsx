@@ -8,6 +8,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { SkeletonHelper } from 'three/src/helpers/SkeletonHelper.js';
 import { createThreeBudgetMonitor } from '../threeBudget';
+import { modelFrameDistance, normalizedModelBounds } from '../cadFraming';
 
 export interface CadModelResource { name: string; mimeType: string; base64: string }
 export interface CadTransform { name: string; translation: number[]; rotation: number[]; scale: number[] }
@@ -55,7 +56,13 @@ export function CadModelView({ data }: { data: CadModelData }) {
       }
       const materials=Array.isArray(object.material)?object.material:[object.material]; materials.forEach((item) => { if (item instanceof THREE.MeshStandardMaterial) { item.emissive.set(selected ? '#f59e0b' : '#000000'); item.emissiveIntensity=selected ? .65 : 0; } }); object.geometry.computeVertexNormals();
     });
-    const fit = () => { root.position.set(0, 0, 0); root.scale.setScalar(1); const box = new THREE.Box3().setFromObject(root); const size = box.getSize(new THREE.Vector3()).length() || 1; const center = box.getCenter(new THREE.Vector3()); root.position.set(-center.x, -box.min.y, -center.z); root.scale.setScalar(3.8 / size); };
+    let framing:ReturnType<typeof normalizedModelBounds>|undefined;
+    const fit = () => {
+      root.position.set(0,0,0);root.scale.setScalar(1);const box=new THREE.Box3().setFromObject(root);
+      framing=normalizedModelBounds(box.min.toArray(),box.max.toArray());root.scale.setScalar(framing.scale);root.position.fromArray(framing.position);
+      const direction=camera.position.clone().sub(controls.target).normalize();controls.target.fromArray(framing.target);
+      camera.position.copy(controls.target).addScaledVector(direction,modelFrameDistance(framing.radius,camera.aspect));controls.update();
+    };
     const addObject = (object: THREE.Object3D, before = false, animations:THREE.AnimationClip[] = []) => {
       const names: string[]=[]; let fallback=0; object.traverse((child) => { if (!child.name) child.name=`${child.type} ${fallback++}`; if (before && child instanceof THREE.Mesh) { child.userData.before = true; child.material = new THREE.MeshBasicMaterial({ color: '#ff9b85', wireframe: true, transparent: true, opacity: settings.current.overlay }); } else if (!before) { names.push(child.name); if (child instanceof THREE.Mesh) {editableObjects.push(child);const materials=Array.isArray(child.material)?child.material:[child.material];materials.forEach((item)=>{if(item instanceof THREE.MeshStandardMaterial){for(const map of [item.map,item.normalMap,item.roughnessMap,item.metalnessMap,item.aoMap,item.emissiveMap])if(map){map.anisotropy=renderer.capabilities.getMaxAnisotropy();map.needsUpdate=true;}}});} } });
       if(!before&&animations.length){availableAnimations=animations;mixer=new THREE.AnimationMixer(object);setClips(animations.map((clip,index)=>clip.name||`Animation ${index+1}`));const clip=animations[0];setSelectedClip(clip.name||'Animation 1');activeAction=mixer.clipAction(clip);activeAction.play();}
@@ -90,7 +97,9 @@ export function CadModelView({ data }: { data: CadModelData }) {
     if (data.streamUrl && data.format) void loadStream(data.streamUrl,data.format); else if (data.base64 && data.format) load(data.base64, data.format, false, data.resources); else addProceduralFallback();
     if (data.beforeBase64) load(data.beforeBase64, data.format, true, data.beforeResources);
     let materialKey = `${settings.current.color}:${settings.current.material}`; let clipKey=''; let frame = 0; const animate = () => { budget.beginFrame(); const nextMaterialKey = `${settings.current.color}:${settings.current.material}`; if (nextMaterialKey !== materialKey) { materialKey = nextMaterialKey; applyMaterials(); } if(mixer){const wanted=settings.current.selectedClip;if(wanted&&wanted!==clipKey){activeAction?.stop();const clip=availableAnimations.find((item,index)=>(item.name||`Animation ${index+1}`)===wanted);if(clip){activeAction=mixer.clipAction(clip);activeAction.play();clipKey=wanted;}}mixer.timeScale=settings.current.playing?1:0;mixer.update(clock.getDelta());}skeletons.forEach((helper)=>{helper.visible=settings.current.showSkeleton;helper.update();}); key.intensity = settings.current.light; root.traverse((object) => { if (object instanceof THREE.Mesh && object.userData.before && object.material instanceof THREE.MeshBasicMaterial) object.material.opacity = settings.current.overlay; }); controls.update(); renderer.render(scene, camera); budget.endFrame(); frame = requestAnimationFrame(animate); }; animate();
-    const resize = () => { if(!mount.clientWidth||!mount.clientHeight)return; camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(mount.clientWidth, mount.clientHeight); }; const observer=new ResizeObserver(resize);observer.observe(mount);
+    const resize = () => { if(!mount.clientWidth||!mount.clientHeight)return; camera.aspect = mount.clientWidth / mount.clientHeight;
+      if(framing){const required=modelFrameDistance(framing.radius,camera.aspect),offset=camera.position.clone().sub(controls.target);if(offset.length()<required)camera.position.copy(controls.target).add(offset.setLength(required));}
+      camera.updateProjectionMatrix(); renderer.setSize(mount.clientWidth, mount.clientHeight); }; const observer=new ResizeObserver(resize);observer.observe(mount);
     return () => { disposed = true; observer.disconnect(); cancelAnimationFrame(frame); renderer.domElement.removeEventListener('pointerdown',selectAt); transform.detach();transform.dispose();controls.dispose();mixer?.stopAllAction();skeletons.forEach((helper)=>{scene.remove(helper);helper.dispose();}); root.traverse((object) => { if (object instanceof THREE.Mesh) { object.geometry.dispose(); const mats = Array.isArray(object.material) ? object.material : [object.material]; mats.forEach((item) => item.dispose()); } }); uploadedTexture?.dispose(); budget.dispose(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); };
   }, [data.assetId,data.streamUrl,data.byteSize,data.base64, data.beforeBase64, data.format, data.resources, data.beforeResources, data.textureUrl, data.editable, data.selectedNodeNames, data.highlightNames, data.transformSpace, data.transformSnap, transformMode]);
 

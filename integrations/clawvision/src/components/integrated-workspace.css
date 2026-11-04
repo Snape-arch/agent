@@ -1,4 +1,6 @@
 /* ClawOS learning space: shared warm-paper tokens and a single visual hierarchy. */
+.route-settings .visual-no-evidence{min-height:0!important;margin:25px 0;padding:24px!important;text-align:left!important;border:1px solid var(--claw-line,#e0e3d8);border-radius:8px;background:var(--claw-surface,#fffefb)}
+.route-settings .visual-no-evidence p{max-width:none;margin:10px 0}
 .unified-workspace{--studio-ink:var(--claw-ink,#293b31);--studio-muted:var(--claw-muted,#6d776a);--studio-line:var(--claw-line,#e0e3d8);display:flex;height:100dvh;overflow:hidden;color:var(--studio-ink);background:var(--claw-paper,#fbfaf5);font:14px/1.6 "Segoe UI","Microsoft YaHei",system-ui,sans-serif}
 .unified-workspace button,.unified-workspace input,.unified-workspace textarea,.unified-workspace select{font:inherit;color:inherit;letter-spacing:0}
 .unified-workspace button{cursor:pointer}.unified-workspace button:disabled{cursor:default;opacity:.5}.unified-workspace a{color:var(--claw-accent,#356953);text-underline-offset:4px}

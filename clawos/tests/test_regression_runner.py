@@ -18,6 +18,17 @@ spec.loader.exec_module(runner)
 
 
 class RegressionRunnerTests(unittest.TestCase):
+    def test_child_skill_writes_respect_the_isolated_skill_directory(self):
+        root=SCRIPT.parents[2]
+        original=root/'clawos/skills/skill_registry.jsonl';before=original.read_bytes()
+        with tempfile.TemporaryDirectory() as folder:
+            env=dict(os.environ,PYTHONPATH=str(root/'clawos'),CLAWOS_SKIP_LOCAL_ENV='1',CLAWOS_SKILLS_DIR=folder)
+            code="from skills import skill_registry as s; from pathlib import Path; r=s.register_skill('isolation_probe','Synthetic isolation test',[dict(tool='time_now',args={})]); assert 'error' not in r; assert s.REGISTRY_FILE.parent==Path(__import__('os').environ['CLAWOS_SKILLS_DIR']); assert s.FUNCTIONS_FILE.is_file(); print(s.execute_skill_definition(s._load_registry()['isolation_probe'],plan_only=True)['mode'])"
+            p=subprocess.run([sys.executable,'-c',code],cwd=root,env=env,capture_output=True,text=True,timeout=20)
+            self.assertEqual(p.returncode,0,p.stderr);self.assertIn('plan',p.stdout)
+            self.assertTrue((Path(folder)/'skill_registry.jsonl').is_file())
+            self.assertTrue((Path(folder)/'skill_isolation_probe.py').is_file())
+        self.assertEqual(original.read_bytes(),before)
     @unittest.skipUnless(os.name=='nt', 'Windows path aliases')
     def test_short_path_aliases_share_ownership_and_locks(self):
         import ctypes

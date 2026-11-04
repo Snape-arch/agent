@@ -7,10 +7,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SKILLS_DIR = Path(__file__).parent
+_SOURCE_SKILLS_DIR = Path(__file__).parent
+SKILLS_DIR = Path(os.environ.get('CLAWOS_SKILLS_DIR') or _SOURCE_SKILLS_DIR).expanduser().resolve()
 REGISTRY_FILE = SKILLS_DIR / "skill_registry.jsonl"
-FUNCTIONS_FILE = SKILLS_DIR.parent / "functions.jsonl"
-SCRIPTS_DIR = SKILLS_DIR.parent / "scripts"
+FUNCTIONS_FILE = _SOURCE_SKILLS_DIR.parent / "functions.jsonl"
+SCRIPTS_DIR = _SOURCE_SKILLS_DIR.parent / "scripts"
 MAX_SKILL_NAME_LEN = 64
 MAX_STEPS = 50
 _skills_cache = None

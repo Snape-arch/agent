@@ -52,7 +52,19 @@ class VisionRuntime:
             if self.process and self.process.poll() is not None: self._dispose()
             return dict(running=running,state='running' if running else 'stopped',error=self.error,
                 source_available=(self.source/'serve_clawos.py').is_file(),scope='local_owner_only',
-                storage='isolated_vision_store',model_loaded_automatically=False)
+                storage='isolated_vision_store',model_loaded_automatically=False,migration=self.migration_status())
+    def migration_status(self):
+        path=self.root/'migration-receipt.json'
+        if not path.is_file():return dict(state='not_imported')
+        try:
+            if path.stat().st_size>256000:raise ValueError('Receipt size')
+            value=json.loads(path.read_text(encoding='utf-8'))
+            if value.get('schema')!='clawos.vision-migration.v1' or value.get('passed') is not True:raise ValueError('Receipt schema')
+            counts={name:value['tables'].get(name,{}).get('destination_rows',0) for name in ('runs','datasets','model_assets','visualization_specs')}
+            if any(type(v) is not int or not 0<=v<=1000000 for v in counts.values()):raise ValueError('Receipt counts')
+            return dict(state='imported_snapshot',created=value['created'],counts=counts,objects=value['object_count'],
+                        jobs_resumed=False,public_shares_disabled=True,source_unchanged_at_import=value['source_database_unchanged'])
+        except (ValueError,KeyError,TypeError,OSError):return dict(state='invalid_receipt')
     def _dispose(self):
         if self.group:self.group.close()
         if self.log:self.log.close()

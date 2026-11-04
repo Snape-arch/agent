@@ -3,8 +3,8 @@
     "file": "assets/react-vendor-Ds7D3P6J.js",
     "name": "react-vendor"
   },
-  "_shield-check-DPbGUV8T.js": {
-    "file": "assets/shield-check-DPbGUV8T.js",
+  "_shield-check-DiArziUE.js": {
+    "file": "assets/shield-check-DiArziUE.js",
     "name": "shield-check",
     "imports": [
       "index.html"
@@ -51,8 +51,8 @@
       "_three-animation-DS8KJtl_.js"
     ]
   },
-  "_threeBudget-D-csZGUY.js": {
-    "file": "assets/threeBudget-D-csZGUY.js",
+  "_threeBudget-CrJ3Iv40.js": {
+    "file": "assets/threeBudget-CrJ3Iv40.js",
     "name": "threeBudget",
     "imports": [
       "index.html"
@@ -63,7 +63,7 @@
     "name": "threeViewport"
   },
   "index.html": {
-    "file": "assets/index-CkJAcUxu.js",
+    "file": "assets/index-DoNIxTrc.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -84,18 +84,18 @@
       "src/components/TeachingWorkbench.tsx"
     ],
     "css": [
-      "assets/index-BcsBb7Xb.css"
+      "assets/index-ByMmuATt.css"
     ]
   },
   "src/components/AiStudio.tsx": {
-    "file": "assets/AiStudio-Bx2TDyGJ.js",
+    "file": "assets/AiStudio-B7oaWMG1.js",
     "name": "AiStudio",
     "src": "src/components/AiStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_shield-check-DPbGUV8T.js"
+      "_shield-check-DiArziUE.js"
     ]
   },
   "src/components/EmbeddingView.tsx": {
@@ -111,7 +111,7 @@
     ]
   },
   "src/components/EvaluationLab.tsx": {
-    "file": "assets/EvaluationLab-DHxDdAy3.js",
+    "file": "assets/EvaluationLab-DpO5p7PS.js",
     "name": "EvaluationLab",
     "src": "src/components/EvaluationLab.tsx",
     "isDynamicEntry": true,
@@ -124,7 +124,7 @@
     ]
   },
   "src/components/ScenePlanPreview.tsx": {
-    "file": "assets/ScenePlanPreview-ChhNqJ7e.js",
+    "file": "assets/ScenePlanPreview-BRDTx_0D.js",
     "name": "ScenePlanPreview",
     "src": "src/components/ScenePlanPreview.tsx",
     "isDynamicEntry": true,
@@ -132,14 +132,14 @@
       "_react-vendor-Ds7D3P6J.js",
       "_three-core-DyxFmU2r.js",
       "_three-loaders-D9BNlTqe.js",
-      "_threeBudget-D-csZGUY.js",
+      "_threeBudget-CrJ3Iv40.js",
       "_three-addons-CJcCuPKi.js",
       "_three-animation-DS8KJtl_.js",
       "index.html"
     ]
   },
   "src/components/TeachingWorkbench.tsx": {
-    "file": "assets/TeachingWorkbench-DMKnGsbC.js",
+    "file": "assets/TeachingWorkbench-B8CSxI21.js",
     "name": "TeachingWorkbench",
     "src": "src/components/TeachingWorkbench.tsx",
     "isDynamicEntry": true,
@@ -149,18 +149,18 @@
     ]
   },
   "src/components/VisualLearningStudio.tsx": {
-    "file": "assets/VisualLearningStudio-DctUfXi6.js",
+    "file": "assets/VisualLearningStudio-C-keRbSt.js",
     "name": "VisualLearningStudio",
     "src": "src/components/VisualLearningStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_shield-check-DPbGUV8T.js"
+      "_shield-check-DiArziUE.js"
     ]
   },
   "src/visualizations/renderers/AiStudioModelView.tsx": {
-    "file": "assets/AiStudioModelView-BVAWAiuk.js",
+    "file": "assets/AiStudioModelView-BvjFlbuj.js",
     "name": "AiStudioModelView",
     "src": "src/visualizations/renderers/AiStudioModelView.tsx",
     "isDynamicEntry": true,
@@ -169,12 +169,12 @@
       "_three-core-DyxFmU2r.js",
       "_three-controls-BtBdI-gm.js",
       "_three-geometries-DQ297k5Z.js",
-      "_threeBudget-D-csZGUY.js",
+      "_threeBudget-CrJ3Iv40.js",
       "index.html"
     ]
   },
   "src/visualizations/renderers/CadModelView.tsx": {
-    "file": "assets/CadModelView-DC4dbVN2.js",
+    "file": "assets/CadModelView-DJBBMlqf.js",
     "name": "CadModelView",
     "src": "src/visualizations/renderers/CadModelView.tsx",
     "isDynamicEntry": true,
@@ -185,7 +185,7 @@
       "_three-controls-BtBdI-gm.js",
       "_three-loaders-D9BNlTqe.js",
       "_three-animation-DS8KJtl_.js",
-      "_threeBudget-D-csZGUY.js",
+      "_threeBudget-CrJ3Iv40.js",
       "_three-addons-CJcCuPKi.js"
     ]
   },

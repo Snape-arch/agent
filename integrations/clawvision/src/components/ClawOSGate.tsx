@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { CurrentUser } from '../api';
 import { researchContext } from '../clawos';
 
-type Runtime = {running:boolean;error?:string;source_available:boolean};
+type Runtime = {running:boolean;error?:string;source_available:boolean;migration?:{state:string;counts?:Record<string,number>;objects?:number}};
 async function runtime(action='runtime'):Promise<Runtime> {
   const response=await fetch('/api/vision/'+action,{credentials:'same-origin',method:action==='runtime'?'GET':'POST',
     headers:action==='runtime'?{}:{'Content-Type':'application/json'},body:action==='runtime'?undefined:'{}'});
@@ -11,7 +11,9 @@ async function runtime(action='runtime'):Promise<Runtime> {
 export function IntegrationSettings() {
   const [message,setMessage]=useState('实验服务由本机所有者启动。运行记录、数据集与资产使用独立实验存储。');
   const [busy,setBusy]=useState(false);
-  return <section className="role-home"><span className="eyebrow">工作区设置</span><h1>实验与研究，各有依据。</h1><p>当前使用ClawOS本机所有者身份。文档协作授权不包含实验控制；多用户实验权限尚未接入。</p><p>停止服务会中断当前计算，请先保存结果。真实训练、外部Provider和专业几何依赖按各自条件配置与验收。</p><button className="stop-btn" disabled={busy} onClick={async()=>{setBusy(true);try{await runtime('stop');location.reload();}catch(e){setMessage(e instanceof Error?e.message:'服务停止失败');}finally{setBusy(false);}}}>停止实验服务</button><p role="status">{message}</p></section>;
+  const [migration,setMigration]=useState<Runtime['migration']>();
+  useEffect(()=>{runtime().then(v=>setMigration(v.migration)).catch(e=>setMessage(e.message));},[]);
+  return <section className="role-home"><span className="eyebrow">工作区设置</span><h1>实验与研究，各有依据。</h1><p>当前使用ClawOS本机所有者身份。文档协作授权不包含实验控制；多用户实验权限尚未接入。</p>{migration&&<article className="visual-no-evidence"><h2>历史数据</h2>{migration.state==='imported_snapshot'?<><p>历史快照已导入：{migration.counts?.runs} 次运行、{migration.counts?.datasets} 个数据集、{migration.counts?.model_assets} 个资产、{migration.counts?.visualization_specs} 份私有图表及 {migration.objects} 个对象。</p><p>原目录保留。旧活动任务不会自动恢复，历史公开分享已转为私有。</p></>:<p>{migration.state==='invalid_receipt'?'迁移回执无法核对，请检查导入记录。':'当前实验存储尚无历史迁移回执。'}</p>}</article>}<p>停止服务会中断当前计算，请先保存结果。真实训练、外部Provider和专业几何依赖按各自条件配置与验收。</p><button className="stop-btn" disabled={busy} onClick={async()=>{setBusy(true);try{await runtime('stop');location.reload();}catch(e){setMessage(e instanceof Error?e.message:'服务停止失败');}finally{setBusy(false);}}}>停止实验服务</button><p role="status">{message}</p></section>;
 }
 export function ClawOSGate({children,inline=false}:{children:(user:CurrentUser)=>ReactNode;inline?:boolean}) {
   const [state,setState]=useState<Runtime>();const [error,setError]=useState('');const [busy,setBusy]=useState(false);

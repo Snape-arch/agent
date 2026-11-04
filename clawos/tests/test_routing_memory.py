@@ -691,6 +691,8 @@ class MemoryAndRoutingTests(unittest.TestCase):
             old_store = server.g_memory_store
             old_upload_dir = server.UPLOAD_DIR
             old_base = server.BASE_DIR
+            old_data_dir = server.DATA_DIR
+            old_output_root = server.OUTPUT_ROOT
             store = MemoryStore(str(Path(td) / "memory.db"))
             upload_dir = Path(td) / "uploads"
             upload_dir.mkdir()
@@ -718,6 +720,8 @@ class MemoryAndRoutingTests(unittest.TestCase):
             )
             server.g_memory_store = store
             server.UPLOAD_DIR = upload_dir
+            server.DATA_DIR = upload_dir
+            server.OUTPUT_ROOT = Path(td) / 'artifacts'
             try:
                 preview = asyncio.run(server.api_document_source(preview_doc["id"]))
                 preview_path = Path(preview.path)
@@ -730,6 +734,8 @@ class MemoryAndRoutingTests(unittest.TestCase):
                 server.g_memory_store = old_store
                 server.UPLOAD_DIR = old_upload_dir
                 server.BASE_DIR = old_base
+                server.DATA_DIR = old_data_dir
+                server.OUTPUT_ROOT = old_output_root
 
         self.assertEqual(preview.media_type, "application/pdf")
         self.assertEqual(preview_path, pdf.resolve())

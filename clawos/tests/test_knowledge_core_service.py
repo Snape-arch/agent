@@ -295,7 +295,7 @@ class KnowledgeCoreServiceTests(unittest.TestCase):
         report = run_knowledge_quality_benchmark()
         self.assertGreaterEqual(report["record_count"], 30)
         self.assertGreaterEqual(report["query_count"], 30)
-        self.assertTrue(report["passed"])
+        self.assertTrue(report["passed"], json.dumps({k:report[k] for k in ('metrics','thresholds','latency_ms')},sort_keys=True))
         for metric, threshold in report["thresholds"].items():
             self.assertGreaterEqual(report["metrics"][metric], threshold)
         self.assertIn("not production user telemetry", report["truth_boundary"])
