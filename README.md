@@ -1,8 +1,10 @@
 # Agent / ClawOS Workspace
 
+新增统一工作区的RAG真实文献实践：10篇固定PDF/169页贯通方向订阅、全文证据综述、概念连接、可视化检索对照、跨页高亮、观察/迁移回答保存、课程回看与导出重放。1282项冻结全量通过，最终边界增量15项后端/97项前端及完整应用重启通过；真实模型与教学收益仍未验收，见[真实文献实践验收](clawos/benchmarks/RESEARCH_LEARNING_ACCEPTANCE.md)。
+
 整体集成新增1266项零跳过回归与完整应用启动/恢复验收；原Vision默认历史库27业务表467记录、63对象已快照迁入，设置页可核对回执，原库/权重/凭据保留分界。修复偏心3D模型取景，最终前端88项通过。范围、失败记录和离线导入命令见[集成与迁移验收](clawos/benchmarks/INTEGRATION_AND_VISION_MIGRATION_ACCEPTANCE.md)。
 
-ClawVision现以可视化课堂作为 `/academy/vision/` 默认入口：统一11个工具视图、保留18插件，RAG来源、低秩矩阵逐格解释和采样时间轴直接读取保存的CPU报告。支持全窗口演示、私有观察保存/恢复和SVG/PNG/JSON导出，暖米白/森林绿统一。相关108项后端、85项前端及29项实际HTTP检查通过；真实模型、团队实验授权与学习成效仍未验收，见[可视化教学整合验收](clawos/benchmarks/CLAWVISION_UNIFIED_VISUAL_ACCEPTANCE.md)。
+ClawVision现以可视化课堂作为 `/academy/vision/` 默认入口：统一12个工具视图、保留18插件，RAG来源、低秩矩阵逐格解释和采样时间轴直接读取保存的CPU报告。支持全窗口演示、私有观察保存/恢复和SVG/PNG/JSON导出，暖米白/森林绿统一。相关108项后端、85项前端及29项实际HTTP检查通过；真实模型、团队实验授权与学习成效仍未验收，见[可视化教学整合验收](clawos/benchmarks/CLAWVISION_UNIFIED_VISUAL_ACCEPTANCE.md)。
 
 ClawVision第二阶段新增课程实验手册：RAG来源过滤、低秩适配和扩散数值采样的真实CPU机制对照，支持教材知识点来源冻结、报告导出复跑、个人反思及课程记录回看。相关99项/前端62项与19项实际HTTP检查通过；合成资料实验不代表真实模型或学习成效，见[教学实验验收](clawos/benchmarks/CLAWVISION_TEACHING_ACCEPTANCE.md)。
 

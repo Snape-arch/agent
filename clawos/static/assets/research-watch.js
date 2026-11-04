@@ -12,6 +12,7 @@
     if (cls) node.className = cls;
     return node;
   }
+  function sourceLabel(source) { return source.basis === 'captured_public_pdf_normalized_text' ? '公开PDF全文' : source.basis === 'parsed_full_text' ? '解析全文' : '来源摘要'; }
   function when(epoch) {
     return epoch ? new Date(epoch * 1000).toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai', hour12: false}) : '尚无';
   }
@@ -248,6 +249,7 @@
     if(JSON.stringify(d.coverage_before)!==JSON.stringify(d.coverage_after))root.append(lazy('来源覆盖与预算变化',box=>{box.append(el('p','来源缺失或预算省略可能改变关系范围，不能当作撤稿或反证。','muted'),el('pre',JSON.stringify({before:d.coverage_before,after:d.coverage_after},null,2),'watch-source-text'));}));
   }
   function renderUpdateControls(r,root) {
+    if(r.selection?.external_full_text){const box=el('section',undefined,'watch-updates');box.append(el('h3','固定全文实践'),el('p','本报告保留公开全文快照。新发现可继续进入订阅；这份实验资料不自动替换为摘要，也不自动迁移旧学习判断。'));const a=el('a','回到文献实践');a.href='/academy/vision/?ragCase='+encodeURIComponent(r.selection.external_full_text.case_id)+'#rag-lab';box.append(a);root.append(box);return;}
     const section=el('section',undefined,'watch-updates'),controls=el('div'),delta=el('div',undefined,'watch-update-delta');
     section.append(el('h3','持续更新这份综述'),el('p','只检查已经采集到的资料，不额外联网采集或自动调用模型。已绑定本地全文会重新取证；旧AI正文和人工关系复核保留在原版本。','muted'),controls,delta);root.append(section);
     async function load(){
@@ -364,8 +366,8 @@
         for (const claim of group.sections[key]) {
           const paper = r.papers.find(p => p.id === claim.paper_id), evidence = claim.evidence;
           const article = el('article', undefined, 'watch-synthesis-claim'); article.append(el('blockquote', claim.text));
-          article.append(el('div', `${paper.title} · ${evidence.basis === 'parsed_full_text' ? '解析全文' : '来源摘要'}`, 'watch-meta'));
-          const location = el('details', undefined, 'watch-evidence'); location.append(el('summary', '查看来源定位'), el('p', `${evidence.field}[${evidence.start}:${evidence.end}] · ${evidence.snapshot_id || evidence.citation || ''}`), el('code', evidence.sha256)); article.append(location); detail.append(article);
+          article.append(el('div', `${paper.title} · ${sourceLabel(evidence)}`, 'watch-meta'));
+          const location = el('details', undefined, 'watch-evidence'); location.append(el('summary', '查看来源定位'), el('p', `${evidence.field}[${evidence.start}:${evidence.end}] · ${evidence.snapshot_id || evidence.citation || ''}`), el('code', evidence.sha256)); if(evidence.source_url) location.append(link('打开固定来源', evidence.source_url)); if(evidence.raw_sha256) location.append(el('p', '原始PDF SHA256：' + evidence.raw_sha256, 'watch-meta')); article.append(location); detail.append(article);
         } section.append(detail);
       }
       section.append(el('p', `缺项待补证据：${group.gaps.length} 篇。未提取到局限不等于没有局限。`, 'watch-meta')); root.append(section);
@@ -388,7 +390,7 @@
       const quotes = [];
       for (const paper of [left, right]) {
         const source = el('select'), quote = el('textarea'); quote.maxLength = 1200;
-        paper.sources.forEach((s,i) => source.add(new Option(`${s.basis === 'parsed_full_text' ? '解析全文：' + s.citation : '来源摘要'}（${s.text.length}字）`, String(i))));
+        paper.sources.forEach((s,i) => source.add(new Option(`${sourceLabel(s) + (s.citation ? '：' + s.citation : '')}（${s.text.length}字）`, String(i))));
         const previous = review?.evidence.find(e => e.paper_id === paper.id); source.value = String(previous?.source_index || 0); quote.value = previous?.quote || '';
         field(paper.title + ' · 证据来源', source);
         const preview = el('details'); preview.append(el('summary', '展开冻结来源文本'), el('pre', paper.sources[Number(source.value)].text, 'watch-source-text'));
@@ -418,7 +420,7 @@
   });
   $('synthesis-clear').addEventListener('click', () => { selected.clear(); selectionText(); loadFeed().catch(e => notice(e.message)); });
   $('synthesis-history').addEventListener('change', async event => { if (!event.target.value) return; try { renderSynthesis(await api(`/syntheses/${event.target.value}`)); } catch (error) { notice(error.message); } });
-  synthesisHistory().catch(e => notice(e.message));
+  synthesisHistory().then(async()=>{const id=new URLSearchParams(location.search).get('report');if(id){if(!/^[a-f0-9]{32}$/.test(id))throw Error('综述链接编号无效');await openReport(id);}}).catch(e => notice(e.message));
   for (const [id, delta] of [['watch-prev', -pageSize], ['watch-next', pageSize]]) $(id).addEventListener('click', async () => {
     if (loading) return; loading = true; const old = offset; offset = Math.max(0, offset + delta);
     try { await loadFeed(); } catch (error) { offset = old; notice(error.message); } finally { loading = false; }

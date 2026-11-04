@@ -6,8 +6,9 @@ This is a source snapshot of the user's ClawVision working tree, based on
 changes. The original project and its Git history are untouched.
 
 The source project declares Apache-2.0 in pyproject.toml; original attribution
-and source notices are retained. No model weights, original databases, artifacts,
-credentials, node_modules or Git metadata are imported.
+and source notices are retained. No model weights, credentials, node_modules or Git metadata are imported.
+The initial source import excluded data; the later explicitly authorized business
+snapshot migration is documented below and does not import accounts or secrets.
 
 ClawOS serves the rebuilt React app at `/academy/vision/` and gateways its API
 under `/api/vision/service/`. The experiment backend runs in a separately owned
@@ -68,4 +69,13 @@ dataset scan. Built-in examples require explicit selection and remain labeled.
 
 原导入器遗漏的两个 `.mjs` 检查脚本已恢复，原始摘要另存 `SOURCE_SUPPLEMENT.json`，不重写原236份清单。可运行 `node integrations/clawvision/scripts/verify-plugin-architecture.mjs`，构建后运行 `node integrations/clawvision/scripts/check_bundle_budget.mjs`。原初始应用190000字节、Three core560000字节门槛未提高；三维创作懒加载。发布跳过字节相同资源，最后更新入口HTML。
 
-相关108项后端、85项前端、29项实际HTTP和真实浏览器流程完成，详见 `clawos/benchmarks/CLAWVISION_UNIFIED_VISUAL_ACCEPTANCE.md`。整合指单产品入口、教学证据链与工具可达；原库未迁移，GPU/真实模型、团队实验SSO、真人教学、多日负载不在通过范围。
+相关108项后端、85项前端、29项实际HTTP和真实浏览器流程完成，详见 `clawos/benchmarks/CLAWVISION_UNIFIED_VISUAL_ACCEPTANCE.md`。整合指单产品入口、教学证据链与工具可达；当时原库未迁移（默认历史现已迁移，见2026-11-04补充），GPU/真实模型、团队实验SSO、真人教学、多日负载不在通过范围。
+
+
+# 第四阶段：真实文献、证据和学习实践（2026-11-05）
+
+`/academy/vision/#rag-lab` 是第12个统一视图，保留18插件；不启动模型或Vision worker。显式准备10篇固定公开PDF和作者摘要后，在ClawOS研究DB发布私人、默认暂停的6小时订阅、待复核分类、发现日报/通知和10篇全文冻结综述；全文原件/归一页/哈希保存在DATA_DIR/research-learning。来源不完整不发布部分计划；新发现不自动重写冻结实验或替换成摘要。定时采集需要应用运行，来源索引有延迟。
+
+7个教学概念连接候选、固定英文查询BM25摘要/全文对照、排序图及精确原文区间/跨页高亮、私有观察/URL恢复、3个独立迁移情境/反思追加版本、课程回看和SVG/完整JSON导出重放已接通。归一提取文本不是PDF原版坐标；查看原PDF核对公式和版面。观察/回答绑定报告来源摘要；任务租约、幂等、配额、所有者、CAS及源码变化均校验。不会自动写掌握度，教师状态保持待复核。
+
+全量1282项通过后，收尾Unicode请求体及阅读器跨页边界另经15项后端/97项前端、实际完整应用两次重启32检查与真实浏览器核对。本文献样板与既有迁移历史资产/数据集在同一完整应用共存验证。最终范围/失败、源码指纹/时长和真实模型/真人/多设备/GPU边界见clawos/benchmarks/RESEARCH_LEARNING_ACCEPTANCE.md。

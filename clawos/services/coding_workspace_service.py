@@ -16,6 +16,9 @@ from .sandbox_supervisor import cleanup_lease
 
 
 BRANCH_RE = re.compile(r"^codex/[a-z0-9][a-z0-9._/-]{0,80}$")
+# Git 2.52 setup_explicit_git_dir reserves 40 bytes of Windows PATH_MAX (260).
+# This is checked before core.longpaths handling; do not silently change settings.
+WINDOWS_GIT_PATH_LIMIT = 220 if os.name == "nt" else None
 
 
 class CodingWorkspaceService:
@@ -44,15 +47,21 @@ class CodingWorkspaceService:
             raise PermissionError("confirmed=true is required to create a task workspace")
         repo = self._repo(repo_path)
         root = Path(workspace_root).expanduser().resolve()
-        root.mkdir(parents=True, exist_ok=True)
         slug = re.sub(r"[^a-z0-9-]+", "-", str(task_id or "task").lower()).strip("-")[:36] or "task"
-        nonce = uuid.uuid4().hex[:8]
-        task_root = (root / f"{slug}-{nonce}").resolve()
+        nonce = uuid.uuid4().hex[:12]
+        # Git for Windows still has fixed-size buffers for linked worktree
+        # administrative paths, even with core.longpaths=true. Nested delivery
+        # replays already carry run/worker IDs; retain the descriptive task ID in
+        # metadata and the branch, rather than repeating it in the directory.
+        task_root = (root / f"t-{nonce}").resolve()
         try:
             task_root.relative_to(root)
         except ValueError as exc:
             raise ValueError("task workspace escapes workspace_root") from exc
         target = task_root / "repo"
+        if WINDOWS_GIT_PATH_LIMIT and len(str(target / '.git').replace('\\','/').encode('utf-8')) > WINDOWS_GIT_PATH_LIMIT:
+            raise ValueError('Windows Git worktree path is too deep; choose a shorter workspace_root (the .git path must fit 220 UTF-8 bytes). No task branch was created.')
+        root.mkdir(parents=True, exist_ok=True)
         branch = f"codex/task-{slug[:32]}-{nonce}"
         source_head = self._git(repo, "rev-parse", "HEAD").strip()
         source_status = self._git(repo, "status", "--short").splitlines()

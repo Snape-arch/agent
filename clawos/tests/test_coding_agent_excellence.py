@@ -126,6 +126,30 @@ class CodingAgentExcellenceTests(unittest.TestCase):
             self.assertFalse(committed["remote_mutation"])
             self.assertIn("return a - b", (repo / "calc.py").read_text(encoding="utf-8"))
 
+    def test_nested_task_workspace_avoids_repeated_task_names_in_git_paths(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td).resolve();repo=self._repo(root)
+            workspace_root=root/'nested-delivery'
+            # Old descriptive task directory pushes this above Git's 220-byte
+            # explicit GIT_DIR limit. The compact directory must actually work.
+            while len(str(workspace_root))<185:
+                remaining=185-len(str(workspace_root))-1
+                if remaining<=0:break
+                workspace_root=workspace_root/('d'*min(30,remaining))
+            task=CodingWorkspaceService().create_task(repo,workspace_root,'delivery-'+('a'*32),confirmed=True)
+            self.assertLessEqual(len(Path(task['workspace_root']).name),14)
+            self.assertTrue(Path(task['workspace']).is_relative_to(workspace_root))
+            self.assertEqual(subprocess.run(['git','status','--porcelain'],cwd=task['workspace'],capture_output=True,text=True,check=True).stdout,'')
+            self.assertIn('delivery',task['branch'])
+
+    def test_excessively_deep_windows_task_path_is_rejected_before_git_mutation(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td).resolve();repo=self._repo(root);service=CodingWorkspaceService()
+            with patch('services.coding_workspace_service.WINDOWS_GIT_PATH_LIMIT',220),patch.object(service,'_git') as commands:
+                with self.assertRaisesRegex(ValueError,'shorter workspace_root'):
+                    service.create_task(repo,root/('deep-'*25)/('nested-'*10),'descriptive-task',confirmed=True)
+                commands.assert_not_called()
+
     def test_task_worktree_captures_dirty_baseline_without_touching_source(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

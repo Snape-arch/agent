@@ -112,7 +112,9 @@ class ResearchUpdates:
 
     def _ensure(self,c,owner,rid,version):
         if type(version) is not int or version<0:raise ValueError('更新版本无效')
-        self.report(c,owner,rid);track=self.track(c,owner,rid)
+        base=self.report(c,owner,rid)
+        if (base.get('selection') or {}).get('external_full_text'):raise ValueError('这份实践综述冻结了公开全文；请在文献实践中显式准备新计划，不能用摘要替换全文')
+        track=self.track(c,owner,rid)
         if track:
             if track['version']!=version:raise ValueError('跟踪版本已变化，请刷新后重试')
             if track['head_id']!=rid:raise ValueError('请选择此更新链的最新综述后操作')

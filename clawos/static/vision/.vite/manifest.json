@@ -1,10 +1,17 @@
 {
+  "_loader-circle-0TkyzrYO.js": {
+    "file": "assets/loader-circle-0TkyzrYO.js",
+    "name": "loader-circle",
+    "imports": [
+      "index.html"
+    ]
+  },
   "_react-vendor-Ds7D3P6J.js": {
     "file": "assets/react-vendor-Ds7D3P6J.js",
     "name": "react-vendor"
   },
-  "_shield-check-DiArziUE.js": {
-    "file": "assets/shield-check-DiArziUE.js",
+  "_shield-check-CIWgU5pZ.js": {
+    "file": "assets/shield-check-CIWgU5pZ.js",
     "name": "shield-check",
     "imports": [
       "index.html"
@@ -51,8 +58,8 @@
       "_three-animation-DS8KJtl_.js"
     ]
   },
-  "_threeBudget-CrJ3Iv40.js": {
-    "file": "assets/threeBudget-CrJ3Iv40.js",
+  "_threeBudget-BwNJsnPH.js": {
+    "file": "assets/threeBudget-BwNJsnPH.js",
     "name": "threeBudget",
     "imports": [
       "index.html"
@@ -63,7 +70,7 @@
     "name": "threeViewport"
   },
   "index.html": {
-    "file": "assets/index-DoNIxTrc.js",
+    "file": "assets/index-CEshmCHj.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -79,6 +86,7 @@
       "src/visualizations/renderers/SimulationReplayView.tsx",
       "src/components/TeachingWorkbench.tsx",
       "src/components/VisualLearningStudio.tsx",
+      "src/components/RagResearchStudio.tsx",
       "src/components/EvaluationLab.tsx",
       "src/components/AiStudio.tsx",
       "src/components/TeachingWorkbench.tsx"
@@ -88,14 +96,14 @@
     ]
   },
   "src/components/AiStudio.tsx": {
-    "file": "assets/AiStudio-B7oaWMG1.js",
+    "file": "assets/AiStudio-DXNY21DC.js",
     "name": "AiStudio",
     "src": "src/components/AiStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_shield-check-DiArziUE.js"
+      "_shield-check-CIWgU5pZ.js"
     ]
   },
   "src/components/EmbeddingView.tsx": {
@@ -111,7 +119,7 @@
     ]
   },
   "src/components/EvaluationLab.tsx": {
-    "file": "assets/EvaluationLab-DpO5p7PS.js",
+    "file": "assets/EvaluationLab-aMX629Yx.js",
     "name": "EvaluationLab",
     "src": "src/components/EvaluationLab.tsx",
     "isDynamicEntry": true,
@@ -123,8 +131,22 @@
       "src/components/ScenePlanPreview.tsx"
     ]
   },
+  "src/components/RagResearchStudio.tsx": {
+    "file": "assets/RagResearchStudio-RWpZ7Job.js",
+    "name": "RagResearchStudio",
+    "src": "src/components/RagResearchStudio.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js",
+      "index.html",
+      "_loader-circle-0TkyzrYO.js"
+    ],
+    "css": [
+      "assets/RagResearchStudio-CzxFsUgG.css"
+    ]
+  },
   "src/components/ScenePlanPreview.tsx": {
-    "file": "assets/ScenePlanPreview-BRDTx_0D.js",
+    "file": "assets/ScenePlanPreview-Dne8204y.js",
     "name": "ScenePlanPreview",
     "src": "src/components/ScenePlanPreview.tsx",
     "isDynamicEntry": true,
@@ -132,14 +154,14 @@
       "_react-vendor-Ds7D3P6J.js",
       "_three-core-DyxFmU2r.js",
       "_three-loaders-D9BNlTqe.js",
-      "_threeBudget-CrJ3Iv40.js",
+      "_threeBudget-BwNJsnPH.js",
       "_three-addons-CJcCuPKi.js",
       "_three-animation-DS8KJtl_.js",
       "index.html"
     ]
   },
   "src/components/TeachingWorkbench.tsx": {
-    "file": "assets/TeachingWorkbench-B8CSxI21.js",
+    "file": "assets/TeachingWorkbench-sR9QwXIA.js",
     "name": "TeachingWorkbench",
     "src": "src/components/TeachingWorkbench.tsx",
     "isDynamicEntry": true,
@@ -149,18 +171,19 @@
     ]
   },
   "src/components/VisualLearningStudio.tsx": {
-    "file": "assets/VisualLearningStudio-C-keRbSt.js",
+    "file": "assets/VisualLearningStudio-DhLYBo5E.js",
     "name": "VisualLearningStudio",
     "src": "src/components/VisualLearningStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_shield-check-DiArziUE.js"
+      "_shield-check-CIWgU5pZ.js",
+      "_loader-circle-0TkyzrYO.js"
     ]
   },
   "src/visualizations/renderers/AiStudioModelView.tsx": {
-    "file": "assets/AiStudioModelView-BvjFlbuj.js",
+    "file": "assets/AiStudioModelView-B8yg_02X.js",
     "name": "AiStudioModelView",
     "src": "src/visualizations/renderers/AiStudioModelView.tsx",
     "isDynamicEntry": true,
@@ -169,12 +192,12 @@
       "_three-core-DyxFmU2r.js",
       "_three-controls-BtBdI-gm.js",
       "_three-geometries-DQ297k5Z.js",
-      "_threeBudget-CrJ3Iv40.js",
+      "_threeBudget-BwNJsnPH.js",
       "index.html"
     ]
   },
   "src/visualizations/renderers/CadModelView.tsx": {
-    "file": "assets/CadModelView-DJBBMlqf.js",
+    "file": "assets/CadModelView-BZQSLgGR.js",
     "name": "CadModelView",
     "src": "src/visualizations/renderers/CadModelView.tsx",
     "isDynamicEntry": true,
@@ -185,7 +208,7 @@
       "_three-controls-BtBdI-gm.js",
       "_three-loaders-D9BNlTqe.js",
       "_three-animation-DS8KJtl_.js",
-      "_threeBudget-CrJ3Iv40.js",
+      "_threeBudget-BwNJsnPH.js",
       "_three-addons-CJcCuPKi.js"
     ]
   },

@@ -5364,7 +5364,11 @@ def _vision_teaching():
     from services.vision_teaching import VisionTeaching
     return VisionTeaching(DATA_DIR / 'vision' / 'teaching.sqlite', lab=_academy_lab)
 
-app.include_router(vision_router(_vision_runtime, _collaboration, STATIC_DIR / 'vision', teaching=_vision_teaching))
+def _research_learning():
+    from services.research_learning import ResearchLearning
+    return ResearchLearning(_research_watch(), DATA_DIR / 'research-learning')
+
+app.include_router(vision_router(_vision_runtime, _collaboration, STATIC_DIR / 'vision', teaching=_vision_teaching,research=_research_learning))
 
 @app.middleware('http')
 async def workbench_access(request: Request, call_next):

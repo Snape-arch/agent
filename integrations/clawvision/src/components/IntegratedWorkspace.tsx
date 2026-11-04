@@ -7,7 +7,8 @@ import './integrated-workspace.css';
 
 const TeachingWorkbench=lazy(()=>import('./TeachingWorkbench').then(m=>({default:m.TeachingWorkbench})));
 const VisualLearningStudio=lazy(()=>import('./VisualLearningStudio').then(m=>({default:m.VisualLearningStudio})));
-const icons:Record<string,ReactNode>={visuals:<ScanEye/>,teaching:<NotebookPen/>,data:<ChartNoAxesCombined/>,three:<Box/>,evaluation:<Focus/>,assets:<Layers3/>,'ai-studio':<Sparkles/>,overview:<SlidersHorizontal/>,compare:<ChartNoAxesCombined/>,artifacts:<FlaskConical/>,settings:<Settings2/>};
+const RagResearchStudio=lazy(()=>import('./RagResearchStudio').then(m=>({default:m.RagResearchStudio})));
+const icons:Record<string,ReactNode>={visuals:<ScanEye/>,'rag-lab':<BookOpen/>,teaching:<NotebookPen/>,data:<ChartNoAxesCombined/>,three:<Box/>,evaluation:<Focus/>,assets:<Layers3/>,'ai-studio':<Sparkles/>,overview:<SlidersHorizontal/>,compare:<ChartNoAxesCombined/>,artifacts:<FlaskConical/>,settings:<Settings2/>};
 
 export function IntegratedWorkspace({renderWorkspace}:{renderWorkspace:(user:CurrentUser,view:LegacyView,navigate:(view:LegacyView)=>void)=>ReactNode}) {
   const [address,setAddress]=useState(location.search+location.hash),[focused,setFocused]=useState(false),[menu,setMenu]=useState(false);
@@ -36,7 +37,7 @@ export function IntegratedWorkspace({renderWorkspace}:{renderWorkspace:(user:Cur
       {focused&&<button className="unified-exit-presentation" onClick={()=>{setFocused(false);present.current?.focus();}}><X size={16}/>退出专注演示 <kbd>Esc</kbd></button>}
       <main ref={main} id="vision-content" tabIndex={-1} className={'unified-content route-'+view}>
         <Suspense fallback={<div className="unified-loading" role="status">正在打开{route.title}…</div>}>
-          {view==='visuals'?<VisualLearningStudio key={address.split('#')[0]}/>:view==='teaching'?<TeachingWorkbench key={address.split('#')[0]}/>:view==='settings'?<IntegrationSettings/>:<ClawOSGate inline>{user=>renderWorkspace(user,view,navigate)}</ClawOSGate>}
+          {view==='visuals'?<VisualLearningStudio key={address.split('#')[0]}/>:view==='rag-lab'?<RagResearchStudio key={address.split('#')[0]}/>:view==='teaching'?<TeachingWorkbench key={address.split('#')[0]}/>:view==='settings'?<IntegrationSettings/>:<ClawOSGate inline>{user=>renderWorkspace(user,view,navigate)}</ClawOSGate>}
         </Suspense>
       </main>
     </div>

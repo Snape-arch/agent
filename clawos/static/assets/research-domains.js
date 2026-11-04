@@ -75,6 +75,7 @@
       }); controls.append(b);
     } root.append(controls);
     root.append(link('在可视化课堂理解这个方向', '/academy/vision/?domain=' + d.id + '#visuals'));
+    if(d.id==='rag')root.append(link('用十篇真实全文建立研究与教学实践', '/academy/vision/?domain=rag#rag-lab'));
   }
   trigger.addEventListener('click', async () => {
     trigger.disabled = true; state.textContent = '正在载入方向目录…';
