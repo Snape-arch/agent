@@ -68,5 +68,5 @@
       form.addEventListener('submit',async e=>{e.preventDefault();save.disabled=true;try{const result=await api('/'+round.id+'/cases/'+encodeURIComponent(c.id),{verdict:verdict.value,reason:reason.value,issues:[...issues.selectedOptions].map(o=>o.value),evidence_ids:evidenceChecks.filter(n=>n.checked).map(n=>n.value),human_confirmed:confirmed.checked});render(result);message.textContent='本轮判断已冻结保存。账户记录不自动构成学术验收。';}catch(err){message.textContent=err.message;save.disabled=false;}});detail.append(form);
     });return detail;
   }
-  loadList().catch(e=>message.textContent=e.message);
+  loadList().then(async()=>{const id=new URLSearchParams(location.search).get('review');if(id&&/^[a-f0-9]{32}$/.test(id)){await load(id);history.value=id;}}).catch(e=>message.textContent=e.message);
 })();

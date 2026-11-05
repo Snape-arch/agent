@@ -329,10 +329,11 @@
       if (job.error) aiOutput.append(el('p','失败类型：'+job.error+'。未用规则摘录冒充成功生成。','muted'));
       const result = job.result;
       if (!result || job.status !== 'completed') return;
+      if(result.mode==='retrieval_qa_comparison')aiOutput.firstChild.textContent='RAG回答对照回执 · 主张待人工复核';
       if($('notice').textContent.startsWith('AI综合已排队'))notice(result.review_queue?.length ? `综合已完成，${result.review_queue.length} 项主张暂缓，未进入正文。` : '综合草稿已完成，仍需人工复核。');
       aiOutput.append(button(result.review_queue?.length ? '评审暂缓主张与现有正文' : '评审这份AI草稿',()=>window.dispatchEvent(new CustomEvent('research-review-source',{detail:{kind:'ai',report_id:r.id,job_id:job.id}}))));
       aiOutput.append(el('p',result.boundary,'watch-policy'));
-      aiOutput.append(el('p',`本次选用 ${result.coverage.selected_excerpts}/${result.coverage.available_excerpts} 条证据，覆盖 ${result.coverage.selected_papers}/${result.coverage.corpus_papers} 篇；${result.excluded.length} 条判断未采用。`,'watch-meta'));
+      aiOutput.append(el('p',`本次选用 ${result.coverage.selected_excerpts}/${result.coverage.available_excerpts??'未记录'} 条证据，覆盖 ${result.coverage.selected_papers??'未记录'}/${result.coverage.corpus_papers??'未记录'} 篇；${(result.excluded||result.review_queue||[]).length} 条判断未采用。`,'watch-meta'));
       for (const [key,label] of Object.entries(names)) {
         aiOutput.append(el('h4',label));
         if (!result.sections[key].length) aiOutput.append(el('p','证据不足或未通过检查，留空。','muted'));
@@ -341,7 +342,7 @@
           article.append(el('span',claim.kind === 'inference' ? '研究推断 · 待人工复核' : '模型综合 · 待人工复核','watch-tag'));
           const detail = el('details'); detail.append(el('summary','查看此判断的原文依据'));
           for (const cid of claim.citations) {
-            const ref = result.references.find(e => e.id === cid); detail.append(el('p',`${cid} · ${ref.title} · ${ref.evidence.basis === 'parsed_full_text' ? '解析全文' : '摘要'}`),el('blockquote',ref.quote));
+            const ref = result.references.find(e => e.id === cid); detail.append(el('p',`${cid} · ${ref.title} · ${['parsed_full_text','captured_public_pdf_normalized_text'].includes(ref.evidence.basis) ? '解析全文' : '摘要'}`),el('blockquote',ref.quote));
             detail.append(el('div',`${ref.evidence.field}[${ref.evidence.start}:${ref.evidence.end}]`,'watch-meta'));
           } article.append(detail); aiOutput.append(article);
         }

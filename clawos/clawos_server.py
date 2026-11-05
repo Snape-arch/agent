@@ -1876,9 +1876,13 @@ async def lifespan(app: FastAPI):
     global g_research_ai_worker
     g_research_ai_worker = ResearchAIWorker(ResearchAI(_research_watch()), _research_ai_model)
     g_research_ai_worker.start()
+    global g_research_grounded_worker
+    g_research_grounded_worker = ResearchAIWorker(_research_grounded(), _research_ai_model)
+    g_research_grounded_worker.start()
     yield
     if g_vision_runtime is not None:
         await asyncio.to_thread(g_vision_runtime.close)
+    await g_research_grounded_worker.close()
     await g_research_ai_worker.close()
     await g_research_watch_worker.close()
     await g_document_index_worker.close()
@@ -5368,7 +5372,27 @@ def _research_learning():
     from services.research_learning import ResearchLearning
     return ResearchLearning(_research_watch(), DATA_DIR / 'research-learning')
 
-app.include_router(vision_router(_vision_runtime, _collaboration, STATIC_DIR / 'vision', teaching=_vision_teaching,research=_research_learning))
+g_research_grounded_worker = None
+
+def _research_journey():
+    from services.research_journey import ResearchJourney
+    from services.research_journey_import import import_capture
+    def importer(paper,raw):
+        return import_capture(paper,raw,store=g_memory_store,upload_dir=UPLOAD_DIR,materials=_academy_materials(),
+            staging=DATA_DIR/'research-learning'/'import-staging',refresh=g_vector_store.refresh if g_vector_store else None)
+    return ResearchJourney(_research_learning(),importer=importer)
+
+def _research_grounded():
+    from services.research_grounded import ResearchGrounded
+    return ResearchGrounded(_research_learning())
+
+def _research_grounded_ready():
+    status=_research_ai_ready()
+    running=bool(g_research_grounded_worker and g_research_grounded_worker.task and not g_research_grounded_worker.task.done())
+    return dict(status,ready=status['ready'] and running,worker_running=running)
+
+app.include_router(vision_router(_vision_runtime, _collaboration, STATIC_DIR / 'vision', teaching=_vision_teaching,research=_research_learning,
+    journey=_research_journey,grounded=_research_grounded,model_ready=_research_grounded_ready))
 
 @app.middleware('http')
 async def workbench_access(request: Request, call_next):

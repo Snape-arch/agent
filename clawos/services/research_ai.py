@@ -140,6 +140,7 @@ class ResearchAI:
         with self.store._conn() as c:
             c.execute('BEGIN IMMEDIATE')
             # One model task per database; do not run multiple expensive generations concurrently.
+            if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_grounded_jobs'").fetchone() and c.execute("SELECT 1 FROM research_grounded_jobs WHERE status IN ('running','cancelled') AND lease>?",(now,)).fetchone():return None
             if c.execute("SELECT 1 FROM research_ai_jobs WHERE status IN ('running','cancelled') AND lease_until>?",(now,)).fetchone():return None
             c.execute("UPDATE research_ai_jobs SET status='failed',error='interrupted_or_lease_expired',token='',lease_until=0,updated=? WHERE status='running' AND lease_until<=?",(now,now))
             row=c.execute("SELECT * FROM research_ai_jobs WHERE status='queued' ORDER BY created,id LIMIT 1").fetchone()

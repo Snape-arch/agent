@@ -9,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 from services.collaboration import direct_owner
 
 
-def vision_router(runtime,collaboration,static_dir,teaching=None,research=None):
+def vision_router(runtime,collaboration,static_dir,teaching=None,research=None,journey=None,grounded=None,model_ready=None):
     router=APIRouter();static=Path(static_dir).resolve()
     async def owner(request):
         if not direct_owner(request):raise HTTPException(403,'实验工作区当前仅开放给本机所有者；文档协作授权不包含实验权限')
@@ -69,4 +69,7 @@ def vision_router(runtime,collaboration,static_dir,teaching=None,research=None):
     if research:
         from services.research_learning_api import research_learning_router
         router.include_router(research_learning_router(research,owner))
+    if journey and grounded and model_ready:
+        from services.research_journey_api import journey_router
+        router.include_router(journey_router(journey,grounded,model_ready,owner))
     return router

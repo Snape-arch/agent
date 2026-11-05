@@ -2436,8 +2436,10 @@ function renderLastReflection(reflection) {
 
 async function loadReflection() {
   if (!$("reflectionTable")) return;
-  const cards = await api("/api/reflection/cards?limit=50").catch(() => ({ cards: [] }));
-  $("reflectionTable").innerHTML = table(["任务", "结果", "经验"], (cards.cards || []).map(card => [card.task || "", card.outcome || "", card.lesson || ""]));
+  try {
+    const cards = await api("/api/reflection/list?limit=50");
+    $("reflectionTable").innerHTML = table(["任务", "结果", "经验"], (cards.cards || []).map(card => [card.task || "", card.outcome || "", card.lesson || card.root_cause || ""]));
+  } catch (error) { $("reflectionTable").textContent = "反思记录暂时无法读取：" + error.message; }
   const improvements = await api("/api/reflection/improvements?limit=50").catch(() => ({ items: [] }));
   if ($("reflectionReviewTable")) $("reflectionReviewTable").innerHTML = table(["ID", "状态", "建议", "操作"], (improvements.items || improvements.improvements || []).map(item => [item.id, item.status || "", item.proposal || item.summary || "", { html: `<button class="secondary" onclick="transitionReflection(${Number(item.id)},'reviewed')">审查</button> <button class="secondary" onclick="validateReflection(${Number(item.id)})">验证</button> <button class="secondary" onclick="publishReflection(${Number(item.id)})">发布</button> <button class="secondary" onclick="rollbackReflection(${Number(item.id)})">回滚</button>` }]));
 }

@@ -24,7 +24,7 @@ class ResearchReview:
             CREATE INDEX IF NOT EXISTS research_review_owner ON research_review_rounds(owner,created);
             ''')
 
-    def create(self,owner,data):
+    def create(self,owner,data,*,request_key=''):
         if not isinstance(data,dict) or set(data)-{'kind','report_id','job_id','reviewer_ids','adjudicator_id','limit','domain'}:raise ValueError('评审请求字段无效')
         kind=data.get('kind');reviewers=data.get('reviewer_ids',[]);judge=data.get('adjudicator_id','');limit=data.get('limit',20)
         if kind not in ('benchmark','report','ai') or type(limit) is not int or not 1<=limit<=40:raise ValueError('选择有效来源及1–40项评审预算')
@@ -62,11 +62,16 @@ class ResearchReview:
                 cases=[dict(id='R'+str(i+1),domain=domain,claim=r['quote'],evidence=[r],tags=['citation'],origin='rule_extracted_quote') for i,r in enumerate(refs)]
             available=len(cases);cases=cases[:limit]
         if not cases:raise ValueError('没有可评审主张；先补证据或完成AI草稿')
-        now=self.watch.clock();rid=uuid.uuid4().hex
+        now=self.watch.clock();rid=fingerprint(dict(owner=owner,request_key=request_key))[:32] if request_key else uuid.uuid4().hex
         value=dict(id=rid,kind=kind,created=now,source=source,cases=cases,coverage=dict(available=available,selected=len(cases),omitted=available-len(cases)),rubric='claim-evidence-review.v1',boundary=BOUNDARY)
         if len(packed(value))>220000:raise ValueError('评审包超过22万字符，请缩小预算')
         with self.store._conn() as c:
             c.execute('BEGIN IMMEDIATE')
+            old=c.execute('SELECT payload,hash FROM research_review_rounds WHERE id=? AND owner=?',(rid,owner)).fetchone()
+            if old:
+                previous=json.loads(old['payload'])
+                if fingerprint(previous)!=old['hash'] or any(previous[k]!=value[k] for k in ('kind','source','cases','coverage')):raise ValueError('评审请求编号与原始证据不一致')
+                return self.get(owner,rid)
             if c.execute('SELECT COUNT(*) FROM research_review_rounds WHERE owner=? AND created>?',(owner,now-86400)).fetchone()[0]>=20:raise ValueError('每人每天最多20轮评审')
             for actor in actors:
                 table=c.execute("SELECT 1 FROM sqlite_master WHERE name='collaboration_users'").fetchone()

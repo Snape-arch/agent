@@ -79,3 +79,11 @@ dataset scan. Built-in examples require explicit selection and remain labeled.
 7个教学概念连接候选、固定英文查询BM25摘要/全文对照、排序图及精确原文区间/跨页高亮、私有观察/URL恢复、3个独立迁移情境/反思追加版本、课程回看和SVG/完整JSON导出重放已接通。归一提取文本不是PDF原版坐标；查看原PDF核对公式和版面。观察/回答绑定报告来源摘要；任务租约、幂等、配额、所有者、CAS及源码变化均校验。不会自动写掌握度，教师状态保持待复核。
 
 全量1282项通过后，收尾Unicode请求体及阅读器跨页边界另经15项后端/97项前端、实际完整应用两次重启32检查与真实浏览器核对。本文献样板与既有迁移历史资产/数据集在同一完整应用共存验证。最终范围/失败、源码指纹/时长和真实模型/真人/多设备/GPU边界见clawos/benchmarks/RESEARCH_LEARNING_ACCEPTANCE.md。
+
+## Unified research and learning journey (2026-11-05)
+
+`#journey` is view 13; the default remains the visual classroom and all 18 plugins remain. ResearchLearning case/hash binds original subscriptions/digests, ten pinned papers, synthesis, six lesson units, visual practice, shared document/knowledge ingestion, AcademyMaterials and original teacher calibration. Notes use CAS; source PDFs are SHA-checked and use the existing bounded PDF renderer, including in browsers without embedded PDF support. Existing Paper Studio uses its document/window route. Cross-page return links preserve the plan.
+
+ResearchGrounded provides 30 assistant-authored candidates and explicit local-only two-scope answer jobs, bounded calls, strict citations, shared queue exclusion, frozen bank/code and original immutable review envelopes. Only explicit mechanically observed contract faults can create idempotent cards in the original MemoryStore Reflection. No improvement, candidate, policy run or reward is created. Vision supplies teaching observations; ClawOS retains execution and evolution governance. Learner explanations and unresolved semantic flags are not runtime promotion evidence.
+
+1301 frozen regression tests passed; the last two Python/three static compatibility changes were separately covered by 44 backend and 48 static/governance tests. Final frontend 103/103, type/build/bundle/plugin gates and the final actual-app 52 checks passed. Real paper captures were hash-verified replay; synthetic model replies only exercised protocol/review/Reflection UI. Real model quality, independent teachers/experts, learning gains, multi-device/readers/multi-day and GPU remain unverified. See ../../clawos/benchmarks/RESEARCH_JOURNEY_ACCEPTANCE.md for exact timings, failures and fingerprints.
