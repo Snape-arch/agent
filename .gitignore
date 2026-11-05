@@ -40,6 +40,7 @@ Desktop.ini
 
 # ClawOS local runtime artifacts
 clawos/uploads/
+clawos/research-learning/
 clawos/data/chroma/
 clawos/backups/
 desktop/build/
