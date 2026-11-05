@@ -1,13 +1,21 @@
 {
-  "_arrow-right-BpSUfehd.js": {
-    "file": "assets/arrow-right-BpSUfehd.js",
-    "name": "arrow-right",
+  "_LearningContext-!~{00m}~.js": {
+    "file": "assets/LearningContext-DWTWEonn.css",
+    "src": "_LearningContext-!~{00m}~.js"
+  },
+  "_LearningContext-C_dYq6mr.js": {
+    "file": "assets/LearningContext-C_dYq6mr.js",
+    "name": "LearningContext",
     "imports": [
-      "index.html"
+      "index.html",
+      "_react-vendor-Ds7D3P6J.js"
+    ],
+    "css": [
+      "assets/LearningContext-DWTWEonn.css"
     ]
   },
-  "_loader-circle-D-OaBE1W.js": {
-    "file": "assets/loader-circle-D-OaBE1W.js",
+  "_loader-circle-ZXc6aYdU.js": {
+    "file": "assets/loader-circle-ZXc6aYdU.js",
     "name": "loader-circle",
     "imports": [
       "index.html"
@@ -17,8 +25,8 @@
     "file": "assets/react-vendor-Ds7D3P6J.js",
     "name": "react-vendor"
   },
-  "_shield-check-DK5pKLOT.js": {
-    "file": "assets/shield-check-DK5pKLOT.js",
+  "_shield-check-TjmkCbCH.js": {
+    "file": "assets/shield-check-TjmkCbCH.js",
     "name": "shield-check",
     "imports": [
       "index.html"
@@ -65,8 +73,8 @@
       "_three-animation-DS8KJtl_.js"
     ]
   },
-  "_threeBudget-C3YCwetG.js": {
-    "file": "assets/threeBudget-C3YCwetG.js",
+  "_threeBudget-DC4RORRg.js": {
+    "file": "assets/threeBudget-DC4RORRg.js",
     "name": "threeBudget",
     "imports": [
       "index.html"
@@ -77,7 +85,7 @@
     "name": "threeViewport"
   },
   "index.html": {
-    "file": "assets/index-yfMk5wMA.js",
+    "file": "assets/index-BL2LoyV5.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -100,18 +108,18 @@
       "src/components/TeachingWorkbench.tsx"
     ],
     "css": [
-      "assets/index-D2hJ7u6x.css"
+      "assets/index-D2DEL01U.css"
     ]
   },
   "src/components/AiStudio.tsx": {
-    "file": "assets/AiStudio-8c7OclGj.js",
+    "file": "assets/AiStudio-B_I8GGcC.js",
     "name": "AiStudio",
     "src": "src/components/AiStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_shield-check-DK5pKLOT.js"
+      "_shield-check-TjmkCbCH.js"
     ]
   },
   "src/components/EmbeddingView.tsx": {
@@ -127,7 +135,7 @@
     ]
   },
   "src/components/EvaluationLab.tsx": {
-    "file": "assets/EvaluationLab-CoetBhJ8.js",
+    "file": "assets/EvaluationLab-Bmb401Nd.js",
     "name": "EvaluationLab",
     "src": "src/components/EvaluationLab.tsx",
     "isDynamicEntry": true,
@@ -140,36 +148,36 @@
     ]
   },
   "src/components/RagResearchStudio.tsx": {
-    "file": "assets/RagResearchStudio-Du9oUFNs.js",
+    "file": "assets/RagResearchStudio-C4PRMQG_.js",
     "name": "RagResearchStudio",
     "src": "src/components/RagResearchStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_arrow-right-BpSUfehd.js",
-      "_loader-circle-D-OaBE1W.js"
+      "_LearningContext-C_dYq6mr.js",
+      "_loader-circle-ZXc6aYdU.js"
     ],
     "css": [
       "assets/RagResearchStudio-CzxFsUgG.css"
     ]
   },
   "src/components/ResearchJourneyStudio.tsx": {
-    "file": "assets/ResearchJourneyStudio-CZ1YWLdB.js",
+    "file": "assets/ResearchJourneyStudio-ZpcCedLL.js",
     "name": "ResearchJourneyStudio",
     "src": "src/components/ResearchJourneyStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_arrow-right-BpSUfehd.js"
+      "_LearningContext-C_dYq6mr.js"
     ],
     "css": [
       "assets/ResearchJourneyStudio-CGKwCcjT.css"
     ]
   },
   "src/components/ScenePlanPreview.tsx": {
-    "file": "assets/ScenePlanPreview-23xgX4fN.js",
+    "file": "assets/ScenePlanPreview-C4qwb3Rs.js",
     "name": "ScenePlanPreview",
     "src": "src/components/ScenePlanPreview.tsx",
     "isDynamicEntry": true,
@@ -177,14 +185,14 @@
       "_react-vendor-Ds7D3P6J.js",
       "_three-core-DyxFmU2r.js",
       "_three-loaders-D9BNlTqe.js",
-      "_threeBudget-C3YCwetG.js",
+      "_threeBudget-DC4RORRg.js",
       "_three-addons-CJcCuPKi.js",
       "_three-animation-DS8KJtl_.js",
       "index.html"
     ]
   },
   "src/components/TeachingWorkbench.tsx": {
-    "file": "assets/TeachingWorkbench-DtufdbzF.js",
+    "file": "assets/TeachingWorkbench-C2pgGIu1.js",
     "name": "TeachingWorkbench",
     "src": "src/components/TeachingWorkbench.tsx",
     "isDynamicEntry": true,
@@ -194,20 +202,20 @@
     ]
   },
   "src/components/VisualLearningStudio.tsx": {
-    "file": "assets/VisualLearningStudio--MsoMOIS.js",
+    "file": "assets/VisualLearningStudio-B9PVh5RS.js",
     "name": "VisualLearningStudio",
     "src": "src/components/VisualLearningStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_shield-check-DK5pKLOT.js",
-      "_arrow-right-BpSUfehd.js",
-      "_loader-circle-D-OaBE1W.js"
+      "_shield-check-TjmkCbCH.js",
+      "_LearningContext-C_dYq6mr.js",
+      "_loader-circle-ZXc6aYdU.js"
     ]
   },
   "src/visualizations/renderers/AiStudioModelView.tsx": {
-    "file": "assets/AiStudioModelView-C8f6ZjK3.js",
+    "file": "assets/AiStudioModelView-BGc_QzF5.js",
     "name": "AiStudioModelView",
     "src": "src/visualizations/renderers/AiStudioModelView.tsx",
     "isDynamicEntry": true,
@@ -216,12 +224,12 @@
       "_three-core-DyxFmU2r.js",
       "_three-controls-BtBdI-gm.js",
       "_three-geometries-DQ297k5Z.js",
-      "_threeBudget-C3YCwetG.js",
+      "_threeBudget-DC4RORRg.js",
       "index.html"
     ]
   },
   "src/visualizations/renderers/CadModelView.tsx": {
-    "file": "assets/CadModelView-_8IjZWUl.js",
+    "file": "assets/CadModelView-ItMWmxTy.js",
     "name": "CadModelView",
     "src": "src/visualizations/renderers/CadModelView.tsx",
     "isDynamicEntry": true,
@@ -232,7 +240,7 @@
       "_three-controls-BtBdI-gm.js",
       "_three-loaders-D9BNlTqe.js",
       "_three-animation-DS8KJtl_.js",
-      "_threeBudget-C3YCwetG.js",
+      "_threeBudget-DC4RORRg.js",
       "_three-addons-CJcCuPKi.js"
     ]
   },

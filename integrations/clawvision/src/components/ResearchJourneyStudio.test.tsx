@@ -32,27 +32,27 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();history.replaceState({},'','/');}
 describe('One paper/teaching/evolution journey',()=>{
   it('restores the selected plan, keeps visual/course/source links and never auto starts work',async()=>{
     render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic DPR');expect(screen.getByLabelText('当前研究学习计划')).toHaveValue('case-old');
-    await screen.findByText('Synthetic local model offline');expect(posts).toHaveLength(0);expect(screen.getByRole('button',{name:'运行本地模型对照'})).toBeDisabled();
-    expect(screen.getByRole('link',{name:'继续教材与教师学习链路'})).toHaveAttribute('href',journey.links.course);expect(screen.getByRole('link',{name:'打开原Agent工作台'})).toHaveAttribute('href','/console#reflection');
-    fireEvent.click(screen.getByText('版本与原文定位'));fireEvent.click(screen.getByRole('button',{name:'打开配套实验'}));expect(location.search).toContain('ragCase=case-old');expect(location.hash).toBe('#rag-lab');
+    expect(screen.queryByText('Synthetic local model offline')).not.toBeInTheDocument();fireEvent.click(screen.getByText('进阶选做：比较模型回答'));await screen.findByText('Synthetic local model offline');expect(posts).toHaveLength(0);expect(screen.getByRole('button',{name:'运行本地模型对照'})).toBeDisabled();
+    fireEvent.click(screen.getByText('教师与研究者：评审、校准和Agent改进'));expect(screen.getByRole('link',{name:'继续教材与教师学习链路'})).toHaveAttribute('href',journey.links.course);expect(screen.getByRole('link',{name:'打开原Agent工作台'})).toHaveAttribute('href','/console#reflection');
+    fireEvent.click(screen.getByRole('button',{name:'定位一条原文证据'}));expect(location.search).toContain('ragCase=case-old');expect(location.hash).toBe('#rag-lab');
   });
   it('persists private reading notes and imports into existing reader/material/calibration',async()=>{
-    render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic DPR');fireEvent.click(screen.getByText('整理这篇论文 · 待阅读'));
+    render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic DPR');fireEvent.click(screen.getByText('按需查阅：课程文献与阅读笔记'));fireEvent.click(screen.getByText('整理这篇论文 · 待阅读'));
     fireEvent.change(screen.getByLabelText('资料夹'),{target:{value:'检索学习'}});fireEvent.change(screen.getByLabelText('阅读笔记'),{target:{value:'Synthetic source-grounded personal note.'}});fireEvent.click(screen.getByRole('button',{name:'保存整理'}));
     await waitFor(()=>expect(journey.papers[0].note.version).toBe(1));await screen.findByDisplayValue('检索学习');expect(posts[0].data.case_hash).toBe('synthetic-hash');
     fireEvent.click(screen.getByRole('button',{name:'导入论文库与教材学习'}));const reader=await screen.findByRole('link',{name:'论文导读与笔记'});expect(reader).toHaveAttribute('href','/academy/paper?document_id=7&researchCase=case-old');expect(screen.getByRole('link',{name:'教师校准'})).toHaveAttribute('href',expect.stringContaining('step=seminar&researchCase=case-old'));
     expect(posts.filter(p=>p.path.endsWith('/import'))).toHaveLength(1);expect(posts.at(-1)?.data.confirmed).toBe(true);
   });
   it('reads a captured PDF in the full content pane and filters without a model',async()=>{
-    render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic DPR');fireEvent.click(screen.getByRole('button',{name:'展开原文'}));expect(await screen.findByRole('img',{name:'Synthetic DPR PDF原文第1页，共1页'})).toHaveAttribute('src','data:image/png;base64,synthetic-fixture');
+    render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic DPR');fireEvent.click(screen.getByText('按需查阅：课程文献与阅读笔记'));fireEvent.click(screen.getByRole('button',{name:'展开原文'}));expect(await screen.findByRole('img',{name:'Synthetic DPR PDF原文第1页，共1页'})).toHaveAttribute('src','data:image/png;base64,synthetic-fixture');
     expect(screen.getByRole('link',{name:'固定版本PDF'})).toHaveAttribute('href',journey.papers[0].pdf_url+'?download=true');fireEvent.change(screen.getByRole('searchbox'),{target:{value:'absent'}});expect(screen.getByText('没有匹配的论文，请调整筛选。')).toBeInTheDocument();expect(posts).toHaveLength(0);
   });
   it('saves self explanation without grading or publishing any agent policy',async()=>{
-    render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic DPR');fireEvent.click(screen.getByText('版本与原文定位'));fireEvent.change(screen.getByRole('textbox',{name:'你怎样核对版本与证据？'}),{target:{value:'这是本人解释，定位证据并不能直接证明语义成立。'}});fireEvent.click(screen.getByRole('button',{name:'保存我的解释'}));
+    render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic DPR');fireEvent.change(screen.getByRole('textbox',{name:'我的解释'}),{target:{value:'这是本人解释，定位证据并不能直接证明语义成立。'}});fireEvent.click(screen.getByRole('button',{name:'保存这一步的解释'}));
     await screen.findByText('已保存解释');expect(posts).toHaveLength(1);expect(posts[0].path).toContain('/units/evidence/checkpoint');expect(posts[0].data.version).toBe(0);
   });
   it('reuses an uncertain submission ID and maps model receipts to the actual called arm',async()=>{
-    ready=true;lost=true;render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic configured fixture; not real-model verification.');
+    ready=true;lost=true;render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic DPR');fireEvent.click(screen.getByText('进阶选做：比较模型回答'));await screen.findByText('Synthetic configured fixture; not real-model verification.');
     fireEvent.click(screen.getByRole('button',{name:'运行本地模型对照'}));await screen.findByText('Synthetic response lost');fireEvent.click(screen.getByRole('button',{name:'恢复上次提交'}));await screen.findByText('Synthetic withheld claim',{exact:false});
     const submissions=posts.filter(p=>p.path.endsWith('/answers'));expect(submissions).toHaveLength(2);expect(submissions[0].data).toEqual(submissions[1].data);
     const abstract=screen.getByRole('heading',{name:'作者摘要'}).closest('section')!;expect(within(abstract).getByText('未调用模型',{exact:false})).toBeInTheDocument();
@@ -61,7 +61,7 @@ describe('One paper/teaching/evolution journey',()=>{
   });
   it('shows inaccessible source errors without synthetic lessons and passes DOM accessibility checks',async()=>{
     failGet=true;const first=render(<ResearchJourneyStudio/>);await screen.findByRole('alert');expect(screen.queryByText('Synthetic DPR')).not.toBeInTheDocument();expect(posts).toHaveLength(0);first.unmount();
-    failGet=false;const view=render(<main><ResearchJourneyStudio/></main>);await screen.findByText('Synthetic DPR');await screen.findByText('Synthetic local model offline');
+    failGet=false;const view=render(<main><ResearchJourneyStudio/></main>);await screen.findByText('Synthetic DPR');
     const result=await axe.run(view.container,{rules:{'color-contrast':{enabled:false},'region':{enabled:false}}});expect(result.violations.map(v=>v.id)).toEqual([]);
   });
 });

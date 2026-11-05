@@ -14,7 +14,7 @@ describe('One integrated education shell',()=>{
     expect(screen.getAllByRole('main')).toHaveLength(1);
   });
   it('keeps the same navigation while the worker is stopped and starts only after a click',async()=>{
-    mount();await screen.findByRole('heading',{name:'课堂图解'});fireEvent.click(screen.getByTestId('unified-nav-three'));
+    mount();await screen.findByRole('heading',{name:'课堂图解'});expect(screen.getByTestId('unified-nav-three')).not.toBeVisible();fireEvent.click(screen.getByText('更多分析与实验工具'));expect(screen.getByTestId('unified-nav-three')).toBeVisible();fireEvent.click(screen.getByTestId('unified-nav-three'));
     const start=await screen.findByRole('button',{name:'启用本机实验服务'});await waitFor(()=>expect(start).toBeEnabled());
     expect(screen.getByRole('navigation',{name:'可视化教学工作区'})).toBeInTheDocument();expect(vi.mocked(fetch).mock.calls.map(c=>c[0])).toEqual(['/api/vision/runtime']);
     fireEvent.click(start);await screen.findByRole('heading',{name:'工作工具 three · local-user'});

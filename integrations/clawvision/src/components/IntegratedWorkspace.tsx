@@ -23,6 +23,7 @@ export function IntegratedWorkspace({renderWorkspace}:{renderWorkspace:(user:Cur
   },[]);
   useEffect(()=>{main.current?.scrollTo?.({top:0});},[view]);
   useEffect(()=>{if(!focused)return;const exit=(event:KeyboardEvent)=>{if(event.key==='Escape'){setFocused(false);present.current?.focus();}};addEventListener('keydown',exit);return()=>removeEventListener('keydown',exit);},[focused]);
+  const toolsNavigation=<>{['分析与空间','实验追踪'].map(group=><section key={group}><h2>{group}</h2>{workspaceRoutes.filter(r=>r.group===group).map(r=><button key={r.id} data-testid={'unified-nav-'+r.id} aria-current={view===r.id?'page':undefined} onClick={()=>navigateWorkspace(r.id)}>{icons[r.id]}<span>{r.title}</span>{view===r.id&&<ChevronRight size={13}/>}</button>)}</section>)}</>;
   const navigate=(next:LegacyView)=>navigateWorkspace(next==='home'?'visuals':next);
   return <div className={`unified-workspace ${focused?'presentation-mode':''}`} data-testid="integrated-workspace">
     <a className="skip-link" href="#vision-content" onClick={e=>{e.preventDefault();main.current?.focus();}}>跳到主要内容</a>
@@ -30,7 +31,8 @@ export function IntegratedWorkspace({renderWorkspace}:{renderWorkspace:(user:Cur
       <a className="unified-brand" href="/academy"><span className="unified-brand-symbol"><BookOpen size={21}/></span><span><strong>ClawOS</strong><small>学习 · 研究 · 创造</small></span></a>
       <a className="unified-back" href="/academy/lab"><ArrowLeft size={14}/>返回学习与教材</a>
       <nav id="unified-navigation" aria-label="可视化教学工作区">
-        {['学习与探索','分析与空间','实验追踪'].map(group=><section key={group}><h2>{group}</h2>{workspaceRoutes.filter(r=>r.group===group).map(r=><button key={r.id} data-testid={'unified-nav-'+r.id} aria-current={view===r.id?'page':undefined} onClick={()=>navigateWorkspace(r.id)}>{icons[r.id]}<span>{r.title}</span>{view===r.id&&<ChevronRight size={13}/>}</button>)}</section>)}
+        {['学习与探索'].map(group=><section key={group}><h2>{group}</h2>{workspaceRoutes.filter(r=>r.group===group).map(r=><button key={r.id} data-testid={'unified-nav-'+r.id} aria-current={view===r.id?'page':undefined} onClick={()=>navigateWorkspace(r.id)}>{icons[r.id]}<span>{r.title}</span>{view===r.id&&<ChevronRight size={13}/>}</button>)}</section>)}
+        <details className="unified-navigation-more" key={route.group} open={route.group!=='学习与探索'}><summary>更多分析与实验工具</summary>{toolsNavigation}</details>
       </nav>
       <div className="unified-sidebar-footer"><a href="/academy/research"><BookOpen size={15}/>文献与综述<ArrowUpRight size={13}/></a><a href="/academy/notes"><NotebookPen size={15}/>学习笔记<ArrowUpRight size={13}/></a><p>ClawVision 可视化能力<br/>已整合至学习工作区</p></div>
     </aside>
