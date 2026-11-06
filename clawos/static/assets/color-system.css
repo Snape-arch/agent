@@ -2,7 +2,7 @@
 @import "./fonts/font-faces.css";
 :root {
   --claw-font-ui: "Claw UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --claw-font-editorial: "Claw Editorial", "Noto Serif CJK SC", "Songti SC", "SimSun", Georgia, serif;
+  --claw-font-editorial: var(--claw-font-ui);
   color-scheme: light;
   background-color: #faf9f6;
   --claw-paper: #faf9f6;
@@ -12,7 +12,7 @@
   --claw-line: #e3e2dc;
   --claw-control-line: #8b92a0;
   --claw-ink: #202331;
-  --claw-muted: #656a78;
+  --claw-muted: #434b5b;
   --claw-accent: #3154d5;
   --claw-accent-hover: #2443b4;
   --claw-accent-soft: #eef1fc;

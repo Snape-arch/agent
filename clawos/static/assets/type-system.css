@@ -1,0 +1,18 @@
+/* Interface typography. User-authored document formatting, code and mathematics remain independent. */
+:root{--claw-font-editorial:var(--claw-font-ui);--claw-muted:#434b5b}
+html body{font-family:var(--claw-font-ui,"PingFang SC","Microsoft YaHei",system-ui,sans-serif);font-size:15px;line-height:1.75}
+html body :is(h1,h2,h3,h4,h5,h6,a,span,strong,b,small,button,input,select,textarea,label,summary,table):not(:where(.ProseMirror,.ProseMirror *,.block-edit,.block-edit *,.table-cell,.table-cell *,[contenteditable], [contenteditable] *,.katex,.katex *,.monaco-editor,.monaco-editor *,.fluent-icon,.ui-ico,.nav-ico,pre,pre *,code,code *,svg *,textarea[spellcheck=false])){font-family:var(--claw-font-ui,"PingFang SC","Microsoft YaHei",system-ui,sans-serif)!important}
+html body :is(h1,h2,h3,h4,h5,h6):not(:where(.ProseMirror,.ProseMirror *,.block-edit *,.table-cell *,[contenteditable] *)){font-weight:600!important;letter-spacing:0}
+html body :is(.muted,.meta,.eyebrow,.visual-kicker,.journey-version,.learning-caution,.learning-next p,.learning-record-count,.unified-breadcrumb,.model-note){color:var(--claw-muted);opacity:1}
+html body :is(.muted,.meta,.eyebrow,.visual-kicker,.journey-version,.unified-breadcrumb){font-size:14px!important}
+html body :is(small,figcaption):not(:where(.ProseMirror,.ProseMirror *,.block-edit *,.table-cell *,[contenteditable] *)){color:inherit}
+html body .context-help-trigger.context-help-trigger{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:32px;min-height:32px;padding:4px 7px;border:0;border-radius:4px;background:transparent;color:var(--claw-accent,#3154d5);font:inherit;font-size:14px!important;line-height:1.5;vertical-align:middle;cursor:help;flex-shrink:0}
+html body .context-help-trigger:hover,html body .context-help-trigger[aria-describedby]{background:var(--claw-accent-soft,#eef1fc)}
+html body .context-help-trigger:focus-visible{outline:2px solid var(--claw-accent,#3154d5);outline-offset:3px}
+.context-help-popup{position:fixed;z-index:2147483000;box-sizing:border-box;width:max-content;max-width:min(360px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;padding:14px 17px;border:1px solid #b8c3e1;border-radius:7px;background:#fff;color:#253047;box-shadow:0 6px 24px #16244c1c;font:400 14px/1.8 var(--claw-font-ui,system-ui,sans-serif);white-space:pre-line;overflow-wrap:anywhere}
+.learning-inline-help{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.learning-inline-help p{margin:0}.learning-inline-help>span{font-size:14px;color:var(--claw-ink)}
+@media(pointer:coarse){html body .context-help-trigger{min-width:44px;min-height:44px}}
+
+html body :is(.doc-outline,.doc-rail-foot,#docStatus,.doc-foot){color:var(--claw-muted)}
+
+.context-help-description{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}.context-help-row{margin-top:-8px}

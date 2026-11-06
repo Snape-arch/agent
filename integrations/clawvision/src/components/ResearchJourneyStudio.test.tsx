@@ -49,7 +49,7 @@ describe('One paper/teaching/evolution journey',()=>{
   });
   it('saves self explanation without grading or publishing any agent policy',async()=>{
     render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic DPR');fireEvent.change(screen.getByRole('textbox',{name:'我的解释'}),{target:{value:'这是本人解释，定位证据并不能直接证明语义成立。'}});fireEvent.click(screen.getByRole('button',{name:'保存这一步的解释'}));
-    await screen.findByText('已保存解释');expect(posts).toHaveLength(1);expect(posts[0].path).toContain('/units/evidence/checkpoint');expect(posts[0].data.version).toBe(0);
+    await screen.findByLabelText('已保存个人解释');expect(posts).toHaveLength(1);expect(posts[0].path).toContain('/units/evidence/checkpoint');expect(posts[0].data.version).toBe(0);
   });
   it('reuses an uncertain submission ID and maps model receipts to the actual called arm',async()=>{
     ready=true;lost=true;render(<ResearchJourneyStudio/>);await screen.findByText('Synthetic DPR');fireEvent.click(screen.getByText('进阶选做：比较模型回答'));await screen.findByText('Synthetic configured fixture; not real-model verification.');

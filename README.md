@@ -1,5 +1,7 @@
 # Agent / ClawOS Workspace
 
+界面与阅读标题现统一无衬线字体，旧页面小字提高到14px起，补充说明支持悬停/聚焦/点击查看；保留墨蓝暖白、代码/公式和文档格式。前端116项、隔离应用52项通过，手机截图异常不算视觉验收；见[字体与按需说明验收](clawos/benchmarks/TYPOGRAPHY_AND_CONTEXT_HELP_ACCEPTANCE.md)。
+
 教学工作区已按原ClawOS图标恢复墨色/蓝色与暖白底，统一中文阅读排版并减少套框，六步学习与来源链路保留。前端108项、相关后端27项及真实应用52检查通过；[品牌修正与验收边界](clawos/benchmarks/BRAND_REFINEMENT_ACCEPTANCE.md)。
 
 新增统一“研究与学习”计划：固定论文下载整理、原全文导读/知识库/教材与教师校准、六单元课程、Vision可视化、30题本地问答对照与原文献评审共用来源ID。原Agent保持执行与策略治理，明确契约故障可送Reflection，不自动升级策略或把学习自述当奖励。1301冻结全量及后续兼容增量、前端103项、真实完整应用52检查通过；真实模型和教学收益仍未验收，见[统一研究学习验收](clawos/benchmarks/RESEARCH_JOURNEY_ACCEPTANCE.md)。

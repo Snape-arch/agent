@@ -4,6 +4,8 @@ import { App } from './App';
 import './styles.css';
 import '../../../clawos/static/assets/color-system.css';
 import './clawos-theme.css';
+import '../../../clawos/static/assets/type-system.css';
+import '../../../clawos/static/assets/context-help.js';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -12,6 +12,12 @@ beforeEach(()=>{history.replaceState({},'','/academy/vision/?ragCase=synthetic-p
 afterEach(()=>{cleanup();vi.unstubAllGlobals();history.replaceState({},'','/');});
 const mount=()=>render(<LearningCourse journey={structuredClone(journey)} reload={vi.fn(async()=>{})} onPaper={vi.fn()} onModel={vi.fn()}/>);
 describe('Beginner learning route',()=>{
+  it('opens optional save help without submitting or losing the current draft',()=>{
+    mount();const draft='A retained learner draft while consulting optional save information.';
+    fireEvent.change(screen.getByLabelText('我的解释'),{target:{value:draft}});
+    fireEvent.click(screen.getByRole('button',{name:'保存说明'}));
+    expect(fetch).not.toHaveBeenCalled();expect(screen.getByLabelText('我的解释')).toHaveValue(draft);
+  });
   it('explains before asking and starts without model calls or automatic completion',()=>{
     mount();expect(screen.getByRole('heading',{name:'RAG到底在帮我们做什么？'})).toBeInTheDocument();expect(screen.getByText(guides.units.question.meaning)).toBeVisible();expect(screen.getByText(guides.units.question.reflection)).toBeVisible();expect(screen.getByRole('button',{name:'从第1步开始'})).toBeEnabled();expect(fetch).not.toHaveBeenCalled();
   });

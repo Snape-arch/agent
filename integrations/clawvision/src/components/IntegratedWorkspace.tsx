@@ -29,7 +29,7 @@ export function IntegratedWorkspace({renderWorkspace}:{renderWorkspace:(user:Cur
   return <div className={`unified-workspace ${focused?'presentation-mode':''}`} data-testid="integrated-workspace">
     <a className="skip-link" href="#vision-content" onClick={e=>{e.preventDefault();main.current?.focus();}}>跳到主要内容</a>
     <aside className={`unified-sidebar ${menu?'menu-open':''}`}>
-      <a className="unified-brand" href="/academy"><img className="unified-brand-symbol" src="/assets/brand/clawos-logo-dark.png" alt="" width="40" height="40"/><span><strong>ClawOS</strong><small>学习 · 研究 · 创造</small></span></a>
+      <a className="unified-brand" href="/academy"><img className="unified-brand-symbol" src="/assets/brand/clawos-logo-dark.png" alt="" width="40" height="40"/><span><strong>ClawOS</strong></span></a>
       <a className="unified-back" href="/academy/lab"><ArrowLeft size={14}/>返回学习与教材</a>
       <nav id="unified-navigation" aria-label="可视化教学工作区">
         {['学习与探索'].map(group=><section key={group}><h2>{group}</h2>{workspaceRoutes.filter(r=>r.group===group).map(r=><button key={r.id} data-testid={'unified-nav-'+r.id} aria-current={view===r.id?'page':undefined} onClick={()=>navigateWorkspace(r.id)}>{icons[r.id]}<span>{r.title}</span>{view===r.id&&<ChevronRight size={13}/>}</button>)}</section>)}

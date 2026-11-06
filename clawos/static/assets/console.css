@@ -70,7 +70,7 @@
 .aether-console .side-label{
   padding:14px 14px 8px;
   text-transform:none;
-  font-size:12px;
+  font-size:14px;
   letter-spacing:0;
 }
 .aether-console .recent-label{
@@ -96,7 +96,7 @@
   border-radius:10px;
   padding:8px 10px;
   color:#4b5563;
-  font-size:12px;
+  font-size:14px;
 }
 .aether-console .session:hover,
 .aether-console .session.on{
@@ -160,7 +160,7 @@
   grid-column:1/-1;
   display:block;
   color:#6b7280;
-  font-size:12px;
+  font-size:14px;
   line-height:1.45;
 }
 .model-mode-card{
@@ -184,7 +184,7 @@
 }
 .model-mode-card span{
   color:#6b7280;
-  font-size:12px;
+  font-size:14px;
   line-height:1.45;
 }
 .model-mode-card:hover{
@@ -218,7 +218,7 @@
   display:block;
   margin-top:5px;
   color:#4b5563;
-  font-size:12px;
+  font-size:14px;
   line-height:1.45;
 }
 .self-review-committee-panel{
@@ -272,7 +272,7 @@
 }
 .acceptance-metric span{
   color:#64748b;
-  font-size:11px;
+  font-size:14px;
 }
 .acceptance-metric b{
   color:#0f172a;
@@ -290,14 +290,14 @@
   flex-direction:column;
   gap:6px;
   color:#4b5563;
-  font-size:12px;
+  font-size:14px;
   font-weight:650;
 }
 .report-result{
   display:grid;
   gap:10px;
   color:#374151;
-  font-size:13px;
+  font-size:14px;
 }
 .report-flow{
   display:grid;
@@ -326,7 +326,7 @@
   background:rgba(17,24,39,.06);
   color:#4b5563;
   text-align:center;
-  font-size:12px;
+  font-size:14px;
   font-weight:700;
 }
 .report-flow-steps .done{
@@ -354,7 +354,7 @@
 }
 .audit-board-head span{
   color:#64748b;
-  font-size:12px;
+  font-size:14px;
 }
 .audit-board-kpis{
   display:flex;
@@ -371,7 +371,7 @@
   border-radius:10px;
   background:rgba(255,255,255,.82);
   color:#64748b;
-  font-size:11px;
+  font-size:14px;
 }
 .audit-board-kpis b{
   color:#0f766e;
@@ -400,7 +400,7 @@
   border-radius:999px;
   background:#0f766e;
   color:white;
-  font-size:11px;
+  font-size:14px;
   font-weight:800;
 }
 .audit-lane-head{
@@ -411,22 +411,22 @@
 }
 .audit-lane-head b{
   color:#111827;
-  font-size:13px;
+  font-size:14px;
 }
 .audit-lane-head span{
   color:#0f766e;
-  font-size:12px;
+  font-size:14px;
   font-weight:800;
 }
 .audit-lane p{
   margin:5px 0;
   color:#374151;
-  font-size:12px;
+  font-size:14px;
   line-height:1.45;
 }
 .audit-lane small{
   color:#64748b;
-  font-size:11px;
+  font-size:14px;
 }
 .audit-timeline-rail{
   display:grid;
@@ -448,11 +448,11 @@
 }
 .audit-builder-head b{
   color:#111827;
-  font-size:13px;
+  font-size:14px;
 }
 .audit-builder-head span{
   color:#64748b;
-  font-size:12px;
+  font-size:14px;
 }
 .audit-builder-grid{
   display:grid;
@@ -476,7 +476,7 @@
   border-radius:999px;
   background:rgba(15,118,110,.12);
   color:#0f766e;
-  font-size:11px;
+  font-size:14px;
   font-weight:800;
 }
 .audit-builder-task.fallback > span{
@@ -485,16 +485,16 @@
 }
 .audit-builder-task b{
   color:#111827;
-  font-size:13px;
+  font-size:14px;
 }
 .audit-builder-task small{
   color:#64748b;
-  font-size:11px;
+  font-size:14px;
 }
 .audit-builder-task p{
   margin:0;
   color:#374151;
-  font-size:12px;
+  font-size:14px;
   line-height:1.4;
 }
 .audit-builder-task code{
@@ -534,12 +534,12 @@
 }
 .audit-timeline-node b{
   color:#111827;
-  font-size:12px;
+  font-size:14px;
 }
 .audit-timeline-node span,
 .audit-timeline-node small{
   color:#64748b;
-  font-size:11px;
+  font-size:14px;
 }
 .audit-board-columns{
   display:grid;
@@ -549,7 +549,7 @@
 .audit-board-columns h3{
   margin:0 0 8px;
   color:#111827;
-  font-size:13px;
+  font-size:14px;
 }
 .audit-dispute-grid,
 .audit-artifact-diff{
@@ -582,17 +582,17 @@
   border-radius:999px;
   background:rgba(180,83,9,.12);
   color:#92400e;
-  font-size:11px;
+  font-size:14px;
   font-weight:800;
 }
 .audit-dispute-top b,
 .audit-diff-head b{
   color:#111827;
-  font-size:13px;
+  font-size:14px;
 }
 .audit-diff-head span{
   color:#64748b;
-  font-size:11px;
+  font-size:14px;
   text-align:right;
 }
 .audit-dispute-card dl{
@@ -603,13 +603,13 @@
 }
 .audit-dispute-card dt{
   color:#64748b;
-  font-size:11px;
+  font-size:14px;
   font-weight:800;
 }
 .audit-dispute-card dd{
   margin:0;
   color:#374151;
-  font-size:12px;
+  font-size:14px;
   overflow-wrap:anywhere;
 }
 .audit-diff-grid{
@@ -626,7 +626,7 @@
 }
 .audit-diff-pair span{
   color:#0f172a;
-  font-size:12px;
+  font-size:14px;
   font-weight:800;
 }
 .audit-diff-pair code{
@@ -667,7 +667,7 @@
   border-radius:999px;
   background:#0f766e;
   color:white;
-  font-size:12px;
+  font-size:14px;
   font-weight:800;
   z-index:1;
 }
@@ -696,7 +696,7 @@
 .committee-timeline-head span,
 .rubric-summary span{
   color:#6b7280;
-  font-size:12px;
+  font-size:14px;
 }
 .committee-timeline dl{
   display:grid;
@@ -706,7 +706,7 @@
 }
 .committee-timeline dt{
   color:#6b7280;
-  font-size:12px;
+  font-size:14px;
   font-weight:800;
 }
 .committee-timeline dd{
@@ -776,11 +776,11 @@
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
-  font-size:12px;
+  font-size:14px;
 }
 .attachment-chip small{
   color:#8e92a6;
-  font-size:11px;
+  font-size:14px;
 }
 .attachment-chip button{
   width:24px;
@@ -916,7 +916,7 @@
   border:1px solid rgba(17,24,39,.1);
   background:rgba(17,24,39,.05);
   color:#374151;
-  font-size:12px;
+  font-size:14px;
   font-weight:800;
   white-space:nowrap;
   cursor:pointer;
@@ -946,12 +946,12 @@
   -webkit-backdrop-filter:blur(18px);
 }
 .model-mode-panel b{
-  font-size:13px;
+  font-size:14px;
   color:#111827;
   overflow-wrap:anywhere;
 }
 .model-mode-panel span{
-  font-size:11px;
+  font-size:14px;
   color:#6b7280;
   overflow-wrap:anywhere;
 }
@@ -1054,7 +1054,7 @@
 .session-result span,
 .empty-state{
   color:#6b7280;
-  font-size:12px;
+  font-size:14px;
 }
 .session-tags{
   display:flex;
@@ -1069,7 +1069,7 @@
   border:1px solid rgba(17,24,39,.08);
   border-radius:999px;
   padding:3px 8px;
-  font-size:11px;
+  font-size:14px;
 }
 .knowledge-layout{
   display:grid;
@@ -1111,7 +1111,7 @@
 .import-drop span{
   color:#6b7280;
   line-height:1.55;
-  font-size:12px;
+  font-size:14px;
 }
 .session-import{
   display:grid;
@@ -1125,7 +1125,7 @@
   flex-direction:column;
   gap:7px;
   color:#5f6673;
-  font-size:12px;
+  font-size:14px;
   font-weight:650;
 }
 .session-import select{
@@ -1152,7 +1152,7 @@
   display:block;
   margin-top:5px;
   color:#4b5563;
-  font-size:12px;
+  font-size:14px;
   line-height:1.45;
 }
 .obsidian-panel label{
@@ -1160,7 +1160,7 @@
   flex-direction:column;
   gap:6px;
   color:#4b5563;
-  font-size:12px;
+  font-size:14px;
   font-weight:650;
 }
 .compact-block{
@@ -1175,7 +1175,7 @@
   display:flex;
   flex-direction:column;
   gap:7px;
-  font-size:12px;
+  font-size:14px;
   font-weight:650;
   color:#5f6673;
 }
@@ -1207,7 +1207,7 @@
 }
 .map-title span{
   color:#6b7280;
-  font-size:12px;
+  font-size:14px;
 }
 #knowledgeEdges{
   position:absolute;
@@ -1242,14 +1242,14 @@
   box-shadow:0 16px 32px rgba(31,35,40,.12);
 }
 .map-node b{
-  font-size:12px;
+  font-size:14px;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
 .map-node span{
   color:#6b7280;
-  font-size:11px;
+  font-size:14px;
 }
 .map-node.core{
   width:128px;
@@ -1375,7 +1375,7 @@
 }
 .app-grid button span{
   color:#6b7280;
-  font-size:12px;
+  font-size:14px;
 }
 @media(max-width:1100px){
   .aether-console .side{width:220px}
@@ -1440,7 +1440,7 @@
     transform:none;
   }
   .aether-console.sidebar-collapsed .side-nav button{
-    font-size:13px;
+    font-size:14px;
   }
   .aether-console .side-brand{
     margin-bottom:10px;
@@ -1721,7 +1721,7 @@
   align-items:center;
   flex-wrap:wrap;
 }
-.skill-meta span{color:#64748b;font-size:12px}.tag-row{display:flex;gap:6px;flex-wrap:wrap}.tag-row em{font-style:normal;background:#eef2ff;color:#3730a3;border-radius:999px;padding:4px 8px;font-size:12px}
+.skill-meta span{color:#64748b;font-size:14px}.tag-row{display:flex;gap:6px;flex-wrap:wrap}.tag-row em{font-style:normal;background:#eef2ff;color:#3730a3;border-radius:999px;padding:4px 8px;font-size:14px}
 .skill-steps{
   display:grid;
   gap:8px;
@@ -1815,7 +1815,7 @@
 .board-card dd{
   margin:0;
   color:#475569;
-  font-size:12px;
+  font-size:14px;
   line-height:1.45;
 }
 .board-card dd{
@@ -1834,7 +1834,7 @@
   border-radius:6px;
   background:rgba(15,23,42,.08);
   color:#0f172a;
-  font-size:11px;
+  font-size:14px;
   line-height:1;
 }
 .empty-state{
@@ -2088,7 +2088,7 @@
   min-height:28px;
   border-radius:12px;
   color:rgba(255,255,255,.68);
-  font-size:12px;
+  font-size:14px;
   font-weight:760;
   white-space:nowrap;
 }
@@ -2138,7 +2138,7 @@
   padding:0 7px;
   border-radius:999px;
   color:rgba(255,255,255,.58);
-  font-size:11px;
+  font-size:14px;
   font-weight:800;
   white-space:nowrap;
 }
@@ -2156,7 +2156,7 @@
 }
 .aether-console .space-switcher .system-back .space-group-label:after{
   content:"后台";
-  font-size:11px;
+  font-size:14px;
 }
 .aether-console .space-switcher .system-back button[data-view="dash"]{
   min-width:92px;
@@ -2170,7 +2170,7 @@
 }
 .aether-console .space-switcher .system-back button[data-view="dash"]:after{
   content:"后台管理";
-  font-size:12px;
+  font-size:14px;
   white-space:nowrap;
 }
 .aether-console .space-switcher .admin-entry .space-group-label{
@@ -2187,7 +2187,7 @@
   padding:0 12px;
   background:rgba(255,255,255,.18);
   color:rgba(255,255,255,.82);
-  font-size:12px;
+  font-size:14px;
   white-space:nowrap;
 }
 .aether-console .space-switcher button:hover{
@@ -2480,7 +2480,7 @@
 .aether-console .floating-actions:before{
   content:"AI Action Dock";
   color:rgba(255,255,255,.64);
-  font-size:12px;
+  font-size:14px;
   padding:0 8px;
   white-space:nowrap;
 }
@@ -2734,7 +2734,7 @@
 }
 .aether-console .sessions .session b{
   color:#fff;
-  font-size:12px;
+  font-size:14px;
   line-height:1.25;
 }
 .aether-console .sessions .session span,
@@ -2742,7 +2742,7 @@
   display:block;
   margin-top:3px;
   color:rgba(255,255,255,.72);
-  font-size:11px;
+  font-size:14px;
   line-height:1.25;
   white-space:nowrap;
   overflow:hidden;
@@ -3082,7 +3082,7 @@
 }
 .aether-console #view-knowledge .knowledge-mode-card span{
   color:rgba(255,255,255,.62);
-  font:800 10px var(--mono);
+  font:800 14px var(--mono);
   text-transform:uppercase;
   letter-spacing:.12em;
 }
@@ -3132,7 +3132,7 @@
 }
 .aether-console #view-knowledge .knowledge-admin-entry span{
   color:rgba(255,255,255,.62);
-  font:800 10px var(--mono);
+  font:800 14px var(--mono);
   text-transform:uppercase;
   letter-spacing:.12em;
 }
@@ -3163,7 +3163,7 @@
 .aether-console #view-knowledge .knowledge-frontstage-metrics span,
 .aether-console #view-knowledge .knowledge-zone-label span{
   color:rgba(255,255,255,.58);
-  font:800 10px var(--mono);
+  font:800 14px var(--mono);
   text-transform:uppercase;
   letter-spacing:.12em;
 }
@@ -3184,7 +3184,7 @@
 }
 .aether-console #view-knowledge .knowledge-zone-label b{
   color:rgba(255,255,255,.72);
-  font-size:12px;
+  font-size:14px;
 }
 .aether-console #view-knowledge .knowledge-backstage-label{
   display:none;
@@ -3380,7 +3380,7 @@
 }
 .runtime-record-panel span{
   color:rgba(255,255,255,.72);
-  font-size:13px;
+  font-size:14px;
 }
 .runtime-record-grid{
   display:grid;
@@ -3407,7 +3407,7 @@
   background:rgba(255,255,255,.08);
   border:1px solid rgba(255,255,255,.12);
   border-radius:999px;
-  font-size:12px;
+  font-size:14px;
 }
 .runtime-metric-grid{
   display:grid;
@@ -3425,7 +3425,7 @@
 .runtime-metric span,
 .failure-sample span{
   color:rgba(255,255,255,.62);
-  font-size:12px;
+  font-size:14px;
 }
 .runtime-metric b{
   color:#fff;
@@ -3439,7 +3439,7 @@
 .failure-sample p{
   margin:4px 0 0;
   color:rgba(255,255,255,.82);
-  font-size:13px;
+  font-size:14px;
 }
 @media(max-width:1100px){
   .runtime-record-grid{
@@ -3476,7 +3476,7 @@
 .offline-readiness-check span{
   display:block;
   color:rgba(255,255,255,.64);
-  font-size:12px;
+  font-size:14px;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
@@ -3543,7 +3543,7 @@
   border-radius:8px;
   background:rgba(0,0,0,.22);
   color:rgba(255,255,255,.78);
-  font-size:12px;
+  font-size:14px;
   line-height:1.5;
 }
 @media (max-width:640px){
@@ -3591,7 +3591,7 @@
 }
 .local-acceptance-trend-grid span{
   color:rgba(255,255,255,.62);
-  font-size:12px;
+  font-size:14px;
 }
 @media (max-width:900px){
   .local-acceptance-trend-grid{
@@ -3753,7 +3753,7 @@ body.aether-console{
   box-shadow:none;
 }
 .aether-console .side-brand b{font-size:15px;color:var(--workbench-ink)}
-.aether-console .side-brand small{font-size:10px;letter-spacing:.14em;color:#8a9099}
+.aether-console .side-brand small{font-size:14px;letter-spacing:.14em;color:#8a9099}
 .aether-console .side-collapse{
   width:28px;
   height:28px;
@@ -3773,7 +3773,7 @@ body.aether-console{
 .aether-console .side-label{
   padding:16px 10px 7px;
   color:#9298a2;
-  font-size:10px;
+  font-size:14px;
   font-weight:700;
   letter-spacing:.12em;
   text-transform:uppercase;
@@ -3804,7 +3804,7 @@ body.aether-console{
 .aether-console .session{padding:8px 10px;color:#707784;background:transparent;border-radius:8px}
 .aether-console .session:hover,.aether-console .session.on{background:#f0f1ee;color:var(--workbench-ink)}
 .aether-console .side-bottom{padding:0 4px 2px;border-top:1px solid var(--workbench-line)}
-.aether-console .health{color:#6b7280;font-size:11px}
+.aether-console .health{color:#6b7280;font-size:14px}
 
 .aether-console .console-head{
   left:224px;
@@ -3816,7 +3816,7 @@ body.aether-console{
   backdrop-filter:blur(10px);
 }
 .aether-console .console-head h1{font-size:20px;font-weight:680;letter-spacing:-.02em;color:var(--workbench-ink)}
-.aether-console .console-head p{margin-top:3px;color:var(--workbench-muted);font-size:12px}
+.aether-console .console-head p{margin-top:3px;color:var(--workbench-muted);font-size:14px}
 .aether-console .model-mode-panel{
   min-width:200px;
   padding:9px 14px;
@@ -3826,8 +3826,8 @@ body.aether-console{
   border-radius:10px;
   box-shadow:none;
 }
-.aether-console .model-mode-panel b{font-size:12px}
-.aether-console .model-mode-panel span{color:var(--workbench-muted);font-size:10px}
+.aether-console .model-mode-panel b{font-size:14px}
+.aether-console .model-mode-panel span{color:var(--workbench-muted);font-size:14px}
 .aether-console .badge{
   color:#4b5563;
   background:#fff;
@@ -3859,7 +3859,7 @@ body.aether-console{
   display:block;
   margin-bottom:8px;
   color:#7b8491;
-  font-size:10px;
+  font-size:14px;
   font-weight:750;
   letter-spacing:.16em;
 }
@@ -3897,7 +3897,7 @@ body.aether-console{
   padding:0;
 }
 .aether-console .workbench-empty b{font-size:16px;font-weight:650}
-.aether-console .workbench-empty span{font-size:13px;line-height:1.6;color:var(--workbench-muted)}
+.aether-console .workbench-empty span{font-size:14px;line-height:1.6;color:var(--workbench-muted)}
 .aether-console .composer{
   position:sticky;
   bottom:12px;
@@ -3959,7 +3959,7 @@ body.aether-console{
 }
 .aether-console .workbench-quick button:hover{border-color:#aebcf8;background:#fdfdff;transform:translateY(-1px)}
 .aether-console .workbench-quick b{font-size:14px}
-.aether-console .workbench-quick span{color:var(--workbench-muted);font-size:12px}
+.aether-console .workbench-quick span{color:var(--workbench-muted);font-size:14px}
 
 .aether-console .workbench-columns{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(280px,.72fr);gap:18px}
 .aether-console .workbench-section{
@@ -3978,7 +3978,7 @@ body.aether-console{
   color:#3156d8;
   background:transparent;
   border:0;
-  font-size:12px;
+  font-size:14px;
   font-weight:650;
 }
 .aether-console .active-task-list{display:grid}
@@ -3991,19 +3991,19 @@ body.aether-console{
   border-top:1px solid #eceef1;
 }
 .aether-console .active-task-row:first-child{border-top:0}
-.aether-console .task-index{display:grid;place-items:center;width:30px;height:30px;color:#445; background:#f1f2f4;border-radius:8px;font-size:11px;font-weight:750}
+.aether-console .task-index{display:grid;place-items:center;width:30px;height:30px;color:#445; background:#f1f2f4;border-radius:8px;font-size:14px;font-weight:750}
 .aether-console .task-summary{display:grid;gap:4px;min-width:0}
-.aether-console .task-summary b{overflow:hidden;color:var(--workbench-ink);font-size:13px;text-overflow:ellipsis;white-space:nowrap}
-.aether-console .task-summary span{overflow:hidden;color:var(--workbench-muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.aether-console .task-summary b{overflow:hidden;color:var(--workbench-ink);font-size:14px;text-overflow:ellipsis;white-space:nowrap}
+.aether-console .task-summary span{overflow:hidden;color:var(--workbench-muted);font-size:14px;text-overflow:ellipsis;white-space:nowrap}
 .aether-console .task-progress{display:flex;align-items:center;gap:10px}
 .aether-console .task-progress>span{height:5px;flex:1;overflow:hidden;background:#e8eaf0;border-radius:9px}
 .aether-console .task-progress i{display:block;height:100%;background:var(--workbench-blue);border-radius:9px}
-.aether-console .task-progress b{width:34px;color:#555d69;font-size:11px}
-.aether-console .compact{min-height:32px!important;padding:0 10px!important;border-radius:8px!important;font-size:11px!important}
+.aether-console .task-progress b{width:34px;color:#555d69;font-size:14px}
+.aether-console .compact{min-height:32px!important;padding:0 10px!important;border-radius:8px!important;font-size:14px!important}
 .aether-console .workbench-empty-state{display:grid;gap:5px;padding:22px 0;border-top:1px solid #eceef1}
-.aether-console .workbench-empty-state b{font-size:13px}.aether-console .workbench-empty-state span{color:var(--workbench-muted);font-size:12px}
+.aether-console .workbench-empty-state b{font-size:14px}.aether-console .workbench-empty-state span{color:var(--workbench-muted);font-size:14px}
 
-.aether-console .status-live,.aether-console .delivery-note{color:var(--workbench-green);font-size:11px;font-weight:650}
+.aether-console .status-live,.aether-console .delivery-note{color:var(--workbench-green);font-size:14px;font-weight:650}
 .aether-console .autonomy-options{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--workbench-line);border-radius:10px;overflow:hidden}
 .aether-console .autonomy-options button{
   min-height:68px;
@@ -4020,28 +4020,28 @@ body.aether-console{
 }
 .aether-console .autonomy-options button:first-child{border-left:0}
 .aether-console .autonomy-options button.on{color:#173dad;background:var(--workbench-blue-soft);box-shadow:inset 0 -3px 0 var(--workbench-blue)}
-.aether-console .autonomy-options b{font-size:12px}.aether-console .autonomy-options span{font-size:10px;line-height:1.35;text-align:left}
-.aether-console .autonomy-panel p{min-height:42px;margin:14px 0 6px;color:var(--workbench-muted);font-size:12px;line-height:1.55}
+.aether-console .autonomy-options b{font-size:14px}.aether-console .autonomy-options span{font-size:14px;line-height:1.35;text-align:left}
+.aether-console .autonomy-panel p{min-height:42px;margin:14px 0 6px;color:var(--workbench-muted);font-size:14px;line-height:1.55}
 
 .aether-console .delivery-table{overflow-x:auto;border-top:1px solid #eceef1}
 .aether-console .delivery-row{
   width:100%;min-width:760px;min-height:58px;
   display:grid;grid-template-columns:minmax(260px,1.4fr) 80px minmax(220px,1fr) 120px 90px;
   align-items:center;gap:14px;padding:8px 4px;
-  color:#4f5763;text-align:left;background:transparent;border:0;border-bottom:1px solid #eceef1;border-radius:0;box-shadow:none;font-size:12px
+  color:#4f5763;text-align:left;background:transparent;border:0;border-bottom:1px solid #eceef1;border-radius:0;box-shadow:none;font-size:14px
 }
 .aether-console button.delivery-row:hover{background:#fafafa}
-.aether-console .delivery-head{min-height:34px;color:#8b919b;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.aether-console .delivery-head{min-height:34px;color:#8b919b;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
 .aether-console .delivery-row>span:first-child{display:grid;gap:3px}
-.aether-console .delivery-row b{color:var(--workbench-ink);font-size:12px}.aether-console .delivery-row small{color:#8a9099;font-size:10px}
+.aether-console .delivery-row b{color:var(--workbench-ink);font-size:14px}.aether-console .delivery-row small{color:#8a9099;font-size:14px}
 .aether-console .quality-pass{color:var(--workbench-green);font-weight:700}.aether-console .quality-review{color:var(--workbench-amber);font-weight:700}
 
 .aether-console .agent-roster{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:18px}
 .aether-console .agent-roster .section-heading{grid-column:1/-1}
 .aether-console .agent-row{display:grid;grid-template-columns:34px 1fr auto;gap:8px 10px;align-items:center;padding:12px 0;border-top:1px solid #eceef1}
-.aether-console .agent-mark{grid-row:1/3;display:grid;place-items:center;width:32px;height:32px;color:#3156d8;background:var(--workbench-blue-soft);border-radius:9px;font-size:10px;font-weight:800}
-.aether-console .agent-row b{font-size:12px}.aether-console .agent-row>span:nth-child(3){grid-column:2/4;color:var(--workbench-muted);font-size:10px}
-.aether-console .agent-row em{color:#3156d8;font-size:10px;font-style:normal;font-weight:650}.aether-console .agent-row em.done{color:var(--workbench-green)}.aether-console .agent-row em.waiting{color:#838b96}
+.aether-console .agent-mark{grid-row:1/3;display:grid;place-items:center;width:32px;height:32px;color:#3156d8;background:var(--workbench-blue-soft);border-radius:9px;font-size:14px;font-weight:800}
+.aether-console .agent-row b{font-size:14px}.aether-console .agent-row>span:nth-child(3){grid-column:2/4;color:var(--workbench-muted);font-size:14px}
+.aether-console .agent-row em{color:#3156d8;font-size:14px;font-style:normal;font-weight:650}.aether-console .agent-row em.done{color:var(--workbench-green)}.aether-console .agent-row em.waiting{color:#838b96}
 
 /* Data-heavy backstage views keep their capability but use the same quiet surface. */
 .aether-console .panel-view,.aether-console .glass-panel,.aether-console .section-block{
@@ -4141,7 +4141,7 @@ body.aether-console{
   padding:7px 12px;
   color:#606773;
   border-radius:7px;
-  font-size:12px;
+  font-size:14px;
   font-weight:650;
   text-decoration:none;
 }
@@ -4216,7 +4216,7 @@ body.aether-console{
   border:1px solid var(--workbench-blue);
 }
 .aether-console .intent-panel .secondary{color:#4d5562;background:#fff;border:1px solid var(--workbench-line)}
-.aether-console .composer-help{display:block;margin:7px 2px 0;color:#8a9099;font-size:10px;line-height:1.4}
+.aether-console .composer-help{display:block;margin:7px 2px 0;color:#8a9099;font-size:14px;line-height:1.4}
 
 .aether-console .side{
   border-radius:0!important;
@@ -4240,7 +4240,7 @@ body.aether-console{
   .aether-console .console-head{grid-template-columns:minmax(180px,1fr) auto}
   .aether-console .console-site-links{display:none}
   .aether-console .side-site-links{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:10px 4px 0}
-  .aether-console .side-site-links a{padding:7px 4px;color:#68717e;background:#f2f3f0;border-radius:7px;text-align:center;font-size:10px;font-weight:650;text-decoration:none}
+  .aether-console .side-site-links a{padding:7px 4px;color:#68717e;background:#f2f3f0;border-radius:7px;text-align:center;font-size:14px;font-weight:650;text-decoration:none}
   .aether-console .head-actions{grid-column:2}
 }
 @media(max-width:760px){
@@ -4263,9 +4263,9 @@ body.aether-console{
 .aether-console .health #healthText{color:#374151}
 .aether-console .sessions button.session{display:block;width:100%;text-align:left;font:inherit;border:0;cursor:pointer}
 .aether-console .sessions button.session:focus-visible{outline:2px solid var(--studio-accent,#16765b);outline-offset:-2px}
-.history-controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 0;margin-bottom:12px;border-bottom:1px solid var(--workbench-line,#dfe3ea);font-size:13px}
+.history-controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 0;margin-bottom:12px;border-bottom:1px solid var(--workbench-line,#dfe3ea);font-size:14px}
 .history-controls a{color:var(--studio-accent,#16765b);text-underline-offset:3px}
 .history-controls small{flex-basis:100%}
 .aether-console .side{overflow-y:auto}
 .aether-console .sessions{flex:0 0 auto;min-height:52px;align-content:start}
-.console-page.workspace-linked.aether-console .side-brand b{font-size:13px;white-space:nowrap;overflow-wrap:normal}
+.console-page.workspace-linked.aether-console .side-brand b{font-size:14px;white-space:nowrap;overflow-wrap:normal}
