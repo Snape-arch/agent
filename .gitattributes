@@ -4,3 +4,7 @@ clawos/static/vision/** text eol=lf
 integrations/clawvision/index.html text eol=lf
 # Preserve third-party GLSL template-string whitespace without rewriting shaders.
 clawos/static/vision/assets/three-core-*.js whitespace=-blank-at-eol
+# Fonts are binary even inside the generated assets tree above.
+*.woff2 binary
+# Preserve the upstream SIL licence text, including its formatting.
+clawos/static/assets/fonts/*-OFL.txt -text whitespace=-blank-at-eol

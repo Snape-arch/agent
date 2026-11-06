@@ -24,8 +24,11 @@ class WorkspaceServices:
     def __init__(self, store, security_policy):
         self.store = store
         self.security = security_policy
-        self._init_db()
-        self._ensure_builtin_templates()
+        # SQLite DDL otherwise commits each new table separately. Publish the
+        # workspace schema and its built-ins together, including on a cold CLI.
+        with self.store.transaction():
+            self._init_db()
+            self._ensure_builtin_templates()
 
     def _init_db(self):
         with self.store._conn() as c:

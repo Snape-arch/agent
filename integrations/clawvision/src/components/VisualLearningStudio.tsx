@@ -69,7 +69,7 @@ export function VisualLearningStudio(){
       const box=svg.viewBox.baseVal;downloadBlob(await pngFromSvg(blob,1280,box.height/box.width),name+'.png');setMessage('PNG已导出；精确数据与来源请同时保留JSON报告。');
     }catch(e){setError(e instanceof Error?e.message:'图形导出失败');}
   }
-  return <section className="visual-studio" aria-labelledby="visual-studio-title"><header className="visual-studio-header"><div><span className="visual-kicker"><ScanEye size={14}/>可视化教学</span><h1 id="visual-studio-title">把抽象，变得可见。</h1><p>从一个问题开始。看清过程、动手比较，再回到证据。</p></div><a href={learningReturnUrl()}><BookOpen size={15}/>返回当前课程<ChevronRight size={14}/></a></header>
+  return <section className="visual-studio" aria-labelledby="visual-studio-title"><header className="visual-studio-header"><div><span className="visual-kicker"><ScanEye size={14}/>可视化教学</span><h1 id="visual-studio-title">可视化课堂</h1><p>从一个问题开始。看清过程、动手比较，再回到证据。</p></div><a href={learningReturnUrl()}><BookOpen size={15}/>返回当前课程<ChevronRight size={14}/></a></header>
     <LearningContext mode="mechanism"/>
     <div className="visual-topics" role="group" aria-label="选择可视化主题">{topics.map((t,i)=><button key={t.id} aria-pressed={topic===t.id} onClick={()=>navigateWorkspace('visuals',{domain:t.id,lesson:t.lesson,teachingReport:null,teachingVisualization:null})}><span className="topic-number">0{i+1}</span>{t.icon}<span><strong>{t.short}</strong><small>{t.question}</small></span><ArrowRight size={16}/></button>)}</div>
     {error&&<p className="visual-error" role="alert">{error}</p>}<p className="visual-message" role="status" aria-live="polite">{message}</p>

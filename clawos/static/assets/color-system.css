@@ -1,21 +1,24 @@
-/* Shared warm-paper palette. Loaded last; no layout, asset or motion changes. */
+/* Warm neutral paper with the original ClawOS ink-and-blue brand. */
+@import "./fonts/font-faces.css";
 :root {
+  --claw-font-ui: "Claw UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --claw-font-editorial: "Claw Editorial", "Noto Serif CJK SC", "Songti SC", "SimSun", Georgia, serif;
   color-scheme: light;
-  background-color: #fbfaf5;
-  --claw-paper: #fbfaf5;
-  --claw-surface: #fffefb;
-  --claw-sidebar: #f5f3ec;
-  --claw-subtle: #f2efe7;
-  --claw-line: #e4dfd4;
-  --claw-control-line: #928b7c;
-  --claw-ink: #292824;
-  --claw-muted: #6f6b62;
-  --claw-accent: #3f5d50;
-  --claw-accent-hover: #304b3f;
-  --claw-accent-soft: #e9ede5;
-  --claw-accent-line: #c7d1c3;
-  --claw-on-accent: #fffefb;
-  --claw-dark: #242621;
+  background-color: #faf9f6;
+  --claw-paper: #faf9f6;
+  --claw-surface: #ffffff;
+  --claw-sidebar: #f5f4f0;
+  --claw-subtle: #f1f0eb;
+  --claw-line: #e3e2dc;
+  --claw-control-line: #8b92a0;
+  --claw-ink: #202331;
+  --claw-muted: #656a78;
+  --claw-accent: #3154d5;
+  --claw-accent-hover: #2443b4;
+  --claw-accent-soft: #eef1fc;
+  --claw-accent-line: #cbd4f2;
+  --claw-on-accent: #ffffff;
+  --claw-dark: #151a2c;
   --product-paper: var(--claw-paper);
   --product-surface: var(--claw-surface);
   --product-ink: var(--claw-ink);
@@ -125,3 +128,9 @@ body:has(#ratingForm) .primary { background: var(--claw-accent); border-color: v
 .product-page .glyph-b { background: linear-gradient(160deg,var(--claw-surface),rgba(148,165,141,.12)); }
 .product-page .line-art { background: repeating-linear-gradient(0deg,rgba(63,93,80,.3) 0 1px,transparent 1px 8px),linear-gradient(135deg,var(--claw-surface),var(--claw-sidebar)); border-color: var(--claw-line); }
 /* Errors, warnings, collaboration actor hues and chart series retain their semantics. */
+
+body,body.workspace-linked{font-family:var(--claw-font-ui);font-synthesis:none}button,input,select,textarea{font-family:inherit}::selection{background:#dce4ff;color:#18213b}
+
+.workspace-linked :is(.page-head h1,.intro h1,.section-heading h2){font-family:var(--claw-font-editorial);font-weight:500;letter-spacing:0}body.workspace-linked :is(.primary,button.mint){background:var(--claw-accent);color:#fff;border-color:var(--claw-accent)}body.workspace-linked :is(.badge,.eyebrow){color:var(--claw-accent)}
+
+body :is(input,select,textarea){border-color:var(--claw-control-line)}

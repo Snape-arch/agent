@@ -1,10 +1,26 @@
 {
+  "../../clawos/static/assets/fonts/noto-sans-sc-00.woff2": {
+    "file": "assets/noto-sans-sc-00-4aG3pcX2.woff2",
+    "src": "../../clawos/static/assets/fonts/noto-sans-sc-00.woff2"
+  },
+  "../../clawos/static/assets/fonts/noto-sans-sc-01.woff2": {
+    "file": "assets/noto-sans-sc-01-B7E-BiTx.woff2",
+    "src": "../../clawos/static/assets/fonts/noto-sans-sc-01.woff2"
+  },
+  "../../clawos/static/assets/fonts/noto-serif-sc-00.woff2": {
+    "file": "assets/noto-serif-sc-00-CwUzckwX.woff2",
+    "src": "../../clawos/static/assets/fonts/noto-serif-sc-00.woff2"
+  },
+  "../../clawos/static/assets/fonts/noto-serif-sc-01.woff2": {
+    "file": "assets/noto-serif-sc-01-BV_FAi6z.woff2",
+    "src": "../../clawos/static/assets/fonts/noto-serif-sc-01.woff2"
+  },
   "_LearningContext-!~{00m}~.js": {
     "file": "assets/LearningContext-DWTWEonn.css",
     "src": "_LearningContext-!~{00m}~.js"
   },
-  "_LearningContext-C_dYq6mr.js": {
-    "file": "assets/LearningContext-C_dYq6mr.js",
+  "_LearningContext-Cqhno0hN.js": {
+    "file": "assets/LearningContext-Cqhno0hN.js",
     "name": "LearningContext",
     "imports": [
       "index.html",
@@ -14,8 +30,8 @@
       "assets/LearningContext-DWTWEonn.css"
     ]
   },
-  "_loader-circle-ZXc6aYdU.js": {
-    "file": "assets/loader-circle-ZXc6aYdU.js",
+  "_loader-circle-lNwCQ4Tc.js": {
+    "file": "assets/loader-circle-lNwCQ4Tc.js",
     "name": "loader-circle",
     "imports": [
       "index.html"
@@ -25,8 +41,8 @@
     "file": "assets/react-vendor-Ds7D3P6J.js",
     "name": "react-vendor"
   },
-  "_shield-check-TjmkCbCH.js": {
-    "file": "assets/shield-check-TjmkCbCH.js",
+  "_shield-check-DNKrwRvO.js": {
+    "file": "assets/shield-check-DNKrwRvO.js",
     "name": "shield-check",
     "imports": [
       "index.html"
@@ -73,8 +89,8 @@
       "_three-animation-DS8KJtl_.js"
     ]
   },
-  "_threeBudget-DC4RORRg.js": {
-    "file": "assets/threeBudget-DC4RORRg.js",
+  "_threeBudget-BASkJCdr.js": {
+    "file": "assets/threeBudget-BASkJCdr.js",
     "name": "threeBudget",
     "imports": [
       "index.html"
@@ -85,7 +101,7 @@
     "name": "threeViewport"
   },
   "index.html": {
-    "file": "assets/index-BL2LoyV5.js",
+    "file": "assets/index-s5zMRz1N.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -108,18 +124,24 @@
       "src/components/TeachingWorkbench.tsx"
     ],
     "css": [
-      "assets/index-D2DEL01U.css"
+      "assets/index-DpM6DR2W.css"
+    ],
+    "assets": [
+      "assets/noto-sans-sc-00-4aG3pcX2.woff2",
+      "assets/noto-sans-sc-01-B7E-BiTx.woff2",
+      "assets/noto-serif-sc-00-CwUzckwX.woff2",
+      "assets/noto-serif-sc-01-BV_FAi6z.woff2"
     ]
   },
   "src/components/AiStudio.tsx": {
-    "file": "assets/AiStudio-B_I8GGcC.js",
+    "file": "assets/AiStudio-AJfQQPn1.js",
     "name": "AiStudio",
     "src": "src/components/AiStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_shield-check-TjmkCbCH.js"
+      "_shield-check-DNKrwRvO.js"
     ]
   },
   "src/components/EmbeddingView.tsx": {
@@ -135,7 +157,7 @@
     ]
   },
   "src/components/EvaluationLab.tsx": {
-    "file": "assets/EvaluationLab-Bmb401Nd.js",
+    "file": "assets/EvaluationLab-7Te66rzC.js",
     "name": "EvaluationLab",
     "src": "src/components/EvaluationLab.tsx",
     "isDynamicEntry": true,
@@ -148,36 +170,36 @@
     ]
   },
   "src/components/RagResearchStudio.tsx": {
-    "file": "assets/RagResearchStudio-C4PRMQG_.js",
+    "file": "assets/RagResearchStudio-BqOQBIBf.js",
     "name": "RagResearchStudio",
     "src": "src/components/RagResearchStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_LearningContext-C_dYq6mr.js",
-      "_loader-circle-ZXc6aYdU.js"
+      "_LearningContext-Cqhno0hN.js",
+      "_loader-circle-lNwCQ4Tc.js"
     ],
     "css": [
       "assets/RagResearchStudio-CzxFsUgG.css"
     ]
   },
   "src/components/ResearchJourneyStudio.tsx": {
-    "file": "assets/ResearchJourneyStudio-ZpcCedLL.js",
+    "file": "assets/ResearchJourneyStudio-7NURGw37.js",
     "name": "ResearchJourneyStudio",
     "src": "src/components/ResearchJourneyStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_LearningContext-C_dYq6mr.js"
+      "_LearningContext-Cqhno0hN.js"
     ],
     "css": [
       "assets/ResearchJourneyStudio-CGKwCcjT.css"
     ]
   },
   "src/components/ScenePlanPreview.tsx": {
-    "file": "assets/ScenePlanPreview-C4qwb3Rs.js",
+    "file": "assets/ScenePlanPreview-C9cKabfE.js",
     "name": "ScenePlanPreview",
     "src": "src/components/ScenePlanPreview.tsx",
     "isDynamicEntry": true,
@@ -185,14 +207,14 @@
       "_react-vendor-Ds7D3P6J.js",
       "_three-core-DyxFmU2r.js",
       "_three-loaders-D9BNlTqe.js",
-      "_threeBudget-DC4RORRg.js",
+      "_threeBudget-BASkJCdr.js",
       "_three-addons-CJcCuPKi.js",
       "_three-animation-DS8KJtl_.js",
       "index.html"
     ]
   },
   "src/components/TeachingWorkbench.tsx": {
-    "file": "assets/TeachingWorkbench-C2pgGIu1.js",
+    "file": "assets/TeachingWorkbench-BHkxgFj4.js",
     "name": "TeachingWorkbench",
     "src": "src/components/TeachingWorkbench.tsx",
     "isDynamicEntry": true,
@@ -202,20 +224,20 @@
     ]
   },
   "src/components/VisualLearningStudio.tsx": {
-    "file": "assets/VisualLearningStudio-B9PVh5RS.js",
+    "file": "assets/VisualLearningStudio-B-Jv2wbT.js",
     "name": "VisualLearningStudio",
     "src": "src/components/VisualLearningStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_shield-check-TjmkCbCH.js",
-      "_LearningContext-C_dYq6mr.js",
-      "_loader-circle-ZXc6aYdU.js"
+      "_shield-check-DNKrwRvO.js",
+      "_LearningContext-Cqhno0hN.js",
+      "_loader-circle-lNwCQ4Tc.js"
     ]
   },
   "src/visualizations/renderers/AiStudioModelView.tsx": {
-    "file": "assets/AiStudioModelView-BGc_QzF5.js",
+    "file": "assets/AiStudioModelView-ClCHuOcX.js",
     "name": "AiStudioModelView",
     "src": "src/visualizations/renderers/AiStudioModelView.tsx",
     "isDynamicEntry": true,
@@ -224,12 +246,12 @@
       "_three-core-DyxFmU2r.js",
       "_three-controls-BtBdI-gm.js",
       "_three-geometries-DQ297k5Z.js",
-      "_threeBudget-DC4RORRg.js",
+      "_threeBudget-BASkJCdr.js",
       "index.html"
     ]
   },
   "src/visualizations/renderers/CadModelView.tsx": {
-    "file": "assets/CadModelView-ItMWmxTy.js",
+    "file": "assets/CadModelView-CJTB6gLm.js",
     "name": "CadModelView",
     "src": "src/visualizations/renderers/CadModelView.tsx",
     "isDynamicEntry": true,
@@ -240,7 +262,7 @@
       "_three-controls-BtBdI-gm.js",
       "_three-loaders-D9BNlTqe.js",
       "_three-animation-DS8KJtl_.js",
-      "_threeBudget-DC4RORRg.js",
+      "_threeBudget-BASkJCdr.js",
       "_three-addons-CJcCuPKi.js"
     ]
   },

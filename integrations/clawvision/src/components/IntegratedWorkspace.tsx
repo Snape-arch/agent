@@ -4,6 +4,7 @@ import { ClawOSGate, IntegrationSettings } from './ClawOSGate';
 import { currentWorkspaceView, navigateWorkspace, routeEvent, workspaceRoutes, type WorkspaceView, type LegacyView } from '../workspaceNavigation';
 import type { CurrentUser } from '../api';
 import './integrated-workspace.css';
+import './brand-learning.css';
 
 const TeachingWorkbench=lazy(()=>import('./TeachingWorkbench').then(m=>({default:m.TeachingWorkbench})));
 const VisualLearningStudio=lazy(()=>import('./VisualLearningStudio').then(m=>({default:m.VisualLearningStudio})));
@@ -28,13 +29,13 @@ export function IntegratedWorkspace({renderWorkspace}:{renderWorkspace:(user:Cur
   return <div className={`unified-workspace ${focused?'presentation-mode':''}`} data-testid="integrated-workspace">
     <a className="skip-link" href="#vision-content" onClick={e=>{e.preventDefault();main.current?.focus();}}>跳到主要内容</a>
     <aside className={`unified-sidebar ${menu?'menu-open':''}`}>
-      <a className="unified-brand" href="/academy"><span className="unified-brand-symbol"><BookOpen size={21}/></span><span><strong>ClawOS</strong><small>学习 · 研究 · 创造</small></span></a>
+      <a className="unified-brand" href="/academy"><img className="unified-brand-symbol" src="/assets/brand/clawos-logo-dark.png" alt="" width="40" height="40"/><span><strong>ClawOS</strong><small>学习 · 研究 · 创造</small></span></a>
       <a className="unified-back" href="/academy/lab"><ArrowLeft size={14}/>返回学习与教材</a>
       <nav id="unified-navigation" aria-label="可视化教学工作区">
         {['学习与探索'].map(group=><section key={group}><h2>{group}</h2>{workspaceRoutes.filter(r=>r.group===group).map(r=><button key={r.id} data-testid={'unified-nav-'+r.id} aria-current={view===r.id?'page':undefined} onClick={()=>navigateWorkspace(r.id)}>{icons[r.id]}<span>{r.title}</span>{view===r.id&&<ChevronRight size={13}/>}</button>)}</section>)}
         <details className="unified-navigation-more" key={route.group} open={route.group!=='学习与探索'}><summary>更多分析与实验工具</summary>{toolsNavigation}</details>
       </nav>
-      <div className="unified-sidebar-footer"><a href="/academy/research"><BookOpen size={15}/>文献与综述<ArrowUpRight size={13}/></a><a href="/academy/notes"><NotebookPen size={15}/>学习笔记<ArrowUpRight size={13}/></a><p>ClawVision 可视化能力<br/>已整合至学习工作区</p></div>
+      <div className="unified-sidebar-footer"><a href="/academy/research"><BookOpen size={15}/>文献与综述<ArrowUpRight size={13}/></a><a href="/academy/notes"><NotebookPen size={15}/>学习笔记<ArrowUpRight size={13}/></a></div>
     </aside>
     <div className="unified-main"><header className="unified-topbar"><button className="unified-menu" aria-label={menu?'收起导航':'展开导航'} aria-expanded={menu} aria-controls="unified-navigation" onClick={()=>setMenu(v=>!v)}>{menu?<X size={20}/>:<Menu size={20}/>}</button><div className="unified-breadcrumb"><span>学习空间</span><ChevronRight size={13}/><strong>{route.title}</strong></div><button ref={present} className="unified-present" aria-pressed={focused} onClick={()=>setFocused(v=>!v)}><Expand size={15}/>专注演示</button></header>
       {focused&&<button className="unified-exit-presentation" onClick={()=>{setFocused(false);present.current?.focus();}}><X size={16}/>退出专注演示 <kbd>Esc</kbd></button>}

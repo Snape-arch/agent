@@ -12,6 +12,23 @@ if str(ROOT) not in sys.path:
 
 
 class WorkspaceServicesTests(unittest.TestCase):
+    def test_workspace_initialization_rolls_back_schema_and_can_retry(self):
+        from unittest.mock import patch
+        from memoryos.memory_store import MemoryStore
+        from security.policy import ToolSecurityPolicy
+        from workspace_services import WorkspaceServices
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / 'cold.db'))
+            with patch.object(WorkspaceServices, '_ensure_builtin_templates', side_effect=RuntimeError('fixture initialization failure')):
+                with self.assertRaisesRegex(RuntimeError, 'fixture initialization failure'):
+                    WorkspaceServices(store, ToolSecurityPolicy([td]))
+            with store._conn() as connection:
+                self.assertIsNone(connection.execute("SELECT name FROM sqlite_master WHERE name='meetings'").fetchone())
+            services = WorkspaceServices(store, ToolSecurityPolicy([td]))
+            meeting = services.create_meeting('After retry')
+            self.assertEqual(services.get_meeting(meeting['id'])['title'], 'After retry')
+
     def _services(self, td):
         from memoryos.memory_store import MemoryStore
         from security.policy import ToolSecurityPolicy
