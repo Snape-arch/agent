@@ -1,6 +1,7 @@
 """Startup source snapshot and current-disk drift, without config or user data."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import threading
@@ -14,8 +15,9 @@ def core_ready(database, workspace, release, vector):
 
 
 class RuntimeRelease:
-    ROOTS=('api','services','memoryos','providers','reflection','security','mtclaw','static','skills','scripts')
-    SUFFIXES={'.py','.js','.css','.html'}
+    ROOTS=('api','services','memoryos','providers','reflection','security','mtclaw','static','skills','scripts','visualization','web')
+    SUFFIXES={'.py','.js','.mjs','.ts','.tsx','.css','.html'}
+    EXCLUDED={'__pycache__','node_modules','runtime-libs','data','output','coverage','.vite','.pytest_cache','tests'}
 
     def __init__(self,root):
         self.root=Path(root).resolve();self.instance=uuid.uuid4().hex
@@ -33,7 +35,16 @@ class RuntimeRelease:
         files=list(self.root.glob('*.py'))
         for name in self.ROOTS:
             folder=self.root/name
-            if folder.is_dir():files.extend(p for p in folder.rglob('*') if p.suffix in self.SUFFIXES and '__pycache__' not in p.parts)
+            if not folder.is_dir():continue
+            for current,dirs,names in os.walk(folder,followlinks=False):
+                dirs[:]=[d for d in dirs if d not in self.EXCLUDED]
+                # Do not traverse dependency/data junctions, or allow source
+                # aliases to pull another project's files into this snapshot.
+                for child in dirs:
+                    path=Path(current)/child
+                    if path.is_symlink() or (hasattr(path,'is_junction') and path.is_junction()):
+                        raise ValueError('Release sources must remain inside the source root')
+                files.extend(Path(current)/n for n in names if Path(n).suffix in self.SUFFIXES and not n.endswith(('.test.ts','.test.tsx','.spec.ts','.spec.tsx')))
         rows={}
         with self._lock:
             for p in sorted(set(files)):

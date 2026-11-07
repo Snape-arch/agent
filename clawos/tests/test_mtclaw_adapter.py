@@ -11,7 +11,7 @@ import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parent
-MTCLAW_ROOT = REPO_ROOT / "MTClaw-框架代码"
+MTCLAW_ROOT = REPO_ROOT / "clawos/mtclaw"
 for path in (ROOT, MTCLAW_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -19,7 +19,7 @@ for path in (ROOT, MTCLAW_ROOT):
 
 class MTClawAdapterTests(unittest.IsolatedAsyncioTestCase):
     async def test_adapter_uses_real_mtclaw_api_and_tool_history_contract(self):
-        from function_router import server as mt_server
+        from mtclaw.router import server as mt_server
         from mtclaw.adapter import MTClawAdapter
 
         old_config = mt_server.STATE.config
@@ -133,7 +133,7 @@ class MTClawAdapterTests(unittest.IsolatedAsyncioTestCase):
         if os.name != "nt":
             self.skipTest("Windows-specific tool execution")
 
-        from function_router import server as mt_server
+        from mtclaw.router import server as mt_server
 
         old_config = mt_server.STATE.config
         with tempfile.TemporaryDirectory() as td:

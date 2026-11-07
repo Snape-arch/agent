@@ -68,14 +68,52 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  module-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: clawos/requirements-modules-test.txt
+      - run: python -m pip install -r clawos/requirements-modules-test.txt
+      - run: python clawos/scripts/project.py check
+      - run: python clawos/scripts/project.py test router
+      - run: python clawos/scripts/project.py test visualization
+
+  web-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: clawos/web/package.json
+      - run: pnpm install --frozen-lockfile
+        working-directory: clawos/web
+      - run: python clawos/scripts/project.py test web
+      - run: node clawos/scripts/build_vision_frontend.mjs
+      - run: node clawos/web/scripts/check_bundle_budget.mjs
+      - run: node clawos/web/scripts/verify-plugin-architecture.mjs
+
   deterministic-tests:
     # Keep the existing required check name and fail if any shard fails/cancels.
     if: always()
-    needs: test-shards
+    needs: [test-shards, module-contracts, web-contracts]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every test shard to succeed
         env:
           SHARDS_RESULT: ${{ needs.test-shards.result }}
-        run: test "$SHARDS_RESULT" = "success"
+          MODULE_RESULT: ${{ needs.module-contracts.result }}
+          WEB_RESULT: ${{ needs.web-contracts.result }}
+        run: test "$SHARDS_RESULT" = "success" && test "$MODULE_RESULT" = "success" && test "$WEB_RESULT" = "success"

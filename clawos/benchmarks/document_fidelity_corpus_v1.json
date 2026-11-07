@@ -15,7 +15,7 @@
   "documents": [
     {
       "id": "generative-agents-2304.03442v2",
-      "path": "参考文献/2304.03442v2.pdf",
+      "path": "docs/reference/papers/2304.03442v2.pdf",
       "format": "pdf",
       "sha256": "1B31E77FB24D25D7598F2C49E955D12A28B95A6DABAD34ACDAC40F44BFB7A139",
       "review": {"method": "pdftotext plus rendered-page inspection", "reviewed_at": "2026-08-27"},
@@ -33,7 +33,7 @@
     },
     {
       "id": "voyager-2305.16291v2",
-      "path": "参考文献/2305.16291v2.pdf",
+      "path": "docs/reference/papers/2305.16291v2.pdf",
       "format": "pdf",
       "sha256": "769A4E33DDEEB73870849232EECE49AFE882C2D146362E33917CCB432BA0EFB8",
       "review": {"method": "pdftotext plus rendered-page inspection", "reviewed_at": "2026-08-27"},
@@ -55,7 +55,7 @@
     },
     {
       "id": "memgpt-2310.08560v2",
-      "path": "参考文献/2310.08560v2.pdf",
+      "path": "docs/reference/papers/2310.08560v2.pdf",
       "format": "pdf",
       "sha256": "9F674BCFF69C86F11C813DCFAD613D8841F5F8ED17979E3C4DF06A91DF7762E0",
       "review": {"method": "pdftotext plus rendered-page inspection", "reviewed_at": "2026-08-27"},
@@ -77,7 +77,7 @@
     },
     {
       "id": "skillos-2605.06614v1",
-      "path": "参考文献/2605.06614v1.pdf",
+      "path": "docs/reference/papers/2605.06614v1.pdf",
       "format": "pdf",
       "sha256": "E55B880B9564C63F5F791C02F423D41BD356EECC07002F85C6BABFCE72EE39C6",
       "review": {"method": "pdftotext plus rendered-page inspection", "reviewed_at": "2026-08-27"},
@@ -99,7 +99,7 @@
     },
     {
       "id": "skillevolver-2605.10500v1",
-      "path": "参考文献/2605.10500v1.pdf",
+      "path": "docs/reference/papers/2605.10500v1.pdf",
       "format": "pdf",
       "sha256": "4CDF2A8F80F1B49951952E6678A9B11B314171C597757670BD0111F20C3F3185",
       "review": {"method": "pdftotext plus rendered-page inspection", "reviewed_at": "2026-08-27"},

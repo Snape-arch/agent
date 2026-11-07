@@ -1,265 +1,56 @@
-# Agent / ClawOS Workspace
+# ClawOS
 
-界面与阅读标题现统一无衬线字体，旧页面小字提高到14px起，补充说明支持悬停/聚焦/点击查看；保留墨蓝暖白、代码/公式和文档格式。前端116项、隔离应用52项通过；恢复控制台基础样式地址契约后，同分片265项通过，手机截图异常不算视觉验收；见[字体与按需说明验收](clawos/benchmarks/TYPOGRAPHY_AND_CONTEXT_HELP_ACCEPTANCE.md)。
+面向个人学习、科研与执行的本地智能体工作台。教育主线把文献订阅、原文导读、教材知识图谱、可视化实验、个人解释和教师复核连接起来；办公、数据处理、文档协作、代码协作与自进化使用同一执行和治理层。
 
-教学工作区已按原ClawOS图标恢复墨色/蓝色与暖白底，统一中文阅读排版并减少套框，六步学习与来源链路保留。前端108项、相关后端27项及真实应用52检查通过；[品牌修正与验收边界](clawos/benchmarks/BRAND_REFINEMENT_ACCEPTANCE.md)。
+这是一个正在验证的产品原型。模拟器、CPU机制实验、真实模型结果与真实教学效果分别记录，不把有界测试当作生产或学习收益认证。
 
-新增统一“研究与学习”计划：固定论文下载整理、原全文导读/知识库/教材与教师校准、六单元课程、Vision可视化、30题本地问答对照与原文献评审共用来源ID。原Agent保持执行与策略治理，明确契约故障可送Reflection，不自动升级策略或把学习自述当奖励。1301冻结全量及后续兼容增量、前端103项、真实完整应用52检查通过；真实模型和教学收益仍未验收，见[统一研究学习验收](clawos/benchmarks/RESEARCH_JOURNEY_ACCEPTANCE.md)。
+## 开始使用
 
-新增统一工作区的RAG真实文献实践：10篇固定PDF/169页贯通方向订阅、全文证据综述、概念连接、可视化检索对照、跨页高亮、观察/迁移回答保存、课程回看与导出重放。1282项冻结全量通过，最终边界增量15项后端/97项前端及完整应用重启通过；真实模型与教学收益仍未验收，见[真实文献实践验收](clawos/benchmarks/RESEARCH_LEARNING_ACCEPTANCE.md)。
-
-整体集成新增1266项零跳过回归与完整应用启动/恢复验收；原Vision默认历史库27业务表467记录、63对象已快照迁入，设置页可核对回执，原库/权重/凭据保留分界。修复偏心3D模型取景，最终前端88项通过。范围、失败记录和离线导入命令见[集成与迁移验收](clawos/benchmarks/INTEGRATION_AND_VISION_MIGRATION_ACCEPTANCE.md)。
-
-ClawVision现以可视化课堂作为 `/academy/vision/` 默认入口：统一12个工具视图、保留18插件，RAG来源、低秩矩阵逐格解释和采样时间轴直接读取保存的CPU报告。支持全窗口演示、私有观察保存/恢复和SVG/PNG/JSON导出，暖米白/森林绿统一。相关108项后端、85项前端及29项实际HTTP检查通过；真实模型、团队实验授权与学习成效仍未验收，见[可视化教学整合验收](clawos/benchmarks/CLAWVISION_UNIFIED_VISUAL_ACCEPTANCE.md)。
-
-ClawVision第二阶段新增课程实验手册：RAG来源过滤、低秩适配和扩散数值采样的真实CPU机制对照，支持教材知识点来源冻结、报告导出复跑、个人反思及课程记录回看。相关99项/前端62项与19项实际HTTP检查通过；合成资料实验不代表真实模型或学习成效，见[教学实验验收](clawos/benchmarks/CLAWVISION_TEACHING_ACCEPTANCE.md)。
-
-ClawVision已接入`/academy/vision/`实验与视觉工作区，统一暖米白风格，提供按需独立实验服务、文献方向引用、数据集恢复与私有图表。当前仅本机所有者可控制；相关143项ClawOS回归、55项后端、55项前端及13项实际HTTP/SSE检查通过，未替代真实GPU/团队SSO/论文复现验收。见[整合范围与验收](clawos/benchmarks/CLAWVISION_INTEGRATION_ACCEPTANCE.md)。
-
-AI综合和精读报告已加入主张边界风险检查，疑似否定/范围/单位/预测/状态误述进入待核查；AI暂缓主张保留来源、可导出并送评，旧报告不改写。相关122项与人工模型流程通过，有限模式不认证学术语义，见[边界守卫与暂缓链路](clawos/benchmarks/RESEARCH_CLAIM_BOUNDARY_ACCEPTANCE.md)。
-
-研究订阅页新增主张评审工作台：AI方法/生物医学/气候科学候选、冻结报告和AI任务送评、逐项盲评/仲裁、摘录授权/撤权及导出。相关107项通过，公开片段7/8定位，IPCC抓取403仍待核验；候选标签未获专家确认，真人及真实模型语义质量留未验收，见[评审机制与边界](clawos/benchmarks/RESEARCH_REVIEW_ACCEPTANCE.md)。
-
-研究综述支持版本化增量更新：按原选篇范围比较新论文、原文证据、元数据及引用/版本关系，保存新报告与差异通知；可手动检查或开启定时跟踪，旧报告及人工判断保留。相关94项与公开语料回放通过；未替代真实模型或长期学术验收，见[增量综述验收](clawos/benchmarks/RESEARCH_UPDATES_ACCEPTANCE.md)。
-
-研究综述已增加来源引用与版本网络：Crossref直接DOI引用/预印本关联、arXiv已观察修订、手动元数据刷新、逐关系快照依据及分类筛选/导出。缺失版本不补造，引用不等于方法继承，旧窗口外修订尚需手动刷新。相关78项及本轮6条公开来源记录验证通过，见[引用版本验收](clawos/benchmarks/RESEARCH_BIBLIOGRAPHY_ACCEPTANCE.md)。
-
-研究订阅页已接入本地AI综合草稿：七栏分析、引用/数值守卫、逐项模型复核、缺证据留空、持久任务及含依据导出；禁止外部模型回退。同一提供方复核不代表独立学术认证；当前真实模型调用按用户要求留未验收，见 [AI综合综述验收](clawos/benchmarks/RESEARCH_AI_ACCEPTANCE.md)。
-
-新增 `/academy/research` 研究方向订阅：默认每 6 小时采集 Crossref/arXiv，持久分页与跨批次去重、可解释归类/人工修正、快照依据摘录、站内通知及北京时间发现日报。支持选篇生成冻结的五类证据综述、显式绑定解析全文、发表时间线、人工关系复核及MD/JSON导出。自动采集需应用运行；来源索引存在延迟，不能承诺即时或全量发现。当前为规则提取草稿，非系统综述或已证实继承图，见 [研究订阅](clawos/benchmarks/RESEARCH_WATCH_ACCEPTANCE.md) 与 [综述脉络验收](clawos/benchmarks/RESEARCH_SYNTHESIS_ACCEPTANCE.md)。
-
-教材图谱新增章节/原文绑定的结构化模型输出、批次预算及迟到结果拒绝；本地Qwen整书26章/16批真实链路通过。73概念/55条关系仍待教师复核，不代表真实学习收益，见[真实模型验收与限制](clawos/benchmarks/EDUCATION_REAL_MODEL_ACCEPTANCE.md)。
-
-教育新增 `/academy/lab`：36个由基础到AI前沿的单元、整书目录与带原文依据的知识图谱、人工先修复核、教师校准工作台，以及冻结题组的前测/后测/至少七天延迟测、双人盲评、独立仲裁和同身份续期。计划保存实际来源快照，旧版本保留；真实教学效果尚未验证，账户不代表已认证教师或独立真人。见 [教育工作区验收与边界](clawos/benchmarks/EDUCATION_LEARNING_LAB_ACCEPTANCE.md)。现有服务需正常重启载入新增API，本轮没有重启生产。
-
-严格执行验收新增 Windows LPAC 与 Job Object：父进程验证令牌、每命令独立容器、私有标准库运行时、无网络能力、超时和输出限额。
-六个冻结的项目模块任务先通过原实现／参考修复／公开样例过拟合负控，再进行同预算单／多代理比较。
-这仍是受限配置的内部验收，生产就绪状态保持 false；见 [严格沙箱与任务库验收](clawos/benchmarks/STRICT_SANDBOX_TASKBANK_ACCEPTANCE.md)。
-精确编辑锚点在只读规划中校验，错误提案可在既有计费预算内修复。最终全量955项通过；加强契约的富文本真实对照单／多代理均通过，多代理保留首轮失败与自动修复记录。首批六任务总体失败仍保留，尚不支持发布模式收益策略。
-
-编码提案及协作各角色使用授权范围内的 JSON Schema 输出，并在本地严格复核字段、类型、编辑操作和诊断目标。
-`requirements` 可附加逐条 `clauses` 和显式 Python `interface`；写前、集成、独立重放及交付检查原契约。
-条款绑定测试与静态签名检查有各自的证据边界，不能把 JSON 合法或示例测试通过当作语义正确。
-实现与真实模型验收见 [结构化输出与契约验收](clawos/benchmarks/STRUCTURED_CODING_CONTRACT_ACCEPTANCE.md)。
-
-编码策略工作台新增 `/api/workspace/coding/strategy` 和 `clawos/scripts/coding_strategy.py`：
-冻结单／多代理执行、记录成本收益建议，并将核验后的真实失败转成反思卡和未发布提示候选。
-重复任务不增加独立样本，外部导入仅用于诊断；策略建议不会自动生效。
-接口、复现与发布边界见 [编码策略验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md)。
-候选可用 `rollout` / `rollout_evidence` 实际比较基线与候选，冻结预算和后置重放证据；
-离线门禁不足30个独立任务簇时保持未发布，详见 [专门编码候选验收](clawos/benchmarks/CODING_CANDIDATE_ROLLOUT_ACCEPTANCE.md)。
-
-ClawOS 是一个 Windows 本地个人 Agent OS 原型，围绕 observe-plan-execute-reflect-memory-improve 闭环组织模型路由、工具调用、任务状态、记忆和反思审查。
-
-## 接手先读
-
-新协作者优先阅读：
-
-1. `WORK_STATUS.md`：当前全局状态、功能全景、风险和活跃任务。
-2. `PROJECT_CONTEXT.md`：当前分支、提交、验证基线和协作护栏。
-3. `PROJECT_ROADMAP.md`：本地工作台的阶段目标与完成门槛。
-4. `clawos/README.md`：ClawOS 子项目说明。
-5. `clawos/MTCLAW_INTEGRATION.md`：MTClaw 接入说明。
-6. `.agents/skills/`：仓库内协作技能。
-
-## Windows 本地启动
-
-P0 新增独立应用依赖环境：锁定 Windows x64 / CPython 3.12 的 135 个依赖及 wheel 摘要，
-安装与导入验证通过后，启动器自动选择；校验失败会停止启动。
-准备命令、外部模型/Office/OCR边界见 [部署说明](clawos/deployment/README.md)。
-
-从任意 clone 路径进入仓库根目录：
+Windows在仓库根运行：
 
 ```powershell
-cd <your-cloned-agent-repo>
 .\start_clawos.bat
 ```
 
-新增日常工作台入口：`/data-lab` 支持 CSV/TSV/XLSX 清洗、派生列、分组统计、图表和处理流程导出；
-`/meetings` 支持原文草稿、复核发布、行动项和协作文档；`/academy/notes` 支持按文档授权的阅读/评论/编辑与版本冲突保护。
-会议及文档可生成带来源的飞书审批草稿，实际发送仍需配置就绪、白名单和原生审批。
-双架构仍为 ClawOS 工作台/MemoryOS → MTClaw 函数路由 → 受限工具桥 → 请求级证据。
-本轮验收及未完成的真实租户/长期并发部分见 `clawos/benchmarks/COLLABORATION_DATA_MTCLAW_ACCEPTANCE.md`。
+工作台默认地址 `http://127.0.0.1:18790`；教学入口 `/academy/lab`，研究学习与可视化入口 `/academy/vision/`。应用依赖按[部署说明](clawos/deployment/README.md)准备。`start_clawos.bat --check-runtime`只检查运行环境；模型端点需要单独准备，仓库不包含权重。
 
-编码协作新增 `autonomous_subagents` 的 `reliable_coding` 模式：模型按授权文件拆分任务，
-独立 Git 工作区并行修改，依赖任务接收真实提交，统一集成、冲突处理、测试与评审。
-检查点支持核对已完成提交后恢复；源仓库不自动应用或推送。
-接口、复现和验收边界见 `clawos/benchmarks/RELIABLE_MULTI_AGENT_ACCEPTANCE.md`。
-通过后可在新工作区重放补丁并复验测试，冻结交付清单与差异，再按精确摘要确认。
-交付确认不自动应用源仓库；脏草稿、源码漂移和证据损坏均有独立门禁。
-本阶段接口与证据见 `clawos/benchmarks/RELIABLE_MULTI_AGENT_CLOSURE_ACCEPTANCE.md`。
-调用方可附加 `requirements`，将冻结需求绑定到授权路径及原测试命令索引；规划、工作者、恢复与交付均保留这些绑定。
-测试失败时先读取实际失败上下文并诊断目标，再限定范围修复；明确声明的类型规则机械修复单独记录为非模型生成。
-真实项目切片及连续两次退出恢复证据见 `clawos/benchmarks/CODING_RELIABILITY_STAGE1_ACCEPTANCE.md`，不代表公开基准成功率。
-单代理提案、迭代编辑与可靠协作共用版本化源码视图：授权写路径、只读依赖、行号/符号、实际失败帧及字节摘要；编辑前核对源码，协作恢复和交付核对上下文凭据。
-Python本地依赖有界解析；大仓库任务需明确收窄路径。实现及验收边界见 `clawos/benchmarks/SHARED_CODING_CONTEXT_ACCEPTANCE.md`。
-
-`clawos/scripts/compare_coding_pipelines.py` 可在同一冻结快照、授权范围、需求、测试和预算下，
-比较单代理与可靠协作完整链路；预先声明重复次数，交替执行顺序，保留失败及实际调用凭据。
-支持显式配置多个本地模型；当前真实验收只使用本地 Qwen3.5-9B，不能当作跨模型质量排名。
-报告区分记录完整、实际执行可比较、预算合规和任务通过；完成报告不等于编码成功。
-协议、复现及真实负例见 `clawos/benchmarks/CODING_PIPELINE_COMPARISON_ACCEPTANCE.md`。
-
-论文报告支持全窗口阅读、实验条件/原文引用及 Markdown、PDF、JSON 下载，重新生成保留旧文件；
-工作台历史支持完整归档分页、全文查询、导出和会话恢复。文本工具支持预览、仅创建与 SHA-256 冲突保护。
-自进化候选绑定当前策略版本并支持受所有权保护的回滚。CodingWorkflowService 可用
-`CLAWOS_REQUIRE_OS_SANDBOX=1` 要求已安装的 Windows AppContainer，缺少边界时拒绝执行；
-默认兼容路径及文件锁并不等同完整操作系统隔离。本轮证据与后续边界见
-`clawos/benchmarks/FILE_HISTORY_EVOLUTION_ACCEPTANCE.md`。
-
-策略演进实验室支持反思多候选、冻结任务成对回放、独立留出与任务类别门禁，
-以及带租约校验的检查点恢复。已使用的留出题禁止跨实验重用；模型成对输出可冻结为
-匿名 A/B 盲评包，收录不可覆盖的具名评分、分歧及完整证据。上传评分不计入线上发布证据，
-模型执行与审核者身份仍需独立认证。验收与边界见
-`clawos/benchmarks/SELF_EVOLUTION_STAGE2_ACCEPTANCE.md`。
-
-For an explicit local daily-use profile after the verified Qwen, llama.cpp,
-embedding, and Chroma assets are installed:
-
-```powershell
-.\start_clawos.bat --local
-```
-
-`--local` selects `clawos/config.local.json` for the current launcher process,
-starts or reuses the local Qwen service, enables Chroma with Qwen3 embeddings,
-and keeps the CPU-heavy reranker disabled by default. It does not modify
-`clawos/.env` and does not download missing model/runtime files.
-
-启动脚本使用自身位置推导仓库路径，不依赖 `D:\Projects\agent`。默认端口：
-
-- ClawOS: `http://127.0.0.1:18790`
-- MTClaw Function Router: `http://127.0.0.1:18791`
-
-脚本会提示：
-
-- Python 或 `clawos\.venv` 缺失。
-- 默认端口已被占用。
-- `clawos\.env` 缺失。没有真实 Key 时，mock 和 frozen benchmark 仍可运行。
-
-## 本地配置
-
-真实密钥只放在：
+## 一个产品源码树
 
 ```text
-clawos/.env
+clawos/
+  api/、services/        产品API与业务服务
+  memoryos/             记忆、来源、版本与存储
+  mtclaw/               内置路由、安全工具桥与适配器
+  visualization/        实验、数据、3D、评估、SDK与隔离worker
+  web/                  统一React前端源码与依赖锁
+  static/               服务端页面和发布后的前端资源
+  tests/、scripts/      回归、构建与开发命令
+  deployment/           锁定运行时与部署配置
+desktop/                同一应用的桌面壳与打包
+docs/                   当前架构、开发指南与维护路线
 ```
 
-示例配置见：
+MT和Vision均已归入内部模块，不再依赖根目录旁边的独立项目。保留MT路由服务及可视化私有worker的进程边界，用于工具协议、资源和依赖隔离；它们共用ClawOS产品入口。旧API和SDK名称、数据库、来源回执及模型目录保持兼容。
 
-```text
-clawos/.env.example
-```
-
-常用变量：
-
-- `MODEL_PROVIDER=deepseek`
-- `MODEL_BASE_URL=https://api.deepseek.com/v1`
-- `MODEL_NAME=deepseek-chat`
-- `MODEL_API_KEY=...`
-- `MTCLAW_ENABLED=true`
-- `MTCLAW_BASE_URL=http://127.0.0.1:18791`
-
-不要把 API Key 写入命令、文档、报告或提交内容。
-
-## 健康检查
-
-启动后检查：
+## 开发与验证
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:18790/health
+python clawos/scripts/project.py check
+python clawos/scripts/project.py test core
+python clawos/scripts/project.py test router
+python clawos/scripts/project.py test visualization
+python clawos/scripts/project.py test web
+python clawos/scripts/project.py build-web
 ```
 
-`/health` 应能看到：
+`python`应指向已选定的应用/开发环境。前端依赖在 `clawos/web` 通过锁文件安装；模块测试依赖见 `clawos/requirements-modules-test.txt`。完整步骤见[开发指南](docs/DEVELOPMENT.md)。生成资源不能代替源码，权重、凭据、数据库、依赖缓存、日志与安装包不提交。
 
-- `model_provider.provider`
-- `model_provider.model`
-- `model_provider.configured`
-- `mtclaw.enabled` / `mtclaw.reachable`
-- `database.configured` / `database.reachable`
+## 进一步了解
 
-## 离线验收
+- [文档导航](docs/README.md)：只读当前说明，不必翻阅历史进度长文。
+- [架构与权限边界](docs/ARCHITECTURE.md)：Agent、MemoryOS、Reflection、路由与教学可视化的关系。
+- [维护性评估](docs/MAINTAINABILITY.md)：已整理内容、仍然过大的核心文件和下一步拆分顺序。
+- [维护路线图](docs/ROADMAP.md)：真实验证与代码解耦优先级。
+- [历史验收证据](clawos/benchmarks)：保留真实失败、时长和未验收项，不回写为全部通过。
 
-优先运行 mock / frozen 流程，不消耗 API。
-
-```powershell
-.\clawos\.venv\Scripts\python.exe clawos\scripts\run_frozen_benchmarks.py
-.\clawos\.venv\Scripts\python.exe clawos\scripts\evaluate_model_acceptance.py --provider mock
-```
-
-输出摘要包含通过数、失败数、通过率和关键失败原因。脚本使用临时数据库，避免污染 `clawos\.env`、本地数据库或仓库状态。
-
-比赛架构与 MTClaw 垂直路由验收：
-
-```powershell
-python clawos\scripts\run_mtclaw_vertical_acceptance.py
-python clawos\scripts\validate_competition_architecture.py
-python clawos\scripts\evaluate_paper_intelligence.py
-python clawos\scripts\benchmark_paper_retrieval.py
-```
-
-论文与知识库阶段一验收报告见 `clawos/PAPER_KNOWLEDGE_ENTERPRISE_ACCEPTANCE_2026-07-10.md`。后一个命令会加载仓库外 `tools/models` 中的真实本地 Qwen3 embedding/reranker 权重；权重目录和临时下载文件不得提交。
-
-目标 MTT Linux 的严格比赛入口为：
-
-```bash
-cd clawos
-bash scripts/start_competition_stack.sh
-```
-
-该入口使用 `config.competition.json`，要求本地 Qwen 和 MTClaw 可用，关闭 MTClaw fallback，且不配置云模型 fallback。真实设备验收前不要把离线合同测试表述为 MTT 实机通过。
-
-## 真实 API 手动验收
-
-不要默认运行真实 API。需要手动验收 DeepSeek 时，由用户先确认额度和 Key，再运行：
-
-```powershell
-$env:MODEL_API_KEY="<your-deepseek-key>"
-.\clawos\.venv\Scripts\python.exe clawos\scripts\evaluate_model_acceptance.py --provider deepseek --model deepseek-chat --base-url https://api.deepseek.com/v1 --out output\deepseek_acceptance_report.json
-```
-
-报告不包含 API Key。提交前确认 `output\deepseek_acceptance_report.json` 不进入 Git。
-
-## 控制台演示检查
-
-启动后打开：
-
-```text
-http://127.0.0.1:18790/console
-```
-
-演示前至少检查：
-
-- 首页和控制台能打开。
-- 配置页能显示 provider/model/configured，API Key 不明文回显。
-- 任务页能显示任务状态、恢复队列、Step Trace 和事件审计。
-- 工具调用页能显示执行记录和确认状态。
-- Memory/Reflection Review 能显示审查列表和操作按钮。
-
-只修阻碍演示的问题，不做大规模视觉重构。
-
-## 干净交付
-
-不要右键压缩整个项目目录，因为会带上 `.env`、`.venv`、数据库、日志和缓存。只打包已提交内容时使用：
-
-```powershell
-git archive --format=zip --output ..\agent-clean.zip HEAD
-```
-
-提交前检查：
-
-```powershell
-git status --short
-git ls-files clawos/.env clawos/*.db clawos/*.log clawos/__pycache__
-```
-
-`.env`、数据库、日志、缓存不应进入提交。
-
-## 常用测试
-
-```powershell
-.\clawos\.venv\Scripts\python.exe -m unittest discover -s clawos\tests
-.\clawos\.venv\Scripts\python.exe -m py_compile clawos\clawos_server.py clawos\scripts\run_frozen_benchmarks.py clawos\scripts\evaluate_model_acceptance.py
-node --check clawos/static/assets/console.js
-```
-
-当前目标是 Windows 本地 MVP+：可交接、可启动、可验收、可演示。
+MIT路由许可与Apache-2.0可视化许可随模块保留，原始来源记录见相应模块说明。上游来源、真实模型、真人教学、多设备无障碍和长时间多人负载的未验收项不会因仓库整理自动消失。

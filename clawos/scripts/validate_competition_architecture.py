@@ -41,9 +41,9 @@ def validate() -> dict:
     ]
     function_names = {item["name"] for item in functions}
     handler_names = set(tool_runner.handlers)
-    provenance = (REPO_ROOT / "MTClaw-框架代码" / "UPSTREAM.md").read_text(encoding="utf-8")
-    license_ok = (REPO_ROOT / "MTClaw-框架代码" / "LICENSE").is_file() and "MIT License" in (
-        REPO_ROOT / "MTClaw-框架代码" / "LICENSE"
+    provenance = (REPO_ROOT / "clawos/mtclaw" / "UPSTREAM.md").read_text(encoding="utf-8")
+    license_ok = (REPO_ROOT / "clawos/mtclaw" / "LICENSE").is_file() and "MIT License" in (
+        REPO_ROOT / "clawos/mtclaw" / "LICENSE"
     ).read_text(encoding="utf-8")
     exact_upstream_recorded = "exact upstream GitHub URL and upstream commit SHA cannot be reconstructed" not in provenance
     competition = json.loads((ROOT / "config.competition.json").read_text(encoding="utf-8"))

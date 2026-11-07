@@ -14,7 +14,8 @@ import time
 import uuid
 
 
-SOURCE_ROOT=Path(__file__).resolve().parents[2]/'integrations/clawvision'
+from project_layout import VISUALIZATION_ROOT
+SOURCE_ROOT=VISUALIZATION_ROOT
 EXTRA_LIBS=Path(__file__).resolve().parents[1]/'output/vision-libs'
 
 
@@ -51,7 +52,7 @@ class VisionRuntime:
             running=bool(self.process and self.process.poll() is None and self.port)
             if self.process and self.process.poll() is not None: self._dispose()
             return dict(running=running,state='running' if running else 'stopped',error=self.error,
-                source_available=(self.source/'serve_clawos.py').is_file(),scope='local_owner_only',
+                source_available=(self.source/'worker.py').is_file(),scope='local_owner_only',
                 storage='isolated_vision_store',model_loaded_automatically=False,migration=self.migration_status())
     def migration_status(self):
         path=self.root/'migration-receipt.json'
@@ -72,20 +73,20 @@ class VisionRuntime:
     def start(self):
         with self.lock:
             if self.status()['running']:return self.status()
-            if not (self.source/'serve_clawos.py').is_file():raise ValueError('ClawVision源码未随应用安装')
+            if not (self.source/'worker.py').is_file():raise ValueError('ClawVision源码未随应用安装')
             self.root.mkdir(parents=True,exist_ok=True);session=uuid.uuid4().hex
             ready=self.root/('session-'+session+'.json');self.secret=secrets.token_urlsafe(48);self.error=''
             # Do not inherit model/provider keys, DATABASE_URL, user proxy or .env.
             env={k:os.environ[k] for k in ('SYSTEMROOT','WINDIR','PATH','TEMP','TMP','COMSPEC') if k in os.environ}
             env.update(PYTHONIOENCODING='utf-8',PYTHONUNBUFFERED='1',PYTHONNOUSERSITE='1',
-                PYTHONPATH=os.pathsep.join([str(self.source/'sdk'),str(self.source/'runtime-libs'),str(EXTRA_LIBS),*site.getsitepackages()]),
+                PYTHONPATH=os.pathsep.join([str(self.source.parent),str(self.source/'sdk'),str(self.source/'runtime-libs'),str(EXTRA_LIBS),*site.getsitepackages()]),
                 CLAWVISION_DATA_DIR=str(self.root/'data'),CLAWVISION_OBJECT_DIR=str(self.root/'objects'),
                 CLAWVISION_AUTH_MODE='disabled',CLAWVISION_HOST='127.0.0.1',CLAWVISION_MAX_BODY_MB='32',CLAWVISION_MAX_CONCURRENCY='2')
             python=getattr(sys,'_base_executable',None) or sys.executable
             self.log=(self.root/('worker-'+session+'.log')).open('ab')
             try:
-                self.process=subprocess.Popen([python,'-X','utf8',str(self.source/'serve_clawos.py'),'--ready',str(ready),'--session',session],
-                    cwd=self.source,env=env,stdin=subprocess.PIPE,stdout=self.log,stderr=self.log,
+                self.process=subprocess.Popen([python,'-X','utf8','-m','visualization.worker','--ready',str(ready),'--session',session],
+                    cwd=self.source.parent,env=env,stdin=subprocess.PIPE,stdout=self.log,stderr=self.log,
                     creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),start_new_session=os.name!='nt')
                 self.group=ChildGroup(self.process)
                 self.process.stdin.write((json.dumps(dict(gateway=self.secret))+'\n').encode());self.process.stdin.close()

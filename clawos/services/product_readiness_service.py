@@ -175,6 +175,9 @@ class ProductReadinessService:
             self.root / "clawos" / "static" / "assets" / "academy.js"
         )
         workflow_text = self._read(workflow)
+        gate = re.search(r"(?m)^  deterministic-tests:\s*\n((?:[ ]{4}[^\n]*\n|\n)*)", workflow_text)
+        dependencies = re.search(r"(?m)^    needs: \[([^\]\n]+)\]\s*$", gate[1]) if gate else None
+        gated_jobs = {name.strip() for name in dependencies[1].split(",")} if dependencies else set()
         extension_text = self._read(extension)
         agent_router_text = self._read(agent_router)
         agent_kernel_text = self._read(agent_kernel)
@@ -186,7 +189,7 @@ class ProductReadinessService:
             "hosted_ci_contract": bool(
                 "run_regression.py" in workflow_text
                 and "--shard-count 4" in workflow_text
-                and "needs: test-shards" in workflow_text
+                and {"test-shards", "module-contracts", "web-contracts"} <= gated_jobs
                 and "fail-fast: false" in workflow_text
                 and "node --check" in workflow_text
                 and "requirements-test.txt" in workflow_text

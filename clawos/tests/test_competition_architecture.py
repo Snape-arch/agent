@@ -13,7 +13,7 @@ import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parent
-MTCLAW_ROOT = REPO_ROOT / "MTClaw-框架代码"
+MTCLAW_ROOT = REPO_ROOT / "clawos/mtclaw"
 for path in (ROOT, ROOT / "scripts", MTCLAW_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -21,7 +21,7 @@ for path in (ROOT, ROOT / "scripts", MTCLAW_ROOT):
 
 class CompetitionArchitectureTests(unittest.TestCase):
     def test_mtclaw_omits_empty_model_authorization_header(self):
-        server_path = next(REPO_ROOT.glob("MTClaw-*/function_router/server.py"))
+        server_path = REPO_ROOT / "clawos" / "mtclaw" / "router" / "server.py"
         source = server_path.read_text(encoding="utf-8")
 
         self.assertIn('def model_headers(api_key: str = "", include_content_type: bool = False)', source)

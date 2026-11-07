@@ -41,8 +41,8 @@ def runtime_python(root: Path, *, windowed: bool = False) -> Path:
 def application_paths(root: Path) -> tuple[Path, Path]:
     packaged = root / "app" / "clawos"
     if packaged.exists():
-        return packaged, root / "app" / "mtclaw-source"
-    return root / "clawos", next(root.glob("MTClaw-*"), root / "MTClaw-source")
+        return packaged, packaged / "mtclaw"
+    return root / "clawos", root / "clawos" / "mtclaw"
 
 
 def user_data_dir() -> Path:
@@ -188,7 +188,7 @@ def run() -> int:
             if not prepare_mtclaw(python, app_dir, env, prepare_log):
                 raise RuntimeError(f"MTClaw 运行时准备失败。日志：{prepare_log}")
             process, log = spawn_hidden(
-                [str(pythonw), str(mtclaw_source / "function_router" / "server.py"),
+                [str(pythonw), str(mtclaw_source / "router" / "server.py"),
                  "--config", str(app_dir / "mtclaw_runtime" / "config.json")],
                 mtclaw_source, env, data_dir / "logs" / "mtclaw.log",
             )

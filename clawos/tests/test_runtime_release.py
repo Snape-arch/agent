@@ -5,6 +5,18 @@ from services.runtime_release import RuntimeRelease, core_ready
 
 
 class RuntimeReleaseTests(unittest.TestCase):
+    def test_integrated_modules_are_watched_but_dependency_and_data_trees_are_pruned(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            source=root/'visualization/backend/server.py';source.parent.mkdir(parents=True);source.write_text('answer=1')
+            web=root/'web/src/App.tsx';web.parent.mkdir(parents=True);web.write_text('export const answer=1')
+            release=RuntimeRelease(root)
+            for relative in ['web/node_modules/pkg/index.js','visualization/runtime-libs/private.py','visualization/data/blob.py','web/output/generated.ts','web/src/App.test.tsx']:
+                p=root/relative;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('not a product source')
+            self.assertFalse(release.status()['restart_required'])
+            source.write_text('answer=2');web.write_text('export const answer=2')
+            self.assertEqual(release.status()['changed_files'],['visualization/backend/server.py','web/src/App.tsx'])
+
     def test_vector_fallback_or_inconsistency_cannot_be_core_ready(self):
         args=({'reachable': True}, True, {'restart_required': False})
         ready={'initialized': True, 'consistent': True, 'fallback_reason': ''}

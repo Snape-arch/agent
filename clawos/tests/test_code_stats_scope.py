@@ -16,7 +16,7 @@ class CodeStatsScopeTests(unittest.TestCase):
             (root/'README.md').write_text('Source documentation.\n')
             (root/'pyproject.toml').write_text('name="source"\n')
             (root/'memoryos.db').write_bytes(b'SQLite binary\n'*100)
-            for name in ('Backups','tools','output'):
+            for name in ('Backups','tools','output','runtime-libs'):
                 (root/name).mkdir();(root/name/'generated.py').write_text('do_not_count\n'*20)
             (root/'model.gguf').write_bytes(b'weights\n'*100)
             (root/'diagnostic.log').write_text('Explicit text opt-in.\n')

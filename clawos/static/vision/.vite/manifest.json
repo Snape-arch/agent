@@ -1,11 +1,11 @@
 {
-  "../../clawos/static/assets/fonts/noto-sans-sc-00.woff2": {
+  "../static/assets/fonts/noto-sans-sc-00.woff2": {
     "file": "assets/noto-sans-sc-00-4aG3pcX2.woff2",
-    "src": "../../clawos/static/assets/fonts/noto-sans-sc-00.woff2"
+    "src": "../static/assets/fonts/noto-sans-sc-00.woff2"
   },
-  "../../clawos/static/assets/fonts/noto-sans-sc-01.woff2": {
+  "../static/assets/fonts/noto-sans-sc-01.woff2": {
     "file": "assets/noto-sans-sc-01-B7E-BiTx.woff2",
-    "src": "../../clawos/static/assets/fonts/noto-sans-sc-01.woff2"
+    "src": "../static/assets/fonts/noto-sans-sc-01.woff2"
   },
   "_LearningContext-!~{00m}~.js": {
     "file": "assets/LearningContext-Db5AERI5.css",

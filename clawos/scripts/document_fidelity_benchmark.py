@@ -66,7 +66,7 @@ def main() -> int:
     args.out = args.out.resolve(); args.out.mkdir(parents=True, exist_ok=True)
     benchmark = DocumentFidelityBenchmark()
     reports = {"semantic": benchmark.evaluate(args.workspace_root),
-               "ocr": benchmark.evaluate_ocr_sample(args.workspace_root / "参考文献/2305.16291v2.pdf")}
+               "ocr": benchmark.evaluate_ocr_sample(args.workspace_root / "docs/reference/papers/2305.16291v2.pdf")}
     if args.table_cells:
         reports["table_cells"] = DocumentTableBenchmark().evaluate(args.workspace_root)
     if args.cross_office:
@@ -75,7 +75,7 @@ def main() -> int:
         if args.table_cells:
             from services.document_semantic_graph_service import DocumentSemanticGraphService
             from services.office_productivity_service import OfficeProductivityService
-            graph = DocumentSemanticGraphService().parse_pdf(args.workspace_root / "参考文献/2310.08560v2.pdf")
+            graph = DocumentSemanticGraphService().parse_pdf(args.workspace_root / "docs/reference/papers/2310.08560v2.pdf")
             table = next(t for t in graph["tables"] if t.get("page") == 5 and t.get("caption", "").startswith("Table 2."))
             table["column_widths"] = [3, 1.5, 2]
             recovered_path = args.out / "recovered-table.docx"

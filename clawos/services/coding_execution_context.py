@@ -39,7 +39,7 @@ class CodingExecutionContext:
         if not isinstance(value, str):
             raise ValueError('context paths must be relative strings')
         path = PurePosixPath(value)
-        excluded = {'.git', 'tools', '.aws', '.codex', '.venv', 'venv', 'node_modules', 'output',
+        excluded = {'.git', 'tools', '.aws', '.codex', '.venv', 'venv', 'node_modules', 'runtime-libs', 'output',
                     '__pycache__', '.secrets', '.ssh'}
         if (not value or len(value) > 400 or path.is_absolute() or str(path) != value
                 or any(ord(c) < 32 or c in '\\:<>"|?*' for c in value)

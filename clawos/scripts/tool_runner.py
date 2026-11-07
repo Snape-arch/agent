@@ -1085,7 +1085,7 @@ def tool_code_stats():
     path = input_data.get("path", os.path.expanduser("~\\Desktop"))
     file_types = input_data.get("file_types", None)
     exclude = input_data.get("exclude_dirs", [
-        "node_modules", ".git", "__pycache__", "venv", ".venv",
+        "node_modules", "runtime-libs", ".git", "__pycache__", "venv", ".venv",
         "output", "uploads", "tmp", ".cache", "dist", "build", "backups", "tools",
     ])
     if not os.path.isdir(path): print(json.dumps({"error": f"Not found: {path}"})); sys.exit(1)
@@ -1093,7 +1093,8 @@ def tool_code_stats():
     lang_map.update({".toml":"TOML", ".ini":"INI", ".cfg":"Config", ".rst":"reStructuredText", ".ps1":"PowerShell"})
     stats = {}; total_l, total_f = 0, 0
     for root, dirs, files in os.walk(path):
-        dirs[:] = [d for d in dirs if d.casefold() not in {name.casefold() for name in exclude} and not os.path.islink(os.path.join(root,d))]
+        dirs[:] = [d for d in dirs if d.casefold() not in {name.casefold() for name in exclude} and not os.path.islink(os.path.join(root,d))
+                       and not getattr(os.path, "isjunction", lambda _: False)(os.path.join(root,d))]
         for f in files:
             ext = os.path.splitext(f)[1].lower()
             if file_types and ext not in file_types: continue
@@ -1117,7 +1118,7 @@ def tool_find_todos():
     file_patterns = input_data.get("file_patterns", ["*.py","*.js","*.ts","*.jsx","*.tsx","*.java","*.go","*.rs","*.c","*.cpp","*.h","*.html","*.css","*.md"])
     limit = input_data.get("limit", 50)
     exclude = {str(name).casefold() for name in input_data.get("exclude_dirs", [
-        "node_modules", "__pycache__", "venv", ".venv", ".git",
+        "node_modules", "runtime-libs", "__pycache__", "venv", ".venv", ".git",
         "output", "uploads", "tmp", ".cache", "dist", "build", "backups", "tools",
     ])}
     if os.path.isfile(path): files = [path]

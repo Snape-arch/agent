@@ -46,13 +46,23 @@ clawos/backups/
 desktop/build/
 desktop/stage/
 dist/
-integrations/clawvision/node_modules/
-integrations/clawvision/.vite/
-integrations/clawvision/coverage/
-integrations/clawvision/data/
-integrations/clawvision/runtime-libs/
-integrations/clawvision/*.tsbuildinfo
+clawos/web/node_modules/
+clawos/web/.vite/
+clawos/web/coverage/
+clawos/visualization/data/
+clawos/visualization/runtime-libs/
+clawos/web/*.tsbuildinfo
 clawos/data/vision/
 clawos/vision/
 __pycache__/
 *.py[cod]
+
+.playwright-cli/
+clawos/visualization/output/
+
+# Original local reference paths remain usable for existing file/database links.
+# Versioned copies now live under docs/reference/.
+/参考文献/
+/架构图/
+/计划书和题目要求/
+/ClawOS_商业计划书.md

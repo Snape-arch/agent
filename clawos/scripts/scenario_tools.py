@@ -133,22 +133,24 @@ def competition_delivery_package(payload):
     package_dir.mkdir(parents=True, exist_ok=True)
 
     docs = {
-        "business_plan": _first_existing(root, ["ClawOS_商业计划书.md", "plan_text.txt"]),
-        "architecture": _first_existing(root, ["架构说明.txt"]),
+        "business_plan": _first_existing(root, ["docs/reference/proposals/business-plan.md", "ClawOS_商业计划书.md", "plan_text.txt"]),
+        "architecture": _first_existing(root, ["docs/ARCHITECTURE.md", "架构说明.txt"]),
         "readme": _first_existing(root, ["README.md", "clawos/README.md"]),
         "context": _first_existing(root, ["PROJECT_CONTEXT.md"]),
-        "roadmap": _first_existing(root, ["PROJECT_ROADMAP.md", "clawos/ROADMAP.md"]),
-        "mtclaw": _first_existing(root, ["clawos/MTCLAW_INTEGRATION.md"]),
-        "enterprise": _first_existing(root, ["clawos/ENTERPRISE_READINESS.md"]),
+        "roadmap": _first_existing(root, ["docs/ROADMAP.md", "PROJECT_ROADMAP.md", "clawos/ROADMAP.md"]),
+        "mtclaw": _first_existing(root, ["docs/ROUTER.md", "clawos/MTCLAW_INTEGRATION.md"]),
+        "enterprise": _first_existing(root, ["docs/MAINTAINABILITY.md", "clawos/ENTERPRISE_READINESS.md"]),
     }
     corpus = {name: _read_doc(path) if path else "" for name, path in docs.items()}
     combined = "\n".join(corpus.values())
     architecture_assets = []
-    arch_dir = root / "架构图"
+    arch_dir = root / "docs/reference/architecture"
+    if not arch_dir.exists(): arch_dir = root / "架构图"
     if arch_dir.exists():
         architecture_assets = [str(path) for path in sorted(arch_dir.iterdir()) if path.is_file()]
     plan_assets = []
-    plan_dir = root / "计划书和题目要求"
+    plan_dir = root / "docs/reference/proposals"
+    if not plan_dir.exists(): plan_dir = root / "计划书和题目要求"
     if plan_dir.exists():
         plan_assets = [str(path) for path in sorted(plan_dir.iterdir()) if path.is_file()]
 

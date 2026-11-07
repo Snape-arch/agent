@@ -183,13 +183,9 @@ if defined LOCAL_PROFILE (
     )
 )
 
-for /d %%D in ("%ROOT%MTClaw-*") do (
-    set "MTCLAW_DIR=%%~fD"
-)
-
-if not defined MTCLAW_DIR (
-    echo [ERROR] MTClaw directory not found under:
-    echo         %ROOT%
+set "MTCLAW_DIR=%CLAWOS_DIR%\mtclaw"
+if not exist "%MTCLAW_DIR%\router\server.py" (
+    echo [ERROR] Internal router module is missing: %MTCLAW_DIR%
     pause
     goto launcher_failed
 )
@@ -204,7 +200,7 @@ if errorlevel 1 (
 
 echo.
 echo [2/5] Starting MTClaw Function Router on %MTCLAW_BASE_URL% ...
-start "MTClaw Function Router" /D "%MTCLAW_DIR%" "%PYTHON%" "function_router\server.py" --config "%CLAWOS_DIR%\mtclaw_runtime\config.json"
+start "MTClaw Function Router" /D "%MTCLAW_DIR%" "%PYTHON%" "router\server.py" --config "%CLAWOS_DIR%\mtclaw_runtime\config.json"
 
 echo [3/5] Waiting for MTClaw health check...
 "%PYTHON%" "%CLAWOS_DIR%\scripts\windows_health_check.py" --url "%MTCLAW_BASE_URL%/health" --name MTClaw --timeout 30

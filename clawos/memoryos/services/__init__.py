@@ -1,4 +1,4 @@
-﻿# MemoryOS Core Services
+# MemoryOS Core Services
 from .ingestion import IngestionService
 from .retrieval import RetrievalService
 from .management import ManagementService

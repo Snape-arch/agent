@@ -1213,7 +1213,7 @@ class FrontendStaticTests(unittest.TestCase):
         ):
             self.assertTrue((brand_dir / asset).is_file(), asset)
         self.assertTrue((STATIC_DIR / "site.webmanifest").is_file())
-        self.assertTrue((REPO_ROOT / "clawos" / "BRAND_GUIDELINES.md").is_file())
+        self.assertTrue((REPO_ROOT / "docs" / "BRAND.md").is_file())
         for page in (
             "index.html",
             "product.html",

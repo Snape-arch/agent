@@ -4,7 +4,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const source = path.join(repo,'integrations/clawvision');
+const source = path.join(repo,'clawos/web');
 const session = 'build-'+Date.now();
 const stage = path.join(repo,'clawos/output/vision-builds',session);
 const destination = path.join(repo,'clawos/static/vision');
@@ -21,7 +21,8 @@ const notices=['react','react-dom','three','lucide-react'].map(name=>{
   if(!license)throw new Error('Missing license: '+name);
   return name+'\n'+fs.readFileSync(license,'utf8');
 }).join('\n\n');
-fs.writeFileSync(path.join(stage,'THIRD_PARTY_NOTICES.txt'),notices);
+const visualizationLicense=fs.readFileSync(path.join(repo,'clawos/visualization/LICENSE'),'utf8');
+fs.writeFileSync(path.join(stage,'THIRD_PARTY_NOTICES.txt'),'ClawOS visualization components derived from ClawVision (Apache-2.0)\n'+visualizationLicense+'\n\n'+notices);
 function files(root,prefix=''){return fs.readdirSync(root,{withFileTypes:true}).flatMap(e=>e.isDirectory()?files(path.join(root,e.name),path.join(prefix,e.name)):[path.join(prefix,e.name)]);}
 const fresh=files(stage);const keep=new Set(fresh);
 if(fs.existsSync(destination))for(const relative of files(destination))if(!keep.has(relative)){

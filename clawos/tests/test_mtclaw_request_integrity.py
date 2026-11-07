@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 import httpx
 ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT.parent/'MTClaw-框架代码'))
+sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT.parent/'clawos/mtclaw'))
 from mtclaw.adapter import MTClawAdapter
 
 
@@ -50,14 +50,14 @@ class RequestIntegrityTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(all(r['ok'] for r in result));self.assertEqual(peak,1);self.assertEqual(adapter._sessions,{})
 
     def test_memory_context_preserved_bounded_without_importing_tool_calls(self):
-        from function_router.server import clawos_context
+        from mtclaw.router.server import clawos_context
         context=clawos_context([dict(role='system',content='Memory: project is local'),dict(role='assistant',content='Previous answer',tool_calls=[dict(id='old')]),dict(role='tool',content='old tool result'),dict(role='user',content='Current request')])
         self.assertIn('project is local',context[0]['content']);self.assertEqual(context[1]['content'],'Previous answer')
         self.assertFalse(any('tool_calls' in m or m['role']=='tool' for m in context))
         self.assertLessEqual(sum(len(m['content']) for m in clawos_context([dict(role='system',content='x'*50000),dict(role='user',content='now')])),20100)
 
     async def test_router_history_endpoint_filters_request_and_session(self):
-        from function_router import server
+        from mtclaw.router import server
         previous=list(server.TOOL_HISTORY);server.TOOL_HISTORY.clear()
         self.addCleanup(lambda:(server.TOOL_HISTORY.clear(),server.TOOL_HISTORY.extend(previous)))
         server.TOOL_HISTORY.extend([dict(timestamp='1',session_key='A',request_id='one'),dict(timestamp='2',session_key='A',request_id='two'),dict(timestamp='3',session_key='B',request_id='two')])
@@ -66,7 +66,7 @@ class RequestIntegrityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([x['timestamp'] for x in r.json()['entries']],['2'])
 
     async def test_router_ready_requires_warmup_tools_and_model(self):
-        from function_router import server
+        from mtclaw.router import server
         from unittest.mock import patch,AsyncMock
         previous_tools,previous_warmup=server.STATE.tools,server.STATE.warmup_ok
         try:
@@ -78,14 +78,14 @@ class RequestIntegrityTests(unittest.IsolatedAsyncioTestCase):
         finally:server.STATE.tools,server.STATE.warmup_ok=previous_tools,previous_warmup
 
     def test_upstream_receives_observation_not_router_prose_or_executable_calls(self):
-        from function_router.server import _build_upstream_request
+        from mtclaw.router.server import _build_upstream_request
         result=_build_upstream_request(dict(messages=[dict(role='system',content='Memory'),dict(role='user',content='Current question')]),session_key='isolated',tool_context=[dict(role='assistant',content='Unverified claim',tool_calls=[dict(id='x')]),dict(role='tool',name='time_now',tool_call_id='x',content='{"datetime":"2026-10-02 21:00:00"}')])
         text=json.dumps(result)
         self.assertIn('2026-10-02 21:00:00',text);self.assertNotIn('Unverified claim',text);self.assertNotIn('tool_calls',text)
         self.assertEqual(result['messages'][-1]['content'],'Current question')
 
     async def test_clawos_runtime_disables_unrestricted_builtins_and_interception(self):
-        from function_router import server
+        from mtclaw.router import server
         from mtclaw.prepare_runtime import prepare
         import tempfile
         previous_config,previous_tools=server.STATE.config,server.STATE.tools

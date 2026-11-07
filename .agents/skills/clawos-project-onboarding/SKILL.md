@@ -17,9 +17,9 @@ Read these files before broad analysis or code changes:
 
 If the request is about architecture or roadmap, also read:
 
-- `clawos/ROADMAP.md`
-- `clawos/ENTERPRISE_READINESS.md`
-- `clawos/MTCLAW_INTEGRATION.md`
+- `docs/ROADMAP.md`
+- `docs/MAINTAINABILITY.md`
+- `docs/ROUTER.md`
 
 ## Startup Checklist
 

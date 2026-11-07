@@ -9,7 +9,15 @@ $Stage = Join-Path $PSScriptRoot "stage"
 $Dist = Join-Path $RepoRoot "dist"
 if (-not (Test-Path $Python)) { throw "Missing build virtualenv: $Python" }
 
-Remove-Item -Recurse -Force $BuildRoot,$Stage -ErrorAction SilentlyContinue
+foreach ($candidate in @($BuildRoot, $Stage)) {
+    $absolute = [System.IO.Path]::GetFullPath($candidate)
+    $desktopRoot = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\') + '\'
+    if (-not $absolute.StartsWith($desktopRoot, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Build target outside desktop workspace" }
+    if (Test-Path -LiteralPath $absolute) {
+        if ((Get-Item -LiteralPath $absolute).Attributes -band [System.IO.FileAttributes]::ReparsePoint) { throw "Build target must not be a junction" }
+        Remove-Item -LiteralPath $absolute -Recurse -Force
+    }
+}
 New-Item -ItemType Directory -Force $BuildRoot,$Stage,$Dist | Out-Null
 
 Write-Host "[1/6] Creating brand icon"
@@ -35,11 +43,11 @@ Copy-Item -Recurse "$ClawOS\.venv\Lib\site-packages" (Join-Path $Runtime "Lib\si
 Write-Host "[4/6] Copying tracked application payload"
 $AppRoot = Join-Path $Stage "app"
 $AppClawOS = Join-Path $AppRoot "clawos"
-$AppMtClaw = Join-Path $AppRoot "mtclaw-source"
-New-Item -ItemType Directory -Force $AppClawOS,$AppMtClaw | Out-Null
+New-Item -ItemType Directory -Force $AppClawOS | Out-Null
 $ClawFiles = git -C $RepoRoot -c core.quotepath=false ls-files "clawos/**"
 foreach ($relative in $ClawFiles) {
-    if ($relative -match '(^|/)(tmp|tools|output|uploads|backups|tests|docs|__pycache__)(/|$)' -or $relative -match '(\.env$|\.db$|\.log$|\.pyc$|\.md$)') { continue }
+    if ($relative.StartsWith("clawos/web/")) { continue }
+    if ($relative -match '(^|/)(tmp|tools|output|uploads|backups|tests|docs|__pycache__)(/|$)' -or ($relative -match '(\.env$|\.db$|\.log$|\.pyc$|\.md$)' -and $relative -ne 'clawos/mtclaw/UPSTREAM.md')) { continue }
     $source = Join-Path $RepoRoot $relative
     if (-not (Test-Path $source -PathType Leaf)) { continue }
     $tail = $relative.Substring("clawos/".Length).Replace('/', '\')
@@ -47,28 +55,9 @@ foreach ($relative in $ClawFiles) {
     New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
     Copy-Item $source $target
 }
-$VisionFiles = git -C $RepoRoot -c core.quotepath=false ls-files "integrations/clawvision/**"
-foreach ($relative in $VisionFiles) {
-    if ($relative -match '(^|/)(node_modules|data|output|tests|docs|coverage|__pycache__)(/|$)' -or $relative -match '(\.db$|\.log$|\.pyc$|\.tsbuildinfo$)') { continue }
-    $source = Join-Path $RepoRoot $relative
-    if (-not (Test-Path $source -PathType Leaf)) { continue }
-    $target = Join-Path $AppRoot ($relative.Replace('/', '\'))
-    New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
-    Copy-Item $source $target
-}
-$MtFiles = git -C $RepoRoot -c core.quotepath=false ls-files "MTClaw-*/**"
 $VisionLibraries = Join-Path $ClawOS "output\vision-libs"
 if (Test-Path $VisionLibraries -PathType Container) {
-    Copy-Item -Recurse $VisionLibraries (Join-Path $AppRoot "integrations\clawvision\runtime-libs")
-}
-foreach ($relative in $MtFiles) {
-    if ($relative -match '(^|/)(tmp|output|__pycache__)(/|$)' -or $relative -match '(\.env$|\.db$|\.log$|\.pyc$)') { continue }
-    $source = Join-Path $RepoRoot $relative
-    if (-not (Test-Path $source -PathType Leaf)) { continue }
-    $tail = $relative.Substring($relative.IndexOf('/') + 1).Replace('/', '\')
-    $target = Join-Path $AppMtClaw $tail
-    New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
-    Copy-Item $source $target
+    Copy-Item -Recurse $VisionLibraries (Join-Path $AppClawOS "visualization\runtime-libs")
 }
 
 Write-Host "[5/6] Running portable payload preflight"

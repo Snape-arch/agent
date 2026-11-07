@@ -73,9 +73,9 @@ def migrate(source_root,target_root,backend_root,python=sys.executable):
                  source_files_sha256=files_before,tables={},objects={},excluded={},cancelled_active={},redacted_fields=0,owner='local-user',public_shares_disabled=True)
     try:
         env={k:os.environ[k] for k in ('SYSTEMROOT','WINDIR','PATH','TEMP','TMP','COMSPEC') if k in os.environ}
-        env.update(PYTHONPATH=str(backend_root),PYTHONNOUSERSITE='1',PYTHONIOENCODING='utf-8',
+        env.update(PYTHONPATH=str(backend_root.parents[1]),PYTHONNOUSERSITE='1',PYTHONIOENCODING='utf-8',
                    CLAWVISION_DATA_DIR=str(stage/'data'),DATABASE_URL='sqlite:///'+str(stage/'data/clawvision.db'))
-        subprocess.run([str(python),'-X','utf8','-c','from database import init_database;init_database()'],env=env,cwd=backend_root,check=True,capture_output=True,timeout=30)
+        subprocess.run([str(python),'-X','utf8','-c','from visualization.backend.database import init_database;init_database()'],env=env,cwd=backend_root.parents[1],check=True,capture_output=True,timeout=30)
         with closing(sqlite3.connect(original.as_uri()+'?mode=ro',uri=True)) as src, closing(sqlite3.connect(stage/'data/clawvision.db')) as dst:
             src.row_factory=sqlite3.Row;src.execute('PRAGMA query_only=ON');src.execute('BEGIN')
             names={r[0] for r in src.execute("SELECT name FROM sqlite_master WHERE type='table'")}

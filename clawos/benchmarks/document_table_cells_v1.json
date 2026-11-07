@@ -6,7 +6,7 @@
   "truth_boundary": "Transcribed against rendered local PDF pages. These are agent-reviewed development cases, not independent human labels or a WPS comparison. Small-type annotations are preserved without inferring their statistical meaning.",
   "documents": [
     {
-      "path": "参考文献/2305.16291v2.pdf",
+      "path": "docs/reference/papers/2305.16291v2.pdf",
       "sha256": "769a4e33ddeeb73870849232eece49afe882c2d146362e33917ccb432ba0efb8",
       "tables": [{
         "caption": "Table 1: Tech tree mastery", "page": 7, "bbox": [130,130,482,196],
@@ -23,7 +23,7 @@
       }]
     },
     {
-      "path": "参考文献/2310.08560v2.pdf",
+      "path": "docs/reference/papers/2310.08560v2.pdf",
       "sha256": "9f674bcff69c86f11c813dcfad613d8841f5f8ed17979e3c4df06a91df7762e0",
       "tables": [{
         "caption": "Table 2. Deep memory retrieval", "page": 5, "bbox": [64,134,280,228],
@@ -41,7 +41,7 @@
       }]
     },
     {
-      "path": "参考文献/2605.06614v1.pdf",
+      "path": "docs/reference/papers/2605.06614v1.pdf",
       "sha256": "e55b880b9564c63f5f791c02f423d41bd356eecc07002f85c6babfce72ee39c6",
       "tables": [{
         "caption": "Table 1 | Experiment results", "page": 7, "bbox": [62,129,538,427],
