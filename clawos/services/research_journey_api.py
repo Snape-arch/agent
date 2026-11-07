@@ -5,6 +5,7 @@ from fastapi.responses import Response,JSONResponse
 from starlette.concurrency import run_in_threadpool
 from services.research_learning import Conflict
 from services.research_grounded import bank
+from services.rag_intro_lesson import RagIntroLesson
 
 def journey_router(journey,grounded,ready,owner):
     router=APIRouter(prefix='/api/vision/research')
@@ -27,6 +28,19 @@ def journey_router(journey,grounded,ready,owner):
         return value
     @router.get('/cases/{cid}/journey')
     async def dashboard(cid:str,request:Request):return await invoke(request,journey,'dashboard',cid)
+    def intro():return RagIntroLesson(journey())
+    @router.get('/cases/{cid}/intro')
+    async def intro_state(cid:str,request:Request,attempt:str=''):
+        return JSONResponse(await invoke(request,intro,'state',cid,attempt),headers={'Cache-Control':'no-store'})
+    @router.post('/cases/{cid}/intro')
+    async def intro_start(cid:str,request:Request):return await invoke(request,intro,'start',cid,await body(request))
+    @router.post('/cases/{cid}/intro/{aid}')
+    async def intro_step(cid:str,aid:str,request:Request):return await invoke(request,intro,'advance',cid,aid,await body(request))
+    @router.get('/cases/{cid}/intro/{aid}/export')
+    async def intro_export(cid:str,aid:str,request:Request,review:bool=False):
+        value=await invoke(request,intro,'export',cid,aid,review)
+        filename='rag-intro-review.json' if review else 'rag-intro-receipt.json'
+        return JSONResponse(value,headers={'Content-Disposition':f'attachment; filename="{filename}"','Cache-Control':'no-store'})
     @router.get('/cases/{cid}/papers/{pid}/pdf')
     async def pdf(cid:str,pid:str,request:Request,download:bool=False):
         name,raw=await invoke(request,journey,'pdf',cid,pid)

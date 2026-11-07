@@ -11,6 +11,7 @@
 | 模块能力、验证与交付评分 | [项目全局评估](PROJECT_ASSESSMENT.md) |
 | MT路由与安全工具桥 | [路由模块](ROUTER.md) |
 | 教学可视化、实验及SDK | [可视化模块](VISUALIZATION.md) |
+| RAG 短课、教师量尺和试学 | [RAG 入门示范课](RAG_INTRO_PILOT.md) |
 | 标志、图标与界面用色 | [品牌规范](BRAND.md) |
 | 下一阶段优先级 | [路线图](ROADMAP.md) |
 | 飞书接入操作 | [飞书运行手册](feishu-runbook.md) |

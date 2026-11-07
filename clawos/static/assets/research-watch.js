@@ -90,6 +90,10 @@
     card.append(el('div', `${item.subscription_name} · ${when(item.discovered)} 发现`, 'watch-meta'));
     if (item.subscriptions && item.subscriptions.length > 1) card.append(el('div', '同时属于：' + item.subscriptions.map(s => s.name).join('、'), 'watch-meta'));
     const h = el('h3'); h.append(link(p.title, p.url)); card.append(h);
+    if (p.arxiv_id === '2004.04906' && p.arxiv_version === 3) {
+      const lesson = el('a', '用这篇论文开始 RAG 入门课 →');
+      lesson.href = '/academy/vision/#rag-intro'; card.append(lesson);
+    }
     if (p.source === 'arxiv') card.append(el('span', '预印本 · 同行评审状态未核验', 'watch-tag preprint'));
     item.classification.forEach(c => card.append(el('span', c.name + (c.review_required ? ' · 待复核' : ' · 人工确认'), 'watch-tag')));
     card.append(el('div', `${p.authors.slice(0, 4).join('、') || '作者未提供'} · 发表/投稿：${p.published || '未知'} · ${p.source}`, 'watch-meta'));
@@ -249,7 +253,7 @@
     if(JSON.stringify(d.coverage_before)!==JSON.stringify(d.coverage_after))root.append(lazy('来源覆盖与预算变化',box=>{box.append(el('p','来源缺失或预算省略可能改变关系范围，不能当作撤稿或反证。','muted'),el('pre',JSON.stringify({before:d.coverage_before,after:d.coverage_after},null,2),'watch-source-text'));}));
   }
   function renderUpdateControls(r,root) {
-    if(r.selection?.external_full_text){const box=el('section',undefined,'watch-updates');box.append(el('h3','固定全文实践'),el('p','本报告保留公开全文快照。新发现可继续进入订阅；这份实验资料不自动替换为摘要，也不自动迁移旧学习判断。'));const a=el('a','回到文献实践');a.href='/academy/vision/?ragCase='+encodeURIComponent(r.selection.external_full_text.case_id)+'#rag-lab';box.append(a);root.append(box);return;}
+    if(r.selection?.external_full_text){const box=el('section',undefined,'watch-updates');box.append(el('h3','固定全文实践'),el('p','本报告保留公开全文快照。新发现可继续进入订阅；这份实验资料不自动替换为摘要，也不自动迁移旧学习判断。'));const a=el('a','回到文献实践');const lesson=el('a','用本计划开始 RAG 入门课');const path='/academy/vision/?ragCase='+encodeURIComponent(r.selection.external_full_text.case_id);a.href=path+'#rag-lab';lesson.href=path+'#rag-intro';box.append(lesson,document.createTextNode(' · '),a);root.append(box);return;}
     const section=el('section',undefined,'watch-updates'),controls=el('div'),delta=el('div',undefined,'watch-update-delta');
     section.append(el('h3','持续更新这份综述'),el('p','只检查已经采集到的资料，不额外联网采集或自动调用模型。已绑定本地全文会重新取证；旧AI正文和人工关系复核保留在原版本。','muted'),controls,delta);root.append(section);
     async function load(){

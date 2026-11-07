@@ -7,12 +7,12 @@
     "file": "assets/noto-sans-sc-01-B7E-BiTx.woff2",
     "src": "../static/assets/fonts/noto-sans-sc-01.woff2"
   },
-  "_LearningContext-!~{00m}~.js": {
+  "_LearningContext-!~{00n}~.js": {
     "file": "assets/LearningContext-Db5AERI5.css",
-    "src": "_LearningContext-!~{00m}~.js"
+    "src": "_LearningContext-!~{00n}~.js"
   },
-  "_LearningContext-BfKVs532.js": {
-    "file": "assets/LearningContext-BfKVs532.js",
+  "_LearningContext-Dptw394D.js": {
+    "file": "assets/LearningContext-Dptw394D.js",
     "name": "LearningContext",
     "imports": [
       "index.html",
@@ -22,8 +22,8 @@
       "assets/LearningContext-Db5AERI5.css"
     ]
   },
-  "_loader-circle-DLHtMrVn.js": {
-    "file": "assets/loader-circle-DLHtMrVn.js",
+  "_loader-circle-BudTnSFN.js": {
+    "file": "assets/loader-circle-BudTnSFN.js",
     "name": "loader-circle",
     "imports": [
       "index.html"
@@ -33,8 +33,22 @@
     "file": "assets/react-vendor-Ds7D3P6J.js",
     "name": "react-vendor"
   },
-  "_shield-check-BKfJi5PE.js": {
-    "file": "assets/shield-check-BKfJi5PE.js",
+  "_research-journey-!~{00p}~.js": {
+    "file": "assets/research-journey-C8tENFiL.css",
+    "src": "_research-journey-!~{00p}~.js"
+  },
+  "_research-journey-Di8czUgB.js": {
+    "file": "assets/research-journey-Di8czUgB.js",
+    "name": "research-journey",
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js"
+    ],
+    "css": [
+      "assets/research-journey-C8tENFiL.css"
+    ]
+  },
+  "_shield-check-I9ZD2pnc.js": {
+    "file": "assets/shield-check-I9ZD2pnc.js",
     "name": "shield-check",
     "imports": [
       "index.html"
@@ -81,8 +95,8 @@
       "_three-animation-DS8KJtl_.js"
     ]
   },
-  "_threeBudget-C4_dD6Kb.js": {
-    "file": "assets/threeBudget-C4_dD6Kb.js",
+  "_threeBudget-DtC0_kFr.js": {
+    "file": "assets/threeBudget-DtC0_kFr.js",
     "name": "threeBudget",
     "imports": [
       "index.html"
@@ -93,7 +107,7 @@
     "name": "threeViewport"
   },
   "index.html": {
-    "file": "assets/index-D9HPN5sk.js",
+    "file": "assets/index-Dzbg56gj.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -111,6 +125,7 @@
       "src/components/VisualLearningStudio.tsx",
       "src/components/RagResearchStudio.tsx",
       "src/components/ResearchJourneyStudio.tsx",
+      "src/components/RagIntroLesson.tsx",
       "src/components/EvaluationLab.tsx",
       "src/components/AiStudio.tsx",
       "src/components/TeachingWorkbench.tsx"
@@ -124,14 +139,14 @@
     ]
   },
   "src/components/AiStudio.tsx": {
-    "file": "assets/AiStudio-CUNK5v6N.js",
+    "file": "assets/AiStudio-CQmjzce0.js",
     "name": "AiStudio",
     "src": "src/components/AiStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_shield-check-BKfJi5PE.js"
+      "_shield-check-I9ZD2pnc.js"
     ]
   },
   "src/components/EmbeddingView.tsx": {
@@ -147,7 +162,7 @@
     ]
   },
   "src/components/EvaluationLab.tsx": {
-    "file": "assets/EvaluationLab-CeMiaxSN.js",
+    "file": "assets/EvaluationLab-D-TGbk9W.js",
     "name": "EvaluationLab",
     "src": "src/components/EvaluationLab.tsx",
     "isDynamicEntry": true,
@@ -159,37 +174,48 @@
       "src/components/ScenePlanPreview.tsx"
     ]
   },
+  "src/components/RagIntroLesson.tsx": {
+    "file": "assets/RagIntroLesson-B2x81GoB.js",
+    "name": "RagIntroLesson",
+    "src": "src/components/RagIntroLesson.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-Ds7D3P6J.js",
+      "_research-journey-Di8czUgB.js"
+    ],
+    "css": [
+      "assets/RagIntroLesson-Ti62K5K3.css"
+    ]
+  },
   "src/components/RagResearchStudio.tsx": {
-    "file": "assets/RagResearchStudio-DO5Go1py.js",
+    "file": "assets/RagResearchStudio-C9WYRA90.js",
     "name": "RagResearchStudio",
     "src": "src/components/RagResearchStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_LearningContext-BfKVs532.js",
-      "_loader-circle-DLHtMrVn.js"
+      "_LearningContext-Dptw394D.js",
+      "_loader-circle-BudTnSFN.js"
     ],
     "css": [
       "assets/RagResearchStudio-skMqcWwf.css"
     ]
   },
   "src/components/ResearchJourneyStudio.tsx": {
-    "file": "assets/ResearchJourneyStudio-62-D1T06.js",
+    "file": "assets/ResearchJourneyStudio-DlCfVQBV.js",
     "name": "ResearchJourneyStudio",
     "src": "src/components/ResearchJourneyStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_LearningContext-BfKVs532.js"
-    ],
-    "css": [
-      "assets/ResearchJourneyStudio-C8tENFiL.css"
+      "_research-journey-Di8czUgB.js",
+      "_LearningContext-Dptw394D.js"
     ]
   },
   "src/components/ScenePlanPreview.tsx": {
-    "file": "assets/ScenePlanPreview-Csrq6zsA.js",
+    "file": "assets/ScenePlanPreview-2NsV3BSM.js",
     "name": "ScenePlanPreview",
     "src": "src/components/ScenePlanPreview.tsx",
     "isDynamicEntry": true,
@@ -197,14 +223,14 @@
       "_react-vendor-Ds7D3P6J.js",
       "_three-core-DyxFmU2r.js",
       "_three-loaders-D9BNlTqe.js",
-      "_threeBudget-C4_dD6Kb.js",
+      "_threeBudget-DtC0_kFr.js",
       "_three-addons-CJcCuPKi.js",
       "_three-animation-DS8KJtl_.js",
       "index.html"
     ]
   },
   "src/components/TeachingWorkbench.tsx": {
-    "file": "assets/TeachingWorkbench-QF4rgeSc.js",
+    "file": "assets/TeachingWorkbench-Q1rV4Ukv.js",
     "name": "TeachingWorkbench",
     "src": "src/components/TeachingWorkbench.tsx",
     "isDynamicEntry": true,
@@ -214,20 +240,20 @@
     ]
   },
   "src/components/VisualLearningStudio.tsx": {
-    "file": "assets/VisualLearningStudio-rBrPwT9o.js",
+    "file": "assets/VisualLearningStudio-BgJXLr05.js",
     "name": "VisualLearningStudio",
     "src": "src/components/VisualLearningStudio.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_react-vendor-Ds7D3P6J.js",
       "index.html",
-      "_shield-check-BKfJi5PE.js",
-      "_LearningContext-BfKVs532.js",
-      "_loader-circle-DLHtMrVn.js"
+      "_shield-check-I9ZD2pnc.js",
+      "_LearningContext-Dptw394D.js",
+      "_loader-circle-BudTnSFN.js"
     ]
   },
   "src/visualizations/renderers/AiStudioModelView.tsx": {
-    "file": "assets/AiStudioModelView-Dal3F1MZ.js",
+    "file": "assets/AiStudioModelView-CLcX3iHN.js",
     "name": "AiStudioModelView",
     "src": "src/visualizations/renderers/AiStudioModelView.tsx",
     "isDynamicEntry": true,
@@ -236,12 +262,12 @@
       "_three-core-DyxFmU2r.js",
       "_three-controls-BtBdI-gm.js",
       "_three-geometries-DQ297k5Z.js",
-      "_threeBudget-C4_dD6Kb.js",
+      "_threeBudget-DtC0_kFr.js",
       "index.html"
     ]
   },
   "src/visualizations/renderers/CadModelView.tsx": {
-    "file": "assets/CadModelView-AM7StK4i.js",
+    "file": "assets/CadModelView-Dc6KbuRO.js",
     "name": "CadModelView",
     "src": "src/visualizations/renderers/CadModelView.tsx",
     "isDynamicEntry": true,
@@ -252,7 +278,7 @@
       "_three-controls-BtBdI-gm.js",
       "_three-loaders-D9BNlTqe.js",
       "_three-animation-DS8KJtl_.js",
-      "_threeBudget-C4_dD6Kb.js",
+      "_threeBudget-DtC0_kFr.js",
       "_three-addons-CJcCuPKi.js"
     ]
   },

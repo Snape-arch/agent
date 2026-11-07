@@ -12,7 +12,7 @@ Windows在仓库根运行：
 .\start_clawos.bat
 ```
 
-工作台默认地址 `http://127.0.0.1:18790`；教学入口 `/academy/lab`，研究学习与可视化入口 `/academy/vision/`。应用依赖按[部署说明](clawos/deployment/README.md)准备。`start_clawos.bat --check-runtime`只检查运行环境；模型端点需要单独准备，仓库不包含权重。
+工作台默认地址 `http://127.0.0.1:18790`。教学入口 `/academy/lab`，其中有 [RAG 入门示范课和试学方案](docs/RAG_INTRO_PILOT.md)。研究学习与可视化入口为 `/academy/vision/`。应用依赖按[部署说明](clawos/deployment/README.md)准备。`start_clawos.bat --check-runtime`只检查运行环境；模型端点需要单独准备，仓库不包含权重。
 
 ## 一个产品源码树
 

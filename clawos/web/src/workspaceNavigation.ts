@@ -1,5 +1,6 @@
 /** One route vocabulary for education, visual tools and the legacy experiment views. */
 export const workspaceRoutes = [
+  {id:'rag-intro',title:'RAG 入门示范课',group:'学习与探索',description:'从一篇论文开始，动手核查证据',worker:false},
   {id:'visuals',title:'可视化课堂',group:'学习与探索',description:'看见机制，理解每一步',worker:false},
   {id:'journey',title:'研究与学习',group:'学习与探索',description:'文献、导读、课程与证据',worker:false},
   {id:'rag-lab',title:'RAG文献实践',group:'学习与探索',description:'全文、证据、检索与迁移',worker:false},
@@ -15,7 +16,7 @@ export const workspaceRoutes = [
   {id:'settings',title:'工作区设置',group:'实验追踪',description:'本机运行服务',worker:false},
 ] as const;
 export type WorkspaceView = typeof workspaceRoutes[number]['id'];
-export type LegacyView = 'home' | Exclude<WorkspaceView,'visuals'|'rag-lab'|'journey'>;
+export type LegacyView = 'home' | Exclude<WorkspaceView,'visuals'|'rag-lab'|'journey'|'rag-intro'>;
 export const routeEvent = 'clawos-vision:navigate';
 export function currentWorkspaceView():WorkspaceView {
   const id=location.hash.slice(1);return workspaceRoutes.find(r=>r.id===id)?.id || 'visuals';

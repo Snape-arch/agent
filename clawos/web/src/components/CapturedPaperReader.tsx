@@ -2,7 +2,7 @@ import {useEffect,useState} from 'react';
 import {researchApi as api,type Journey,type Paper} from './researchJourney';
 type Page={page:number;pages:number;width:number;height:number;image:string;case_hash:string;raw_sha256:string;text:{text:string}[]};
 /** Uses the same bounded PDF renderer as the original Paper Studio. No native PDF iframe dependency. */
-export function CapturedPaperReader({paper,journey,close}:{paper:Paper;journey:Journey;close:()=>void}){
+export function CapturedPaperReader({paper,journey,close}:{paper:Pick<Paper,'id'|'name'|'raw_sha256'|'page_count'>;journey:Pick<Journey,'case_id'|'case_hash'>;close:()=>void}){
   const [page,setPage]=useState(1),[data,setData]=useState<Page>(),[message,setMessage]=useState(''),[retry,setRetry]=useState(0);
   useEffect(()=>{let active=true;const controller=new AbortController();setData(undefined);setMessage('正在读取固定PDF原文…');
     api<Page>(`/cases/${journey.case_id}/papers/${paper.id}/pdf-page/${page}`,undefined,controller.signal).then(value=>{
