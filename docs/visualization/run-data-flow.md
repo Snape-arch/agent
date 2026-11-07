@@ -112,8 +112,8 @@ need live acceptance in their target environment.
 
 Initial Run refactoring results: 75 Python tests (71.2% overall coverage; Run
 service 94.1%), 24 frontend tests, 13 existing browser tests and one production
-browser flow. Subsequent asset/recovery acceptance and transport limits are
-documented in [Asset release and recovery acceptance](asset-release-recovery.md).
+browser flow. See the [current visualization guide](../VISUALIZATION.md) for the
+ClawOS deployment and verification boundary.
 The release command passed quality, migrations 1–18, scale/analytics, 20-flow
 acceptance, standalone Worker, plugin boundaries, TypeScript, build/bundle budget
 and short soak checks. The Run service now has an 85% coverage release floor.

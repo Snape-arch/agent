@@ -68,5 +68,5 @@ shows transfer progress and records transferred bytes instead of embedding a
 large base64 payload in the application state. Existing pre-0.22 assets retain a
 decoded compatibility fallback.
 
-The reproducible evidence is
-[`docs/benchmarks/professional-3d-windows.json`](benchmarks/professional-3d-windows.json).
+The original Windows measurements are preserved in the
+[upstream evidence snapshot](../../clawos/benchmarks/vision-upstream/professional-3d-windows.json).
