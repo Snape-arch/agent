@@ -10,13 +10,14 @@ from pathlib import Path
 import uuid
 
 from reflection.evolution_runtime import RuntimePolicyController
-from .coding_comparison_service import CodingComparisonService, digest, save
+from .coding_comparison_service import CodingComparisonService, RECEIPT_CONTRACT, digest, save
 from .coding_evidence_service import CodingEvidenceService, features
 from .learning_governance import THRESHOLDS
 
 LOADED_WITNESS = {str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (
     Path(__file__),Path(__file__).with_name('coding_evidence_service.py'),
     Path(__file__).with_name('coding_rollout_service.py'),
+    Path(__file__).with_name('coding_task_exposure.py'),
     Path(__file__).parents[1]/'reflection/evolution_runtime.py',
     Path(__file__).parents[1]/'reflection/self_evolution.py')}
 
@@ -148,6 +149,9 @@ class CodingStrategyService:
         if _experiment:
             from .coding_rollout_service import check_experiment
         runner,case,model,decision,binding=self._prepare(case,factory,limits,baseline_mode,_experiment)
+        if not _experiment:
+            from .coding_task_exposure import CodingTaskExposure
+            CodingTaskExposure(self.store,self.evidence).reserve(runner,[case])
         # Runtime source witnesses are checked by the same capture wrapper.
         # Freeze the original case contract, not its derived stamp fields.
         original={k:case[k] for k in ('id','repo','objective','paths','test_commands','post_commands','requirements')}
@@ -155,7 +159,7 @@ class CodingStrategyService:
             report=await runner.run([original],[{k:model[k] for k in ('id','factory','fingerprint')}],
                 confirmed=True,limits=decision['limits'],repetitions=repetitions,binding=binding)
         else:
-            plan=dict(schema='clawos.coding-selection.v1',cases=[case],models=[{k:v for k,v in model.items() if k!='factory'}],
+            plan=dict(schema='clawos.coding-selection.v1',receipt_contract=RECEIPT_CONTRACT,cases=[case],models=[{k:v for k,v in model.items() if k!='factory'}],
                 limits=decision['limits'],implementation_witness=runner.witness,strategy_binding=binding,
                 arms=[dict(case_id=case['id'],model_id=model['id'],mode=decision['selected_mode'],repetition=1)])
             plan['plan_digest']=digest(plan);save(runner.root/'plan.json',plan,immutable=True)

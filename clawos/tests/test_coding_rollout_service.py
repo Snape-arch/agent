@@ -88,6 +88,12 @@ class RolloutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([r['accepted'] for r in rows],[False,True])
         self.assertGreater(result['report']['statistics']['mean_utility_delta'],.9)
         self.assertFalse(result['report']['statistics']['passed'])
+        failures=self.service.evidence.failures()
+        self.assertTrue(failures['observations'][0]['held_out'])
+        self.assertEqual(failures['eligible'],0)
+        self.assertFalse(self.store.list_reflection_cards())
+        with self.assertRaisesRegex(ValueError,'no verified coding failure'):
+            self.service.evidence.nominate_failures('test')
 
     async def test_counterbalanced_repetitions_do_not_add_independent_tasks(self):
         run,result=await self.run_rollout(repetitions=2)
@@ -139,6 +145,49 @@ class RolloutTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises((RuntimeError,ValueError)):
             await CodingRolloutService(self.store,self.service.root).run(run['id'],[self.case()],lambda role:comparison.Provider(role,hook=hook),confirmed=True)
         with self.store._conn() as c:self.assertEqual(c.execute('SELECT count(*) FROM coding_rollouts').fetchone()[0],0)
+
+    async def test_tuning_and_other_candidates_cannot_reuse_reserved_task_scope(self):
+        run,result=await self.run_rollout()
+        service=CodingRolloutService(self.store,self.service.root)
+        rewrite=self.case()|{'id':'reworded-case','objective':'Rewrite the same implementation to pass the caller tests.'}
+        with self.assertRaisesRegex(ValueError,'scope already exposed'):
+            await self.service.run(rewrite,self.factory,confirmed=True,paired=True)
+        other=SelfEvolutionManager(self.store).create_run('prompt_policy','coding.proposal',{}, {'system':'different candidate'})
+        with self.assertRaisesRegex(ValueError,'scope already exposed'):
+            await service.run(other['id'],[rewrite],self.factory,confirmed=True)
+        copied=self.root/'renamed'
+        copied.mkdir()
+        (copied/'renamed.py').write_bytes((self.repo/'a.py').read_bytes())
+        comparison.fixtures.git(copied,'init','-q')
+        comparison.fixtures.git(copied,'add','.')
+        comparison.fixtures.git(copied,'-c','user.name=Fixture','-c','user.email=fixture@localhost','commit','-qm','rename source')
+        alias=rewrite|{'repo':str(copied),'paths':['renamed.py'],
+            'requirements':[dict(id='same_content',statement='Preserve the copied contract',paths=['renamed.py'],test_indexes=[0])]}
+        with self.assertRaisesRegex(ValueError,'scope already exposed'):
+            await service.run(other['id'],[alias],self.factory,confirmed=True)
+        runner=self.service._runner()
+        await runner.run([self.case()],[dict(id='fixture',factory=self.factory,
+            fingerprint=runner.svc.provider_signature(self.factory('comparison_identity')))],confirmed=True)
+        with self.assertRaisesRegex(ValueError,'import overlaps reserved coding holdout'):
+            self.service.evidence.ingest(runner.root)
+        self.assertEqual(service.verified(run['id'])['records'],1)
+        with self.store.transaction() as conn:
+            conn.execute('DELETE FROM coding_task_exposures')
+        self.assertIn('reservation missing',coding_gate(self.store,run['id'])['reason'])
+
+    async def test_holdout_rejects_prior_development_and_overlapping_tasks_before_calls(self):
+        await self.service.run(self.case(),self.factory,confirmed=True)
+        run=self.candidate();service=CodingRolloutService(self.store,self.service.root)
+        rewrite=self.case()|{'id':'reworded-case','objective':'A reworded task on the same frozen source.'}
+        with self.assertRaisesRegex(ValueError,'scope already exposed'):
+            await service.run(run['id'],[rewrite],self.factory,confirmed=True)
+        with self.assertRaisesRegex(ValueError,'overlap within'):
+            await service.run(run['id'],[self.case(),rewrite],self.factory,confirmed=True)
+        with self.store.transaction() as conn:
+            conn.execute('DELETE FROM coding_task_exposures')
+        with self.assertRaisesRegex(ValueError,'previously observed evidence'):
+            await service.run(run['id'],[rewrite],self.factory,confirmed=True)
+        self.assertEqual(service.verified(run['id'])['records'],0)
 
     async def test_routing_candidate_executes_actual_modes_in_matching_namespace(self):
         preview=self.service.preview(self.case(),self.factory)

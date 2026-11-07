@@ -281,5 +281,17 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report['arms'][1]['ledger']['calls'],0)
         self.assertFalse(report['arms'][1]['model_execution_observed'])
 
+    async def test_in_budget_completed_tasks_with_missing_usage_cannot_claim_comparability(self):
+        class MissingUsage(Provider):
+            async def complete(self,messages,options):
+                return (await super().complete(messages,options))|{'usage':{}}
+
+        runner=CodingComparisonService(self.root/'missing-usage')
+        model=dict(id='fixture',factory=MissingUsage,fingerprint=runner.svc.provider_signature(MissingUsage()))
+        report=await runner.run([self.case()],[model],confirmed=True)
+        self.assertTrue(report['budget_conformant'])
+        self.assertTrue(report['all_tasks_resolved'])
+        self.assertFalse(report['execution_comparable'])
+
 
 if __name__=='__main__':unittest.main()

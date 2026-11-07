@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 import re
 
-from .coding_comparison_service import CodingComparisonService, digest
+from .coding_comparison_service import CodingComparisonService, RECEIPT_CONTRACT, comparison_infrastructure_failure, complete_provider_answers, digest
 from .coding_execution_context import CodingExecutionContext
 from .coding_contracts import CodingContracts
 
@@ -108,11 +108,7 @@ class CodingEvidenceService:
             # Unknown/failed transports remain diagnostic records. Only every
             # completed, identity-bound stop answer with known usage is usable
             # for cost/quality comparison; admitted requests alone are not proof.
-            known=bool(answers) and len(answers)==ledger['calls'] and all(
-                a['ok'] is True and a['content'] and a['finish_reason']=='stop' and
-                a['provider']==model['actual_provider'] and a['model']==model['actual_model'] and
-                a['accounting_source']=='provider_usage' and type(a['charged_tokens']) is int and a['charged_tokens']>0
-                for a in answers)
+            known=complete_provider_answers(ledger,answers,model)
             if known and sum(a['charged_tokens'] for a in answers)!=ledger['charged_tokens']:
                 raise ValueError('answer/accounting sum mismatch')
             if known and ledger['provider_tokens']!=ledger['charged_tokens']:
@@ -176,7 +172,7 @@ class CodingEvidenceService:
             error=' '.join([row['error']]+[str(e.get('error','')) for e in row['result'].get('events',[]) if e['event']=='coordinator_failed']).lower()
             category=('integrity' if not row['source_preserved'] or not row['implementation_stable'] else
                 'budget' if not within else 'transport_unverified' if not known else
-                'infrastructure' if any(s in error for s in ('filenotfound','permissionerror','git command failed','provider_http','network','sandbox')) else
+                'infrastructure' if comparison_infrastructure_failure(row,check_commands=plan.get('receipt_contract')==RECEIPT_CONTRACT) else
                 'format' if ('json' in error or 'modelformaterror' in error) else
                 'test' if any(t['exit_code']!=0 for t in validation.get('tests',[])) else 'pipeline')
             namespace=digest(dict(model=model['fingerprint'],executor=digest(witness),limits=limits,features=features(case),
@@ -204,9 +200,15 @@ class CodingEvidenceService:
                 # Importing an owned result again must neither downgrade nor
                 # elevate origin. Identical content has one persistent record.
                 return previous
+            experiment=bundle['binding'].get('experiment')
+            if kind=='imported' and not experiment:
+                from .coding_task_exposure import reject_held_out_import
+                reject_held_out_import(c,self,relative,bundle['plan_digest'])
             c.execute('INSERT INTO coding_evidence VALUES (?,?,?,?,?)',
                 (bundle['id'],relative,kind,json.dumps(bundle,ensure_ascii=False),digest(bundle)))
-            for row in bundle['rows']:
+            # Held-out results are for candidate evaluation. Keep the full
+            # audit, but do not feed them back into candidate construction.
+            for row in bundle['rows'] if not experiment else []:
                 if row['accepted'] or not row['usable'] or row['category'] not in {'format','test','pipeline'}:continue
                 key=digest({k:row[k] for k in ('task_group','namespace','mode','category')})
                 card_id='coding-'+key
@@ -231,13 +233,14 @@ class CodingEvidenceService:
         return values
 
     def failures(self):
-        rows=[r|dict(report_id=b['id'],source_kind=b['kind']) for b in self.bundles() for r in b['rows'] if not r['accepted']]
-        return dict(observations=rows,eligible=sum(r['usable'] and r['category'] in {'format','test','pipeline'} for r in rows),
+        rows=[r|dict(report_id=b['id'],source_kind=b['kind'],held_out=bool(b['binding'].get('experiment')))
+              for b in self.bundles() for r in b['rows'] if not r['accepted']]
+        return dict(observations=rows,eligible=sum(not r['held_out'] and r['usable'] and r['category'] in {'format','test','pipeline'} for r in rows),
             independent_groups=len({r['task_group'] for r in rows}),runtime_promotion_evidence=False)
 
     def nominate_failures(self, category='format'):
         if category not in {'format','test','pipeline'}:raise ValueError('failure category cannot nominate a policy')
-        rows=[r for r in self.failures()['observations'] if r['usable'] and r['category']==category]
+        rows=[r for r in self.failures()['observations'] if not r.get('held_out') and r['usable'] and r['category']==category]
         if not rows:raise ValueError('no verified coding failure for this category')
         from reflection.self_evolution import SelfEvolutionManager
         rules=dict(format='Return one complete JSON object matching the requested schema. Escape code strings and close all arrays/objects. Preserve exact source anchors and every caller requirement. Never claim tests ran.',

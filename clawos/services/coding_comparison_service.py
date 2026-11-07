@@ -22,6 +22,7 @@ from .execution_governance import ExecutionBudget
 from .file_transactions import write_text
 from .reliable_collaboration import ReliableCollaborationService
 
+RECEIPT_CONTRACT = 'coding-receipts.v2'
 CORE_FILES = ['autonomous_coding_service.py','coding_execution_context.py','coding_context_service.py',
     'coding_contracts.py','coding_workflow_service.py','coding_workspace_service.py',
     'reliable_collaboration.py','collaboration_delivery.py','os_sandbox.py','file_transactions.py','coding_comparison_service.py',
@@ -38,6 +39,22 @@ def digest(value):
 
 def save(path, value, *, immutable=False):
     write_text(path, json.dumps(value, ensure_ascii=False, indent=2), create_only=immutable)
+
+
+def complete_provider_answers(ledger, answers, model):
+    return bool(answers) and len(answers)==ledger['calls'] and all(
+        answer['ok'] is True and answer['content'] and answer['finish_reason']=='stop' and
+        answer['provider']==model['actual_provider'] and answer['model']==model['actual_model'] and
+        answer['accounting_source']=='provider_usage' and type(answer['charged_tokens']) is int and
+        answer['charged_tokens']>0 for answer in answers)
+
+
+def comparison_infrastructure_failure(row, *, check_commands=True):
+    error=' '.join([row['error']]+[str(event.get('error','')) for event in row['result'].get('events',[])
+                                  if event['event']=='coordinator_failed']).lower()
+    return (check_commands and any(test.get('timed_out') or test.get('sandbox',{}).get('launch_failed_closed')
+               for test in row['validation'].get('tests',[]))) or any(
+        term in error for term in ('filenotfound','permissionerror','git command failed','provider_http','network','sandbox'))
 
 
 async def operation(fn, *args, **kwargs):
@@ -308,10 +325,13 @@ class CodingComparisonService:
         path=self.root/row['artifact']
         disk=json.loads(path.read_text(encoding='utf-8'))
         if digest(disk)!=row['report_digest']:raise ValueError('completed comparison arm report changed')
+        answers=[]
         for reference in row['ledger']['receipts']:
             value=json.loads((path.parent/reference['artifact']).read_text(encoding='utf-8'))
             if digest(value)!=reference['digest'] or digest(value['content'])!=value['content_digest']:
                 raise ValueError('completed comparison receipt changed')
+            answers.append(value)
+        return answers
 
     async def run(self, cases, models, *, limits=None, confirmed=False, repetitions=1, binding=None):
         if confirmed is not True:raise PermissionError('explicit owned-workspace execution authorization required')
@@ -339,7 +359,7 @@ class CodingComparisonService:
                 for model in models:
                     for mode in (self.MODES if (index+repetition)%2==0 else tuple(reversed(self.MODES))):
                         planned.append(dict(case_id=case['id'],model_id=model['id'],mode=mode,repetition=repetition+1))
-        plan=dict(schema=self.SCHEMA,cases=cases,models=[{k:v for k,v in m.items() if k!='factory'} for m in models],
+        plan=dict(schema=self.SCHEMA,receipt_contract=RECEIPT_CONTRACT,cases=cases,models=[{k:v for k,v in m.items() if k!='factory'} for m in models],
             limits=limits,arms=planned,implementation_witness=self.witness,
             repetitions=repetitions,order_policy='sequential; mode order alternates by case/repetition; no cold-cache control')
         if binding is not None:plan['strategy_binding']=copy.deepcopy(binding)
@@ -354,7 +374,8 @@ class CodingComparisonService:
                 results=[{k:r[k] for k in ('case_id','model_id','mode','accepted','mode_status')} for r in rows]))
         if json.loads((self.root/'plan.json').read_text(encoding='utf-8'))!=plan:
             raise ValueError('frozen comparison plan changed')
-        for row in rows:self.verify_arm(row)
+        models_by_id={model['id']:model for model in models}
+        complete_answers=[complete_provider_answers(row['ledger'],self.verify_arm(row),models_by_id[row['model_id']]) for row in rows]
         for case in cases:self.check_case(case)
         if not ComparisonCapture(self.root,limits,self.witness).stable():
             raise ValueError('comparison implementation changed before final aggregation')
@@ -370,7 +391,8 @@ class CodingComparisonService:
         report=dict(schema=self.SCHEMA,plan_digest=plan['plan_digest'],complete=len(rows)==len(planned),
             protocol_valid=all(r['source_preserved'] and r['implementation_stable'] for r in rows),
             budget_conformant=all(r['within_budget'] for r in rows),
-            execution_comparable=all(r['model_execution_observed'] and r['within_budget'] for r in rows),
+            execution_comparable=all(complete_answers) and all(r['within_budget'] and r['implementation_stable']
+                and r['source_preserved'] and not comparison_infrastructure_failure(r) for r in rows),
             unique_task_groups=len({c['task_group_digest'] for c in cases}),repetitions=repetitions,
             all_tasks_resolved=all(r['accepted'] for r in rows),groups=groups,arms=rows,
             model_comparison_available=len({(m['actual_provider'],m['actual_model']) for m in models})>1,

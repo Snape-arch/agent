@@ -15,6 +15,7 @@ import uuid
 
 from .coding_comparison_service import CodingComparisonService, digest, save
 from .coding_evidence_service import CodingEvidenceService
+from .coding_task_exposure import CodingTaskExposure
 from .file_transactions import _file_lock
 from .learning_governance import THRESHOLDS
 
@@ -95,6 +96,7 @@ class CodingRolloutService:
     def __init__(self, store, output_root):
         self.store,self.root=store,Path(output_root).resolve()
         self.evidence=CodingEvidenceService(store,self.root)
+        self.exposures=CodingTaskExposure(store,self.evidence)
         with store.transaction() as c:
             c.execute('''CREATE TABLE IF NOT EXISTS coding_rollouts (
                 id TEXT PRIMARY KEY, run_id INTEGER NOT NULL, root TEXT NOT NULL,
@@ -123,10 +125,12 @@ class CodingRolloutService:
             provider_fingerprint=provider,implementation_witness=runner.witness,arms=scheduled,
             candidate_family=candidate_family(self.store,run),
             order_policy='AB/BA by task and repetition; sequential; no cold-cache control')
-        plan['plan_digest']=digest(plan);save(root/'plan.json',plan,immutable=True)
         observations=[]
         lock=self.root/'cr'/('candidate-'+digest(str(self.store._db_path))[:10]+'-'+str(run_id))
         with _file_lock(lock,timeout=0):
+            check_experiment(self.store,packet)
+            plan['holdout_claims']=self.exposures.reserve(runner,cases,signature)
+            plan['plan_digest']=digest(plan);save(root/'plan.json',plan,immutable=True)
             for scheduled_arm in scheduled:
                 check_experiment(self.store,packet)
                 if json.loads((root/'plan.json').read_text(encoding='utf-8'))!=plan:raise ValueError('coding rollout plan changed')
@@ -178,6 +182,7 @@ class CodingRolloutService:
                     len(plan['arms'])!=len(report['observations'])):raise ValueError('rollout receipt binding mismatch')
             if plan['implementation_witness']!=current_witness or any(hashlib.sha256(Path(p).read_bytes()).hexdigest()!=sha for p,sha in current_witness.items()):
                 raise ValueError('rollout executor is stale')
+            self.exposures.verify(plan.get('holdout_claims'),plan['cases'],signature)
             binding=(plan['provider_fingerprint'],digest(current_witness),digest(plan['limits']),plan['baseline_mode'])
             if experiment_binding is not None and experiment_binding!=binding:raise ValueError('incompatible rollout model/budget/mode')
             experiment_binding=binding

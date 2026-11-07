@@ -6,3 +6,4 @@
 - [当前文档](docs/README.md)统一说明入口；[接手上下文](PROJECT_CONTEXT.md)记录未完成的真实验收。
 - 主服务、存储、控制台、可视化、工作区和学习策略已完成领域拆分。交付证据和 22 项能力评分见[全局评估](docs/PROJECT_ASSESSMENT.md)。现行职责和剩余集中点见[维护性说明](docs/MAINTAINABILITY.md)。
 - 教学 P0 示范课已实现。短课支持固定论文导读、单变量检索、前后测、迁移题与教师复核导出。流程已过独立运行验证，真人教师校准和学生试学待开展。 [试学方案](docs/RAG_INTRO_PILOT.md) [验收](clawos/benchmarks/RAG_INTRO_ACCEPTANCE.md)
+- 编码 P1 历史缺陷对照和候选留出门禁已实现。18 次对照检查及最终定向复验通过，真实单／多代理和跨仓库策略收益待验收。 [P1 验收](clawos/benchmarks/CODING_P1_ACCEPTANCE.md)
