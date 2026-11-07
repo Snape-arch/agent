@@ -17,6 +17,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from api.task_queries import create_task_query_router
 from providers import create_model_provider
 from memoryos.document_ingestion import ingest_file, safe_filename
 from services import (
@@ -1457,23 +1458,8 @@ def enqueue_runtime_task(session_id: str, title: str, source: str = "worker_job"
     return get_task_service().enqueue(session_id, title, source=source, metadata=metadata)
 
 
-def list_runtime_tasks(session_id: str = "", status: str = "", limit: int = 50) -> list[dict[str, Any]]:
-    return get_task_service().list(session_id=session_id, status=status, limit=limit)
-
-
-def list_runtime_task_queue(statuses: list[str] | None = None, limit: int = 50) -> list[dict[str, Any]]:
-    return get_task_service().queue(statuses=statuses, limit=limit)
-
-
 def claim_runtime_task(worker_id: str = "worker", statuses: list[str] | None = None) -> dict[str, Any]:
     return get_task_service().claim(worker_id=worker_id, statuses=statuses)
-
-
-def get_runtime_task(task_id: int) -> dict[str, Any]:
-    detail = get_task_service().detail(task_id)
-    if not detail:
-        raise HTTPException(404, "Task not found")
-    return detail
 
 
 def finish_runtime_task(task_id: int | None, status: str, error: str = "", result_payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -8859,17 +8845,12 @@ async def api_memory_evaluation_run(request: Request):
     return JSONResponse({"run": run})
 
 
-@app.get("/api/tasks")
-async def api_tasks(session_id: str = "", status: str = "", limit: int = 50):
-    rows = list_runtime_tasks(session_id=session_id, status=status, limit=limit)
-    return JSONResponse({"tasks": rows, "count": len(rows)})
-
-
-@app.get("/api/tasks/queue")
-async def api_tasks_queue(status: str = "", limit: int = 50):
-    statuses = [item.strip() for item in status.split(",") if item.strip()] if status else None
-    rows = list_runtime_task_queue(statuses=statuses, limit=limit)
-    return JSONResponse({"tasks": rows, "count": len(rows)})
+def background_worker_status() -> dict[str, Any]:
+    task = g_background_worker_task
+    state = dict(g_background_worker_status)
+    state["running"] = bool(task and not task.done())
+    state["done"] = bool(task.done()) if task else True
+    return state
 
 
 @app.post("/api/tasks/queue/claim")
@@ -8895,15 +8876,6 @@ async def api_tasks_recover(request: Request):
         create_retries=bool(data.get("create_retries", False)),
     )
     return JSONResponse(result)
-
-
-@app.get("/api/tasks/worker/status")
-async def api_tasks_worker_status():
-    task = g_background_worker_task
-    state = dict(g_background_worker_status)
-    state["running"] = bool(task and not task.done())
-    state["done"] = bool(task.done()) if task else True
-    return JSONResponse(state)
 
 
 @app.post("/api/tasks/worker/tick")
@@ -9005,13 +8977,6 @@ async def api_tasks_job_batch_ingest(request: Request):
     task = enqueue_runtime_task("worker-jobs", f"Batch ingest {len(files)} documents", metadata=metadata)
     return JSONResponse({"queued": True, "task": task})
 
-@app.get("/api/tasks/events")
-async def api_task_events(session_id: str = "", after_id: int = 0, limit: int = 100):
-    if not g_task_service and not g_memory_store:
-        return JSONResponse({"events": [], "count": 0}, status_code=503)
-    rows = get_task_service().events(session_id=session_id, after_id=after_id, limit=limit)
-    return JSONResponse({"events": rows, "count": len(rows)})
-
 @app.post("/api/tasks/events/prune")
 async def api_task_events_prune(request: Request):
     data = await request.json()
@@ -9023,27 +8988,12 @@ async def api_task_events_prune(request: Request):
     )
     return JSONResponse(result)
 
-@app.get("/api/tasks/stream")
-async def api_task_stream(session_id: str = "", after_id: int = 0):
-    if not g_memory_store:
-        raise HTTPException(503, "MemoryOS not initialized")
-
-    async def gen():
-        cursor = int(after_id or 0)
-        for _ in range(180):
-            rows = get_task_service().events(session_id=session_id, after_id=cursor, limit=50)
-            if rows:
-                cursor = max(int(row["id"]) for row in rows)
-                yield f"event: task_events\ndata: {json.dumps(rows, ensure_ascii=False)}\n\n"
-            else:
-                yield ": keepalive\n\n"
-            await asyncio.sleep(1)
-
-    return StreamingResponse(gen(), media_type="text/event-stream")
-
-@app.get("/api/tasks/{task_id}")
-async def api_task_detail(task_id: int):
-    return JSONResponse(get_runtime_task(task_id))
+app.include_router(create_task_query_router(
+    get_task_service,
+    memory_available=lambda: bool(g_memory_store),
+    events_available=lambda: bool(g_task_service or g_memory_store),
+    worker_status=background_worker_status,
+))
 
 @app.post("/api/tasks/{task_id}/cancel")
 async def api_task_cancel(task_id: int, request: Request):

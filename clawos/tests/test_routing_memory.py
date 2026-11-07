@@ -989,7 +989,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertTrue(detail["steps"][0]["output"]["ok"])
         self.assertIn("step_finished", [event["event_type"] for event in detail["events"]])
 
-    def test_server_task_helpers_list_and_return_detail(self):
+    def test_task_service_lists_and_returns_detail_for_server_created_task(self):
         import clawos_server as server
         from memoryos.memory_store import MemoryStore
 
@@ -999,8 +999,8 @@ class MemoryAndRoutingTests(unittest.TestCase):
             try:
                 task = server.create_runtime_task("s1", "demo task")
                 server.g_memory_store.add_task_event(task["id"], "custom", "hello")
-                listed = server.list_runtime_tasks(session_id="s1")
-                detail = server.get_runtime_task(task["id"])
+                listed = server.get_task_service().list(session_id="s1")
+                detail = server.get_task_service().detail(task["id"])
             finally:
                 server.g_memory_store = old_store
 
@@ -1052,6 +1052,7 @@ class MemoryAndRoutingTests(unittest.TestCase):
 
     def test_task_api_routes_expose_list_and_detail(self):
         import clawos_server as server
+        from fastapi.testclient import TestClient
         from memoryos.memory_store import MemoryStore
 
         with tempfile.TemporaryDirectory() as td:
@@ -1059,10 +1060,14 @@ class MemoryAndRoutingTests(unittest.TestCase):
             server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
             try:
                 task = server.create_runtime_task("s1", "api task")
-                list_resp = asyncio.run(server.api_tasks(session_id="s1"))
-                detail_resp = asyncio.run(server.api_task_detail(task["id"]))
-                listed = json.loads(list_resp.body)
-                detail = json.loads(detail_resp.body)
+                with contextlib.closing(TestClient(server.app, client=("127.0.0.1", 1234))) as client:
+                    list_resp = client.get("/api/tasks", params={"session_id": "s1"})
+                    detail_resp = client.get(f"/api/tasks/{task['id']}")
+                    missing_resp = client.get("/api/tasks/99999")
+                list_resp.raise_for_status()
+                detail_resp.raise_for_status()
+                listed = list_resp.json()
+                detail = detail_resp.json()
             finally:
                 server.g_memory_store = old_store
 
@@ -1070,6 +1075,8 @@ class MemoryAndRoutingTests(unittest.TestCase):
         self.assertEqual(listed["tasks"][0]["title"], "api task")
         self.assertEqual(detail["task"]["id"], task["id"])
         self.assertIn("events", detail)
+        self.assertEqual(missing_resp.status_code, 404)
+        self.assertEqual(missing_resp.json(), {"detail": "Task not found"})
 
     def test_reflection_collects_persisted_tool_trajectory(self):
         from memoryos.memory_store import MemoryStore

@@ -4,4 +4,4 @@
 
 - [仓库整理验收](clawos/benchmarks/REPOSITORY_CONSOLIDATION_ACCEPTANCE.md)：核心1306项首轮及修复复验、前端116项、可视化138项、真实网关13项、研究教学52项和桌面载荷预检。
 - [当前文档](docs/README.md)统一说明入口；[接手上下文](PROJECT_CONTEXT.md)记录未完成的真实验收。
-- 代码维护下一步：[路线图](docs/ROADMAP.md)先抽取主服务中边界清晰的只读API，再拆持久化和前端状态；每次保持接口和数据契约。
+- 主服务首批已抽取六个任务查询 API，验证结果见[接手上下文](PROJECT_CONTEXT.md)。按[路线图](docs/ROADMAP.md)继续提取纯查询领域，再拆持久化和前端状态。

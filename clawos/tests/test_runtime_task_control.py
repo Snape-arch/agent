@@ -3,7 +3,9 @@ import json
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -146,6 +148,7 @@ class RuntimeTaskControlTests(unittest.TestCase):
 
     def test_task_queue_api_lists_and_claims_next_task(self):
         import clawos_server as server
+        from fastapi.testclient import TestClient
         from memoryos.memory_store import MemoryStore
 
         with tempfile.TemporaryDirectory() as td:
@@ -153,12 +156,13 @@ class RuntimeTaskControlTests(unittest.TestCase):
             server.g_memory_store = MemoryStore(str(Path(td) / "memory.db"))
             try:
                 task = server.g_memory_store.start_task("s-api", "Queued API task", status="pending")
-                queue_response = asyncio.run(server.api_tasks_queue())
-                queue_payload = json.loads(queue_response.body.decode("utf-8"))
-                claim_response = asyncio.run(server.api_tasks_queue_claim(
-                    JsonRequest({"worker_id": "api-worker"})
-                ))
-                claim_payload = json.loads(claim_response.body.decode("utf-8"))
+                with closing(TestClient(server.app, client=("127.0.0.1", 1234))) as client:
+                    queue_response = client.get("/api/tasks/queue", params={"status": " pending, failed "})
+                    claim_response = client.post("/api/tasks/queue/claim", json={"worker_id": "api-worker"})
+                queue_response.raise_for_status()
+                claim_response.raise_for_status()
+                queue_payload = queue_response.json()
+                claim_payload = claim_response.json()
             finally:
                 server.g_memory_store = old_store
 
@@ -167,6 +171,54 @@ class RuntimeTaskControlTests(unittest.TestCase):
         self.assertTrue(claim_payload["claimed"])
         self.assertEqual(claim_payload["task"]["id"], task["id"])
         self.assertEqual(claim_payload["task"]["metadata"]["claimed_by"], "api-worker")
+
+    def test_task_event_queries_use_cursor_and_workbench_access(self):
+        import clawos_server as server
+        from fastapi.testclient import TestClient
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MemoryStore(str(Path(td) / "memory.db"))
+            selected = store.start_task("selected", "Task in requested session")
+            other = store.start_task("other", "Task in another session")
+            earlier = store.add_task_event(selected["id"], "earlier")
+            later = store.add_task_event(selected["id"], "later")
+            store.add_task_event(other["id"], "unrelated")
+            with (
+                patch.object(server, "g_memory_store", store),
+                patch.object(server, "g_task_service", None),
+                closing(TestClient(server.app, client=("127.0.0.1", 1234))) as client,
+            ):
+                response = client.get("/api/tasks/events", params={
+                    "session_id": "selected", "after_id": earlier["id"], "limit": 1,
+                })
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["count"], 1)
+                self.assertEqual(response.json()["events"][0]["id"], later["id"])
+
+                with patch.object(server, "_collaboration") as collaboration:
+                    collaboration.return_value.identity.return_value = {"id": "document-viewer"}
+                    denied = client.get("/api/tasks/stream", headers={"Authorization": "Bearer fixture"})
+                self.assertEqual(denied.status_code, 403)
+
+    def test_task_query_availability_responses_before_startup(self):
+        import clawos_server as server
+        from fastapi.testclient import TestClient
+
+        with (
+            patch.object(server, "g_memory_store", None),
+            patch.object(server, "g_task_service", None),
+            patch.object(server, "g_background_worker_task", None),
+            closing(TestClient(server.app, client=("127.0.0.1", 1234))) as client,
+        ):
+            events = client.get("/api/tasks/events")
+            stream = client.get("/api/tasks/stream")
+            worker = client.get("/api/tasks/worker/status")
+        self.assertEqual((events.status_code, events.json()), (503, {"events": [], "count": 0}))
+        self.assertEqual((stream.status_code, stream.json()), (503, {"detail": "MemoryOS not initialized"}))
+        self.assertEqual(worker.status_code, 200)
+        self.assertFalse(worker.json()["running"])
+        self.assertTrue(worker.json()["done"])
 
     def test_background_worker_tick_succeeds_and_retries_failures(self):
         import clawos_server as server
