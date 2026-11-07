@@ -1,4 +1,5 @@
 from __future__ import annotations
+from source_tree import read_server_source
 
 import asyncio
 import json
@@ -269,7 +270,7 @@ class CompetitiveClosureTests(unittest.TestCase):
 
     def test_production_entrypoints_enforce_trace_identity_and_signatures(self):
         root = Path(__file__).resolve().parents[1]
-        server = (root / "clawos_server.py").read_text(encoding="utf-8")
+        server = read_server_source()
         extension = (
             root / "integrations" / "vscode" / "extension.js"
         ).read_text(encoding="utf-8")

@@ -1,3 +1,4 @@
+from source_tree import read_server_source
 import tempfile
 import unittest
 import sys
@@ -291,7 +292,7 @@ class AgentLearningTests(unittest.TestCase):
         )
 
     def test_server_exposes_agent_learning_control_plane(self):
-        server_source = (ROOT / "clawos_server.py").read_text(encoding="utf-8")
+        server_source = read_server_source()
 
         self.assertIn("/api/agent-learning/trajectories", server_source)
         self.assertIn("/api/agent-learning/models/train", server_source)

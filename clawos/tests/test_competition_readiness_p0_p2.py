@@ -1,3 +1,4 @@
+from source_tree import read_console_source, read_server_source
 import asyncio
 import json
 import sys
@@ -164,10 +165,8 @@ class CompetitionReadinessP0P2Tests(unittest.TestCase):
 
     def test_console_and_cli_expose_p0_p2_readiness(self):
         html = (ROOT / "static" / "console.html").read_text(encoding="utf-8")
-        script = (
-            ROOT / "static" / "assets" / "console.js"
-        ).read_text(encoding="utf-8")
-        server = (ROOT / "clawos_server.py").read_text(encoding="utf-8")
+        script = read_console_source()
+        server = read_server_source()
         cli = (
             ROOT / "scripts" / "export_competition_readiness.py"
         ).read_text(encoding="utf-8")

@@ -5,6 +5,20 @@ from services.runtime_release import RuntimeRelease, core_ready
 
 
 class RuntimeReleaseTests(unittest.TestCase):
+    def test_application_wiring_and_database_schema_are_release_sources(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            wiring = root / 'application/routing.py'
+            schema = root / 'memoryos/schema.sql'
+            wiring.parent.mkdir(parents=True)
+            schema.parent.mkdir(parents=True)
+            wiring.write_text('routes = []')
+            schema.write_text('CREATE TABLE sample(id INTEGER);')
+            release = RuntimeRelease(root)
+            wiring.write_text('routes = ["tasks"]')
+            schema.write_text('CREATE TABLE sample(id INTEGER PRIMARY KEY);')
+            self.assertEqual(release.status()['changed_files'], ['application/routing.py', 'memoryos/schema.sql'])
+
     def test_integrated_modules_are_watched_but_dependency_and_data_trees_are_pruned(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td)

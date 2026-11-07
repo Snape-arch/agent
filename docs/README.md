@@ -8,6 +8,7 @@
 | 模块与执行边界 | [架构](ARCHITECTURE.md) |
 | 安装、构建与测试 | [开发指南](DEVELOPMENT.md) |
 | 维护性问题及整理范围 | [维护性评估](MAINTAINABILITY.md) |
+| 模块能力、验证与交付评分 | [项目全局评估](PROJECT_ASSESSMENT.md) |
 | MT路由与安全工具桥 | [路由模块](ROUTER.md) |
 | 教学可视化、实验及SDK | [可视化模块](VISUALIZATION.md) |
 | 标志、图标与界面用色 | [品牌规范](BRAND.md) |

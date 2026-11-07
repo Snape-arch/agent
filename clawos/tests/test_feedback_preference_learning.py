@@ -1,3 +1,4 @@
+from source_tree import read_console_source, read_server_source
 import tempfile
 import unittest
 import sys
@@ -274,10 +275,8 @@ class FeedbackPreferenceLearningTests(unittest.TestCase):
         self.assertFalse(report["behavior_lora"]["ready"])
 
     def test_server_and_console_expose_explicit_feedback_loop(self):
-        server = (ROOT / "clawos_server.py").read_text(encoding="utf-8")
-        console = (
-            ROOT / "static" / "assets" / "console.js"
-        ).read_text(encoding="utf-8")
+        server = read_server_source()
+        console = read_console_source()
 
         self.assertIn("/api/agent-learning/feedback", server)
         self.assertIn("/api/agent-learning/data-quality", server)

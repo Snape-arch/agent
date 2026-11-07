@@ -15,8 +15,8 @@ def core_ready(database, workspace, release, vector):
 
 
 class RuntimeRelease:
-    ROOTS=('api','services','memoryos','providers','reflection','security','mtclaw','static','skills','scripts','visualization','web')
-    SUFFIXES={'.py','.js','.mjs','.ts','.tsx','.css','.html'}
+    ROOTS=('application','api','services','memoryos','providers','reflection','security','mtclaw','static','skills','scripts','visualization','web')
+    SUFFIXES={'.py','.js','.mjs','.ts','.tsx','.css','.html','.sql'}
     EXCLUDED={'__pycache__','node_modules','runtime-libs','data','output','coverage','.vite','.pytest_cache','tests'}
 
     def __init__(self,root):

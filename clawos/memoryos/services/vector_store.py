@@ -767,6 +767,12 @@ class MemoryVectorStore:
                         projection = self._knowledge_projection(connection, int(meta.get("knowledge_id") or 0))
                         if not projection or projection["metadata"]["version"] != meta.get("version"):
                             continue
+                        authoritative = projection["metadata"]
+                        if filters and any(
+                            key in filters and authoritative[key] != filters[key]
+                            for key in ("owner_id", "workspace_id")
+                        ):
+                            continue
                     safe.append(item)
         except sqlite3.DatabaseError:
             # Without authoritative state, document knowledge must stay withheld.

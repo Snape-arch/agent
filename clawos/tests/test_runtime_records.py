@@ -106,6 +106,33 @@ class RuntimeRecordTests(unittest.TestCase):
         self.assertIn("workflow_engine", payload["service_boundaries"])
         self.assertIn("FailureCase", payload["run_entities"])
 
+    def test_runtime_reads_do_not_publish_acceptance_or_modify_storage(self):
+        import clawos_server as server
+        from contextlib import closing
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+        from memoryos.memory_store import MemoryStore
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            output = root / "reports"
+            output.mkdir()
+            report = output / "deepseek_hybrid_rag_acceptance.json"
+            report.write_text(json.dumps({"ok": False, "model": "fixture", "cases": []}), encoding="utf-8")
+            before = report.read_bytes()
+            store = MemoryStore(str(root / "memory.db"))
+            with (
+                patch.object(server, "OUTPUT_ROOT", output),
+                patch.object(server, "g_memory_store", store),
+                closing(TestClient(server.app, client=("127.0.0.1", 1234))) as client,
+            ):
+                for path in ("/api/runtime/runs/latest", "/api/runtime/failure-cases", "/api/acceptance/deepseek-qwen/latest"):
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(store.list_run_records(), [])
+            self.assertEqual(list(output.iterdir()), [report])
+            self.assertEqual(report.read_bytes(), before)
+
     def test_run_record_persists_to_durable_tables(self):
         from memoryos.memory_store import MemoryStore
         from services.runtime_records import RunRecord

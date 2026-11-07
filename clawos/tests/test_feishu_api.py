@@ -1,3 +1,4 @@
+from source_tree import read_console_source
 """v2 RED-LIGHT SUITE (Phase 0) — API, event security, config & docs.
 
 These tests encode the *target* behavior of WORKBUDDY_REAL_FEISHU_CONNECTOR_PLAN.md
@@ -113,7 +114,7 @@ class FeishuHealthSchemaTests(unittest.TestCase):
             self.assertIn(key, red)
 
     def test_console_reads_backend_health_fields(self):
-        console = (ROOT / "static" / "assets" / "console.js").read_text(encoding="utf-8")
+        console = read_console_source()
         # The console health panel must reference the backend field names.
         self.assertIn("event_mode", console)
 

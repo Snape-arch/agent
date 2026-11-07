@@ -16,6 +16,8 @@ from project_layout import REPOSITORY_ROOT as ROOT, WEB_ROOT, VISUALIZATION_ROOT
 
 def check():
     errors = []
+    from scripts.architecture_check import inspect_architecture
+    errors.extend(inspect_architecture(APP)['errors'])
     required = [APP/'clawos_server.py', WEB_ROOT/'package.json', VISUALIZATION_ROOT/'worker.py',
                 ROUTER_ROOT/'server.py', ROUTER_ROOT.parent/'LICENSE', VISUALIZATION_ROOT/'LICENSE']
     errors.extend('Missing product source: '+str(p.relative_to(ROOT)) for p in required if not p.is_file())

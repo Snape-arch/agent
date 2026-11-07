@@ -1,3 +1,4 @@
+import { $, api, esc } from './console/core.js';
 window.ClawOSConsoleModules = [
   {
     id: "runtime-records",

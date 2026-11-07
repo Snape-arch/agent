@@ -1,3 +1,4 @@
+from source_tree import read_console_source, read_server_source
 from pathlib import Path
 import re
 import unittest
@@ -16,7 +17,19 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("等待真实运行", script)
         self.assertNotIn("100%", script)
 
+    def assert_http_route(self, method, path):
+        from clawos_server import app
+
+        self.assertTrue(any(
+            getattr(route, "path", None) == path and method in (getattr(route, "methods", None) or ())
+            for route in app.routes
+        ), f"{method} {path} is not registered")
+
     def read_page(self, name: str) -> str:
+        if name == "assets/console.js":
+            return read_console_source()
+        if name == "../clawos_server.py":
+            return read_server_source()
         return (STATIC_DIR / name).read_text(encoding="utf-8")
 
     def test_frontend_is_split_into_layered_pages(self):
@@ -123,7 +136,7 @@ class FrontendStaticTests(unittest.TestCase):
         quiz = self.read_page("academy-quiz.html")
         academy_js = self.read_page("assets/academy.js")
         site_css = self.read_page("assets/site.css")
-        server = (REPO_ROOT / "clawos" / "clawos_server.py").read_text(encoding="utf-8")
+        server = read_server_source()
 
         for token in (
             "ClawOS AI Academy",
@@ -241,26 +254,26 @@ class FrontendStaticTests(unittest.TestCase):
             ".quiz-grid article.answered",
         ):
             self.assertIn(token, site_css)
-        self.assertIn('@app.get("/academy")', server)
-        self.assertIn('@app.get("/academy/path")', server)
-        self.assertIn('@app.get("/academy/paper")', server)
-        self.assertIn('@app.get("/academy/code")', server)
-        self.assertIn('@app.get("/academy/notes")', server)
-        self.assertIn('@app.get("/academy/ingest")', server)
-        self.assertIn('@app.get("/academy/quiz")', server)
-        self.assertIn('@app.get("/api/documents/{document_id}/source")', server)
-        self.assertIn('@app.post("/api/academy/paper/checkpoint")', server)
-        self.assertIn('@app.get("/api/academy/paper/checkpoints")', server)
-        self.assertIn('@app.get("/api/academy/paper/checkpoints/{run_id}")', server)
-        self.assertIn('@app.get("/api/academy/paper/project-board")', server)
-        self.assertIn('@app.post("/api/academy/paper/project-board")', server)
-        self.assertIn('@app.post("/api/academy/paper/project-board/{run_id}/status")', server)
-        self.assertIn('@app.post("/api/academy/paper/project-board/export")', server)
-        self.assertIn('@app.get("/api/academy/paper/project-board/exports")', server)
-        self.assertIn('@app.get("/api/academy/paper/project-board/exports/{run_id}")', server)
-        self.assertIn('@app.get("/api/academy/paper/timeline")', server)
+        self.assert_http_route('GET', '/academy')
+        self.assert_http_route('GET', '/academy/path')
+        self.assert_http_route('GET', '/academy/paper')
+        self.assert_http_route('GET', '/academy/code')
+        self.assert_http_route('GET', '/academy/notes')
+        self.assert_http_route('GET', '/academy/ingest')
+        self.assert_http_route('GET', '/academy/quiz')
+        self.assert_http_route('GET', '/api/documents/{document_id}/source')
+        self.assert_http_route('POST', '/api/academy/paper/checkpoint')
+        self.assert_http_route('GET', '/api/academy/paper/checkpoints')
+        self.assert_http_route('GET', '/api/academy/paper/checkpoints/{run_id}')
+        self.assert_http_route('GET', '/api/academy/paper/project-board')
+        self.assert_http_route('POST', '/api/academy/paper/project-board')
+        self.assert_http_route('POST', '/api/academy/paper/project-board/{run_id}/status')
+        self.assert_http_route('POST', '/api/academy/paper/project-board/export')
+        self.assert_http_route('GET', '/api/academy/paper/project-board/exports')
+        self.assert_http_route('GET', '/api/academy/paper/project-board/exports/{run_id}')
+        self.assert_http_route('GET', '/api/academy/paper/timeline')
         self.assertIn('academy_citation_answer', server)
-        self.assertIn('@app.get("/api/academy/paper/offline-audit")', server)
+        self.assert_http_route('GET', '/api/academy/paper/offline-audit')
 
     def test_console_prevents_vertical_compressed_table_text(self):
         html = self.read_page("console.html")
@@ -875,7 +888,7 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn("report-flow-steps", js)
         self.assertIn("报告已生成", js)
         self.assertIn("继续追问", js)
-        self.assertIn("appendKnowledgeToPrompt(${Number(lastSavedReportKnowledgeId)})", js)
+        self.assertIn("appendKnowledgeToPrompt(${Number(consoleState.knowledge.lastSavedReportKnowledgeId)})", js)
         self.assertIn("library_document_id", js)
         self.assertIn("/api/workspace/research/learning-analysis", js)
         self.assertIn("business_brief", js)
@@ -1359,7 +1372,7 @@ class FrontendStaticTests(unittest.TestCase):
         html = self.read_page("console.html")
         js = self.read_page("assets/console.js")
         css = self.read_page("assets/console.css")
-        server = (REPO_ROOT / "clawos" / "clawos_server.py").read_text(encoding="utf-8")
+        server = read_server_source()
 
         self.assertIn("capabilityTable", html)
         self.assertIn("sceneBoundaryTable", html)
@@ -1405,14 +1418,14 @@ class FrontendStaticTests(unittest.TestCase):
         self.assertIn(".local-remediation-guide", css)
         self.assertIn(".local-remediation-actions", css)
         self.assertIn(".local-remediation-card.resolved", css)
-        self.assertIn("@app.get(\"/api/workbench/offline-readiness\")", server)
-        self.assertIn("@app.post(\"/api/workbench/daily-local-acceptance\")", server)
-        self.assertIn("@app.post(\"/api/workbench/local-qwen-smoke\")", server)
-        self.assertIn("@app.get(\"/api/workbench/local-acceptance-history\")", server)
-        self.assertIn("@app.get(\"/api/workbench/local-acceptance-trends\")", server)
-        self.assertIn("@app.get(\"/api/workbench/local-remediation-guide\")", server)
-        self.assertIn("@app.post(\"/api/workbench/local-remediation-actions\")", server)
-        self.assertIn("@app.post(\"/api/workbench/local-maintenance-report\")", server)
+        self.assert_http_route('GET', '/api/workbench/offline-readiness')
+        self.assert_http_route('POST', '/api/workbench/daily-local-acceptance')
+        self.assert_http_route('POST', '/api/workbench/local-qwen-smoke')
+        self.assert_http_route('GET', '/api/workbench/local-acceptance-history')
+        self.assert_http_route('GET', '/api/workbench/local-acceptance-trends')
+        self.assert_http_route('GET', '/api/workbench/local-remediation-guide')
+        self.assert_http_route('POST', '/api/workbench/local-remediation-actions')
+        self.assert_http_route('POST', '/api/workbench/local-maintenance-report')
         self.assertIn("toolAccuracyTable", html)
         self.assertIn("routingPolicyTable", html)
         self.assertIn("/api/workspace/capabilities", js)

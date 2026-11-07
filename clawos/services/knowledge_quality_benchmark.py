@@ -133,7 +133,12 @@ def run_knowledge_quality_benchmark(corpus_path: str | Path = DEFAULT_CORPUS) ->
             "rotate workspace token", top_k=10, owner_id="alice", workspace_id="private",
         )
         private_ids = {int(item["metadata"]["knowledge_id"]) for item in private_hits}
-        scope_isolation = scoped["id"] in private_ids and public["id"] not in private_ids
+        scope_probe = {
+            "authorized_hit": scoped["id"] in private_ids,
+            "cross_scope_fixture_hit": public["id"] in private_ids,
+            "unexpected_hit_count": len(private_ids - {scoped["id"]}),
+        }
+        scope_isolation = scope_probe["authorized_hit"] and scope_probe["unexpected_hit_count"] == 0
         core.expire(scoped["id"], "benchmark lifecycle")
         expired_hits = vector.search_knowledge(
             "rotate private workspace token", top_k=10, owner_id="alice", workspace_id="private",
@@ -179,6 +184,7 @@ def run_knowledge_quality_benchmark(corpus_path: str | Path = DEFAULT_CORPUS) ->
             "mode": "reviewed_local_corpus_real_sqlite_chroma",
             "record_count": len(records), "query_count": len(evaluation_queries),
             "metrics": metrics, "thresholds": thresholds,
+            "scope_probe": scope_probe,
             "passed": all(metrics[name] >= threshold for name, threshold in thresholds.items()),
             "query_failures": [item for item in query_results if not item["task_answer_hit"]],
             "store_stats": core.stats(),

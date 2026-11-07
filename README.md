@@ -50,6 +50,7 @@ python clawos/scripts/project.py build-web
 - [文档导航](docs/README.md)：只读当前说明，不必翻阅历史进度长文。
 - [架构与权限边界](docs/ARCHITECTURE.md)：Agent、MemoryOS、Reflection、路由与教学可视化的关系。
 - [维护性评估](docs/MAINTAINABILITY.md)：已整理内容、仍然过大的核心文件和下一步拆分顺序。
+- 各模块的能力分、证据范围与交付验收见[项目全局评估](docs/PROJECT_ASSESSMENT.md)。
 - [维护路线图](docs/ROADMAP.md)：真实验证与代码解耦优先级。
 - [历史验收证据](clawos/benchmarks)：保留真实失败、时长和未验收项，不回写为全部通过。
 

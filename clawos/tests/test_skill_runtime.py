@@ -1,3 +1,4 @@
+from source_tree import read_server_source
 import json
 import subprocess
 import sys
@@ -44,8 +45,13 @@ class SkillRuntimeTests(unittest.TestCase):
     def test_skill_execute_api_contract_and_plan_runtime(self):
         from skills.skill_registry import execute_skill_definition, get_skill
 
-        server_source = (ROOT / "clawos_server.py").read_text(encoding="utf-8")
-        self.assertIn('@app.post("/api/skills/execute")', server_source)
+        server_source = read_server_source()
+        from clawos_server import app
+        self.assertTrue(any(
+            getattr(route, 'path', None) == '/api/skills/execute'
+            and 'POST' in (getattr(route, 'methods', None) or ())
+            for route in app.routes
+        ))
         self.assertIn('plan_only = bool(data.get("plan_only", True))', server_source)
         self.assertIn('execute_skill_definition(skill, params=params, plan_only=True)', server_source)
 

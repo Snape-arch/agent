@@ -45,11 +45,11 @@ class PdfMathRendererTests(unittest.TestCase):
 
     def test_pdf_integrates_images_and_preserves_unsupported_source(self):
         from pypdf import PdfReader
-        from workspace_services import WorkspaceServices
+        from services.workspace.rendering import ResearchReportRenderer
         with tempfile.TemporaryDirectory() as td:
             path = Path(td)/'report.pdf'
-            WorkspaceServices._write_learning_analysis_reportlab_pdf(
-                object.__new__(WorkspaceServices), path, 'LoRA',
+            ResearchReportRenderer()._write_learning_analysis_reportlab_pdf(
+                path, 'LoRA',
                 r'# LoRA'+'\n'+r"- Matrix $W'=W+BA$, $A\in R^{d\times r}$."+'\n'+r'Unknown $\unsupported{x}$')
             reader = PdfReader(path)
             self.assertTrue(any(list(page.images) for page in reader.pages))

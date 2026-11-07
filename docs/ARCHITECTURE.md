@@ -22,15 +22,17 @@ flowchart LR
 
 | 路径 | 职责 |
 |---|---|
-| `clawos/clawos_server.py`、`api/` | HTTP入口、生命周期及API路由 |
+| `clawos/clawos_server.py` | 应用生命周期、权限中间件和兼容入口 |
+| `clawos/application/`、`api/` | 服务装配、模型与工具执行、领域 HTTP 接口 |
 | `clawos/services/` | 教育、文献、协作、编码、数据处理等业务服务 |
-| `clawos/memoryos/` | MemoryOS、SQLite持久化与来源/版本记录 |
+| `clawos/services/workspace/`、`services/learning/` | 工作区领域流程及轨迹、反馈与策略模型 |
+| `clawos/memoryos/repositories/` | 共享 SQLite 会话上的 12 个领域仓储 |
 | `clawos/mtclaw/router/` | 归并后的MT Function Router实现 |
 | `clawos/mtclaw/` | Adapter、安全工具桥、运行配置生成及上游许可 |
-| `clawos/visualization/backend/` | 可视化、实验、数据集、3D和评估领域服务 |
+| `clawos/visualization/backend/` | 可视化领域服务和私有传输的分域处理器 |
 | `clawos/visualization/worker.py` | ClawOS拥有的私有回环worker入口 |
 | `clawos/web/` | 统一React前端源码、依赖锁与前端测试 |
-| `clawos/static/` | 现有服务端页面与构建发布资源 |
+| `clawos/static/` | 服务端页面、控制台分域模块与构建发布资源 |
 | `desktop/` | 同一应用的桌面壳与打包 |
 
 可视化后端使用 `visualization.backend.*` 导入，避免通用名称 `server`、`security`、`database` 污染主应用模块。独立进程用于资源、依赖和生命周期隔离，不代表第二套产品入口。原SDK的 `clawvision` Python导入名及现有API、数据目录保留兼容。
@@ -43,4 +45,4 @@ flowchart LR
 - Reflection产生候选，不自动发布运行策略；Skill和策略晋升仍经过回放、回归、影子及灰度门禁。学习自述不计作策略收益。
 - 现有数据库、导入回执和模型目录不随源码重排迁移；产品数据迁移必须使用专门迁移工具和回执。
 
-主服务和存储层仍有大型单文件。目录归并不是依赖解耦完成，后续拆分顺序见[维护性评估](MAINTAINABILITY.md)。
+领域依赖由装配层连接。存储仓储共用一个事务会话，控制台的跨功能动作由入口连线，HTTP 读接口可独立验证。兼容入口和余下集中点在维护说明中记录。 [维护性评估](MAINTAINABILITY.md)

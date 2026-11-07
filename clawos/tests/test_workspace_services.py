@@ -1,3 +1,4 @@
+from source_tree import read_server_source
 import subprocess
 import sys
 import tempfile
@@ -284,7 +285,7 @@ class WorkspaceServicesTests(unittest.TestCase):
         self.assertIn(result["report"]["metadata"]["pdf_engine"], {"typst", "reportlab"})
 
     def test_learning_analysis_pdf_prefers_mixed_cjk_latin_font(self):
-        source = Path(__file__).resolve().parents[1] / "workspace_services.py"
+        source = Path(__file__).resolve().parents[1] / "services/workspace/rendering.py"
         text = source.read_text(encoding="utf-8")
 
         self.assertLess(text.index("msyh.ttc"), text.index("simhei.ttf"))
@@ -346,7 +347,7 @@ class WorkspaceServicesTests(unittest.TestCase):
     def test_document_stack_declares_paddleocr_and_layout_engines(self):
         knowledge = (Path(__file__).resolve().parents[1] / "services" / "knowledge_service.py").read_text(encoding="utf-8")
         ingestion = (Path(__file__).resolve().parents[1] / "memoryos" / "document_ingestion.py").read_text(encoding="utf-8")
-        server = (Path(__file__).resolve().parents[1] / "clawos_server.py").read_text(encoding="utf-8")
+        server = read_server_source()
 
         self.assertIn("_try_paddle_pdf_ocr", knowledge)
         self.assertLess(knowledge.index("_try_paddle_pdf_ocr"), knowledge.index("_try_local_pdf_ocr"))

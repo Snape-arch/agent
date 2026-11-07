@@ -1,3 +1,4 @@
+from source_tree import read_console_source
 import asyncio
 import json
 import sys
@@ -268,7 +269,7 @@ class SelectiveMemoryLoopTests(unittest.TestCase):
 class QualitySurfaceTests(unittest.TestCase):
     def test_console_exposes_quality_boundary_and_memory_review(self):
         html = (ROOT / "static" / "console.html").read_text(encoding="utf-8")
-        script = (ROOT / "static" / "assets" / "console.js").read_text(encoding="utf-8")
+        script = read_console_source()
         functions = (ROOT / "functions.jsonl").read_text(encoding="utf-8")
         for token in ("answerQualitySummary", "memoryCandidateTable"):
             self.assertIn(token, html)

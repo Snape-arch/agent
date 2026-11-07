@@ -70,7 +70,14 @@ def stop():
 threading.Thread(target=stop,daemon=True).start()
 server.run()
 """
-    before={str(path.relative_to(PROJECT)):digest(path) for path in (Path(__file__),PROJECT/'services/grounded_paper_report.py',PROJECT/'services/paper_numeric_evidence.py',PROJECT/'services/document_index_worker.py',PROJECT/'memoryos/services/vector_store.py',PROJECT/'workspace_services.py',PROJECT/'clawos_server.py',manifest_path)}
+    source_paths = (
+        Path(__file__), PROJECT / 'services/grounded_paper_report.py',
+        PROJECT / 'services/paper_numeric_evidence.py', PROJECT / 'services/document_index_worker.py',
+        PROJECT / 'memoryos/services/vector_store.py', PROJECT / 'workspace_services.py',
+        *sorted((PROJECT / 'services/workspace').glob('*.py')),
+        PROJECT / 'clawos_server.py', manifest_path,
+    )
+    before = {str(path.relative_to(PROJECT)): digest(path) for path in source_paths}
     checks={};results=[];error='';indexing_final=None;start=time.monotonic();stop=root/'stop-app'
     with (root/'app.log').open('wb') as log:
         process=subprocess.Popen([str(args.python.resolve()),'-u','-c',code,str(args.port),str(stop)],cwd=PROJECT,env=env,stdin=subprocess.DEVNULL,stdout=log,stderr=log,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))

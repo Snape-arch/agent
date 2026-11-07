@@ -62,6 +62,23 @@ class VectorOutboxBatchTests(unittest.TestCase):
             self.assertEqual(version,self.backend.get('kv2_'+str(record['id']))['metadata']['version'])
         self.assertTrue(all(row['processed_at'] and row['attempts']==1 for row in self.events()))
 
+    def test_vector_backend_cannot_override_authoritative_workspace_scope(self):
+        private = self.core.absorb(
+            title='Private rotation', statement='Rotate the private key every seven days.',
+            owner_id='alice', workspace_id='private', source_ref='fixture:private',
+        )
+        public = self.core.absorb(
+            title='Public rotation', statement='Rotate the public key every thirty days.',
+            owner_id='alice', workspace_id='public', source_ref='fixture:public',
+        )
+        self.vector.refresh()
+        accepted = self.backend.get(f"kv2_{private['id']}")
+        stale = self.backend.get(f"kv2_{public['id']}")
+        stale['metadata'] = dict(stale['metadata'], workspace_id='private')
+        with patch.object(self.backend, 'search', return_value=[stale, accepted]):
+            hits = self.vector.search_knowledge('key rotation', owner_id='alice', workspace_id='private')
+        self.assertEqual([item['metadata']['knowledge_id'] for item in hits], [private['id']])
+
     def test_partial_batch_failure_stays_pending_and_retry_is_idempotent(self):
         for index in range(4):self.add(index)
         self.backend.fail=True;result=self.vector.refresh()

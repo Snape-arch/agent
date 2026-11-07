@@ -1,3 +1,4 @@
+from source_tree import read_server_source
 import tempfile
 import unittest
 from pathlib import Path
@@ -173,14 +174,12 @@ class EvolutionRuntimeTests(unittest.TestCase):
         )
 
     def test_restrictive_runtime_routing_does_not_bypass_through_mtclaw(self):
-        server_source = (
-            Path(__file__).resolve().parents[1] / "clawos_server.py"
-        ).read_text(encoding="utf-8")
+        server_source = read_server_source()
 
         self.assertIn("mtclaw_policy_compatible = not", server_source)
         self.assertIn("routing_policy_payload.get(\"deny_tools\")", server_source)
         self.assertIn(
-            "g_mtclaw_adapter.enabled and mtclaw_policy_compatible",
+            "self.mtclaw_adapter_provider().enabled and mtclaw_policy_compatible",
             server_source,
         )
 
