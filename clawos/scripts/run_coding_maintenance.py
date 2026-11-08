@@ -57,7 +57,7 @@ def write_snapshot(repo, files, public):
 def test_pair(repo, commands):
     results = []
     for command in commands:
-        result = subprocess.run([sys.executable, *command[1:]], cwd=repo, env=clean_environment(),
+        result = subprocess.run([sys.executable, '-I', *command[1:]], cwd=repo, env=clean_environment(),
                                 capture_output=True, timeout=30)
         results.append(dict(exit_code=result.returncode, stdout=result.stdout.decode('utf-8', 'replace')[-2000:],
                             stderr=result.stderr.decode('utf-8', 'replace')[-2000:]))
@@ -68,7 +68,8 @@ def build_case(task, root):
     baseline, fixed = (snapshot(task, task[key]) for key in ('baseline', 'fixed'))
     public = (IMPORTS + task['public']).encode('utf-8')
     post = (IMPORTS + task['post']).encode('utf-8')
-    python = ['python', '-I', '-B', '-X', 'utf8']
+    # The AppContainer launcher adds its own interpreter isolation flags.
+    python = ['python', '-B', '-X', 'utf8']
     test = python + ['acceptance_public.py']
     # The post check is bound to the common replay, outside model worktrees.
     verification = python + ['-c', f"exec(bytes.fromhex('{post.hex()}').decode('utf-8'))"]

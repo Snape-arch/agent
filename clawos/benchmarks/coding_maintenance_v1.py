@@ -2,22 +2,44 @@
 
 IMPORTS = """\
 import sys
+import shutil
+import uuid
+from contextlib import contextmanager
 from pathlib import Path
-from tempfile import TemporaryDirectory
-from unittest.mock import patch
 sys.path.insert(0, str(Path.cwd() / 'clawos'))
+
+@contextmanager
+def scratch():
+    # Use the worktree's inherited sandbox ACL. TemporaryDirectory uses a
+    # private mkdir mode on Windows which can exclude the AppContainer SID.
+    root = Path.cwd() / ('.fixture-' + uuid.uuid4().hex[:12])
+    root.mkdir()
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root)
 """
 
 ATOMIC = """\
 import os
 import json
+import tempfile
+import time
 from services.file_transactions import write_text
 from services.artifact_delivery_service import ArtifactDeliveryService
 
+@contextmanager
+def substitute(target, name, replacement):
+    original = getattr(target, name)
+    setattr(target, name, replacement)
+    try:
+        yield
+    finally:
+        setattr(target, name, original)
+
 def verify(writer, name, retries, exception=PermissionError):
     real_replace = os.replace
-    with TemporaryDirectory(dir='.') as directory:
-        root = Path(directory).resolve()
+    with scratch() as root:
         target = root / name
         target.write_text('old', encoding='utf-8')
         attempts = []
@@ -30,7 +52,8 @@ def verify(writer, name, retries, exception=PermissionError):
             real_replace(source, destination)
 
         should_fail = retries >= 8 or exception is not PermissionError
-        with patch('os.replace', side_effect=transient), patch('time.sleep'), patch('tempfile.gettempdir', return_value=str(root)):
+        with (substitute(os, 'replace', transient), substitute(time, 'sleep', lambda delay: None),
+              substitute(tempfile, 'gettempdir', lambda: str(root))):
             try:
                 writer(root, target)
             except exception:
@@ -61,8 +84,9 @@ def check(*invalid_pages):
         raise AssertionError('invalid input reached PDF parser')
 
     # Exercise the real cache and input validation without the PDF library.
-    with TemporaryDirectory(dir='.') as directory, patch.dict(sys.modules, {'fitz': SimpleNamespace(open=fail_open)}):
-        source = (Path(directory) / 'paper.pdf').resolve()
+    sys.modules['fitz'] = SimpleNamespace(open=fail_open)
+    with scratch() as directory:
+        source = directory / 'paper.pdf'
         source.write_bytes(b'%PDF-fixture')
         stat = source.stat()
         renderer = PdfPageRenderer()

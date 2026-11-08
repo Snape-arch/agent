@@ -16,10 +16,11 @@ class CodingWorkflowServiceTests(unittest.TestCase):
         repo = root / "repo"
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=repo, check=True)
         subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
         subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-        (repo / "calc.py").write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
-        (repo / "test_calc.py").write_text("import unittest\nfrom calc import add\nclass T(unittest.TestCase):\n def test_add(self): self.assertEqual(add(2, 3), 5)\n", encoding="utf-8")
+        (repo / "calc.py").write_bytes(b"def add(a, b):\n    return a - b\n")
+        (repo / "test_calc.py").write_bytes(b"import unittest\nfrom calc import add\nclass T(unittest.TestCase):\n def test_add(self): self.assertEqual(add(2, 3), 5)\n")
         subprocess.run(["git", "add", "."], cwd=repo, check=True)
         subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, capture_output=True)
         return repo
@@ -60,6 +61,28 @@ class CodingWorkflowServiceTests(unittest.TestCase):
             self.assertEqual(result["status"], "failed")
             self.assertTrue(result["restored_on_failure"])
             self.assertEqual((repo / "calc.py").read_bytes(), before)
+
+    def test_scoped_patch_preserves_lf_and_crlf_with_autocrlf_disabled(self):
+        for newline in (b"\n", b"\r\n"):
+            with self.subTest(newline=newline), tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                repo = self._repo(root)
+                subprocess.run(["git", "config", "core.whitespace", "cr-at-eol" if newline == b"\r\n" else "blank-at-eol"],
+                               cwd=repo, check=True)
+                target = repo / "calc.py"
+                baseline = newline.join((b"def add(a, b):", b"    return a - b", b""))
+                target.write_bytes(baseline)
+                subprocess.run(["git", "add", "calc.py"], cwd=repo, check=True)
+                subprocess.run(["git", "commit", "--allow-empty", "-m", "freeze exact newline"], cwd=repo, check=True, capture_output=True)
+                service = CodingWorkflowService(artifact_root=root / "artifacts")
+                result = service.execute(repo, "Fix addition",
+                    [{"path": "calc.py", "operation": "replace", "old_text": "return a - b", "new_text": "return a + b"}],
+                    [["python", "-m", "unittest", "test_calc.py"]], confirmed=True)
+                self.assertEqual(result["status"], "passed", result.get("failure"))
+                self.assertEqual(target.read_bytes(), baseline.replace(b"a - b", b"a + b"))
+                self.assertEqual(subprocess.check_output(["git", "diff", "--numstat"], cwd=repo), b"1\t1\tcalc.py\n")
+                service.rollback(repo, result["checkpoint"], confirmed=True)
+                self.assertEqual(target.read_bytes(), baseline)
 
     def test_failure_can_be_repaired_in_bounded_second_round(self):
         with tempfile.TemporaryDirectory() as td:

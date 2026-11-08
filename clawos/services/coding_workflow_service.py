@@ -313,6 +313,7 @@ class CodingWorkflowService:
                     after = after.replace(old, new, 1)
             else:
                 raise ValueError(f"unsupported change operation: {operation}")
+            after = after.replace("\r\n", "\n").replace("\r", "\n")
             rows.append({"path": rel, "operation": operation, "content": after, "before_sha256": self._sha(before.encode("utf-8")), "after_sha256": self._sha(after.encode("utf-8"))})
             seen.add(rel)
         return rows
@@ -322,8 +323,14 @@ class CodingWorkflowService:
         for item in changes:
             path = repo / item["path"]
             path.parent.mkdir(parents=True, exist_ok=True)
+            previous = path.read_bytes() if path.is_file() else b""
+            crlf = previous.count(b"\r\n")
+            cr, lf = previous.count(b"\r"), previous.count(b"\n")
+            # Keep the source's uniform line endings. An explicit LF default
+            # also keeps newly created files reproducible across platforms.
+            newline = "\r\n" if crlf and crlf == cr == lf else "\r" if cr and not lf else "\n"
             temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-            temporary.write_text(item["content"], encoding="utf-8")
+            temporary.write_text(item["content"], encoding="utf-8", newline=newline)
             os.replace(temporary, path)
             CodingWorkflowService._invalidate_bytecode(path)
 
