@@ -104,6 +104,9 @@ class CodingStrategyService:
                     return messages
                 async def complete(_,messages,options):
                     return await raw.complete(messages,options)
+                def prepare_options(_,options):
+                    prepare=getattr(raw,'prepare_options',None)
+                    return prepare(options) if prepare else options
             return BoundProvider()
         prototype=guarded_factory('comparison_identity')
         fingerprint=runner.svc.provider_signature(prototype)

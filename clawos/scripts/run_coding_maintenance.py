@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import getpass
 import hashlib
 import json
 import os
@@ -12,6 +13,7 @@ from urllib.parse import urlsplit
 import uuid
 
 APP = Path(__file__).resolve().parents[1]
+DEEPSEEK_URL = 'https://api.deepseek.com'
 sys.path.insert(0, str(APP))
 
 from benchmarks.coding_maintenance_v1 import IMPORTS, TASKS
@@ -105,40 +107,57 @@ def build_case(task, root):
     return case, receipt
 
 
-async def run_live(args, cases, root, binding, witness):
+async def run_live(args, cases, root, binding, witness, api_key):
     import httpx
+    from providers.deepseek import DeepSeekProvider
     from providers.qwen import QwenProvider
     from services.sandbox_runtime import SandboxRuntime
 
     boundary = SandboxRuntime().resolve() if os.name == 'nt' else None
     if boundary is None:
         raise RuntimeError('managed Windows AppContainer runtime required for live coding benchmark')
+    cloud = args.provider == 'deepseek'
+    endpoint = DEEPSEEK_URL if cloud else args.url.rstrip('/')
+    headers = {'Authorization': 'Bearer ' + api_key} if cloud else {}
     try:
-        async with httpx.AsyncClient(trust_env=False, timeout=5) as client:
-            response = await client.get(args.url.rstrip('/') + '/models')
+        async with httpx.AsyncClient(trust_env=False, timeout=15) as client:
+            response = await client.get(endpoint + '/models', headers=headers)
             response.raise_for_status()
             data = response.json()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(f'model discovery returned HTTP {exc.response.status_code}') from None
     except httpx.HTTPError as exc:
-        raise RuntimeError('configured loopback model endpoint unavailable') from exc
+        raise RuntimeError('configured model endpoint unavailable') from exc
     advertised = {item.get('id') for item in data.get('data', []) if isinstance(item,dict)} if isinstance(data,dict) else set()
     if args.model not in advertised:
-        raise ValueError('requested model is not advertised by the local endpoint')
+        raise ValueError('requested model is not advertised by the configured endpoint')
     os.environ.update(CLAWOS_REQUIRE_OS_SANDBOX='1', CLAWOS_APPCONTAINER_PROFILE=boundary.profile_name,
                       CLAWOS_APPCONTAINER_RUNTIME=str(boundary.runtime_dir))
     runner = CodingComparisonService(root / 'pair', witness=witness)
     def factory(role):
-        return QwenProvider(dict(base_url=args.url, model=args.model, api_key='', requires_api_key=False, timeout_s=300))
-    model = dict(id='local-model', factory=factory, fingerprint=runner.svc.provider_signature(factory('identity')))
+        cfg = dict(base_url=endpoint, model=args.model, api_key=api_key, timeout_s=300, trust_env=False)
+        return DeepSeekProvider(cfg) if cloud else QwenProvider(dict(cfg, requires_api_key=False))
+    model = dict(id='deepseek-cloud' if cloud else 'local-model', factory=factory,
+                 fingerprint=runner.svc.provider_signature(factory('identity')))
     return await runner.run(cases, [model], confirmed=True, repetitions=args.repetitions, binding=binding)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute', action='store_true', help='Opt in to real calls and strict sandbox execution')
+    parser.add_argument('--provider', choices=('qwen', 'deepseek'), default='qwen')
     parser.add_argument('--url'); parser.add_argument('--model')
     parser.add_argument('--repetitions', type=int, choices=(1, 2, 3), default=1)
     args = parser.parse_args()
-    if args.execute:
+    api_key = ''
+    if args.execute and args.provider == 'deepseek':
+        if args.url or not sys.stdin.isatty():
+            parser.error('DeepSeek uses its official endpoint and requires an interactive hidden key prompt')
+        args.model = args.model or 'deepseek-v4-pro'
+        api_key = getpass.getpass('DeepSeek API key (hidden): ').strip()
+        if not api_key:
+            parser.error('a DeepSeek API key is required')
+    elif args.execute:
         url = urlsplit(args.url or '')
         if (url.scheme != 'http' or url.hostname not in {'127.0.0.1','localhost','::1'} or url.path.rstrip('/') != '/v1' or
                 url.username or url.password or url.query or url.fragment or not args.model):
@@ -146,7 +165,7 @@ def main():
     root = APP / 'output' / 'cm' / uuid.uuid4().hex[:10]
     root.mkdir(parents=True, exist_ok=False)
     paths = (Path(__file__), APP / 'benchmarks/coding_maintenance_v1.py',
-             APP / 'providers/qwen.py', APP / 'providers/openai_compatible.py')
+             APP / ('providers/' + args.provider + '.py'), APP / 'providers/openai_compatible.py')
     witness = {str(path):hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
     cases, controls = [], []
     for task in TASKS:
@@ -165,7 +184,7 @@ def main():
     save(root / 'cases.json', cases, immutable=True)
     if args.execute and report['controls_passed']:
         try:
-            live = asyncio.run(run_live(args, cases, root, binding, witness))
+            live = asyncio.run(run_live(args, cases, root, binding, witness, api_key))
             ledgers = [arm['ledger'] for arm in live['arms']]
             report.update(real_execution=any(ledger['provider_tokens'] > 0 for ledger in ledgers),
                           model_call_attempts=sum(ledger['calls'] for ledger in ledgers),
@@ -174,6 +193,9 @@ def main():
                               'budget_conformant','execution_comparable','all_tasks_resolved','groups')})
         except (ValueError, OSError, RuntimeError) as exc:
             report['execution_error_type'] = type(exc).__name__
+            if str(exc).startswith(('model discovery returned HTTP ', 'configured model endpoint unavailable',
+                                    'requested model is not advertised', 'managed Windows AppContainer')):
+                report['execution_error'] = str(exc)
     save(root / 'report.json', report, immutable=True)
     print(json.dumps({key:value for key,value in report.items() if key not in {'controls','source_witness'}} | {'output':str(root)}, ensure_ascii=False))
     return int(not report['controls_passed'] or (args.execute and not report.get('comparison',{}).get('execution_comparable')))

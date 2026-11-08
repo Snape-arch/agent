@@ -68,7 +68,10 @@ class AutonomousCodingService:
         tests = [t for r in (previous_failure or {}).get('rounds', []) for t in r.get('tests', [])]
         frames = CodingExecutionContext.failure_context(repo_path, tests) if tests else []
         frames.extend(dict(d, source='caller_diagnostic') for d in (diagnostics or [])[:4])
-        manifest = self.context.build_execution(repo_path, objective, focus_paths=focus_paths, failure_context=frames)
+        manifest = self.context.build_execution(
+            repo_path, objective, focus_paths=focus_paths, failure_context=frames,
+            max_chars=18_000, prefer_complete_writes=True,
+        )
         if requirements is not None and frozen_commands is None:
             raise ValueError('bound requirements need caller-frozen test commands')
         contracts = CodingContracts.validate(requirements,manifest['scope']['write_paths'],frozen_commands or [])
@@ -87,7 +90,9 @@ class AutonomousCodingService:
             '"explanation":"...","confidence":0.0}. '
             "For create use path/operation/content only; for hunks use path/operation/hunks only. "
             "Do not mix fields from different operations. Use exact old_text from evidence. Never use overwrite. Keep scope "
-            "minimal. Tests must be argv arrays and must validate the change.\n\n"
+            "minimal. Tests must be argv arrays and must validate the change. "
+            "Before finalizing, mentally trace a valid and a rejected input for each affected branch. "
+            "Keep all compatible input forms explicitly required by the caller.\n\n"
             + '[Frozen original objective]\n' + objective + '\n\n'
             + ('[Caller-frozen test commands; model commands will not be executed]\n'
                + json.dumps(frozen_commands) + '\n\n' if frozen_commands is not None else '')
@@ -147,6 +152,7 @@ class AutonomousCodingService:
                 plan = self.workflow.plan(
                     repo_path, objective, proposal['changes'],
                     frozen_commands if frozen_commands is not None else proposal['test_commands'],
+                    verify_syntax=True,
                 )
                 interface_checks = []
                 if any(r.get('interface') for r in contracts):
@@ -163,10 +169,10 @@ class AutonomousCodingService:
                 if format_attempt:
                     raise ValueError('model response is not strict JSON or a valid proposal after bounded format repair') from exc
                 messages = messages + [{'role':'assistant','content':content[:16000]},
-                    {'role':'user','content':'Correct JSON serialization, the required proposal schema, caller-declared signatures and exact edit anchors. '
+                    {'role':'user','content':'Correct the specific validation failure below. For a syntax error, fix the exact file and line in the proposed edit. '
                      'Preserve the complete original objective, exact source anchors and authorized paths. '
                      'Escape newlines in strings and close each object/array. Return one complete JSON object. '
-                     'Previous format/schema error: ' + str(exc)[:500]}]
+                     'Previous proposal validation error: ' + str(exc)[:500]}]
         CodingExecutionContext.verify(repo_path, manifest)
         CodingExecutionContext.assert_changes(manifest, proposal['changes'])
         after_model = self.hooks.run("after_model", {

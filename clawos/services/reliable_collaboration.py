@@ -423,7 +423,10 @@ class ReliableCollaborationService:
             list(prompt_packet.get('files', {})) or state['request']['paths'],
             grounded_targets=prompt_packet.get('grounded_targets'))
         ledger = state["ledger"]
-        reserve = len(messages[1]["content"]) + 1800  # Conservative admission; no unknown free usage.
+        output_cap = 1800
+        if role == 'reviewer':
+            output_cap = 1200 if 'previous_failure' in packet else 640
+        reserve = len(messages[1]["content"]) + output_cap  # Conservative admission; no unknown free usage.
         if (ledger["model_calls"] >= policy["max_model_calls"] or
                 ledger["tokens"] + ledger["reserved_tokens"] + reserve > policy["max_tokens"]):
             raise RuntimeError("shared model/token budget exhausted")
@@ -442,7 +445,7 @@ class ReliableCollaborationService:
             state["provider_specs"].setdefault(role, {"spec": asdict(spec), "fingerprint": fingerprint})
             self.save(state)
             response = await asyncio.wait_for(provider.complete(messages,
-                {"temperature": 0, "max_tokens": 1800, "response_format": structured.response_format(role, output_schema)}),
+                {"temperature": 0, "max_tokens": output_cap, "response_format": structured.response_format(role, output_schema)}),
                 timeout=policy["timeout_seconds"])
             tokens = int((response.get("usage") or {}).get("total_tokens") or reserve)
             if tokens < 0:
@@ -859,13 +862,15 @@ class ReliableCollaborationService:
             self.event(state, 'integration_contract_failed', results=state['requirement_results'])
             return
         instruction = (
-            'Independently review the objective, complete integrated files, patch and actual test evidence. '
+            'Independently review the objective, integrated patch, source excerpts and actual test evidence. '
             'Return {"approved":true,"reasons":["specific evidence"],"risks":[]}. '
-            'Reject missing requirements even when tests pass. Your review cannot override failed tests or conflicts. '
-            'Keep reasons to two short strings; provide no prose outside JSON.')
-        packet = {"objective": state["request"]["objective"], "plan": state["nodes"],
-             "files": self.read_files(repo, state["request"]["paths"]), "diff": diff,
-             "tests": [{k: t.get(k) for k in ("command","exit_code","stdout","stderr")} for t in tests]}
+            'Reject missing or uncertain requirements even when tests pass. Check a valid case and a boundary case '
+            'against each relevant changed condition. Cite a changed file or test in your reason. '
+            'Use at most two reasons and two risks, each at most 220 characters. JSON only.')
+        packet = {"objective": state["request"]["objective"], "write_paths": state["request"]["paths"], "diff": diff,
+             "requirement_results": state.get("requirement_results", []),
+             "tests": [dict(index=i, exit_code=t["exit_code"], timed_out=bool(t.get("timed_out")))
+                       for i, t in enumerate(tests)]}
         view = await self.execution_context(state, repo, 'reviewer', state['request']['paths'])
         if view:packet['execution_context'] = view
         for attempt in range(2):
@@ -880,7 +885,9 @@ class ReliableCollaborationService:
                 self.event(state,"review_format_rejected",attempt=attempt+1,error=str(exc))
                 if attempt:
                     raise
-                packet["previous_failure"]=str(exc)
+                packet["previous_failure"] = (
+                    "Previous review was incomplete or invalid. Return one short evidence-based reason "
+                    "and include only risks that change the verdict.")
         state["review"] = review
         approved = (review.get("approved") is True and isinstance(review.get("reasons"), list)
                     and any(r.strip() for r in review["reasons"]) and isinstance(review.get("risks"), list) and not review["risks"])
@@ -974,8 +981,7 @@ class ReliableCollaborationService:
         for item in normalized:
             if len(item["content"].encode()) > 128000:
                 raise ValueError("resolution too large")
-            if item["path"].endswith(".py"):
-                compile(item["content"], item["path"], "exec")
+        CodingWorkflowService.validate_python_changes(normalized)
         CodingWorkflowService._apply_changes(repo, normalized)
         self.git(repo, "add", "--", *[c["path"] for c in normalized])
         self.git(repo, "-c", "user.name=ClawOS Coordinator", "-c", "user.email=collaboration@clawos.local",

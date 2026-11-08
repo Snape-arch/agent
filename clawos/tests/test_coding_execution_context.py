@@ -76,6 +76,24 @@ class ContextTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'source drift'):View.verify(self.repo, view)
         new = self.view();self.assertNotEqual(new['source_fingerprint'], view['source_fingerprint'])
 
+    def test_complete_small_write_scope_keeps_exact_tail_and_does_not_expand_reads(self):
+        tail = '    return atomic_replace()\n'
+        source = 'def result():\n' + '    # padding for the write body\n' * 100 + tail
+        target = self.repo / 'pkg/use.py'
+        target.write_bytes(source.replace('\n', '\r\n').encode('utf-8'))
+        compact = self.view()
+        expanded = self.view(max_chars=18_000, prefer_complete_writes=True)
+        self.assertNotIn(tail, compact['code_evidence'][0]['content'])
+        self.assertEqual(expanded['code_evidence'][0]['content'], source)
+        self.assertFalse(expanded['code_evidence'][0]['truncated'])
+        self.assertEqual(expanded['scope'], compact['scope'])
+        self.assertEqual(expanded['source_fingerprint'], compact['source_fingerprint'])
+        View.verify(self.repo, expanded)
+        target.write_text(source + '# over budget\n' * 1000, encoding='utf-8')
+        large = self.view(max_chars=18_000, prefer_complete_writes=True)
+        self.assertTrue(large['code_evidence'][0]['truncated'])
+        self.assertLessEqual(len(large['code_evidence'][0]['content']), 1600)
+
     def test_missing_write_file_and_explicit_read_dependency_have_distinct_access(self):
         view = self.context.build_execution(self.repo, 'create future', write_paths=['future.py'], read_only_paths=['a.py'])
         self.assertEqual(view['code_evidence'][0]['state'], 'missing')
@@ -138,7 +156,7 @@ class RuntimeContextTests(unittest.IsolatedAsyncioTestCase):
     def kwargs(self):
         return dict(allowed_paths=['a.py','b.py'],test_commands=[[sys.executable,'-B','check.py']],confirmed=True)
 
-    async def test_single_and_worker_receive_equal_shared_view_and_delivery_freezes_it(self):
+    async def test_single_and_worker_share_source_scope_and_delivery_freezes_worker_view(self):
         captured = {}
         def handler(role, packet):
             if role=='a':captured['worker']=packet['execution_context']
@@ -152,8 +170,11 @@ class RuntimeContextTests(unittest.IsolatedAsyncioTestCase):
                 return dict(ok=True,content=json.dumps(dict(changes=[dict(path='a.py',operation='replace',old_text='return a - b',new_text='return a + b')],
                     test_commands=[[sys.executable,'-B','check.py']],explanation='fix add',confidence=.9)),usage={'total_tokens':10})
         proposal=await AutonomousCodingService(Single(),workflow=svc.workflow).propose(self.repo,'Fix arithmetic',focus_paths=['a.py'])
-        self.assertEqual(captured['worker'],captured['single'])
-        self.assertEqual(proposal['context_digest'],captured['worker']['context_digest'])
+        self.assertEqual(captured['worker']['scope'], captured['single']['scope'])
+        self.assertEqual(captured['worker']['source_fingerprint'], captured['single']['source_fingerprint'])
+        self.assertEqual(proposal['context_digest'], captured['single']['context_digest'])
+        View.verify(self.repo, captured['single'])
+        View.verify(self.repo, captured['worker'])
         packet=await CollaborationDelivery(svc).prepare(result['run_id'],confirmed=True)
         self.assertEqual(packet['manifest']['contexts'],result['contexts'])
         for event in result['events']:

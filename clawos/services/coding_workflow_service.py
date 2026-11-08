@@ -121,9 +121,12 @@ class CodingWorkflowService:
             commands.append(["gradle", "test"])
         return commands[:5]
 
-    def plan(self, repo_path: str | Path, objective: str, changes: list[dict[str, Any]], test_commands: list[Any] | None = None) -> dict[str, Any]:
+    def plan(self, repo_path: str | Path, objective: str, changes: list[dict[str, Any]], test_commands: list[Any] | None = None,
+             *, verify_syntax: bool = False) -> dict[str, Any]:
         repo = self._repo(repo_path)
         normalized = self._normalize_changes(repo, changes)
+        if verify_syntax:
+            self.validate_python_changes(normalized)
         commands = [self._validate_command(item) for item in (test_commands or [])]
         return {
             "schema": "clawos.coding-plan.v1",
@@ -317,6 +320,16 @@ class CodingWorkflowService:
             rows.append({"path": rel, "operation": operation, "content": after, "before_sha256": self._sha(before.encode("utf-8")), "after_sha256": self._sha(after.encode("utf-8"))})
             seen.add(rel)
         return rows
+
+    @staticmethod
+    def validate_python_changes(changes: list[dict[str, Any]]) -> None:
+        for item in changes:
+            path = item['path']
+            if Path(path).suffix.lower() == '.py':
+                try:
+                    compile(item['content'], path, 'exec')
+                except SyntaxError as exc:
+                    raise ValueError(f'{path}:{exc.lineno}:{exc.offset}: {type(exc).__name__}: {exc.msg}') from exc
 
     @staticmethod
     def _apply_changes(repo: Path, changes: list[dict[str, Any]]) -> None:

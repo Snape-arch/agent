@@ -36,7 +36,7 @@ def schema_for(role, paths, *, grounded_targets=None):
                         write_paths=array(path, 24, 1), depends_on=array(identifier, 24)))
         return obj(dict(nodes=array(node, 24, 1)))
     if role == 'reviewer':
-        return obj(dict(approved=dict(type='boolean'), reasons=array(text(1500), 8), risks=array(text(1500), 8)))
+        return obj(dict(approved=dict(type='boolean'), reasons=array(text(220), 2), risks=array(text(220), 2)))
     if role == 'diagnostician':
         target = obj(dict(path=path, symbol=symbol))
         if grounded_targets:target['enum']=grounded_targets

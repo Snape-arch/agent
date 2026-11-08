@@ -132,6 +132,59 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(receipt['options']['response_format'],fmt)
         self.assertEqual(capture.ledger['reservations'][0]['options'],receipt['options'])
 
+    async def test_official_deepseek_wire_format_and_review_cap_are_bound_to_receipt(self):
+        from providers.deepseek import DeepSeekProvider
+        from test_model_provider import FakeHttpClient, FakeResponse
+
+        client = FakeHttpClient(FakeResponse(dict(
+            choices=[dict(message=dict(content='{"approved":true,"reasons":[],"risks":[]}'), finish_reason='stop')],
+            usage=dict(total_tokens=40))))
+
+        class Provider(DeepSeekProvider):
+            async def complete(self, messages, options):
+                return await super().complete(messages, options, http_client=client)
+
+        provider = Provider(dict(api_key='fixture', model='deepseek-v4-pro'))
+        schema = structured.schema_for('reviewer', ['a.py'])
+        fmt = structured.response_format('reviewer', schema)
+        capture = ComparisonCapture(self.root / 'capture', CodingComparisonService.limits(None), {})
+        await capture.wrap(provider).complete(
+            [dict(role='user', content='Return JSON')], dict(max_tokens=640, response_format=fmt))
+        body = client.calls[0]['json']
+        receipt = json.loads((self.root / 'capture/answer-1.json').read_text())
+        for field, expected in dict(max_tokens=640, response_format=dict(type='json_object'),
+                                    thinking=dict(type='disabled')).items():
+            self.assertEqual(body[field], expected)
+            self.assertEqual(receipt['options'][field], expected)
+        self.assertEqual(fmt['type'], 'json_schema')
+        with self.assertRaises(ValueError):
+            structured.parse(json.dumps(dict(approved=True, reasons=['x' * 221], risks=[])), schema)
+        custom = DeepSeekProvider(dict(base_url='https://example.test'))
+        self.assertEqual(custom.prepare_options(dict(response_format=fmt)), dict(response_format=fmt))
+
+    async def test_single_syntax_error_returns_location_for_repair_before_writing(self):
+        observed = []
+        repo = self.repo
+        before = (repo / 'a.py').read_bytes()
+
+        class Provider:
+            async def complete(_, messages, options):
+                observed.append(copy.deepcopy(messages))
+                new = 'return (' if len(observed) == 1 else 'return a + b'
+                answer = dict(changes=[dict(path='a.py', operation='replace',
+                                            old_text='return a - b', new_text=new)],
+                              test_commands=[['python', 'check.py']])
+                self.assertEqual((repo / 'a.py').read_bytes(), before)
+                return dict(ok=True, content=json.dumps(answer), usage=dict(total_tokens=10),
+                            raw=dict(choices=[dict(finish_reason='stop')]))
+
+        result = await AutonomousCodingService(Provider()).propose(
+            repo, 'Fix addition', focus_paths=['a.py'], test_commands=[['python', 'check.py']])
+        self.assertEqual([row['status'] for row in result['format_attempts']], ['rejected', 'parsed'])
+        self.assertIn('a.py:2:', observed[1][-1]['content'])
+        self.assertIn('SyntaxError', observed[1][-1]['content'])
+        self.assertEqual((repo / 'a.py').read_bytes(), before)
+
     async def test_single_signature_violation_repaired_before_any_write(self):
         observed=[]
         class Provider:

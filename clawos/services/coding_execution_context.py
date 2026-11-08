@@ -151,7 +151,8 @@ class CodingExecutionContext:
 
     @classmethod
     def build(cls, service, repo, objective, *, write_paths=None, focus_paths=None,
-              read_only_paths=None, failure_context=None, max_chars=6000, semantic_graph=None):
+              read_only_paths=None, failure_context=None, max_chars=6000, semantic_graph=None,
+              prefer_complete_writes=False):
         repo = service._repo(repo)
         if cls.policy() != LOADED_POLICY:
             raise RuntimeError('loaded context builder source changed')
@@ -183,6 +184,10 @@ class CodingExecutionContext:
         if len(writes) + len(reads) > 40:
             raise ValueError('declared source view exceeds 40 files; narrow the task')
         rows = []; edges = []; omitted = []; total = 0
+        # Complete small edit scopes give a one-shot planner exact anchors.
+        # Large scopes keep the normal excerpts without widening read access.
+        full_writes = {}
+        write_budget = min(12_000, limit * 2 // 3) if prefer_complete_writes else -1
         queue = [(p, 0, True) for p in writes + reads]
         seen = set()
         while queue and len(rows) < 40:
@@ -200,6 +205,12 @@ class CodingExecutionContext:
                     raise ValueError('cannot build declared context path: ' + rel) from exc
                 omitted.append(dict(path=rel, reason='unreadable_or_over_limit'));continue
             total += len(data or b'')
+            if rel in writes and write_budget >= 0:
+                write_budget -= len(data or b'')
+                if write_budget >= 0:
+                    full_writes[rel] = text
+                else:
+                    full_writes.clear()
             symbols, imports = service._analyze(Path(rel), text)
             lines = text.splitlines()
             frame = next((f for f in frames if f['path'] == rel and f['line'] <= len(lines)), None)
@@ -216,6 +227,12 @@ class CodingExecutionContext:
                     edges.append(dict(source=rel, target=dep, kind='python_import', verification='static_local_resolution'))
                     queue.append((dep, depth + 1, False))
         omitted.extend(dict(path=p, reason='file_count_limit') for p, _, _ in queue if p not in seen)
+        if len(full_writes) == len(writes):
+            for row in rows:
+                if row['path'] in full_writes:
+                    # Patch anchors use the workflow's universal-newline view.
+                    content = full_writes[row['path']].replace('\r\n', '\n').replace('\r', '\n')
+                    row.update(content=content, start_line=1, end_line=len(content.splitlines()), truncated=False)
         instructions = []
         directories = {PurePosixPath('.')}
         for rel in writes:

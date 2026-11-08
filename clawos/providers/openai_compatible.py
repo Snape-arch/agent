@@ -22,6 +22,10 @@ class OpenAICompatibleProvider:
         self.timeout_s = float(cfg.get("timeout_s", 120.0) or 120.0)
         self.requires_api_key = _as_bool(cfg.get("requires_api_key", True))
         self.chat_template_kwargs = cfg.get("chat_template_kwargs")
+        self.trust_env = _as_bool(cfg.get("trust_env", True))
+
+    def prepare_options(self, options: dict[str, Any]) -> dict[str, Any]:
+        return options
 
     def is_configured(self) -> bool:
         has_endpoint = bool(self.base_url and self.model)
@@ -45,7 +49,7 @@ class OpenAICompatibleProvider:
                 error="missing_api_key",
             )
 
-        options = options or {}
+        options = self.prepare_options(options or {})
         payload = {
             "model": options.get("model") or self.model,
             "messages": messages,
@@ -56,6 +60,8 @@ class OpenAICompatibleProvider:
             payload["max_tokens"] = int(options["max_tokens"])
         if options.get("response_format") is not None:
             payload["response_format"] = options["response_format"]
+        if options.get("thinking") is not None:
+            payload["thinking"] = options["thinking"]
         if options.get("grammar") is not None:
             payload["grammar"] = options["grammar"]
         if options.get("stop") is not None:
@@ -77,7 +83,7 @@ class OpenAICompatibleProvider:
         client = (
             httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_s), trust_env=False)
             if use_local_client
-            else http_client or httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_s))
+            else http_client or httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_s), trust_env=self.trust_env)
         )
         close_client = use_local_client or http_client is None
         try:

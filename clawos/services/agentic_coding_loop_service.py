@@ -332,7 +332,7 @@ class AgenticCodingLoopService:
                 CodingExecutionContext.assert_changes(manifest, proposal['changes'])
                 plan = self.workflow.plan(
                     repo, objective, proposal["changes"],
-                    proposal["test_commands"],
+                    proposal["test_commands"], verify_syntax=True,
                 )
             except (OSError, RuntimeError, ValueError) as exc:
                 observation = {

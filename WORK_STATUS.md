@@ -7,3 +7,4 @@
 - 主服务、存储、控制台、可视化、工作区和学习策略已完成领域拆分。交付证据和 22 项能力评分见[全局评估](docs/PROJECT_ASSESSMENT.md)。现行职责和剩余集中点见[维护性说明](docs/MAINTAINABILITY.md)。
 - 教学 P0 示范课已实现。短课支持固定论文导读、单变量检索、前后测、迁移题与教师复核导出。流程已过独立运行验证，真人教师校准和学生试学待开展。 [试学方案](docs/RAG_INTRO_PILOT.md) [验收](clawos/benchmarks/RAG_INTRO_ACCEPTANCE.md)
 - 编码 P1 已完成三道历史缺陷的本地 Qwen 严格沙箱实跑。修复 Windows 换行后复测单代理 0/3、多代理 1/3。两次评审截断使整轮不可比较。跨仓库策略收益待验收。 [P1 验收](clawos/benchmarks/CODING_P1_ACCEPTANCE.md)
+- DeepSeek 编码治理复测单代理 2/3、多代理 3/3。三项多代理评审均一次完成。应用本地校验结构和语法，测试在严格沙箱重放，引文单代理的语义遗漏被独立复验拒绝。公开题结果仅用于诊断，私有留出与真实冲突恢复仍待验收。 [实跑证据](clawos/benchmarks/CODING_P1_ACCEPTANCE.md#deepseek-实跑与编码治理)

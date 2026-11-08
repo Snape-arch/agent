@@ -100,8 +100,17 @@ class ComparisonCapture:
                 if prepare is not None:
                     messages = prepare(messages)
                 left = capture.limits['max_wall_seconds'] - (capture.clock()-capture.started)
-                options = dict(options, max_tokens=capture.limits['max_output_tokens'], temperature=0,
+                cap = capture.limits['max_output_tokens']
+                requested = options.get('max_tokens', cap)
+                if type(requested) is not int or requested <= 0:
+                    raise ValueError('comparison output cap must be a positive integer')
+                options = dict(options, max_tokens=min(cap, requested), temperature=0,
                     response_format=options.get('response_format') or {'type':'json_object'})
+                prepare_options = getattr(provider, 'prepare_options', None)
+                if prepare_options is not None:
+                    options = prepare_options(options)
+                if type(options.get('max_tokens')) is not int or not 0 < options['max_tokens'] <= min(cap, requested):
+                    raise ValueError('provider changed the frozen output limit')
                 reservation = len(json.dumps(messages, ensure_ascii=False, separators=(',', ':')).encode('utf-8')) + options['max_tokens']
                 ledger = capture.ledger
                 if (left <= 0 or ledger['calls'] >= capture.limits['max_model_calls'] or

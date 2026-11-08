@@ -533,6 +533,31 @@ asyncio.run(s.run(sys.argv[2],"Fix arithmetic",allowed_paths=["a.py","b.py"],tes
         self.assertEqual(result["status"],"review_rejected")
         self.assertEqual(count,2)
 
+    async def test_truncated_review_retries_with_bounded_evidence_and_cannot_approve(self):
+        attempts = []
+
+        class ReviewerProvider(Provider):
+            async def complete(self, messages, options):
+                if self.role != 'reviewer':
+                    return await super().complete(messages, options)
+                packet = json.loads(messages[1]['content'])
+                attempts.append((options['max_tokens'], packet))
+                truncated = len(attempts) == 1
+                review = dict(approved=truncated, reasons=['a.py needs verification'], risks=[])
+                return dict(ok=True, content=json.dumps(review), usage=dict(total_tokens=50),
+                            raw=dict(choices=[dict(finish_reason='length' if truncated else 'stop')]))
+
+        service = ReliableCollaborationService(lambda spec: ReviewerProvider(spec.role_id), root=self.root)
+        result = await service.run(self.repo, 'Fix arithmetic', **self.kwargs())
+        self.assertEqual(result['status'], 'review_rejected')
+        self.assertEqual([cap for cap, _ in attempts], [640, 1200])
+        for _, packet in attempts:
+            self.assertIn('diff --git', packet['diff'])
+            self.assertIn('execution_context', packet)
+            self.assertNotIn('files', packet)
+            self.assertEqual(packet['tests'], [dict(index=0, exit_code=0, timed_out=False)])
+        self.assertIn('previous_failure', attempts[1][1])
+
     async def test_identical_parallel_changes_are_deduplicated(self):
         def handler(role,packet):
             if role=="planner":
