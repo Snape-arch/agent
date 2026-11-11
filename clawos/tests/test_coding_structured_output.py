@@ -173,6 +173,30 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             structured.parse(json.dumps(dict(approved=True, reasons=['x' * 221], risks=[])), schema)
         custom = DeepSeekProvider(dict(base_url='https://example.test'))
         self.assertEqual(custom.prepare_options(dict(response_format=fmt)), dict(response_format=fmt))
+        await provider.complete([dict(role='user', content='Return JSON')],
+                                dict(response_format=fmt, reasoning_effort='low', max_tokens=8192))
+        self.assertEqual(client.calls[-1]['json']['thinking'], {'type': 'enabled'})
+        self.assertEqual(client.calls[-1]['json']['reasoning_effort'], 'low')
+
+    async def test_single_discards_truncated_answer_and_retries_with_clean_context(self):
+        received = []
+
+        class Provider:
+            async def complete(self, messages, options):
+                received.append(copy.deepcopy(messages))
+                if len(received) == 1:
+                    return dict(ok=False, content='truncated_untrusted_output', usage={'total_tokens': 20},
+                                raw={'choices': [{'finish_reason': 'length'}]})
+                change = dict(path='a.py', operation='replace', old_text='return a - b', new_text='return a + b')
+                content = json.dumps(dict(changes=[change], test_commands=[['python', 'check.py']]))
+                return dict(ok=True, content=content, usage={'total_tokens': 10},
+                            raw={'choices': [{'finish_reason': 'stop'}]})
+
+        proposal = await AutonomousCodingService(Provider()).propose(self.repo, 'Correct addition', focus_paths=['a.py'])
+        self.assertEqual([row['status'] for row in proposal['format_attempts']], ['truncated', 'parsed'])
+        self.assertIn('reached its output cap', received[-1][-1]['content'])
+        self.assertNotIn('truncated_untrusted_output', str(received[-1]))
+        self.assertIn('return a - b', (self.repo / 'a.py').read_text())
 
     async def test_single_syntax_error_returns_location_for_repair_before_writing(self):
         observed = []

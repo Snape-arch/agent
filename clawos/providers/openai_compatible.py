@@ -62,6 +62,8 @@ class OpenAICompatibleProvider:
             payload["response_format"] = options["response_format"]
         if options.get("thinking") is not None:
             payload["thinking"] = options["thinking"]
+        if options.get("reasoning_effort") is not None:
+            payload["reasoning_effort"] = options["reasoning_effort"]
         if options.get("grammar") is not None:
             payload["grammar"] = options["grammar"]
         if options.get("stop") is not None:

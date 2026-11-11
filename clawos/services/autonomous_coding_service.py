@@ -53,7 +53,15 @@ class AutonomousCodingService:
         budget: ExecutionBudget | None = None,
         test_commands: list[list[str]] | None = None,
         requirements: list[dict[str, Any]] | None = None,
+        max_output_tokens: int = 1800,
+        reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
+        if type(max_output_tokens) is not int or not 256 <= max_output_tokens <= 12000:
+            raise ValueError('proposal output cap must be 256..12000 tokens')
+        if reasoning_effort is not None and (reasoning_effort not in {'low', 'high', 'max'} or
+                getattr(self.provider, 'name', '') != 'deepseek' or
+                getattr(self.provider, 'base_url', '') not in {'https://api.deepseek.com', 'https://api.deepseek.com/v1'}):
+            raise ValueError('coding reasoning effort requires the official DeepSeek endpoint')
         execution_budget = budget or self.budget_factory()
         frozen_commands = None
         if test_commands is not None:
@@ -106,6 +114,9 @@ class AutonomousCodingService:
             prompt += (
                 "\n\n[Previous attempt failed and was restored]\n"
                 + json.dumps(previous_failure, ensure_ascii=False)[:12_000]
+                + "\nThe failed candidate is evidence. Explain the mismatch to yourself, identify the wrong "
+                  "algorithm or assumption, and propose corrected changes against the restored source. "
+                  "Preserve working cases. Return only the requested JSON."
             )
         messages = [
                 {
@@ -129,16 +140,27 @@ class AutonomousCodingService:
             })
             if not before_model["allowed"]:
                 raise PermissionError("before_model policy hook denied the request")
-            response = await self.provider.complete(messages, {"temperature": 0.0, "max_tokens":1800,
-                "response_format": structured.response_format('proposal', output_schema)})
+            options = {"temperature": 0.0, "max_tokens": max_output_tokens,
+                       "response_format": structured.response_format('proposal', output_schema)}
+            if reasoning_effort is not None:
+                options['reasoning_effort'] = reasoning_effort
+            response = await self.provider.complete(messages, options)
             # Invalid/incomplete answers are still charged before parsing.
             usage = (response.get('usage') or {}).get('total_tokens')
-            charged = usage if type(usage) is int and usage > 0 else len(json.dumps(messages,ensure_ascii=False).encode('utf-8')) + 1800
+            charged = usage if type(usage) is int and usage > 0 else (
+                len(json.dumps(messages, ensure_ascii=False).encode('utf-8')) + max_output_tokens)
             execution_budget.consume(tokens=charged)
             content = str(response.get("content") or "").strip()
             format_attempts.append(dict(attempt=format_attempt + 1, charged_tokens=charged,
                 content_digest=hashlib.sha256(content.encode('utf-8')).hexdigest(), status='received'))
             finish = ((response.get('raw') or {}).get('choices') or [{}])[0].get('finish_reason')
+            if finish == 'length' and format_attempt == 0:
+                format_attempts[-1]['status'] = 'truncated'
+                messages.append({'role': 'user', 'content': (
+                    'The previous answer reached its output cap. Return compact JSON with exact small edit '
+                    'anchors and the required fields. Omit explanations and unchanged code.'
+                )})
+                continue
             if not response.get("ok") or finish in {'length','content_filter'}:
                 self.hooks.run("on_failure", {"stage":"model", "error":response.get('error') or 'incomplete answer'})
                 raise RuntimeError(response.get("error") or "model proposal incomplete or failed")
@@ -202,6 +224,17 @@ class AutonomousCodingService:
             "writes_performed": False,
             "requires_confirmation": True,
         }
+
+    @staticmethod
+    def repair_feedback(proposal, *, error, rounds):
+        """Carry bounded evidence from the failed candidate into a clean retry."""
+        changes = json.dumps(proposal['proposal']['changes'], ensure_ascii=False, separators=(',', ':'))
+        failures = [dict(command=test.get('command'), exit_code=test.get('exit_code'),
+                         stdout=str(test.get('stdout') or '')[-300:], stderr=str(test.get('stderr') or '')[-1600:])
+                    for entry in rounds for test in entry.get('tests', [])
+                    if test.get('exit_code') != 0 or test.get('timed_out')]
+        return dict(error=str(error or '')[:500], candidate_edit_excerpt=changes[:4500],
+                    rounds=[dict(tests=failures[:3])])
 
     async def run(
         self,
@@ -338,10 +371,7 @@ class AutonomousCodingService:
                     "online_rl_claimed": False,
                     "trajectory_id": trace_run["id"] if trace_run else "",
                 }
-            previous_failure = {
-                "failure": result.get("failure"),
-                "rounds": result.get("rounds"),
-            }
+            previous_failure = self.repair_feedback(proposal, error=result.get('failure'), rounds=result.get('rounds', []))
         self.hooks.run("on_failure", {
             "objective": objective, "attempts": len(attempts),
         })

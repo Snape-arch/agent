@@ -11,3 +11,5 @@
 - 跨仓库编码 P0 已封存 8 道私有模块任务并完成 16 个真实 DeepSeek 变体。单、多代理各交付 5/8，一次截断使整轮未达到严格可比条件，余下七对分别通过 5/7 和 4/7。 [跨仓库验收](clawos/benchmarks/CODING_CROSSREPO_ACCEPTANCE.md)
 - 编码协作 P1 已修同文件多处补丁与失败断言定位。固定分工的两次 DeepSeek 演练均验证了进程中断恢复和真实 Git 冲突合并，定向回归 60/60。动态规划下的跨仓库恢复待验证。 [P1 验收](clawos/benchmarks/CODING_CROSSREPO_ACCEPTANCE.md#2026-11-11-补丁诊断与恢复)
 - 编码策略 P2 已接入可选单代理优先路由。两条 DeepSeek 路径已实跑，覆盖单代理成功和失败后按剩余预算升级。历史缩进题的复核确认了补丁的空白行缺陷，并修复了完整评审拒绝因理由超长而丢失的问题。 [P2 验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#p2-单代理优先)
+- 编码评审可在严格沙箱重放契约反例、独立推导预期值、修补和复审。历史缩进题的受控重放通过原公开与独立留出测试。修复了公开评测暴露的共享运行时 ACL 竞争。SWE-bench Pro V2 与 Terminal-Bench 2.1 官方评分仍待验收。 [公开评测与反例验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#评审反例修复与公开题验收)
+- Aider Polyglot Python 全部 34 道原题完成三轮评分，结果为 18/34、18/34、21/34。最新轮在延长时限后完成 64 次有回执调用，13 道未通过。 [评分方法与回执](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#评审反例修复与公开题验收)

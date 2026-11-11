@@ -89,9 +89,15 @@ def recover_command(command_id, *, confirmed=False):
                         raise ValueError('Git pointer changed; quarantine remains')
                 elif current!=saved:raise ValueError('Git pointer appeared; quarantine remains')
             save(folder/'recovery.json',dict(request_digest=digest,phase='cleaning',cleanup_verified=False))
-            for path in (request['workspace'],request['runtime']):
-                result=subprocess.run(['icacls',path,'/remove:g','*'+sid,'/T','/Q'],capture_output=True,timeout=60)
-                if result.returncode:raise RuntimeError('recovery ACL revocation failed; quarantine remains')
+            from .sandbox_supervisor import runtime_acl_lock
+            revoke = ['/remove:g', '*' + sid, '/T', '/Q']
+            result = subprocess.run(['icacls', request['workspace'], *revoke], capture_output=True, timeout=60)
+            if result.returncode:
+                raise RuntimeError('recovery workspace ACL revocation failed; quarantine remains')
+            with runtime_acl_lock(request['runtime']):
+                result = subprocess.run(['icacls', request['runtime'], *revoke], capture_output=True, timeout=60)
+            if result.returncode:
+                raise RuntimeError('recovery runtime ACL revocation failed; quarantine remains')
             GitControlSeal.restore_snapshot(control,state['git_control'])
             if status.get('installed'):boundary.uninstall(confirmed=True)
             if boundary.status().get('installed'):raise RuntimeError('profile still installed; quarantine remains')

@@ -94,6 +94,25 @@ class CaptureTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(capture.ledger['calls'],1);self.assertGreater(capture.ledger['charged_tokens'],0)
             self.assertEqual(capture.ledger['reserved_tokens'],0)
 
+    async def test_only_structured_coding_caller_can_receive_truncated_answer_for_retry(self):
+        from services import coding_structured_output as structured
+        from services.coding_comparison_service import complete_provider_answers
+
+        class Truncated(Provider):
+            async def complete(self, messages, options):
+                value = await super().complete(messages, options)
+                value['raw']['choices'][0]['finish_reason'] = 'length'
+                return value
+
+        capture = self.capture()
+        provider = Truncated()
+        fmt = structured.response_format('reviewer', structured.schema_for('reviewer', ['a.py']))
+        result = await capture.wrap(provider).complete([], {'response_format': fmt})
+        self.assertEqual(result['raw']['choices'][0]['finish_reason'], 'length')
+        receipt = json.loads((self.root / 'answer-1.json').read_text(encoding='utf-8'))
+        self.assertFalse(complete_provider_answers(capture.ledger, [receipt], dict(
+            actual_provider=provider.name, actual_model=provider.model)))
+
     async def test_deadline_and_implementation_drift_deny_before_actual_call(self):
         clock=[0.0];capture=ComparisonCapture(self.root,self.capture().limits,{},clock=lambda:clock[0])
         clock[0]=99999

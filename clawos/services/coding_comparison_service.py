@@ -27,7 +27,7 @@ from .reliable_collaboration import ReliableCollaborationService
 RECEIPT_CONTRACT = 'coding-receipts.v2'
 ROUTED_SCHEMA = 'clawos.coding-escalation.v1'
 CORE_FILES = ['autonomous_coding_service.py','coding_execution_context.py','coding_context_service.py',
-    'coding_contracts.py','coding_workflow_service.py','coding_workspace_service.py',
+    'coding_contracts.py','coding_review_probe.py','coding_workflow_service.py','coding_workspace_service.py',
     'reliable_collaboration.py','collaboration_delivery.py','os_sandbox.py','file_transactions.py','coding_comparison_service.py',
     'coding_structured_output.py', 'windows_appcontainer_boundary.py', 'appcontainer_process.py',
     'strict_sandbox_acceptance.py', 'sandbox_runtime.py', 'sandbox_supervisor.py', 'sandbox_recovery.py']
@@ -147,6 +147,9 @@ class ComparisonCapture:
                     raise ValueError('comparison output cap must be a positive integer')
                 options = dict(options, max_tokens=min(cap, requested), temperature=0,
                     response_format=options.get('response_format') or {'type':'json_object'})
+                response_format = options['response_format']
+                coding_retry = (response_format.get('type') == 'json_schema' and
+                    str((response_format.get('json_schema') or {}).get('name', '')).startswith('coding_'))
                 prepare_options = getattr(provider, 'prepare_options', None)
                 if prepare_options is not None:
                     options = prepare_options(options)
@@ -187,7 +190,9 @@ class ComparisonCapture:
                         raise RuntimeError('provider reported usage exceeding frozen budget')
                     if response.get('provider') != self.name or response.get('model') != self.model:
                         raise RuntimeError('provider identity differs from frozen arm')
-                    if finish in {'length','content_filter'}:
+                    # Only the structured coding caller owns a format retry.
+                    # The partial receipt still disqualifies comparability.
+                    if finish == 'content_filter' or (finish == 'length' and not coding_retry):
                         raise RuntimeError('comparison answer incomplete')
                     return response
                 finally:
@@ -280,7 +285,7 @@ class CodingComparisonService:
                 proposal_digest=proposal['proposal_digest'],context_digest=proposal['context_digest']))
             save(folder/'single-progress.json',dict(attempts=attempts))
             if result['status']=='passed':status='passed';break
-            previous = dict(error='caller frozen tests failed and changes were restored',rounds=result.get('rounds',[]))
+            previous = service.repair_feedback(proposal, error=result.get('failure'), rounds=result.get('rounds', []))
         return dict(status=status,attempts=attempts), workspace
 
     async def evaluate(self, case, final_repo, folder, capture):

@@ -25,6 +25,7 @@ from .file_transactions import _file_lock, write_text
 from .runtime_records import RunRecord, now_iso
 from .coding_contracts import CodingContracts
 from . import coding_structured_output as structured
+from . import coding_review_probe
 from .coding_context_service import CodingContextService
 from .coding_execution_context import CodingExecutionContext, LOADED_POLICY
 
@@ -421,11 +422,16 @@ class ReliableCollaborationService:
                     {"role": "user", "content": json.dumps(prompt_packet, ensure_ascii=False, separators=(',', ':'))}]
         output_schema = structured.schema_for(role, prompt_packet.get('write_paths') or
             list(prompt_packet.get('files', {})) or state['request']['paths'],
-            grounded_targets=prompt_packet.get('grounded_targets'))
+            grounded_targets=prompt_packet.get('grounded_targets'),
+            review_probe_targets=prompt_packet.get('review_probe_targets'))
         ledger = state["ledger"]
         output_cap = 1800
+        if role == 'review_oracle':
+            output_cap = 640
         if role == 'reviewer':
-            output_cap = 1200 if 'previous_failure' in packet else 640
+            output_cap = 1200 if any(key in packet for key in (
+                'previous_failure', 'review_probe_targets', 'replayed_counterexample',
+            )) else 640
         reserve = len(messages[1]["content"]) + output_cap  # Conservative admission; no unknown free usage.
         if (ledger["model_calls"] >= policy["max_model_calls"] or
                 ledger["tokens"] + ledger["reserved_tokens"] + reserve > policy["max_tokens"]):
@@ -453,7 +459,10 @@ class ReliableCollaborationService:
             ledger["tokens"] += tokens
             accounted = True
             choices = (response.get("raw") or {}).get("choices") or [{}]
-            if not response.get("ok") or choices[0].get("finish_reason") in {"length", "content_filter"}:
+            if choices[0].get('finish_reason') == 'length':
+                self.event(state, 'model_output_truncated', role=role, tokens=tokens)
+                raise ModelFormatError('provider reached the output limit', '')
+            if not response.get("ok") or choices[0].get("finish_reason") == 'content_filter':
                 raise RuntimeError(response.get("error") or "provider answer incomplete")
             content = str(response.get("content") or "").strip()
             receipt = self.root / state["run_id"] / "receipts" / (role + "-" + uuid.uuid4().hex + ".json")
@@ -582,8 +591,8 @@ class ReliableCollaborationService:
             event='worker_format_rejected' if key in {n['id'] for n in state['nodes']} else 'patch_format_rejected'
             self.event(state, event, node=key, error=str(exc))
             return await self.model(state, key + '_format', instruction +
-                ' The previous public answer was invalid JSON. Correct its serialization '
-                'and Python syntax, preserving this assignment and write scope. '
+                ' The previous public answer was incomplete or invalid. Preserve the assignment and write scope. '
+                'Use the smallest exact replacement anchors. Omit explanations and unchanged code. '
                 'Use escaped newlines in JSON code strings; close the changes array and outer object. '
                 'Do not copy punctuation errors from the previous answer.',
                 packet | {'previous_invalid_answer':exc.content, 'format_error':str(exc)})
@@ -739,16 +748,7 @@ class ReliableCollaborationService:
             return
         tests = []
         for round_no in range(3):
-            tests = []
-            for command in state["request"]["test_commands"]:
-                result = await self.owned_thread(CodingWorkflowService._run_command, repo, command,
-                                                state["request"]["limits"]["timeout_seconds"])
-                result = dict(result, command=list(command))
-                tests.append(result)
-                self.event(state, "integration_test", round=round_no, exit_code=result["exit_code"], command=command)
-            state["integration"].setdefault("test_rounds", []).append({"round": round_no, "tests": tests})
-            state['requirement_results'] = CodingContracts.results(state['request'].get('requirements', []), tests, self.digest, repo=repo)
-            self.save(state)
+            tests = await self.integration_tests(state, repo, round_no)
             if all(t["exit_code"] == 0 for t in tests) or round_no == 2:
                 break
             failure_context = await self.owned_thread(CodingExecutionContext.failure_context, repo, tests)
@@ -870,6 +870,40 @@ class ReliableCollaborationService:
             state['status'] = state['integration']['status'] = 'contract_failed'
             self.event(state, 'integration_contract_failed', results=state['requirement_results'])
             return
+        changed = set(self.git(repo, 'diff', '--name-only', state['baseline']['baseline_commit']).stdout.splitlines())
+        targets = {}
+        for requirement in state['request'].get('requirements', []):
+            paths = [p for p in requirement['paths'] if p in changed and p.endswith('.py')]
+            if paths:
+                targets[requirement['id']] = paths
+        review = await self.review_candidate(state, repo, diff, tests, targets=targets)
+        if review.get('approved') is False and review.get('counterexample'):
+            review = await self.repair_review_rejection(state, repo, review, targets)
+        state["review"] = review
+        approved = (review.get("approved") is True and any(r.strip() for r in review["reasons"])
+                    and not review["risks"] and 'counterexample' not in review)
+        state["status"] = "passed" if approved else "review_rejected"
+        commit = self.git(repo, "rev-parse", "HEAD").stdout.strip()
+        state["integration"].update(status=state["status"], commit=commit,
+            patch_digest=self.digest(self.git(repo, "show", "--format=", "--binary", commit).stdout))
+        self.event(state, "review_completed", approved=approved,
+                   integrated_diff_digest=state["integration"]["diff_digest"])
+
+    async def integration_tests(self, state, repo, round_no):
+        tests = []
+        for command in state['request']['test_commands']:
+            result = await self.owned_thread(CodingWorkflowService._run_command, repo, command,
+                                             state['request']['limits']['timeout_seconds'])
+            tests.append(dict(result, command=list(command)))
+            self.event(state, 'integration_test', round=round_no, exit_code=result['exit_code'], command=command)
+        state['integration'].setdefault('test_rounds', []).append(dict(round=round_no, tests=tests))
+        state['requirement_results'] = CodingContracts.results(state['request'].get('requirements', []), tests,
+                                                                 self.digest, repo=repo)
+        self.save(state)
+        return tests
+
+    async def review_candidate(self, state, repo, diff, tests, *, targets=None,
+                               confirmed_probe=None, disproven_probe=None):
         instruction = (
             'Independently review the objective, integrated patch, source excerpts and actual test evidence. '
             'Return {"approved":true,"reasons":["specific evidence"],"risks":[]}. '
@@ -880,6 +914,30 @@ class ReliableCollaborationService:
              "requirement_results": state.get("requirement_results", []),
              "tests": [dict(index=i, exit_code=t["exit_code"], timed_out=bool(t.get("timed_out")))
                        for i, t in enumerate(tests)]}
+        if targets:
+            packet['review_probe_targets'] = targets
+            instruction += (
+                ' When rejecting a wrong result you can reproduce for a listed caller requirement, include one '
+                'counterexample with requirement_id, path, function, arguments_json (JSON text array of positional '
+                'arguments), and expected_json (JSON text return value). Use a public synchronous top-level Python '
+                'function from that changed path. The expected result must follow the caller requirement. '
+                'Omit counterexample on approval or if the problem cannot be expressed this way.'
+            )
+        if confirmed_probe:
+            packet['replayed_counterexample'] = dict(case=confirmed_probe, before='mismatch', after='match',
+                                                     strict_boundary_verified=True)
+            instruction += (
+                ' The fixed sandbox replay observed a mismatch before the edit and an exact expected match after it. '
+                'Treat that result as executed evidence. Review the complete caller objective and other changed branches '
+                'for independent defects. A remaining defect needs distinct concrete evidence.'
+            )
+        if disproven_probe:
+            packet['disproven_counterexample'] = disproven_probe
+            instruction += (
+                ' The previous counterexample already returned its expected result in the sandbox. '
+                'Trace a different changed branch and report a distinct reproducible case if one follows '
+                'from the caller contract. Do not repeat the disproven case.'
+            )
         view = await self.execution_context(state, repo, 'reviewer', state['request']['paths'])
         if view:packet['execution_context'] = view
         for attempt in range(2):
@@ -889,23 +947,119 @@ class ReliableCollaborationService:
                     any(not isinstance(review.get(k),list) or not all(isinstance(v,str) for v in review[k])
                         for k in ("reasons","risks"))):
                     raise ValueError("review requires approved boolean and reasons/risks string arrays")
-                break
+                return review
             except (ValueError,RuntimeError) as exc:
                 self.event(state,"review_format_rejected",attempt=attempt+1,error=str(exc))
                 if attempt:
                     raise
                 packet["previous_failure"] = (
-                    "Previous review was incomplete or invalid. Return exactly approved, reasons, and risks. "
-                    "Use one evidence-based reason under 160 characters. Report any blocking risk in risks.")
-        state["review"] = review
-        approved = (review.get("approved") is True and isinstance(review.get("reasons"), list)
-                    and any(r.strip() for r in review["reasons"]) and isinstance(review.get("risks"), list) and not review["risks"])
-        state["status"] = "passed" if approved else "review_rejected"
-        commit = self.git(repo, "rev-parse", "HEAD").stdout.strip()
-        state["integration"].update(status=state["status"], commit=commit,
-            patch_digest=self.digest(self.git(repo, "show", "--format=", "--binary", commit).stdout))
-        self.event(state, "review_completed", approved=approved,
-                   integrated_diff_digest=state["integration"]["diff_digest"])
+                    "Previous review validation failed: " + str(exc)[:240] + ". "
+                    'Return one compact JSON line with approved, reasons, and risks. '
+                    'Use exactly one reason under 160 characters and at most one short blocking risk. '
+                    'Do not quote code, input strings, or line breaks in the verdict.')
+
+    async def repair_review_rejection(self, state, repo, review, targets):
+        probe = review['counterexample']
+        integration = state['integration']
+        record = integration['review_repair'] = dict(original_review=review, status='unverified')
+        request = state['request']
+        rejection = review
+        try:
+            before = await self.owned_thread(self.source_stamp, repo, request['paths'])
+            for index in range(2):
+                path = probe['path']
+                self.event(state, 'review_counterexample_proposed', path=path, requirement_id=probe['requirement_id'])
+                files = self.read_files(repo, [path])
+                command = coding_review_probe.command_for(probe, targets, files.__getitem__)
+                record['command_digest'] = self.digest(command)
+                result = await self.owned_thread(CodingWorkflowService._run_command, repo, command,
+                                                 request['limits']['timeout_seconds'], require_strict=True)
+                record['before'] = coding_review_probe.classify(result)
+                record['before_receipt'] = result.get('sandbox', {}).get('supervisor_receipt')
+                if before != await self.owned_thread(self.source_stamp, repo, request['paths']):
+                    raise ValueError('counterexample changed integration worktree')
+                if record['before'] != 'match' or index:
+                    break
+                diff = self.git(repo, 'diff', '--binary', state['baseline']['baseline_commit']).stdout
+                replacement = await self.review_candidate(state, repo, diff, integration['tests'],
+                                                          targets=targets, disproven_probe=probe)
+                record['replacement_review'] = replacement
+                candidate = replacement.get('counterexample')
+                if replacement['approved'] or not candidate or candidate == probe:
+                    break
+                record['disproven_command_digest'] = record['command_digest']
+                record['disproven_receipt'] = record['before_receipt']
+                probe, rejection = candidate, replacement
+            if record['before'] != 'mismatch':
+                self.event(state, 'review_counterexample_unconfirmed', result=record['before'])
+                return review
+            self.event(state, 'review_counterexample_confirmed', command_digest=record['command_digest'])
+            requirement = next(r for r in request['requirements'] if r['id'] == probe['requirement_id'])
+            oracle_instruction = (
+                'Derive the expected return value independently using only the caller contract and these input arguments. '
+                'Preserve line endings, exact types and output shape. If the contract does not determine the result, '
+                'return {"determined":false,"expected_json":"","reason":"why it is underspecified"}. '
+                'Otherwise return {"determined":true,"expected_json":"JSON text of the return value","reason":"contract basis"}. '
+                'Use one sentence under 120 characters for reason. Return one JSON line.'
+            )
+            oracle_packet = dict(requirements=[requirement], write_paths=[path], function=probe['function'],
+                                 arguments_json=probe['arguments_json'])
+            try:
+                oracle = await self.model(state, 'review_oracle', oracle_instruction, oracle_packet)
+            except ModelFormatError as exc:
+                self.event(state, 'review_expectation_format_rejected', error=str(exc))
+                oracle = await self.model(state, 'review_oracle', oracle_instruction, oracle_packet | {
+                    'format_error': str(exc)[:240],
+                })
+            record['contract_oracle'] = oracle
+            if (not oracle['determined'] or coding_review_probe.canonical_value(oracle['expected_json']) !=
+                    coding_review_probe.canonical_value(probe['expected_json'])):
+                record['status'] = 'expectation_unconfirmed'
+                self.event(state, 'review_expectation_unconfirmed', command_digest=record['command_digest'])
+                return review
+            instruction = (
+                'Correct the reproduced review failure with a bounded patch to the supplied file. '
+                'Preserve the caller contract and existing passing behavior. Use the shortest exact source anchors. '
+                'Return {"changes":[{"path":"authorized/path","operation":"replace",'
+                '"old_text":"exact existing text","new_text":"corrected text"}]}. '
+                'Return only changes. Omit complete files, unchanged functions, and explanations.'
+            )
+            packet = dict(objective=request['objective'], files=files,
+                          requirements=CodingContracts.select(request['requirements'], [path]), rejected_review=rejection)
+            for attempt in range(2):
+                proposal = await self.worker_patch(state, 'repairer', instruction, packet)
+                try:
+                    applied = await self.owned_thread(self.apply_proposal, repo, proposal, [path], 'reproduced review failure')
+                    break
+                except (ValueError, SyntaxError) as exc:
+                    if attempt or before != await self.owned_thread(self.source_stamp, repo, request['paths']):
+                        raise
+                    packet['previous_failure'] = str(exc)[:600]
+                    self.event(state, 'review_patch_rejected', attempt=attempt + 1, error=packet['previous_failure'])
+            record['patch_digest'] = applied['patch_digest']
+            diff = self.git(repo, 'diff', '--binary', state['baseline']['baseline_commit']).stdout
+            integration['diff_digest'] = self.digest(diff)
+            before = await self.owned_thread(self.source_stamp, repo, request['paths'])
+            result = await self.owned_thread(CodingWorkflowService._run_command, repo, command,
+                                             request['limits']['timeout_seconds'], require_strict=True)
+            record['after'] = coding_review_probe.classify(result)
+            record['after_receipt'] = result.get('sandbox', {}).get('supervisor_receipt')
+            tests = await self.integration_tests(state, repo, len(integration['test_rounds']))
+            integration['tests'] = tests
+            if (before != await self.owned_thread(self.source_stamp, repo, request['paths']) or
+                    record['after'] != 'match' or any(t['exit_code'] != 0 or t.get('timed_out') for t in tests) or
+                    not all(r['passed'] for r in state['requirement_results'])):
+                record['status'] = 'verification_failed'
+                self.event(state, 'review_repair_verification_failed', result=record['after'])
+                return review
+            record['status'] = 'verified'
+            self.event(state, 'review_repair_verified', command_digest=record['command_digest'],
+                       patch_digest=record['patch_digest'])
+            return await self.review_candidate(state, repo, diff, tests, confirmed_probe=probe)
+        except (KeyError, TypeError, ValueError, OSError, RuntimeError, SyntaxError) as exc:
+            record['status'] = 'review_blocked' if record['status'] == 'verified' else 'blocked'
+            self.event(state, 'review_repair_blocked', error=f'{type(exc).__name__}: {exc}')
+            return review
 
     def local_import_repair(self, repo, allowed, tests):
         """Mechanical namespace wiring only; never infer a semantic repair.

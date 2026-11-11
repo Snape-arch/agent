@@ -141,6 +141,7 @@ class WindowsAppContainerBoundary:
         if confirmed is not True:
             raise PermissionError("confirmed=true required to grant a private runtime")
         from .appcontainer_process import safe_tree
+        from .sandbox_supervisor import runtime_acl_lock
         if self.runtime_dir is None:
             raise ValueError("CLAWOS_APPCONTAINER_RUNTIME must name a private copied runtime")
         runtime = safe_tree(self.runtime_dir)
@@ -149,8 +150,9 @@ class WindowsAppContainerBoundary:
         status = self.status()
         if not status.get("installed"):
             raise RuntimeError("AppContainer profile is not installed")
-        result = subprocess.run(["icacls", str(runtime), "/grant", f"*{status['sid']}:(OI)(CI)RX"],
-            capture_output=True, text=True, errors="replace", timeout=30)
+        with runtime_acl_lock(runtime):
+            result = subprocess.run(["icacls", str(runtime), "/grant", f"*{status['sid']}:(OI)(CI)RX"],
+                capture_output=True, text=True, errors="replace", timeout=30)
         if result.returncode != 0:
             raise RuntimeError("private runtime read/execute grant failed")
         return {"runtime": str(runtime), "sid": status["sid"], "read_execute_granted": True}
@@ -168,6 +170,7 @@ class WindowsAppContainerBoundary:
                     timeout_seconds: float = 180, confirmed_acl: bool = False,
                     cancelled=None, journal=None, command_profile=None) -> dict[str, Any]:
         from .appcontainer_process import launch, safe_tree, validate_python_command, GitControlSeal
+        from .sandbox_supervisor import runtime_acl_lock
         if confirmed_acl is not True:
             raise PermissionError("confirmed=true required for sandbox workspace ACL")
         if self.runtime_dir is None:
@@ -215,10 +218,12 @@ class WindowsAppContainerBoundary:
                 finally:
                     cleanup = []
                     if installed and installed.get('created'):
-                        for path in (cwd, runtime):
-                            revoked = subprocess.run(['icacls', str(path), '/remove:g', '*' + installed['sid'], '/T', '/Q'],
-                                capture_output=True, timeout=60)
-                            cleanup.append(revoked.returncode == 0)
+                        revoke = ['/remove:g', '*' + installed['sid'], '/T', '/Q']
+                        cleanup.append(subprocess.run(['icacls', str(cwd), *revoke],
+                            capture_output=True, timeout=60).returncode == 0)
+                        with runtime_acl_lock(runtime):
+                            cleanup.append(subprocess.run(['icacls', str(runtime), *revoke],
+                                capture_output=True, timeout=60).returncode == 0)
                         removed = scoped.uninstall(confirmed=True)
                         if not all(cleanup) or not removed.get('deleted'):
                             raise RuntimeError('command profile or ACL cleanup failed; boundary not accepted')

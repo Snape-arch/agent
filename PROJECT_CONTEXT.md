@@ -34,6 +34,16 @@ DeepSeek 官方编码接口以 `deepseek-v4-pro` 完成两轮公开题实测。�
 
 缩进题回执复核确认，重试的模型评审明确拒绝，理由因超过 220 字符被旧解析器丢弃。反例证明原补丁在共同缩进为空时漏掉空白行归一化。解析器现保留结构完整、文本有界的拒绝和风险，批准仍走原门禁。 [失败复核](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#缩进题失败复核)
 
+## 编码评审反例与公开评测
+
+协作评审现可提出与冻结契约绑定的 Python 反例。严格沙箱复现、独立推导预期值、局部修复、原反例和原测试复验均通过后，才进入复审。历史 CPython 缩进题用归档规划、补丁与初始拒绝重放，DeepSeek 实时完成推导、修补和复审，原公开与独立留出测试均通过。单代理重试已接入实际失败证据和旧候选摘要，截断答复会丢弃并有界重试。
+
+Aider 原题并发首轮发现共享 Windows 运行时 ACL 更新竞态。授权、回收和中断恢复现共用运行时锁。公开原题适配器只覆盖 Python 的 34 道题，原始测试在独立 AppContainer 中评分。SWE-bench Pro V2 与 Terminal-Bench 2.1 需要现有环境缺少的 Linux 容器执行器，官方评分仍待验收。 [复现与证据](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#评审反例修复与公开题验收)
+
+Aider Python 非推理基线和首轮推理修复各为 18/34。延长时限后的推理修复为 21/34，仍有 13 道未通过。三轮均保存原题评分与冻结源码见证。默认代理策略尚未切换，后续需要补齐 Linux 容器内的整仓定位、多语言修改和独立评分。 [成绩及运行预算](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#评审反例修复与公开题验收)
+
+协作和沙箱回归各 38/38。编码回归首轮 138/139，修复通用捕获接口误透传截断后，对照套件复测 17/17。未启用新默认路由或发布编码自进化候选。 [回归与证据](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#评审反例修复与公开题验收)
+
 ## 尚未验收
 
 - 275个历史资料或产物缺少可核验原件，用户不确定备份是否存在；不能按同名候选重新绑定。

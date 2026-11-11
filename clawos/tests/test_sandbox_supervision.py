@@ -1,15 +1,18 @@
+from contextlib import ExitStack
 import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from services.sandbox_runtime import SandboxRuntime, runtime_files
-from services.sandbox_supervisor import ProcessIdentity, run_supervised, unresolved
+from services.sandbox_supervisor import ProcessIdentity, run_supervised, runtime_acl_lock, unresolved
 from services.coding_workflow_service import CodingWorkflowService
 from services.windows_appcontainer_boundary import WindowsAppContainerBoundary
 
@@ -94,6 +97,42 @@ class RuntimeIntegrity(unittest.TestCase):
 
 
 class SupervisorOwnership(unittest.TestCase):
+    def test_shared_runtime_acl_mutation_is_serialized_across_processes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            runtime = root / 'runtime'
+            runtime.mkdir()
+            ready = root / 'ready'
+            script = ('from pathlib import Path\nimport sys\n'
+                      'from services.sandbox_supervisor import runtime_acl_lock\n'
+                      'Path(sys.argv[2]).touch()\n'
+                      'with runtime_acl_lock(sys.argv[1]):\n    print("entered", flush=True)\n')
+            with ExitStack() as processes:
+                with runtime_acl_lock(runtime):
+                    child = processes.enter_context(subprocess.Popen(
+                        [sys.executable, '-c', script, str(runtime), str(ready)],
+                        cwd=Path(__file__).resolve().parents[1], stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE, text=True,
+                    ))
+                    try:
+                        deadline = time.monotonic() + 10
+                        while not ready.exists() and child.poll() is None and time.monotonic() < deadline:
+                            time.sleep(.02)
+                        self.assertTrue(ready.exists(), 'second process did not attempt the runtime lock')
+                        with self.assertRaises(subprocess.TimeoutExpired):
+                            child.wait(timeout=.2)
+                    except BaseException:
+                        if child.poll() is None:
+                            child.kill()
+                        raise
+                try:
+                    stdout, stderr = child.communicate(timeout=10)
+                    self.assertEqual(child.returncode, 0, stderr)
+                    self.assertEqual(stdout.strip(), 'entered')
+                finally:
+                    if child.poll() is None:
+                        child.kill()
+
     @unittest.skipUnless(os.name=='nt','Native process handles')
     def test_creation_identity_mismatch_is_rejected(self):
         identity=ProcessIdentity(os.getpid())

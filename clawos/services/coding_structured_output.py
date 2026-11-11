@@ -24,7 +24,7 @@ def obj(properties, required=None):
                 additionalProperties=False)
 
 
-def schema_for(role, paths, *, grounded_targets=None):
+def schema_for(role, paths, *, grounded_targets=None, review_probe_targets=None):
     """Use only caller-authorized paths; dependencies remain read-only."""
     paths = sorted(set(paths))
     if not paths:raise ValueError('structured coding output needs an explicit write scope')
@@ -36,7 +36,17 @@ def schema_for(role, paths, *, grounded_targets=None):
                         write_paths=array(path, 24, 1), depends_on=array(identifier, 24)))
         return obj(dict(nodes=array(node, 24, 1)))
     if role == 'reviewer':
-        return obj(dict(approved=dict(type='boolean'), reasons=array(text(220), 2), risks=array(text(220), 2)))
+        fields = dict(approved=dict(type='boolean'), reasons=array(text(220), 2), risks=array(text(220), 2))
+        required = list(fields)
+        if review_probe_targets:
+            fields['counterexample'] = obj(dict(
+                requirement_id=dict(type='string', enum=sorted(review_probe_targets)),
+                path=path, function=symbol, arguments_json=text(800, minimum=2),
+                expected_json=text(800, minimum=1),
+            ))
+        return obj(fields, required)
+    if role == 'review_oracle':
+        return obj(dict(determined=dict(type='boolean'), expected_json=text(800), reason=text(220, minimum=1)))
     if role == 'diagnostician':
         target = obj(dict(path=path, symbol=symbol))
         if grounded_targets:target['enum']=grounded_targets
@@ -130,8 +140,9 @@ def parse_review(content, schema):
     except ValueError as original:
         # Preserve a complete negative verdict for diagnosis. Approval still
         # requires the original schema, and the raw answer remains auditable.
-        rejection = obj(dict(approved=dict(type='boolean', enum=[False]),
-                             reasons=array(text(4096), 2), risks=array(text(4096), 2)))
+        fields = schema['properties'] | dict(approved=dict(type='boolean', enum=[False]),
+                                           reasons=array(text(4096), 2), risks=array(text(4096), 2))
+        rejection = obj(fields, schema['required'])
         try:
             return parse(content, rejection)
         except ValueError:

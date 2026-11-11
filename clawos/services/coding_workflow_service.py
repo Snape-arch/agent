@@ -470,10 +470,10 @@ class CodingWorkflowService:
         return parts
 
     @staticmethod
-    def _run_command(repo: Path, command: list[str], timeout_seconds: int) -> dict[str, Any]:
+    def _run_command(repo: Path, command: list[str], timeout_seconds: int, *, require_strict=False) -> dict[str, Any]:
         repo = Path(repo).resolve()
         started = time.perf_counter()
-        strict = os.environ.get("CLAWOS_REQUIRE_OS_SANDBOX", "").lower() in {"1", "true", "yes"}
+        strict = require_strict or os.environ.get("CLAWOS_REQUIRE_OS_SANDBOX", "").lower() in {"1", "true", "yes"}
         metadata_path = repo.parent / "workspace.json"
         if os.name == "nt" and metadata_path.is_file():
             try:

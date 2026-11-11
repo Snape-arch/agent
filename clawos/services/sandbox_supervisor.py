@@ -62,6 +62,16 @@ def host_lock(target, timeout=10):
     return _file_lock(target,timeout=timeout,lock_dir=folder)
 
 
+def runtime_acl_lock(runtime):
+    # An ACL update may rewrite inherited ACEs throughout the shared runtime.
+    # Key the lock to that runtime, independent of caller TEMP or output roots.
+    runtime = safe_tree(Path(runtime))
+    folder = runtime.parent / '.clawos-runtime-acl-locks'
+    folder.mkdir(exist_ok=True)
+    safe_tree(folder)
+    return _file_lock(runtime, timeout=90, lock_dir=folder)
+
+
 def unresolved(root, workspace):
     for request in root.glob('*/request.json'):
         try:

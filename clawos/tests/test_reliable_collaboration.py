@@ -104,10 +104,16 @@ class CollaborationTests(unittest.IsolatedAsyncioTestCase):
         self.root = self.folder / "runs"
         # Runtime/sandbox integration has separate real acceptance. These tests
         # execute the caller's fixture command using a native child process.
-        def run_test(repo, command, timeout):
+        def run_test(repo, command, timeout, *, require_strict=False):
+            if require_strict:
+                command = [sys.executable, *command[1:]]
             proc = subprocess.run(command, cwd=repo, capture_output=True, text=True, timeout=timeout)
+            sandbox = {"backend": "test-fixture-native", "os_enforced": False}
+            if require_strict:
+                sandbox.update(dict.fromkeys(('strict_boundary_verified', 'parent_token_verified',
+                    'git_control_pointer_sealed', 'profile_and_grants_removed'), True))
             return dict(command=command, exit_code=proc.returncode, stdout=proc.stdout,
-                        stderr=proc.stderr, sandbox={"backend": "test-fixture-native", "os_enforced": False})
+                        stderr=proc.stderr, sandbox=sandbox)
         self.runner = patch.object(CodingWorkflowService, "_run_command", side_effect=run_test)
         self.runner.start()
         self.addCleanup(self.runner.stop)
@@ -400,6 +406,95 @@ class CollaborationTests(unittest.IsolatedAsyncioTestCase):
             return {"approved": False, "reasons": ["missing requirement"], "risks": []} if role == "reviewer" else answer(role)
         result = await self.service(handler).run(self.repo, "Fix arithmetic", **self.kwargs())
         self.assertEqual(result["status"], "review_rejected")
+
+    async def check_counterexample(self, expected, repair, *, disprove_first=False, noop_first=False,
+                                   invalid_oracle_first=False):
+        requirements = [dict(id='addition', statement='Return the sum including zero inputs.',
+                             paths=['a.py'], test_indexes=[0]),
+                        dict(id='multiplication', statement='Return the product.', paths=['b.py'], test_indexes=[0])]
+        probe = dict(requirement_id='addition', path='a.py', function='add', arguments_json='[0, 3]',
+                     expected_json=expected)
+        calls = []
+
+        def handler(role, packet):
+            if role == 'a':
+                response = answer(role)
+                response['changes'][0]['new_text'] = 'return a + b if a else 0'
+                return response
+            if role == 'review_oracle':
+                self.assertEqual(packet['arguments_json'], probe['arguments_json'])
+                self.assertNotIn('expected_json', packet)
+                self.assertNotIn('rejected_review', packet)
+                reason = 'The contract requires the sum of 0 and 3.'
+                if invalid_oracle_first and 'format_error' not in packet:
+                    reason = 'x' * 221
+                return dict(determined=True, expected_json='3', reason=reason)
+            if role == 'repairer':
+                self.assertEqual(set(packet['files']), {'a.py'})
+                self.assertEqual(packet['rejected_review']['counterexample'], probe)
+                replacement = 'return a + b if a else 0' if noop_first and 'previous_failure' not in packet else repair
+                return dict(changes=[dict(path='a.py', operation='replace',
+                    old_text='return a + b if a else 0', new_text=replacement)])
+            if role == 'reviewer' and 'replayed_counterexample' not in packet:
+                candidate = probe
+                if disprove_first and 'disproven_counterexample' not in packet:
+                    candidate = probe | dict(expected_json='0')
+                return dict(approved=False, reasons=['Wrong sum for zero input'], risks=[], counterexample=candidate)
+            if role == 'reviewer':
+                self.assertEqual(packet['replayed_counterexample'], dict(
+                    case=probe, before='mismatch', after='match', strict_boundary_verified=True))
+            return answer(role)
+
+        result = await self.service(handler, calls).run(self.repo, 'Fix arithmetic',
+                                                         **self.kwargs(requirements=requirements))
+        self.assertFalse(result['source_mutated'])
+        return result, calls
+
+    async def test_review_repair_requires_real_mismatch_replay_and_new_review(self):
+        result, calls = await self.check_counterexample('3', 'return a + b')
+        self.assertEqual(result['status'], 'passed', result['events'])
+        self.assertEqual(calls[-4:], ['reviewer', 'review_oracle', 'repairer', 'reviewer'])
+        repair = result['integration']['review_repair']
+        self.assertEqual((repair['before'], repair['after'], repair['status']), ('mismatch', 'match', 'verified'))
+        self.assertEqual(len(result['integration']['test_rounds']), 2)
+
+    async def test_counterexample_that_already_matches_cannot_trigger_repair(self):
+        result, calls = await self.check_counterexample('0', 'return a + b')
+        self.assertEqual(result['status'], 'review_rejected')
+        self.assertEqual(result['integration']['review_repair']['before'], 'match')
+        self.assertNotIn('repairer', calls)
+
+    async def test_counterexample_with_incorrect_expected_value_cannot_trigger_repair(self):
+        result, calls = await self.check_counterexample('17', 'return a + b')
+        self.assertEqual(result['status'], 'review_rejected')
+        self.assertEqual(result['integration']['review_repair']['status'], 'expectation_unconfirmed')
+        self.assertEqual(calls[-2:], ['reviewer', 'review_oracle'])
+        self.assertNotIn('repairer', calls)
+
+    async def test_review_oracle_format_retry_stays_blind_to_reviewer_output(self):
+        result, calls = await self.check_counterexample('3', 'return a + b', invalid_oracle_first=True)
+        self.assertEqual(result['status'], 'passed', result['events'])
+        self.assertEqual(calls[-5:], ['reviewer', 'review_oracle', 'review_oracle', 'repairer', 'reviewer'])
+
+    async def test_reviewer_may_replace_one_disproven_counterexample(self):
+        result, calls = await self.check_counterexample('3', 'return a + b', disprove_first=True)
+        self.assertEqual(result['status'], 'passed', result['events'])
+        self.assertEqual(calls[-5:], ['reviewer', 'reviewer', 'review_oracle', 'repairer', 'reviewer'])
+        repair = result['integration']['review_repair']
+        self.assertNotEqual(repair['disproven_command_digest'], repair['command_digest'])
+
+    async def test_noop_review_patch_gets_one_grounded_retry(self):
+        result, calls = await self.check_counterexample('3', 'return a + b', noop_first=True)
+        self.assertEqual(result['status'], 'passed', result['events'])
+        self.assertEqual(calls[-5:], ['reviewer', 'review_oracle', 'repairer', 'repairer', 'reviewer'])
+        self.assertEqual(sum(event['event'] == 'review_patch_rejected' for event in result['events']), 1)
+
+    async def test_repaired_counterexample_cannot_mask_regression_in_caller_test(self):
+        result, calls = await self.check_counterexample('3', 'return b')
+        self.assertEqual(result['status'], 'review_rejected')
+        self.assertEqual(result['integration']['review_repair']['after'], 'match')
+        self.assertNotEqual(result['integration']['tests'][0]['exit_code'], 0)
+        self.assertEqual(calls.count('reviewer'), 1)
 
     async def test_same_file_conflict_three_way_resolution_then_tests(self):
         def handler(role, packet):

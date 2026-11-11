@@ -26,6 +26,35 @@
 
 编码协作现在保留结构完整、文本有界的明确拒绝和风险。批准继续经过原长度和结构门禁，截断或 JSON 不完整的答复继续拒收。原实跑回执保留，缩进题仍记为未交付。
 
+## 评审反例修复与公开题验收
+
+协作评审可以为冻结的调用方需求返回一个可执行反例。当前支持在发生修改的授权 Python 文件中调用公开同步顶层函数，输入和预期输出使用有界 JSON。执行器生成固定命令，在严格 AppContainer 内验证反例。若实际值已经符合预期，评审最多重新定位一次。发现不匹配后，单独的模型调用只看原契约和输入，独立推导预期值。两次推导一致才允许修复，修改范围限定到反例文件。补丁通过同一反例、调用方原命令和契约复验后，复审会看到沙箱实测的修复前后结果。格式截断、无效锚点、重复反例、错误预期或再次评审拒绝均保留证据，交付仍受门禁约束。
+
+单代理重试会携带上一版候选补丁的有界摘要和实际失败断言。截断输出丢弃后重新请求一次，继续执行原本地 Schema、锚点、语法和命令验证。DeepSeek 官方端点支持显式有界推理选项。Aider 对照的推理复测仅在第二次候选尝试启用该选项，通用编码调用保留原默认值。
+
+首轮 Aider 尝试 `output/ap-c317500f` 暴露了并发沙箱启动失败。多个命令同时对共享 Python 运行时执行 Windows 继承权限更新，观察到 `0xC0000135` 和 `encodings` 文件访问拒绝。运行时授权、正常清理和中断恢复现共用同一跨进程锁，锁文件位于只读运行时树之外。每个任务继续持有独立执行身份，执行阶段可以并行。
+
+固定 Aider Polyglot 上游版本 `7e0611e77b54e2dea774cdc0aa00cf9f7ed6144f`，覆盖 Python 的全部 34 道公开原题。ClawOS 只能编辑上游起始文件。基线和候选分别重放到独立严格沙箱，保持原始测试字节并核对测试数量。候选第二次尝试可使用原题失败输出。采用 ClawOS 适配器和 Python `unittest`，范围为 Aider 六种语言中的 Python。 [上游题库](https://github.com/Aider-AI/polyglot-benchmark) [官方评分说明](https://github.com/Aider-AI/aider/blob/main/benchmark/README.md)
+
+修复沙箱后，非推理基线 `output/ap-3753159e/report.json` 以 `deepseek-v4-pro` 完成 34 道题，18 道通过，16 道失败，共 59 次模型调用。34 份负对照均在严格边界中执行。报告 SHA-256 为 `2ed7da75cd60ed10e5fabdabfe6b2d79996b7ae3c897d715456909b02f8de854`。
+
+第一次有界推理轮 `output/ap-4ad95518/report.json` 同样通过 18/34。与基线相比新增通过 5 道、失去通过 5 道。58 次发起的模型调用中，12 次推理请求在 100 秒内未收到完整答复，12 次推理请求返回完整。34 个负对照和 44 次实际评分均保留严格边界回执。报告 SHA-256 为 `d0aec60b8653e72c4b7ab03692b0dc8ce73fc4e4fac629838de43c825c9f8639`。
+
+延长时限后的完整复测 `output/ap-ab4f551e/report.json` 通过 **21/34（61.8%）**，13 道未通过。9 道首次通过，12 道在第二次尝试通过。该轮使用 180 秒请求时限、420 秒单题总时限、4 次模型调用和 50,000 计费 token 上限，推理修复输出上限为 8,192 token。64 次调用均收到回执，实际提供方计费量为 338,210 token。34 个负对照和 57 次候选评分均取得严格沙箱回执。仍有一道题连续两次收到截断修补答复。报告 SHA-256 为 `7875109aaecb2adecf25d188dc9475d13da1760a37d319fa4b6e292d201c302f`，所记录的源码见证复核一致。三轮的执行预算与代码版本有差异，分数只代表各自配置下的实际结果，暂未启用为默认策略。
+
+历史 CPython 缩进题的候选 `output/rr-3335dcb4` 修复了已复现反例，原复审仍拒绝交付。独立工作树 `output/rv-0e269aca/report.json` 重放同一补丁，原公开和留出测试均返回 0，并取得严格沙箱回执。另一轮 `output/rr-06e0586f` 观察到评审把保留一个换行的结果误报为空串，候选在反例复验被拦截。上述两轮保留原裁决。独立重放报告 SHA-256 为 `34f235b8385630792f0c2d01eb6b1356c6b24f9f2e27dd94d4f19a2821103862`。
+
+最终受控重放 `output/rr-b680fa91` 固定历史规划、初始错误补丁和已归档的真实拒绝。DeepSeek V4 Pro 实时调用分别完成独立预期值推导、修补和再次评审。反例从不匹配变为精确匹配，原公开测试通过，复审接受，独立工作树的原留出测试返回 0。源工作树保持不变。主报告 SHA-256 为 `5edb5c2c064093c7b411602b0be026d7aa2a40749ed6ba664fe5074baecf56c2`，留出报告 SHA-256 为 `060079fbf1d4bb9285274dd25d750717a4ade39eb4daba968a7a9d25d41194cc`。该轮验证已知缺陷的修复机制，规划和初始补丁采用归档回放。
+
+本地协作与沙箱套件各 38/38。编码三分片首轮通过 138/139，一项失败发现通用模型捕获接口也透传了截断。最终将重试限定在使用本地编码 Schema 的调用方，保持通用捕获接口拒绝截断，截断回执仍使该次配对失去完整性资格。最终对照套件复测 17/17，模块结构检查通过。16 个 Python 变更文件的排序路径与字节摘要构成的 SHA-256 为 `4dd0b489f7450da225b89fab5947799b2cd90bc1d1c38c5334a0f7a21aec53a4`。
+
+```powershell
+git clone https://github.com/Aider-AI/polyglot-benchmark.git clawos/output/aider-polyglot-upstream
+.\clawos\.venv\Scripts\python.exe clawos/scripts/run_aider_polyglot_python.py clawos/output/aider-polyglot-upstream --jobs 3 --repair-reasoning low
+```
+
+SWE-bench Pro V2 和 Terminal-Bench 2.1 官方评分未执行。宿主机缺少 Docker 和 WSL Linux 发行版，现有严格执行器仅提供 Windows Python 标准库运行环境。SWE-bench Pro V2 采用固定 Linux 容器与独立复评。Terminal-Bench 2.1 采用 Harbor 任务容器。上述 Python 分数与内部回归各按自己的范围记录。 [SWE-bench Pro V2 官方规程](https://github.com/scaleapi/SWE-bench_Pro-os/blob/main/v2/README.md) [Terminal-Bench 2.1 官方规程](https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1)
+
 原模型回执通过新解析器保留了明确拒绝，新增反例在严格 AppContainer 回放中触发了空白行断言。结构化输出和协作回归合计 45/45 通过。
 
 ## 历史策略验收

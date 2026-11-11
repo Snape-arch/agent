@@ -26,5 +26,6 @@ class DeepSeekProvider(OpenAICompatibleProvider):
                 and str(schema.get("name", "")).startswith("coding_")):
             # Chat Completions supports JSON mode. Coding callers still apply
             # the original bounded schema to every completed answer locally.
-            return options | {"response_format": {"type": "json_object"}, "thinking": {"type": "disabled"}}
+            thinking = "enabled" if options.get("reasoning_effort") in {"low", "high", "max"} else "disabled"
+            return options | {"response_format": {"type": "json_object"}, "thinking": {"type": thinking}}
         return options
