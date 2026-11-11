@@ -10,4 +10,4 @@
 - DeepSeek 编码治理复测单代理 2/3、多代理 3/3。三项多代理评审均一次完成。应用本地校验结构和语法，测试在严格沙箱重放，引文单代理的语义遗漏被独立复验拒绝。公开题结果仅用于诊断，私有留出与真实冲突恢复仍待验收。 [实跑证据](clawos/benchmarks/CODING_P1_ACCEPTANCE.md#deepseek-实跑与编码治理)
 - 跨仓库编码 P0 已封存 8 道私有模块任务并完成 16 个真实 DeepSeek 变体。单、多代理各交付 5/8，一次截断使整轮未达到严格可比条件，余下七对分别通过 5/7 和 4/7。 [跨仓库验收](clawos/benchmarks/CODING_CROSSREPO_ACCEPTANCE.md)
 - 编码协作 P1 已修同文件多处补丁与失败断言定位。固定分工的两次 DeepSeek 演练均验证了进程中断恢复和真实 Git 冲突合并，定向回归 60/60。动态规划下的跨仓库恢复待验证。 [P1 验收](clawos/benchmarks/CODING_CROSSREPO_ACCEPTANCE.md#2026-11-11-补丁诊断与恢复)
-- 编码策略 P2 已接入可选单代理优先路由。两条 DeepSeek 路径已实跑，覆盖单代理成功和失败后按剩余预算升级。历史题的协作补丁通过测试，评审未通过格式门禁。 [P2 验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#p2-单代理优先)
+- 编码策略 P2 已接入可选单代理优先路由。两条 DeepSeek 路径已实跑，覆盖单代理成功和失败后按剩余预算升级。历史缩进题的复核确认了补丁的空白行缺陷，并修复了完整评审拒绝因理由超长而丢失的问题。 [P2 验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#p2-单代理优先)

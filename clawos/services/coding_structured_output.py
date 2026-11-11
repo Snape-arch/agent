@@ -122,3 +122,17 @@ def parse(content, schema):
     except (json.JSONDecodeError, RecursionError) as exc:raise ValueError('invalid JSON: '+str(exc)) from exc
     validate(value, schema)
     return value
+
+
+def parse_review(content, schema):
+    try:
+        return parse(content, schema)
+    except ValueError as original:
+        # Preserve a complete negative verdict for diagnosis. Approval still
+        # requires the original schema, and the raw answer remains auditable.
+        rejection = obj(dict(approved=dict(type='boolean', enum=[False]),
+                             reasons=array(text(4096), 2), risks=array(text(4096), 2)))
+        try:
+            return parse(content, rejection)
+        except ValueError:
+            raise original from None

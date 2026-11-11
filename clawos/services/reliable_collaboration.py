@@ -470,7 +470,8 @@ class ReliableCollaborationService:
             if fence:
                 content = fence.group(1)
             try:
-                output = structured.parse(content, output_schema)
+                output = (structured.parse_review(content, output_schema) if role == 'reviewer'
+                          else structured.parse(content, output_schema))
             except ValueError as exc:
                 raise ModelFormatError(exc, content) from exc
             if not isinstance(output, dict) or ledger["tokens"] > policy["max_tokens"]:
@@ -894,8 +895,8 @@ class ReliableCollaborationService:
                 if attempt:
                     raise
                 packet["previous_failure"] = (
-                    "Previous review was incomplete or invalid. Return one short evidence-based reason "
-                    "and include only risks that change the verdict.")
+                    "Previous review was incomplete or invalid. Return exactly approved, reasons, and risks. "
+                    "Use one evidence-based reason under 160 characters. Report any blocking risk in risks.")
         state["review"] = review
         approved = (review.get("approved") is True and isinstance(review.get("reasons"), list)
                     and any(r.strip() for r in review["reasons"]) and isinstance(review.get("risks"), list) and not review["risks"])

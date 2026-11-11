@@ -521,16 +521,19 @@ asyncio.run(s.run(sys.argv[2],"Fix arithmetic",allowed_paths=["a.py","b.py"],tes
 
     async def test_invalid_review_format_is_repaired_without_overriding_rejection(self):
         count=0
+        reason = "The tested patch drops a required boundary behavior. " * 6
         def handler(role,packet):
             nonlocal count
             if role=="reviewer":
                 count+=1
                 if count==1:return {"approved":True,"reasons":"invalid type","risks":[]}
                 self.assertIn("previous_failure",packet)
-                return {"approved":False,"reasons":["unsupported requirement"],"risks":[]}
+                return {"approved":False,"reasons":[reason],"risks":["A supported input still fails."]}
             return answer(role)
         result=await self.service(handler).run(self.repo,"Fix arithmetic",**self.kwargs())
         self.assertEqual(result["status"],"review_rejected")
+        self.assertEqual(result["review"]["reasons"], [reason])
+        self.assertEqual(result["review"]["risks"], ["A supported input still fails."])
         self.assertEqual(count,2)
 
     async def test_truncated_review_retries_with_bounded_evidence_and_cannot_approve(self):

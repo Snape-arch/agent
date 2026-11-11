@@ -59,6 +59,18 @@ class SchemaTests(unittest.TestCase):
             with self.subTest(value=value),self.assertRaises(ValueError):structured.parse(value,schema)
         self.assertTrue(structured.parse('```json\n{"approved":true,"reasons":[],"risks":[]}\n```',schema)['approved'])
 
+    def test_oversized_review_text_can_only_preserve_an_explicit_rejection(self):
+        schema = structured.schema_for('reviewer', ['a.py'])
+        reason = 'x' * 265
+        rejection = dict(approved=False, reasons=[reason], risks=['Missing boundary case'])
+        self.assertEqual(structured.parse_review(json.dumps(rejection), schema), rejection)
+        for invalid in (dict(rejection, approved=True), dict(rejection, approved=0),
+                        dict(rejection, reasons=['x' * 4097]), dict(rejection, extra=True)):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                structured.parse_review(json.dumps(invalid), schema)
+        with self.assertRaises(ValueError):
+            structured.parse_review(json.dumps(rejection)[:-1], schema)
+
     def test_edit_union_denies_read_only_path_and_mixed_operation_fields(self):
         schema = structured.schema_for('worker',['a.py'])
         valid=dict(changes=[dict(path='a.py',operation='replace',old_text='old',new_text='new')])
