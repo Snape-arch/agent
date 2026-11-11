@@ -71,8 +71,10 @@ class CodingStrategyService:
             raise RuntimeError('loaded coding strategy implementation changed')
         return CodingComparisonService(folder,witness=LOADED_WITNESS)
 
-    def _prepare(self, case, factory, limits, baseline_mode, experiment=None):
+    def _prepare(self, case, factory, limits, baseline_mode, experiment=None, *, auto_route=False):
         if baseline_mode not in {'single','multi'}:raise ValueError('baseline mode must be single or multi')
+        if type(auto_route) is not bool or (auto_route and (baseline_mode != 'single' or experiment)):
+            raise ValueError('automatic escalation requires a single-agent baseline outside rollout')
         runner=self._runner();case=runner.case(case);limits=runner.limits(limits)
         controller=RuntimePolicyController(self.store);identity=case['task_group_digest']
         prompt=controller.resolve('prompt_policy','coding.proposal',identity)
@@ -125,10 +127,13 @@ class CodingStrategyService:
             if mode not in {'single','multi'} or (variant_payload and variant_payload.get('namespace')!=namespace):
                 raise ValueError('coding routing candidate namespace mismatch')
         stats=paired_benefit(self.evidence.bundles(),namespace)
+        routing_source = 'governed_runtime_policy' if 'coding_mode' in payload else 'explicit_baseline'
+        route_enabled = auto_route and routing_source == 'explicit_baseline'
         decision=dict(id=uuid.uuid4().hex,namespace=namespace,target_key=target,case_digest=case['case_digest'],
             task_group_digest=identity,features=features(case),limits=limits,baseline_mode=baseline_mode,
             selected_mode=mode,prompt_policy=prompt,routing_policy=route,benefit=stats,
-            selection_source='governed_runtime_policy' if 'coding_mode' in payload else 'explicit_baseline',
+            selection_source='single_first' if route_enabled else routing_source,
+            auto_route_requested=auto_route,auto_route_enabled=route_enabled,
             strategy_recommendation_applied=False,automatic_publication=False)
         if experiment:decision['experiment']=copy.deepcopy(experiment)
         save(runner.root/'decision.json',decision,immutable=True)
@@ -141,17 +146,19 @@ class CodingStrategyService:
         if experiment:binding['experiment']=copy.deepcopy(experiment)
         return runner,case,model,decision,binding
 
-    def preview(self, case, factory, *, limits=None, baseline_mode='single'):
-        return self._prepare(case,factory,limits,baseline_mode)[3]
+    def preview(self, case, factory, *, limits=None, baseline_mode='single', auto_route=False):
+        return self._prepare(case,factory,limits,baseline_mode,auto_route=auto_route)[3]
 
-    async def run(self, case, factory, *, confirmed=False, limits=None, baseline_mode='single',paired=False,repetitions=1,_experiment=None):
+    async def run(self, case, factory, *, confirmed=False, limits=None, baseline_mode='single',
+                  paired=False,repetitions=1,auto_route=False,_experiment=None):
         if confirmed is not True:raise PermissionError('owned-workspace execution authorization required')
         if type(paired) is not bool or type(repetitions) is not int or not 1<=repetitions<=3:
             raise ValueError('invalid paired mode/repetitions')
         if _experiment and paired:raise ValueError('candidate rollout uses separately frozen variants')
+        if paired and auto_route:raise ValueError('paired comparisons require independent fixed modes')
         if _experiment:
             from .coding_rollout_service import check_experiment
-        runner,case,model,decision,binding=self._prepare(case,factory,limits,baseline_mode,_experiment)
+        runner,case,model,decision,binding=self._prepare(case,factory,limits,baseline_mode,_experiment,auto_route=auto_route)
         if not _experiment:
             from .coding_task_exposure import CodingTaskExposure
             CodingTaskExposure(self.store,self.evidence).reserve(runner,[case])
@@ -161,6 +168,8 @@ class CodingStrategyService:
         if paired:
             report=await runner.run([original],[{k:model[k] for k in ('id','factory','fingerprint')}],
                 confirmed=True,limits=decision['limits'],repetitions=repetitions,binding=binding)
+        elif decision['auto_route_enabled']:
+            report=await runner.routed(case,model,decision['limits'],binding)
         else:
             plan=dict(schema='clawos.coding-selection.v1',receipt_contract=RECEIPT_CONTRACT,cases=[case],models=[{k:v for k,v in model.items() if k!='factory'}],
                 limits=decision['limits'],implementation_witness=runner.witness,strategy_binding=binding,

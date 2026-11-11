@@ -117,7 +117,8 @@ class WorkspaceCodingAPI:
                 if not self.upstream_provider_provider():
                     raise HTTPException(503, "model provider is not initialized")
                 factory = lambda _role: self.upstream_provider_provider()
-                options = dict(limits=data.get('limits'), baseline_mode=data.get('baseline_mode', 'single'))
+                options = dict(limits=data.get('limits'), baseline_mode=data.get('baseline_mode', 'single'),
+                               auto_route=data.get('auto_route', False))
                 if action == 'preview':
                     result = await asyncio.to_thread(service.preview, data.get('case'), factory, **options)
                 else:

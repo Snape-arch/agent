@@ -6,7 +6,10 @@ import math
 from pathlib import Path
 import re
 
-from .coding_comparison_service import CodingComparisonService, RECEIPT_CONTRACT, comparison_infrastructure_failure, complete_provider_answers, digest
+from .coding_comparison_service import (
+    CodingComparisonService, RECEIPT_CONTRACT, ROUTED_SCHEMA, comparison_infrastructure_failure,
+    complete_provider_answers, digest, escalation_limits, single_stage_limits,
+)
 from .coding_execution_context import CodingExecutionContext
 from .coding_contracts import CodingContracts
 
@@ -54,19 +57,29 @@ class CodingEvidenceService:
             if size>16*1024*1024 or used>64*1024*1024:raise ValueError('evidence exceeds bounded read limit')
             return json.loads(p.read_text(encoding='utf-8'))
         plan,report=read('plan.json'),read('report.json')
-        if plan.get('schema') not in {CodingComparisonService.SCHEMA,'clawos.coding-selection.v1'}:
+        if plan.get('schema') not in {CodingComparisonService.SCHEMA,'clawos.coding-selection.v1',ROUTED_SCHEMA}:
             raise ValueError('unsupported coding plan')
         if digest({k:v for k,v in plan.items() if k!='plan_digest'})!=plan.get('plan_digest'):
             raise ValueError('plan digest mismatch')
         if report.get('plan_digest')!=plan['plan_digest'] or report.get('complete') is not True:
             raise ValueError('incomplete or unbound coding report')
         rows=report.get('arms',[])
-        if not rows or len(rows)!=len(plan['arms']) or len(rows)>192:raise ValueError('arm count mismatch')
+        routed = plan['schema'] == ROUTED_SCHEMA
+        if routed:
+            if (report.get('schema') != ROUTED_SCHEMA or len(plan['cases']) != 1 or len(plan['models']) != 1
+                    or plan['arms'] != [dict(case_id=plan['cases'][0]['id'], model_id=plan['models'][0]['id'],
+                                             mode=mode, repetition=1) for mode in CodingComparisonService.MODES]
+                    or not 1 <= len(rows) <= 2):
+                raise ValueError('invalid routed coding plan')
+        elif not rows or len(rows)!=len(plan['arms']) or len(rows)>192:
+            raise ValueError('arm count mismatch')
         witness=plan['implementation_witness']
         if not witness or any(not re.fullmatch('[a-f0-9]{64}',v) for v in witness.values()):
             raise ValueError('invalid implementation witness')
         result=[]
-        for scheduled,row in zip(plan['arms'],rows):
+        total_limits = CodingComparisonService.limits(plan['limits'])
+        limits = single_stage_limits(total_limits) if routed else total_limits
+        for index, (scheduled, row) in enumerate(zip(plan['arms'],rows)):
             if not re.fullmatch(r'arm-\d{2,3}(?:-[a-z0-9_-]{1,100})?/report\.json',row['artifact']):
                 raise ValueError('invalid arm artifact path')
             if any(row.get(k)!=v for k,v in scheduled.items()):raise ValueError('arm order/identity mismatch')
@@ -79,7 +92,6 @@ class CodingEvidenceService:
                 raise ValueError('case binding mismatch')
             group=digest({k:v for k,v in case.items() if k not in {'repo','id','source_stamp','source_head','task_group_digest','case_digest'}})
             if group!=case['task_group_digest'] or row['task_group_digest']!=group:raise ValueError('task group mismatch')
-            limits=CodingComparisonService.limits(plan['limits'])
             if row['limits']!=limits:raise ValueError('arm budget mismatch')
             model=next(m for m in plan['models'] if m['id']==row['model_id'])
             if row['provider_fingerprint']!=model['fingerprint']:raise ValueError('model fingerprint mismatch')
@@ -183,6 +195,16 @@ class CodingEvidenceService:
                     and category not in {'infrastructure','integrity'},
                 artifact=row['artifact'],calls=ledger['calls'],tokens=ledger['charged_tokens'],seconds=ledger['elapsed_seconds'],
                 limits=limits))
+            if routed and index == 0:
+                route = report.get('route', {})
+                wall_used = route.get('wall_used')
+                if type(wall_used) is not int or wall_used < math.ceil(ledger['elapsed_seconds']):
+                    raise ValueError('invalid routed wall accounting')
+                reason, remaining = escalation_limits(row, case, total_limits, known, wall_used)
+                if len(rows) != (2 if remaining else 1) or route != dict(
+                        reason=reason, wall_used=wall_used, final_mode='multi' if remaining else 'single'):
+                    raise ValueError('routed decision does not follow public test evidence and budget')
+                limits = remaining
         binding=plan.get('strategy_binding',{})
         return dict(id=digest(report),plan_digest=plan['plan_digest'],rows=result,binding=binding,
             paired=plan['schema']==CodingComparisonService.SCHEMA,report_digest=digest(report))

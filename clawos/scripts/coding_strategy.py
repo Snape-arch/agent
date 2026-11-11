@@ -23,9 +23,12 @@ def main():
     parser.add_argument('--case',type=Path,help='Frozen case JSON with repo/objective/scope/commands/requirements')
     parser.add_argument('--url');parser.add_argument('--model');parser.add_argument('--execute',action='store_true')
     parser.add_argument('--baseline-mode',choices=('single','multi'),default='single')
+    parser.add_argument('--auto-route',action='store_true',help='Use the single-first route for preview or run')
     parser.add_argument('--repetitions',type=int,choices=(1,2,3),default=1)
     parser.add_argument('--category',choices=('format','test','pipeline'),default='format')
     parser.add_argument('--decision-id');parser.add_argument('--run-id',type=int);args=parser.parse_args()
+    if args.auto_route and args.action not in {'preview', 'run'}:
+        parser.error('--auto-route is available with preview or run')
     output=(ROOT/'output').resolve();workspace=args.workspace.resolve()
     try:workspace.relative_to(output)
     except ValueError:parser.error('workspace must be inside clawos/output')
@@ -52,6 +55,7 @@ def main():
         factory=lambda role:QwenProvider(dict(base_url=args.url,model=args.model,api_key='',requires_api_key=False,timeout_s=300))
         if args.case.stat().st_size>128000:parser.error('case JSON exceeds read limit')
         case=json.loads(args.case.read_text(encoding='utf-8'));options={'baseline_mode':args.baseline_mode}
+        if args.auto_route:options['auto_route']=True
         if args.action=='preview':result=service.preview(case,factory,**options)
         else:
             if not args.execute:parser.error('execution requires --execute')

@@ -9,6 +9,7 @@ import asyncio
 import copy
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import subprocess
@@ -16,6 +17,7 @@ import time
 
 from .autonomous_coding_service import AutonomousCodingService
 from .coding_contracts import CodingContracts
+from .coding_diagnostics_service import CodingDiagnosticsService
 from .coding_execution_context import CodingExecutionContext
 from .coding_workflow_service import CodingWorkflowService
 from .execution_governance import ExecutionBudget
@@ -23,6 +25,7 @@ from .file_transactions import write_text
 from .reliable_collaboration import ReliableCollaborationService
 
 RECEIPT_CONTRACT = 'coding-receipts.v2'
+ROUTED_SCHEMA = 'clawos.coding-escalation.v1'
 CORE_FILES = ['autonomous_coding_service.py','coding_execution_context.py','coding_context_service.py',
     'coding_contracts.py','coding_workflow_service.py','coding_workspace_service.py',
     'reliable_collaboration.py','collaboration_delivery.py','os_sandbox.py','file_transactions.py','coding_comparison_service.py',
@@ -55,6 +58,44 @@ def comparison_infrastructure_failure(row, *, check_commands=True):
     return (check_commands and any(test.get('timed_out') or test.get('sandbox',{}).get('launch_failed_closed')
                for test in row['validation'].get('tests',[]))) or any(
         term in error for term in ('filenotfound','permissionerror','git command failed','provider_http','network','sandbox'))
+
+
+def single_stage_limits(limits):
+    return limits | {'max_attempts': 1, 'timeout_seconds': min(limits['timeout_seconds'], limits['max_wall_seconds'])}
+
+
+def escalation_limits(first, case, limits, known, wall_used):
+    """Derive the next stage from the failed patch's public test run and ledger."""
+    if first['accepted']:
+        return 'single_accepted', None
+    if not (known and first['source_preserved'] and first['implementation_stable'] and first['within_budget']):
+        return 'single_execution_unverified', None
+    if first['mode_status'] != 'failed' or first['error']:
+        return 'single_did_not_fail_public_tests', None
+    attempts = first['result'].get('attempts', [])
+    workflow = attempts[-1]['workflow'] if attempts else {}
+    rounds = workflow.get('rounds', [])
+    tests = rounds[-1].get('tests', []) if rounds else []
+    if (workflow.get('restored_on_failure') is not True
+            or [row.get('command') for row in tests] != case['test_commands']
+            or any(row['exit_code'] not in {0, 1} or row.get('timed_out')
+                   or row.get('sandbox', {}).get('launch_failed_closed') for row in tests)):
+        return 'single_did_not_fail_public_tests', None
+    output = '\n'.join(f"{row.get('stdout') or ''}\n{row.get('stderr') or ''}"
+                       for row in tests if row['exit_code'] == 1)
+    category, _, _ = CodingDiagnosticsService().classify(output, nonzero=any(row['exit_code'] for row in tests),
+                                                        timed_out=False)
+    if category != 'test_failure':
+        return 'single_did_not_fail_public_tests', None
+    ledger = first['ledger']
+    remaining = limits | dict(max_model_calls=limits['max_model_calls']-ledger['calls'],
+                              max_tokens=limits['max_tokens']-ledger['charged_tokens'],
+                              max_wall_seconds=limits['max_wall_seconds']-wall_used)
+    # Planner, at least one worker, and review all need a call.
+    if remaining['max_model_calls'] < 3 or remaining['max_tokens'] < 500 or remaining['max_wall_seconds'] < 1:
+        return 'insufficient_remaining_budget', None
+    remaining['timeout_seconds'] = min(remaining['timeout_seconds'], remaining['max_wall_seconds'])
+    return 'public_test_failure', remaining
 
 
 async def operation(fn, *args, **kwargs):
@@ -341,6 +382,32 @@ class CodingComparisonService:
                 raise ValueError('completed comparison receipt changed')
             answers.append(value)
         return answers
+
+    async def routed(self, case, model, limits, binding):
+        scheduled = [dict(case_id=case['id'], model_id=model['id'], mode=mode, repetition=1) for mode in self.MODES]
+        plan = dict(schema=ROUTED_SCHEMA, receipt_contract=RECEIPT_CONTRACT, cases=[case],
+                    models=[{k: v for k, v in model.items() if k != 'factory'}],
+                    limits=limits, implementation_witness=self.witness, strategy_binding=binding, arms=scheduled)
+        plan['plan_digest'] = digest(plan)
+        save(self.root/'plan.json', plan, immutable=True)
+        started = time.monotonic()
+        first = await self.arm(case, model, 'single', single_stage_limits(limits), 1, 1)
+        answers = self.verify_arm(first)
+        self.check_case(case)
+        wall_used = math.ceil(max(first['ledger']['elapsed_seconds'], time.monotonic()-started))
+        reason, remaining = escalation_limits(first, case, limits,
+                                               complete_provider_answers(first['ledger'], answers, model), wall_used)
+        rows = [first]
+        if remaining:
+            rows.append(await self.arm(case, model, 'multi', remaining, 2, 1))
+            self.verify_arm(rows[-1])
+        self.check_case(case)
+        if json.loads((self.root/'plan.json').read_text(encoding='utf-8')) != plan:
+            raise ValueError('routed coding plan changed')
+        result = dict(schema=ROUTED_SCHEMA, plan_digest=plan['plan_digest'], complete=True, arms=rows,
+                      route=dict(reason=reason, wall_used=wall_used, final_mode=rows[-1]['mode']))
+        save(self.root/'report.json', result, immutable=True)
+        return result
 
     async def run(self, cases, models, *, limits=None, confirmed=False, repetitions=1, binding=None):
         if confirmed is not True:raise PermissionError('explicit owned-workspace execution authorization required')

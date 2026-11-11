@@ -10,7 +10,7 @@ from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from memoryos.memory_store import MemoryStore
 from reflection.self_evolution import SelfEvolutionManager
-from services.coding_comparison_service import digest
+from services.coding_comparison_service import CodingComparisonService, digest, escalation_limits
 from services.coding_strategy_service import CodingStrategyService, paired_benefit
 from services.coding_workflow_service import CodingWorkflowService
 import test_coding_comparison_service as comparison
@@ -127,15 +127,72 @@ class StrategyTests(unittest.IsolatedAsyncioTestCase):
         def factory(role):return comparison.Provider(role,hook=lambda messages:seen.append(copy.deepcopy(messages)))
         first=self.service.preview(self.case(),factory)
         self.store.set_runtime_policy('routing_policy',first['target_key'],{'coding_mode':'multi','namespace':first['namespace']})
-        result=await self.service.run(self.case(),factory,confirmed=True)
+        result=await self.service.run(self.case(),factory,confirmed=True,auto_route=True)
         self.assertEqual(result['decision']['selected_mode'],'multi')
         self.assertEqual(result['decision']['selection_source'],'governed_runtime_policy')
+        self.assertFalse(result['decision']['auto_route_enabled'])
         self.assertEqual([r['mode'] for r in result['report']['arms']],['multi'])
         self.assertTrue(all('BOUND_PROMPT_MARKER' in m[0]['content'] for m in seen))
         arm=result['report']['arms'][0]
         inputs={digest(m) for m in seen}
         self.assertTrue(all(r['input_digest'] in inputs for r in arm['ledger']['reservations']))
         self.assertEqual(self.service.preview(self.case(),factory)['benefit']['independent_groups'],0)
+
+    async def test_auto_route_keeps_an_accepted_single_agent_patch(self):
+        result = await self.run_case(auto_route=True)
+        report = result['report']
+        self.assertEqual(result['decision']['selection_source'], 'single_first')
+        self.assertEqual(report['route']['reason'], 'single_accepted')
+        self.assertEqual([row['mode'] for row in report['arms']], ['single'])
+        self.assertEqual(report['arms'][0]['ledger']['calls'], 1)
+        self.assertTrue(report['arms'][0]['accepted'])
+        self.assertFalse(result['evidence']['paired'])
+
+    async def test_auto_route_escalates_public_failure_with_the_remaining_budget(self):
+        def factory(role):
+            return comparison.Provider(role, wrong=True)
+
+        result = await self.service.run(self.case(), factory, confirmed=True, auto_route=True)
+        report = result['report']
+        single, multi = report['arms']
+        budget = result['decision']['limits']
+        self.assertEqual(report['route']['reason'], 'public_test_failure')
+        self.assertEqual(report['route']['final_mode'], 'multi')
+        self.assertFalse(single['accepted'])
+        self.assertTrue(multi['accepted'], report['route'])
+        self.assertEqual(multi['limits']['max_model_calls'], budget['max_model_calls'] - single['ledger']['calls'])
+        self.assertEqual(multi['limits']['max_tokens'], budget['max_tokens'] - single['ledger']['charged_tokens'])
+        self.assertEqual(multi['limits']['max_wall_seconds'], budget['max_wall_seconds'] - report['route']['wall_used'])
+        self.assertEqual(result['evidence']['kind'], 'native-selected')
+        self.assertFalse(result['evidence']['paired'])
+        self.assertFalse(list(self.root.rglob('MODEL_COMMAND_EXECUTED')))
+        self.assertIn('return a - b', (self.repo/'a.py').read_text())
+        path = self.service.root/result['folder']/'report.json'
+        report['arms'] = [single]
+        path.write_text(json.dumps(report), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'routed decision'):
+            self.service.evidence.verify(path.parent)
+
+    def test_escalation_requires_confirmed_behavior_failure_and_available_budget(self):
+        commands = [['python', 'check.py']]
+        public = dict(command=commands[0], exit_code=1, stderr='AssertionError')
+        first = dict(accepted=False, source_preserved=True, implementation_stable=True,
+                     within_budget=True, mode_status='failed', error='',
+                     result=dict(attempts=[dict(workflow=dict(restored_on_failure=True, rounds=[dict(tests=[public])]))]),
+                     ledger=dict(calls=1, charged_tokens=50))
+        limits = CodingComparisonService.limits(None)
+        case = dict(test_commands=commands)
+        self.assertIsNotNone(escalation_limits(first, case, limits, True, 1)[1])
+        self.assertIsNone(escalation_limits(first | dict(mode_status='passed'), case, limits, True, 1)[1])
+        self.assertIsNone(escalation_limits(first, case, limits, False, 1)[1])
+        for change in (dict(exit_code=3221225781), dict(timed_out=True),
+                       dict(stderr='ModuleNotFoundError: dependency missing'), dict(command=['python', 'other.py'])):
+            with self.subTest(change=change):
+                invalid = copy.deepcopy(first)
+                invalid['result']['attempts'][0]['workflow']['rounds'][0]['tests'][0].update(change)
+                self.assertIsNone(escalation_limits(invalid, case, limits, True, 1)[1])
+        self.assertEqual(escalation_limits(first, case, limits | dict(max_model_calls=3), True, 1),
+                         ('insufficient_remaining_budget', None))
 
     async def test_policy_drift_denies_evidence_admission(self):
         def hook(messages):self.store.set_runtime_policy('prompt_policy','coding.proposal',{'system':'changed'})
