@@ -271,12 +271,12 @@ class CodingWorkflowService:
         return manifest
 
     def _normalize_changes(self, repo: Path, changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        rows = []
-        seen = set()
+        rows = {}
+        real_paths = {}
         for raw in changes or []:
             rel = str(raw.get("path") or "").replace("\\", "/").strip(" /")
-            if not rel or rel in seen:
-                raise ValueError("each change requires a unique relative path")
+            if not rel:
+                raise ValueError("each change requires a relative path")
             path = (repo / rel).resolve()
             try:
                 path.relative_to(repo)
@@ -284,8 +284,18 @@ class CodingWorkflowService:
                 raise ValueError(f"change escapes repository: {rel}") from exc
             if path.suffix.lower() not in ALLOWED_SOURCE_SUFFIXES:
                 raise ValueError(f"unsupported source file type: {rel}")
-            before = path.read_text(encoding="utf-8", errors="strict") if path.is_file() else ""
+            if real_paths.setdefault(path, rel) != rel:
+                raise ValueError(f"multiple paths name the same source file: {rel}")
             operation = str(raw.get("operation") or "replace").lower()
+            prior = rows.get(rel)
+            if prior is not None:
+                if operation not in {"replace", "hunks"} or prior["operation"] not in {"replace", "hunks"}:
+                    raise ValueError(f"multiple edits to {rel} require anchored replacements")
+                before = prior["content"]
+                before_sha256 = prior["before_sha256"]
+            else:
+                before = path.read_text(encoding="utf-8", errors="strict") if path.is_file() else ""
+                before_sha256 = self._sha(before.encode("utf-8"))
             if operation == "replace":
                 old = str(raw.get("old_text") or "")
                 new = str(raw.get("new_text") or "")
@@ -317,9 +327,9 @@ class CodingWorkflowService:
             else:
                 raise ValueError(f"unsupported change operation: {operation}")
             after = after.replace("\r\n", "\n").replace("\r", "\n")
-            rows.append({"path": rel, "operation": operation, "content": after, "before_sha256": self._sha(before.encode("utf-8")), "after_sha256": self._sha(after.encode("utf-8"))})
-            seen.add(rel)
-        return rows
+            rows[rel] = {"path": rel, "operation": "hunks" if prior else operation, "content": after,
+                         "before_sha256": before_sha256, "after_sha256": self._sha(after.encode("utf-8"))}
+        return list(rows.values())
 
     @staticmethod
     def validate_python_changes(changes: list[dict[str, Any]]) -> None:

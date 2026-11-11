@@ -117,18 +117,30 @@ unittest.main()
         self.assertIsNone(CodingContracts.exact_type_repair(self.repo,value,[dict(exit_code=1)],[],svc.read_files))
 
     async def test_diagnosis_reads_failing_assertion_and_limits_repair_scope(self):
+        (self.repo/'check.py').write_text(
+            'from a import add\nimport b as arithmetic\n'
+            'def product():\n    return arithmetic.mul(3, 2)\n'
+            'def observed_product():\n    return product()\n'
+            'assert add(3, 2) == 5\nassert observed_product() == 6\n', encoding='utf-8')
+        fixtures.git(self.repo, 'add', 'check.py')
+        fixtures.git(self.repo, 'commit', '-m', 'Run product through test helpers')
         observed=[]
         def handler(role,packet):
             if role=='b':
                 result=fixtures.answer('b');result['changes'][0]['new_text']='return a - b';return result
             if role=='diagnostician':
-                self.assertIn('assert mul',packet['read_only_failure_context'][0]['snippet'])
+                self.assertIn('assert observed_product',packet['read_only_failure_context'][0]['snippet'])
+                self.assertEqual(packet['grounded_targets'], [dict(path='b.py', symbol='mul')])
                 observed.append('diagnosis')
                 return dict(hypothesis='mul subtracts rather than multiplying',targets=[dict(path='b.py',symbol='mul')],expected_test_effect='the product assertion passes')
             if role=='repairer':
                 self.assertEqual(set(packet['files']),{'b.py'});self.assertIn('diagnosis',packet)
                 observed.append('patch')
-                return dict(changes=[dict(path='b.py',operation='replace',old_text='return a - b',new_text='return a * b')])
+                return dict(changes=[
+                    dict(path='b.py', operation='replace', old_text='def mul(a, b):',
+                         new_text='def mul(a, b):\n    # Preserve the multiplication contract.'),
+                    dict(path='b.py', operation='replace', old_text='return a - b', new_text='return a * b'),
+                ])
             return fixtures.answer(role)
         result=await self.service(handler).run(self.repo,'Fix arithmetic',**self.kwargs())
         self.assertEqual(result['status'],'passed',result);self.assertEqual(observed,['diagnosis','patch'])

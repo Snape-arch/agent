@@ -113,6 +113,30 @@ class CodingWorkflowServiceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 service.plan(repo, "x", [{"path": "new.py", "operation": "create", "content": "x"}], "python -V; echo unsafe")
 
+    def test_same_file_edits_are_validated_together_before_writing(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo = self._repo(root)
+            target = repo / "calc.py"
+            baseline = target.read_bytes()
+            service = CodingWorkflowService(artifact_root=root / "artifacts")
+            changes = [
+                dict(path="calc.py", operation="replace", old_text="return a - b", new_text="result = a + b"),
+                dict(path="calc.py", operation="hunks", hunks=[
+                    dict(old_text="result = a + b", new_text="result = a + b\n    return result"),
+                ]),
+            ]
+            invalid = changes[:1] + [dict(changes[1], hunks=[dict(old_text="missing", new_text="return 0")])]
+            commands = [["python", "-m", "unittest", "test_calc.py"]]
+            with self.assertRaisesRegex(ValueError, "match exactly once"):
+                service.execute(repo, "Repair addition", invalid, commands, confirmed=True)
+            self.assertEqual(target.read_bytes(), baseline)
+            result = service.execute(repo, "Repair addition", changes, commands, confirmed=True)
+            self.assertEqual(result["status"], "passed")
+            self.assertEqual(target.read_bytes(), b"def add(a, b):\n    result = a + b\n    return result\n")
+            service.rollback(repo, result["checkpoint"], confirmed=True)
+            self.assertEqual(target.read_bytes(), baseline)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -107,32 +107,113 @@ class CodingContracts:
 
     @staticmethod
     def diagnosis_targets(repo, frames, paths):
-        """Bound Python targets to executed frames/calls, not every authorized file."""
+        """Bound targets to traceback frames and statically resolved calls."""
+        from .coding_execution_context import CodingExecutionContext
+
+        definitions = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        sources = {}
+        for path in dict.fromkeys([*paths, *(frame['path'] for frame in frames)]):
+            if path.endswith('.py'):
+                try:
+                    source = CodingExecutionContext.read(repo, path)
+                    if source is not None:
+                        sources[path] = ast.parse(source)
+                except (OSError, ValueError, SyntaxError):
+                    continue
+
+        names_by_path = {p: {node.name for node in tree.body if isinstance(node, definitions)}
+                         for p, tree in sources.items() if p in paths}
         cited = set()
+        legacy_names = set()
         for frame in frames:
-            # A displayed function can also contain earlier passing calls. Use
-            # calls spanning the actual failing line when that location exists.
             line = frame.get('line')
-            found = None
-            if type(line) is int:
-                path = (Path(repo)/frame['path']).resolve()
-                path.relative_to(Path(repo).resolve())
-                tree = ast.parse(path.read_text(encoding='utf-8'))
-                found = {n.func.id if isinstance(n.func,ast.Name) else n.func.attr
-                    for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,(ast.Name,ast.Attribute))
-                    and n.lineno<=line<=n.end_lineno}
-            cited.update(found if found is not None else frame.get('called_symbols', []))
+            if type(line) is not int:
+                legacy_names.update(frame.get('called_symbols', []))
+                continue
+            tree = sources.get(frame['path'])
+            if tree is not None:
+                cited.update(CodingContracts._calls_from_assertion(tree, line, frame['path'], names_by_path))
+
         targets = []
         for path in paths:
-            if not path.endswith('.py'):
+            if path not in names_by_path:
                 continue
-            source = (Path(repo) / path).read_text(encoding='utf-8')
             own_symbols = {f.get('symbol') for f in frames if f.get('path') == path}
-            for node in ast.walk(ast.parse(source)):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in cited | own_symbols:
+            for node in ast.walk(sources[path]):
+                if isinstance(node, definitions) and (
+                        (path, node.name) in cited or node.name in legacy_names | own_symbols):
                     target = dict(path=path, symbol=node.name)
                     if target not in targets:
                         targets.append(target)
+        return targets
+
+    @staticmethod
+    def _calls_from_assertion(tree, line, frame_path, names_by_path):
+        """Follow calls on the failing line through up to two local test helpers."""
+        functions = (ast.FunctionDef, ast.AsyncFunctionDef)
+        helpers = {node.name: node for node in tree.body if isinstance(node, functions)}
+        imports = {}
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    imports[alias.asname or alias.name] = (alias.name, '')
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ''
+                if node.level:
+                    parent = Path(frame_path).parts[:-node.level]
+                    module = '.'.join(part for part in (*parent, module) if part)
+                for alias in node.names:
+                    imports[alias.asname or alias.name] = (module, alias.name)
+
+        def assigned(nodes):
+            return {node.id for node in nodes if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
+
+        module_assignments = assigned(child for node in tree.body if not isinstance(node, (*functions, ast.ClassDef))
+                                      for child in ast.walk(node))
+
+        def shadowed(scope):
+            return {node.arg for node in ast.walk(scope.args) if isinstance(node, ast.arg)} | assigned(ast.walk(scope))
+
+        nodes = list(ast.walk(tree))
+        shadow = module_assignments.union(*(shadowed(node) for node in nodes
+                                            if isinstance(node, functions) and node.lineno <= line <= node.end_lineno))
+        pending = [(node.func, 0, shadow) for node in nodes
+                   if isinstance(node, ast.Call) and node.lineno <= line <= node.end_lineno]
+        visited = set()
+        targets = set()
+        while pending:
+            call, depth, shadow = pending.pop()
+            attributes = []
+            while isinstance(call, ast.Attribute):
+                attributes.append(call.attr)
+                call = call.value
+            if not isinstance(call, ast.Name) or call.id in shadow:
+                continue
+            name = '.'.join((call.id, *reversed(attributes)))
+            if name in helpers:
+                if name in names_by_path.get(frame_path, ()):
+                    targets.add((frame_path, name))
+                elif depth < 2 and name not in visited:
+                    visited.add(name)
+                    blocked = module_assignments | shadowed(helpers[name])
+                    pending.extend((node.func, depth + 1, blocked) for node in ast.walk(helpers[name])
+                                   if isinstance(node, ast.Call))
+                continue
+            binding, _, attr = name.rpartition('.')
+            if not binding:
+                binding, attr = name, ''
+            if binding not in imports:
+                continue
+            module, imported = imports[binding]
+            if imported and attr:
+                module = '.'.join(filter(None, (module, imported)))
+            symbol = attr or imported
+            if not symbol or not module:
+                continue
+            suffix = module.replace('.', '/') + '.py'
+            candidates = [p for p in names_by_path if p == suffix or p.endswith('/' + suffix)]
+            if len(candidates) == 1 and symbol in names_by_path[candidates[0]]:
+                targets.add((candidates[0], symbol))
         return targets
 
     @staticmethod
