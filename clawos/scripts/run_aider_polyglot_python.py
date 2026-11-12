@@ -33,6 +33,7 @@ BOUNDARY = ('strict_boundary_verified', 'parent_token_verified',
             'git_control_pointer_sealed', 'profile_and_grants_removed')
 LIMITS = dict(max_model_calls=4, max_tokens=50_000, max_output_tokens=1800,
               timeout_seconds=100, max_wall_seconds=240)
+RESULT_MARKER = 'CLAWOS_UNITTEST_RESULT='
 
 
 def sha(body):
@@ -75,20 +76,36 @@ def scorer(repo, case, patch):
                        env=clean_environment(), capture_output=True, timeout=30, check=True)
     for path, contents in case['tests'].items():
         (repo / path).write_bytes(contents)
-    code = ('import sys, unittest; sys.path.insert(0, "."); '
-            f'suite = unittest.TestLoader().discover(".", pattern={case["test_module"] + ".py"!r}); '
-            'result = unittest.TextTestRunner().run(suite); sys.exit(not result.wasSuccessful())')
+    code = f'''
+import json, sys, unittest
+sys.path.insert(0, '.')
+loader = unittest.TestLoader()
+suite = loader.discover('.', pattern={case['test_module'] + '.py'!r})
+result = unittest.TextTestRunner().run(suite)
+load_errors = '\\n'.join(loader.errors)
+denied = all(part in load_errors for part in ('import _overlapped', 'PermissionError', '[WinError 10013]'))
+failures = [{{'case': test.id()[:180], 'detail': trace.strip().splitlines()[-1][:240]}}
+            for test, trace in (result.errors + result.failures)[:8]]
+print({RESULT_MARKER!r} + json.dumps(dict(tests=result.testsRun, load_failed=bool(loader.errors),
+      sandbox_import_denied=denied, failures=failures)), flush=True)
+sys.exit(not result.wasSuccessful())
+'''
     command = PYTHON + ['-c', code]
     result = CodingWorkflowService._run_command(repo, command, 60, require_strict=True)
     if any((repo / path).read_bytes() != contents for path, contents in case['tests'].items()):
         raise RuntimeError('original Aider test bytes changed')
-    counts = re.findall(r'^Ran ([1-9]\d*) tests? in ', result['stderr'], re.MULTILINE)
+    markers = [line.removeprefix(RESULT_MARKER) for line in result.get('stdout', '').splitlines()
+               if line.startswith(RESULT_MARKER)]
+    evidence = json.loads(markers[0]) if len(markers) == 1 else {}
+    counts = re.findall(r'^Ran (\d+) tests? in ', result['stderr'], re.MULTILINE)
+    if not isinstance(evidence, dict) or not counts or evidence.get('tests') != int(counts[-1]):
+        evidence = {}
     sandbox = result.get('sandbox', {})
     return dict(exit_code=result['exit_code'], timed_out=bool(result.get('timed_out')),
                 strict=all(sandbox.get(key) is True for key in BOUNDARY),
-                tests=int(counts[-1]) if counts else 0,
-                load_failed='Failed to import test module:' in result['stderr'],
-                stderr=result['stderr'][-3000:])
+                tests=evidence.get('tests', 0), load_failed=evidence.get('load_failed', False),
+                sandbox_import_denied=evidence.get('sandbox_import_denied', False),
+                failures=evidence.get('failures', []), stderr=result['stderr'][-3000:])
 
 
 async def exercise(name, case, folder, provider, witness, *, limits, repair_reasoning):
@@ -116,7 +133,9 @@ async def exercise(name, case, folder, provider, witness, *, limits, repair_reas
     smoke = PYTHON + ['-c', f'compile(open({starter!r}, "rb").read(), {starter!r}, "exec")']
     attempts = []
     status = 'baseline_infrastructure_error'
-    if (control['strict'] and not control['timed_out'] and control['exit_code'] == 1 and
+    if control['sandbox_import_denied']:
+        status = 'baseline_sandbox_incompatible'
+    elif (control['strict'] and not control['timed_out'] and control['exit_code'] == 1 and
             (control['tests'] == case['test_count'] or (control['load_failed'] and control['tests'] == 1))):
         status = 'failed'
         feedback = None
@@ -143,7 +162,7 @@ async def exercise(name, case, folder, provider, witness, *, limits, repair_reas
             (folder / f'candidate-{index}.patch').write_bytes(patch)
             score = await operation(scorer, await workspace(f'score{index}'), case, patch)
             attempts.append(dict(status='scored', patch_sha256=sha(patch), score=score))
-            if not score['strict'] or score['timed_out']:
+            if not score['strict'] or score['timed_out'] or score['sandbox_import_denied'] or not score['tests']:
                 status = 'scoring_infrastructure_error'
                 break
             if score['exit_code'] == 0 and not score['load_failed'] and score['tests'] == case['test_count']:
@@ -161,7 +180,8 @@ async def exercise(name, case, folder, provider, witness, *, limits, repair_reas
 async def run(cases, root, model, key, jobs, *, repair_reasoning):
     witness = {str(p): sha(p.read_bytes()) for p in (
         Path(__file__).resolve(), APP / 'services/autonomous_coding_service.py', APP / 'services/coding_workflow_service.py',
-        APP / 'services/coding_execution_context.py', APP / 'providers/deepseek.py', APP / 'providers/openai_compatible.py',
+        APP / 'services/coding_execution_context.py', APP / 'services/coding_comparison_service.py',
+        APP / 'providers/deepseek.py', APP / 'providers/openai_compatible.py',
         APP / 'services/sandbox_supervisor.py', APP / 'services/windows_appcontainer_boundary.py',
     )}
     limits = LIMITS | (dict(max_output_tokens=8192, timeout_seconds=180, max_wall_seconds=420)
@@ -188,6 +208,8 @@ async def run(cases, root, model, key, jobs, *, repair_reasoning):
 
     await asyncio.gather(*(one(name, case) for name, case in cases.items()))
     report = plan | dict(rows=[rows[name] for name in cases], passed=sum(row['status'] == 'passed' for row in rows.values()),
+                         failed=sum(row['status'] == 'failed' for row in rows.values()),
+                         blocked=sum(row['status'] not in {'passed', 'failed'} for row in rows.values()),
                          planned=len(cases), official_leaderboard_run=False)
     save(root / 'report.json', report, immutable=True)
     return report

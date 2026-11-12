@@ -180,10 +180,15 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_single_discards_truncated_answer_and_retries_with_clean_context(self):
         received = []
+        options_seen = []
 
         class Provider:
+            name = 'deepseek'
+            base_url = 'https://api.deepseek.com'
+
             async def complete(self, messages, options):
                 received.append(copy.deepcopy(messages))
+                options_seen.append(dict(options))
                 if len(received) == 1:
                     return dict(ok=False, content='truncated_untrusted_output', usage={'total_tokens': 20},
                                 raw={'choices': [{'finish_reason': 'length'}]})
@@ -192,10 +197,14 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
                 return dict(ok=True, content=content, usage={'total_tokens': 10},
                             raw={'choices': [{'finish_reason': 'stop'}]})
 
-        proposal = await AutonomousCodingService(Provider()).propose(self.repo, 'Correct addition', focus_paths=['a.py'])
+        proposal = await AutonomousCodingService(Provider()).propose(
+            self.repo, 'Correct addition', focus_paths=['a.py'], reasoning_effort='low', max_output_tokens=8192)
         self.assertEqual([row['status'] for row in proposal['format_attempts']], ['truncated', 'parsed'])
         self.assertIn('reached its output cap', received[-1][-1]['content'])
         self.assertNotIn('truncated_untrusted_output', str(received[-1]))
+        self.assertEqual(options_seen[0]['reasoning_effort'], 'low')
+        self.assertNotIn('reasoning_effort', options_seen[1])
+        self.assertEqual([o['max_tokens'] for o in options_seen], [8192, 8192])
         self.assertIn('return a - b', (self.repo / 'a.py').read_text())
 
     async def test_single_syntax_error_returns_location_for_repair_before_writing(self):

@@ -130,6 +130,7 @@ class AutonomousCodingService:
                 {"role": "user", "content": prompt},
             ]
         format_attempts = []
+        active_reasoning = reasoning_effort
         for format_attempt in range(2):
             CodingExecutionContext.verify(repo_path, manifest)
             execution_budget.consume(model_calls=1)
@@ -142,8 +143,8 @@ class AutonomousCodingService:
                 raise PermissionError("before_model policy hook denied the request")
             options = {"temperature": 0.0, "max_tokens": max_output_tokens,
                        "response_format": structured.response_format('proposal', output_schema)}
-            if reasoning_effort is not None:
-                options['reasoning_effort'] = reasoning_effort
+            if active_reasoning is not None:
+                options['reasoning_effort'] = active_reasoning
             response = await self.provider.complete(messages, options)
             # Invalid/incomplete answers are still charged before parsing.
             usage = (response.get('usage') or {}).get('total_tokens')
@@ -156,6 +157,7 @@ class AutonomousCodingService:
             finish = ((response.get('raw') or {}).get('choices') or [{}])[0].get('finish_reason')
             if finish == 'length' and format_attempt == 0:
                 format_attempts[-1]['status'] = 'truncated'
+                active_reasoning = None
                 messages.append({'role': 'user', 'content': (
                     'The previous answer reached its output cap. Return compact JSON with exact small edit '
                     'anchors and the required fields. Omit explanations and unchanged code.'
@@ -230,7 +232,8 @@ class AutonomousCodingService:
         """Carry bounded evidence from the failed candidate into a clean retry."""
         changes = json.dumps(proposal['proposal']['changes'], ensure_ascii=False, separators=(',', ':'))
         failures = [dict(command=test.get('command'), exit_code=test.get('exit_code'),
-                         stdout=str(test.get('stdout') or '')[-300:], stderr=str(test.get('stderr') or '')[-1600:])
+                         stdout=str(test.get('stdout') or '')[-300:], stderr=str(test.get('stderr') or '')[-1600:],
+                         failed_cases=test.get('failures', [])[:8])
                     for entry in rounds for test in entry.get('tests', [])
                     if test.get('exit_code') != 0 or test.get('timed_out')]
         return dict(error=str(error or '')[:500], candidate_edit_excerpt=changes[:4500],

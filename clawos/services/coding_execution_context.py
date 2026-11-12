@@ -1,7 +1,7 @@
 """Shared, bounded source evidence for single and collaborating coding agents.
 
-Only selected source files and resolved local imports are read. This is an
-application read policy, not OS isolation or proof of semantic completeness.
+Discovery searches eligible indexed source paths. Model evidence contains
+selected source files and resolved local imports.
 """
 from __future__ import annotations
 
@@ -109,10 +109,34 @@ class CodingExecutionContext:
             if len(selected) > 24:
                 raise ValueError('coding focus expands beyond 24 writable files; narrow the task')
             return sorted(selected)
-        tokens = set(re.findall(r'[a-z][a-z0-9_]*', objective.lower()))
+        tokens = list(dict.fromkeys(re.findall(r'[a-z][a-z0-9_]{2,59}', objective.lower())))
+        terms = [t for t in tokens if t not in {'the', 'and', 'for', 'from', 'this', 'with', 'fix', 'should', 'when'}][:12]
         candidates = [p for p in inventory if Path(p).suffix.lower() not in {'.json','.yaml','.yml','.toml','.ini','.md','.txt'}
-                      and not re.search(r'(^|/)(tests?|__tests__)(/|_)|(^|/)test_|\.(test|spec)\.', p)]
-        return sorted(candidates, key=lambda p: (-len(tokens & set(re.findall(r'[a-z][a-z0-9_]*', p.lower()))), p))[:12]
+                      and not re.search(r'(^|/)(tests?|__tests__|benchmarks)(/|_)|(^|/)test_|\.(test|spec)\.|holdout', p, re.I)]
+        scores = {p: 3 * len(set(terms) & set(re.findall(r'[a-z][a-z0-9_]*', p.lower()))) for p in candidates}
+        if terms:
+            patterns = [argument for term in terms for argument in ('-e', term)]
+            # Search the index for filenames only. Exact pathspecs prevent
+            # glob expansion and the index avoids following workspace links.
+            for start in range(0, len(candidates), 48):
+                batch = candidates[start:start + 48]
+                result = subprocess.run(['git', 'grep', '--cached', '-l', '-z', '-F', '-i', *patterns, '--',
+                                         *[':(literal)' + p for p in batch]], cwd=repo, capture_output=True,
+                                        encoding='utf-8', errors='replace', timeout=15)
+                if result.returncode == 0:
+                    for path in result.stdout.split('\0'):
+                        if path in scores:
+                            scores[path] += 2
+            seeds = [p for p in sorted(candidates, key=lambda p: (-scores[p], p)) if scores[p]][:6]
+            for path in seeds:
+                try:
+                    data = cls.read(repo, path)
+                    dependencies = cls.local_imports(path, data.decode('utf-8-sig'), scores) if data else []
+                except (OSError, ValueError):
+                    continue
+                for dependency in dependencies:
+                    scores[dependency] = max(scores[dependency], max(1, scores[path] - 2))
+        return sorted(candidates, key=lambda p: (-scores[p], p))[:12]
 
     @staticmethod
     def local_imports(rel, text, inventory):

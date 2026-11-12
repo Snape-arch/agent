@@ -55,6 +55,18 @@ git clone https://github.com/Aider-AI/polyglot-benchmark.git clawos/output/aider
 
 SWE-bench Pro V2 和 Terminal-Bench 2.1 官方评分未执行。宿主机缺少 Docker 和 WSL Linux 发行版，现有严格执行器仅提供 Windows Python 标准库运行环境。SWE-bench Pro V2 采用固定 Linux 容器与独立复评。Terminal-Bench 2.1 采用 Harbor 任务容器。上述 Python 分数与内部回归各按自己的范围记录。 [SWE-bench Pro V2 官方规程](https://github.com/scaleapi/SWE-bench_Pro-os/blob/main/v2/README.md) [Terminal-Bench 2.1 官方规程](https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1)
 
+### Windows 代理链路复测
+
+未指定文件时，候选排名在路径信号之外，加入 Git 索引内的源码命中和已定位 Python 文件的本地依赖。显式写入范围继续优先，测试和留出文件不参与默认候选。含 16 个无关文件的回归用错误消息定位入口及其依赖，仍通过显式授权范围校验。
+
+结构化补丁遇到推理截断时，保留原输出上限，关闭推理进行一次完整格式重试。原题评分给修复回合传入失败用例名和断言摘要，同时保留原测试字节。Windows 上 `grep` 和 `paasio` 在负对照阶段导入 `_overlapped` 被拒绝，现独立记为沙箱阻塞，候选模型调用为零。两题的测试兼容性仍待解决，原报告和分母保持可追溯。
+
+两次 DeepSeek V4 Pro 动态协作演练使用合成 Git 项目和预先授权的文件。两次均由模型实际拆成三个任务，在首个工作者提交后取消协调器，恢复时复用原提交，并通过严格沙箱原测试。第二次的两个动态任务同时修改同一注册行，实际触发 Git 冲突并完成合并。两次原仓库均保持完整。审计位于 `output/dynamic-68df77d0/audit.json` 和 `output/dynamic-fa9801da/audit.json`，SHA-256 分别为 `38795eb2d5c51406c1e449cf860730f605e605c45eb608c36aaf1ffcdbfe62b0`、`4dd2207690a2d16e9331514a9df8fcf059537588bdbe43e56a50a08e9747fb64`。这两次验收覆盖协调器取消恢复，跨真实仓库的动态拆分和同预算收益仍缺证据。
+
+本地定向测试通过 55/55，含执行上下文 14、结构化输出 15、原题评分 2、契约 7、配对比较 17。模块结构检查通过。
+
+只重跑上一轮 13 道未通过的原题，结果为 **2 道通过、9 道失败、2 道沙箱阻塞**。`sgf-parsing` 与 `transpose` 通过。`bowling`、`connect`、`react` 的推理修补截断后均得到完整的非推理回执，最终候选仍未通过断言。报告位于 `output/ap-825dda6c/report.json`，SHA-256 为 `e90553c04f2517444ce75fd92da8c553455b9d38c7df60a94113013d9cec207b`。所记录源码指纹逐项复核一致。此轮选样只包含旧失败题，完整 34 题的最新独立成绩仍以先前 21/34 为准。
+
 原模型回执通过新解析器保留了明确拒绝，新增反例在严格 AppContainer 回放中触发了空白行断言。结构化输出和协作回归合计 45/45 通过。
 
 ## 历史策略验收

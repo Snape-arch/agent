@@ -44,6 +44,8 @@ Aider Python 非推理基线和首轮推理修复各为 18/34。延长时限后�
 
 协作和沙箱回归各 38/38。编码回归首轮 138/139，修复通用捕获接口误透传截断后，对照套件复测 17/17。未启用新默认路由或发布编码自进化候选。 [回归与证据](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#评审反例修复与公开题验收)
 
+Windows 复测补上默认源码与依赖定位、推理截断后的非推理重试，以及原题断言的结构化反馈。DeepSeek 动态规划两次完成提交后取消和恢复，第二次实际解决同一行的 Git 冲突。前轮失败的 13 道 Aider 题重测 2 道通过、9 道失败、2 道因 Windows 标准库导入被严格沙箱阻塞。定向回归 55/55。整仓验收、多代理同预算收益和两道题的沙箱兼容性仍待验证。 [Windows 复测](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#windows-代理链路复测)
+
 ## 尚未验收
 
 - 275个历史资料或产物缺少可核验原件，用户不确定备份是否存在；不能按同名候选重新绑定。

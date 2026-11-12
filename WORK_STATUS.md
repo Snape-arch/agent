@@ -13,3 +13,4 @@
 - 编码策略 P2 已接入可选单代理优先路由。两条 DeepSeek 路径已实跑，覆盖单代理成功和失败后按剩余预算升级。历史缩进题的复核确认了补丁的空白行缺陷，并修复了完整评审拒绝因理由超长而丢失的问题。 [P2 验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#p2-单代理优先)
 - 编码评审可在严格沙箱重放契约反例、独立推导预期值、修补和复审。历史缩进题的受控重放通过原公开与独立留出测试。修复了公开评测暴露的共享运行时 ACL 竞争。SWE-bench Pro V2 与 Terminal-Bench 2.1 官方评分仍待验收。 [公开评测与反例验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#评审反例修复与公开题验收)
 - Aider Polyglot Python 全部 34 道原题完成三轮评分，结果为 18/34、18/34、21/34。最新轮在延长时限后完成 64 次有回执调用，13 道未通过。 [评分方法与回执](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#评审反例修复与公开题验收)
+- Windows 复测补上源码与依赖定位、推理截断恢复、结构化失败断言和沙箱阻塞归因。两次动态协作恢复通过，含一次真实同行冲突。13 道旧失败题重测 2 道通过、9 道失败、2 道阻塞，定向回归 55/55。 [Windows 复测](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#windows-代理链路复测)

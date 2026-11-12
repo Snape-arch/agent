@@ -45,6 +45,20 @@ class ContextTests(unittest.TestCase):
     def view(self, **kwargs):
         return self.context.build_execution(self.repo, 'repair result', write_paths=['pkg/use.py'], **kwargs)
 
+    def test_implicit_scope_finds_content_and_dependency_beyond_alphabetic_candidates(self):
+        for number in range(16):
+            (self.repo / f'decoy{number:02}.py').write_text('value = 1\n', encoding='utf-8')
+        (self.repo / 'z_endpoint.py').write_text('from z_codec import process\n\ndef handle():\n'
+                                                 '    return process("Amber checksum rejected")\n', encoding='utf-8')
+        (self.repo / 'z_codec.py').write_text('def process(value):\n    return value\n', encoding='utf-8')
+        fixtures.git(self.repo, 'add', '.')
+        fixtures.git(self.repo, 'commit', '-m', 'add implicit selection fixture')
+        selected = View.targets(self.repo, 'Fix Amber checksum rejected', None)
+        self.assertIn('z_endpoint.py', selected)
+        self.assertIn('z_codec.py', selected)
+        self.assertNotIn('sealed_holdout.py', selected)
+        self.assertEqual(View.targets(self.repo, 'Fix Amber checksum rejected', ['a.py']), ['a.py'])
+
     def test_package_dependencies_instructions_and_same_snapshot_parity(self):
         view = self.view()
         self.assertEqual(view['scope']['write_paths'], ['pkg/use.py'])
