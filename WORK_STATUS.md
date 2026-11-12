@@ -14,3 +14,4 @@
 - 编码评审可在严格沙箱重放契约反例、独立推导预期值、修补和复审。历史缩进题的受控重放通过原公开与独立留出测试。修复了公开评测暴露的共享运行时 ACL 竞争。SWE-bench Pro V2 与 Terminal-Bench 2.1 官方评分仍待验收。 [公开评测与反例验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#评审反例修复与公开题验收)
 - Aider Polyglot Python 全部 34 道原题完成三轮评分，结果为 18/34、18/34、21/34。最新轮在延长时限后完成 64 次有回执调用，13 道未通过。 [评分方法与回执](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#评审反例修复与公开题验收)
 - Windows 复测补上源码与依赖定位、推理截断恢复、结构化失败断言和沙箱阻塞归因。两次动态协作恢复通过，含一次真实同行冲突。13 道旧失败题重测 2 道通过、9 道失败、2 道阻塞，定向回归 55/55。 [Windows 复测](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#windows-代理链路复测)
+- 修复反馈保留多行断言首差异，原题评分记录旧通过用例退化。五道同模型同预算配对中，起始代码重做 1/5，沿候选修补 0/5，默认仍用起始代码。 [配对结果](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#修复基线配对实验)

@@ -282,7 +282,7 @@ class CodingExecutionContext:
                        read_only_paths=[r['path'] for r in rows if r['access']=='read_only']),
             code_evidence=rows, instruction_hierarchy=instructions, dependencies=edges[:100],
             failure_frames=frames, omitted=omitted[:24],
-            selection_policy='explicit_scope_or_bounded_path_tokens; Python_imports_two_hops; not_complete_repository_analysis',
+            selection_policy='explicit_scope_or_path_and_indexed_source_matches; Python_imports_two_hops; not_complete_repository_analysis',
             budget=dict(max_chars=limit, source_bytes=total, estimated_tokens_policy='characters_divided_by_four_not_model_tokenizer'),
             trust_policy=dict(repository='untrusted_project_input', dependency_access='read_only',
                               os_isolation_claimed=False, semantic_completeness_claimed=False))

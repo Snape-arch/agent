@@ -70,25 +70,48 @@ def upstream_cases(repo):
     return cases
 
 
+def apply_candidate(repo, patch):
+    subprocess.run(['git', 'apply', '--whitespace=nowarn', '-'], input=patch, cwd=repo,
+                   env=clean_environment(), capture_output=True, timeout=30, check=True)
+
+
 def scorer(repo, case, patch):
     if patch:
-        subprocess.run(['git', 'apply', '--whitespace=nowarn', '-'], input=patch, cwd=repo,
-                       env=clean_environment(), capture_output=True, timeout=30, check=True)
+        apply_candidate(repo, patch)
     for path, contents in case['tests'].items():
         (repo / path).write_bytes(contents)
     code = f'''
-import json, sys, unittest
+import hashlib, json, re, sys, unittest
 sys.path.insert(0, '.')
+
+class AuditResult(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.passed = []
+
+    def addSuccess(self, test):
+        super().addSuccess(test)
+        self.passed.append(hashlib.sha256(test.id().encode()).hexdigest()[:16])
+
+def summarize(trace):
+    lines = trace.strip().splitlines()
+    first = next((line for line in lines if re.match(r'^[\\w.]+(?:Error|Exception|Warning):', line)), lines[-1])
+    for index, line in enumerate(lines):
+        if line.startswith(('First differing element ', 'First list contains ', 'Second list contains ')):
+            return (first[:240] + '\\n' + '\\n'.join(lines[index:index + 3])[:150])
+    return first[:240]
+
 loader = unittest.TestLoader()
 suite = loader.discover('.', pattern={case['test_module'] + '.py'!r})
-result = unittest.TextTestRunner().run(suite)
+result = unittest.TextTestRunner(resultclass=AuditResult).run(suite)
 load_errors = '\\n'.join(loader.errors)
 denied = all(part in load_errors for part in ('import _overlapped', 'PermissionError', '[WinError 10013]'))
-failures = [{{'case': test.id()[:180], 'detail': trace.strip().splitlines()[-1][:240]}}
+failures = [{{'case': test.id()[:180], 'detail': summarize(trace)}}
             for test, trace in (result.errors + result.failures)[:8]]
 print({RESULT_MARKER!r} + json.dumps(dict(tests=result.testsRun, load_failed=bool(loader.errors),
-      sandbox_import_denied=denied, failures=failures)), flush=True)
-sys.exit(not result.wasSuccessful())
+      sandbox_import_denied=denied, failures=failures, passed_cases=result.passed,
+      unverified_cases=len(result.skipped) + len(result.expectedFailures))), flush=True)
+sys.exit(not result.wasSuccessful() or bool(result.skipped or result.expectedFailures))
 '''
     command = PYTHON + ['-c', code]
     result = CodingWorkflowService._run_command(repo, command, 60, require_strict=True)
@@ -105,11 +128,13 @@ sys.exit(not result.wasSuccessful())
                 strict=all(sandbox.get(key) is True for key in BOUNDARY),
                 tests=evidence.get('tests', 0), load_failed=evidence.get('load_failed', False),
                 sandbox_import_denied=evidence.get('sandbox_import_denied', False),
-                failures=evidence.get('failures', []), stderr=result['stderr'][-3000:])
+                failures=evidence.get('failures', []), passed_cases=evidence.get('passed_cases', []),
+                unverified_cases=evidence.get('unverified_cases', 0), stderr=result['stderr'][-3000:])
 
 
-async def exercise(name, case, folder, provider, witness, *, limits, repair_reasoning):
+async def exercise(name, case, folder, provider, witness, *, limits, repair_reasoning, reuse_candidate=False):
     starter = case['starter']
+    starter_sha = sha(case['body'])
     source = folder / 's'
     source.mkdir(parents=True)
     (source / starter).write_bytes(case['body'])
@@ -139,8 +164,12 @@ async def exercise(name, case, folder, provider, witness, *, limits, repair_reas
             (control['tests'] == case['test_count'] or (control['load_failed'] and control['tests'] == 1))):
         status = 'failed'
         feedback = None
+        prior_patch = b''
+        prior_score = None
         for index in range(1, 3):
             task = await workspace(f'edit{index}')
+            if prior_patch and reuse_candidate:
+                await operation(apply_candidate, task, prior_patch)
             try:
                 effort = repair_reasoning if index == 2 else None
                 proposal = await service.propose(task, case['objective'], focus_paths=[starter],
@@ -150,34 +179,51 @@ async def exercise(name, case, folder, provider, witness, *, limits, repair_reas
                 attempts.append(dict(status='proposal_failed', error=type(exc).__name__))
                 feedback = dict(error='Previous proposal was incomplete or did not validate. Use compact exact edits.')
                 continue
+            planned = proposal['plan']['changes']
+            if len(planned) == 1 and planned[0]['path'] == starter and planned[0]['after_sha256'] == starter_sha:
+                attempts.append(dict(status='matches_failing_starter',
+                                     repaired_from=sha(prior_patch) if prior_patch and reuse_candidate else None))
+                feedback = service.repair_feedback(proposal, error='Candidate matches the known failing starter.',
+                                                   rounds=[dict(tests=[control])])
+                continue
             result = await operation(workflow.execute, task, case['objective'], proposal['proposal']['changes'],
                                      [smoke], confirmed=True, max_rounds=1, timeout_seconds=45)
             if result['status'] != 'passed':
                 attempts.append(dict(status='candidate_gate_failed'))
-                feedback = dict(error='Candidate did not pass its syntax and sandbox checks.')
+                feedback = service.repair_feedback(proposal, error=result.get('failure'), rounds=result.get('rounds', []))
                 continue
-            if git(task, 'diff', '--name-only', baseline, env=env).decode().splitlines() != [starter]:
-                raise ValueError('patch violates Aider starter scope or is empty')
+            changed = git(task, 'diff', '--name-only', baseline, env=env).decode().splitlines()
+            if changed != [starter]:
+                raise ValueError('patch violates Aider starter scope')
             patch = git(task, 'diff', '--binary', baseline, '--', starter, env=env)
             (folder / f'candidate-{index}.patch').write_bytes(patch)
             score = await operation(scorer, await workspace(f'score{index}'), case, patch)
-            attempts.append(dict(status='scored', patch_sha256=sha(patch), score=score))
+            comparable = bool(prior_score and not prior_score['load_failed'] and not score['load_failed'] and
+                              prior_score['strict'] and score['strict'] and not score['timed_out'] and
+                              prior_score['tests'] == score['tests'] == case['test_count'])
+            regressed = sorted(set(prior_score['passed_cases']) - set(score['passed_cases'])) if comparable else []
+            attempts.append(dict(status='scored', patch_sha256=sha(patch), score=score,
+                                 repaired_from=sha(prior_patch) if prior_patch and reuse_candidate else None,
+                                 regression_comparable=comparable, regressed_cases=regressed))
             if not score['strict'] or score['timed_out'] or score['sandbox_import_denied'] or not score['tests']:
                 status = 'scoring_infrastructure_error'
                 break
-            if score['exit_code'] == 0 and not score['load_failed'] and score['tests'] == case['test_count']:
+            if (score['exit_code'] == 0 and not score['load_failed'] and not score['unverified_cases'] and
+                    score['tests'] == case['test_count'] == len(score['passed_cases'])):
                 status = 'passed'
                 break
             # Aider's second turn can use failed-test output. Test files and
             # score worktrees remain outside the agent's context in both turns.
-            feedback = service.repair_feedback(proposal, error='Upstream unit tests failed.', rounds=[dict(tests=[score])])
+            prior_patch, prior_score = patch, score
+            feedback = service.repair_feedback(proposal, error='Upstream unit tests failed.',
+                                               rounds=[dict(tests=[score])], candidate_is_current=reuse_candidate)
     if not capture.stable() or git(source, 'status', '--porcelain', env=env).strip():
         raise ValueError('benchmark implementation or starter changed')
-    return dict(id=name, status=status, starter_sha256=sha(case['body']), control=control, attempts=attempts,
+    return dict(id=name, status=status, starter_sha256=starter_sha, control=control, attempts=attempts,
                 test_sha256={p: sha(body) for p, body in case['tests'].items()}, ledger=capture.snapshot())
 
 
-async def run(cases, root, model, key, jobs, *, repair_reasoning):
+async def run(cases, root, model, key, jobs, *, repair_reasoning, reuse_candidate=False):
     witness = {str(p): sha(p.read_bytes()) for p in (
         Path(__file__).resolve(), APP / 'services/autonomous_coding_service.py', APP / 'services/coding_workflow_service.py',
         APP / 'services/coding_execution_context.py', APP / 'services/coding_comparison_service.py',
@@ -189,7 +235,7 @@ async def run(cases, root, model, key, jobs, *, repair_reasoning):
     provider = DeepSeekProvider(dict(base_url=DEEPSEEK_URL, model=model, api_key=key,
                                      timeout_s=limits['timeout_seconds'] - 5, trust_env=False))
     plan = dict(upstream=UPSTREAM, model=model, limits=limits, cases=list(cases), witness=witness,
-                repair_reasoning=repair_reasoning,
+                repair_reasoning=repair_reasoning, repair_baseline='candidate' if reuse_candidate else 'starter',
                 method='ClawOS single agent, two candidate attempts, original upstream Python tests')
     save(root / 'plan.json', plan, immutable=True)
     pool = asyncio.Semaphore(jobs)
@@ -199,7 +245,7 @@ async def run(cases, root, model, key, jobs, *, repair_reasoning):
         async with pool:
             try:
                 row = await exercise(name, case, root / name, provider, witness,
-                                     limits=limits, repair_reasoning=repair_reasoning)
+                                     limits=limits, repair_reasoning=repair_reasoning, reuse_candidate=reuse_candidate)
             except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
                 row = dict(id=name, status='infrastructure_error', error=type(exc).__name__)
             rows[name] = row
@@ -221,6 +267,8 @@ def main():
     parser.add_argument('--model', default='deepseek-v4-pro')
     parser.add_argument('--jobs', type=int, choices=(1, 2, 3), default=2)
     parser.add_argument('--repair-reasoning', choices=('low', 'high'), help='Bounded DeepSeek reasoning on attempt two')
+    parser.add_argument('--repair-baseline', choices=('starter', 'candidate'), default='starter',
+                        help='Choose the source snapshot for attempt two')
     parser.add_argument('--exercise', action='append', help='Repeat to run an explicit subset; default is the full Python track')
     args = parser.parse_args()
     cases = upstream_cases(args.upstream.resolve())
@@ -239,7 +287,8 @@ def main():
     root = APP / 'output' / ('ap-' + uuid.uuid4().hex[:8])
     root.mkdir()
     print(root, flush=True)
-    report = asyncio.run(run(cases, root, args.model, key, args.jobs, repair_reasoning=args.repair_reasoning))
+    report = asyncio.run(run(cases, root, args.model, key, args.jobs, repair_reasoning=args.repair_reasoning,
+                             reuse_candidate=args.repair_baseline == 'candidate'))
     print(json.dumps(dict(passed=report['passed'], planned=report['planned'], report=str(root / 'report.json'))))
     return int(report['passed'] != report['planned'])
 

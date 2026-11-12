@@ -207,6 +207,17 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([o['max_tokens'] for o in options_seen], [8192, 8192])
         self.assertIn('return a - b', (self.repo / 'a.py').read_text())
 
+    def test_repair_feedback_distinguishes_current_candidate_from_restored_source(self):
+        proposal = dict(proposal=dict(changes=[dict(path='a.py', operation='replace', old_text='old', new_text='new')]))
+        rounds = [dict(tests=[dict(exit_code=1, failures=[dict(case='test_boundary', detail='AssertionError: 2 != 3')])])]
+        restored = AutonomousCodingService.repair_feedback(proposal, error='failed', rounds=rounds)
+        candidate = AutonomousCodingService.repair_feedback(proposal, error='failed', rounds=rounds,
+                                                            candidate_is_current=True)
+        self.assertIn('candidate_edit_excerpt', restored)
+        self.assertNotIn('candidate_edit_excerpt', candidate)
+        self.assertTrue(candidate['candidate_is_current'])
+        self.assertEqual(restored['rounds'], candidate['rounds'])
+
     async def test_single_syntax_error_returns_location_for_repair_before_writing(self):
         observed = []
         repo = self.repo

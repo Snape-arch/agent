@@ -111,12 +111,18 @@ class AutonomousCodingService:
             + json.dumps(manifest, ensure_ascii=False, separators=(',', ':'))
         )
         if previous_failure:
+            candidate_is_current = previous_failure.get('candidate_is_current') is True
+            retry_instruction = (
+                'The current source is the tested candidate. Patch it in place using short exact anchors. '
+                'Preserve behavior that already passed and address every distinct observed failure.'
+                if candidate_is_current else
+                'The failed candidate is evidence. Identify the wrong assumption and propose corrected edits '
+                'against the restored source. Preserve working cases.'
+            )
             prompt += (
-                "\n\n[Previous attempt failed and was restored]\n"
+                "\n\n[Observed failures from the previous candidate]\n"
                 + json.dumps(previous_failure, ensure_ascii=False)[:12_000]
-                + "\nThe failed candidate is evidence. Explain the mismatch to yourself, identify the wrong "
-                  "algorithm or assumption, and propose corrected changes against the restored source. "
-                  "Preserve working cases. Return only the requested JSON."
+                + '\n' + retry_instruction + ' Return only the requested JSON.'
             )
         messages = [
                 {
@@ -228,16 +234,20 @@ class AutonomousCodingService:
         }
 
     @staticmethod
-    def repair_feedback(proposal, *, error, rounds):
+    def repair_feedback(proposal, *, error, rounds, candidate_is_current=False):
         """Carry bounded evidence from the failed candidate into a clean retry."""
         changes = json.dumps(proposal['proposal']['changes'], ensure_ascii=False, separators=(',', ':'))
         failures = [dict(command=test.get('command'), exit_code=test.get('exit_code'),
                          stdout=str(test.get('stdout') or '')[-300:], stderr=str(test.get('stderr') or '')[-1600:],
-                         failed_cases=test.get('failures', [])[:8])
+                         failed_cases=(test.get('failures') or [])[:8])
                     for entry in rounds for test in entry.get('tests', [])
                     if test.get('exit_code') != 0 or test.get('timed_out')]
-        return dict(error=str(error or '')[:500], candidate_edit_excerpt=changes[:4500],
-                    rounds=[dict(tests=failures[:3])])
+        feedback = dict(error=str(error or '')[:500], rounds=[dict(tests=failures[:3])])
+        if candidate_is_current:
+            feedback['candidate_is_current'] = True
+        else:
+            feedback['candidate_edit_excerpt'] = changes[:4500]
+        return feedback
 
     async def run(
         self,
