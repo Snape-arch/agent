@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import fnmatch
 import json
@@ -14,6 +15,7 @@ from .coding_diagnostics_service import CodingEvidenceGate
 from .coding_trace_service import CodingTraceService
 from .lsp_semantic_graph_service import LSPSemanticGraphService
 from .coding_workflow_service import CodingWorkflowService
+from .coding_workspace_service import CodingWorkspaceService
 from .execution_governance import GovernedExecutionContext
 
 
@@ -47,6 +49,7 @@ class AgenticCodingLoopService:
         session_id: str,
         actor_id: str = "local-user",
         focus_paths: list[str] | None = None,
+        test_commands: list[list[str]] | None = None,
         diagnostics: list[dict[str, Any]] | None = None,
         enable_lsp: bool = False,
         max_turns: int = 8,
@@ -58,6 +61,13 @@ class AgenticCodingLoopService:
         repo = Path(repo_path).expanduser().resolve()
         if not repo.is_dir():
             raise ValueError("repository does not exist")
+        frozen = None
+        if test_commands is not None:
+            if (not isinstance(test_commands, list) or not 1 <= len(test_commands) <= 5 or
+                    any(not isinstance(command, list) or not command or
+                        not all(isinstance(arg, str) and arg for arg in command) for command in test_commands)):
+                raise ValueError('caller test_commands must contain 1..5 nonempty argv lists')
+            frozen = [self.workflow._validate_command(command) for command in test_commands]
         governed = governance or GovernedExecutionContext.local(
             actor_id=actor_id, workspace_id=str(repo)
         )
@@ -68,6 +78,36 @@ class AgenticCodingLoopService:
         governed.gate("before_context", {
             "task_id": task_id, "session_id": session_id, "repo": str(repo),
         })
+        baseline = None
+        if frozen and confirmed:
+            governed.gate('before_tool', {'task_id': task_id, 'tool': 'baseline_tests'})
+            governed.budget.consume(tool_calls=len(frozen))
+            owned = await asyncio.to_thread(CodingWorkspaceService().create_task, repo,
+                                            self.workflow.artifact_root / 'tasks', task_id, confirmed=True)
+            repo = Path(owned['workspace'])
+            clean_head = owned['baseline_commit']
+            results = []
+            for command in frozen:
+                result = await asyncio.to_thread(self.workflow._run_command, repo, command,
+                                                 timeout_seconds, require_strict=True)
+                results.append(dict(result, command=command))
+                if result.get('timed_out') or not result.get('sandbox', {}).get('strict_boundary_verified'):
+                    break
+                if (CodingExecutionContext.git(repo, 'status', '--porcelain').strip() or
+                        CodingExecutionContext.git(repo, 'rev-parse', 'HEAD').strip() != clean_head):
+                    break
+            clean = (not CodingExecutionContext.git(repo, 'status', '--porcelain').strip() and
+                     CodingExecutionContext.git(repo, 'rev-parse', 'HEAD').strip() == clean_head)
+            available = (clean and len(results) == len(frozen) and all(
+                not row.get('timed_out') and row.get('sandbox', {}).get('strict_boundary_verified') is True
+                for row in results))
+            baseline = dict(type='baseline_tests', workspace=owned, available=available, tests=results)
+            self.trace.step(run['id'], 'test', status='observed' if available else 'failed',
+                            output_value=baseline, metadata={'phase': 'baseline'})
+            governed.gate('after_tool', {'task_id': task_id, 'tool': 'baseline_tests', 'ok': available})
+            if not available:
+                return self._fail(run['id'], [], [baseline], 'strict baseline execution unavailable or changed workspace', governed)
+            diagnostics = [*(diagnostics or []), *CodingExecutionContext.failure_context(repo, results)]
         semantic_workspace: dict[str, Any] = {}
         if enable_lsp:
             try:
@@ -79,8 +119,13 @@ class AgenticCodingLoopService:
                 )
             except (OSError, RuntimeError, TimeoutError, ValueError):
                 semantic_workspace = {}
+        source_evidence = (CodingExecutionContext.test_evidence_paths(repo, frozen, diagnostics)
+                           if baseline and not focus_paths else [])
+        context_options = {'max_chars': 12000} if baseline else {}
         manifest = self.context.build_execution(repo, objective, focus_paths=focus_paths,
-            failure_context=diagnostics, semantic_graph=semantic_workspace)
+            failure_context=diagnostics, semantic_graph=semantic_workspace, test_evidence_paths=source_evidence,
+            **context_options)
+        reproduction = CodingExecutionContext.reproduction_evidence(repo, frozen, manifest, source_evidence, objective)
         governed.gate("after_context", {
             "task_id": task_id, "context_digest": manifest["context_digest"],
         })
@@ -112,6 +157,10 @@ class AgenticCodingLoopService:
             },
             "impact_analysis": manifest.get("impact_analysis") or {},
         }]
+        if baseline:
+            observations.append(baseline)
+        repository_paths = tuple(CodingExecutionContext.inventory(repo)) if baseline and not focus_paths else None
+        source_candidates = set(CodingExecutionContext.source_candidates(repository_paths or ()))
         evidence_gate = CodingEvidenceGate(manifest)
         hypothesis_history: list[dict[str, Any]] = []
         messages = [
@@ -142,14 +191,24 @@ class AgenticCodingLoopService:
                     "hypothesis from structured diagnostics before deciding whether to "
                     "retrieve more evidence or propose a different patch. Do not finish "
                     "until the acceptance gate explicitly passes."
-                ),
+                ) + (' The caller has frozen test commands. They will be used unchanged for every patch. '
+                     'Use the baseline to choose what to investigate. The runner checks test, scope, syntax and diff '
+                     'acceptance automatically. Omit test_commands and acceptance_criteria. '
+                     'Use the exact source anchors already supplied with the reproduction. '
+                     'Search narrowly for missing symbols. Prefer small uniquely anchored hunks.'
+                     if frozen else '') + (' Search can discover files across the repository. Explicitly read a '
+                     'source file outside the initial scope before editing it.' if repository_paths is not None else ''),
             },
             {
                 "role": "user",
                 "content": json.dumps({
                     "objective": objective,
-                    "initial_observation": observations[0],
-                }, ensure_ascii=False),
+                    "initial_observation": manifest if baseline else observations[0],
+                } | ({'frozen_test_commands': frozen, 'reproduction_evidence': reproduction, 'baseline_results': [
+                    {k: row.get(k) for k in ('command', 'exit_code')} |
+                    {k: str(row.get(k) or '')[-1500:] for k in ('stdout', 'stderr')}
+                    for row in baseline['tests']]} if baseline else
+                    {'frozen_test_commands': frozen} if frozen else {}), ensure_ascii=False),
             },
         ]
         attempts: list[dict[str, Any]] = []
@@ -161,13 +220,17 @@ class AgenticCodingLoopService:
                 CodingExecutionContext.verify(repo, manifest)
             except ValueError as exc:
                 return self._fail(run['id'], attempts, observations, str(exc), governed)
-            response = await self.provider.complete(
-                messages, {
-                    "temperature": 0.0,
-                    "max_tokens": 2000,
-                    "response_format": {"type": "json_object"},
-                }
-            )
+            options = {"temperature": 0.0, "max_tokens": 2000, "response_format": {"type": "json_object"}}
+            if frozen and getattr(self.provider, 'name', '') == 'deepseek' and getattr(self.provider, 'base_url', '') in {
+                'https://api.deepseek.com', 'https://api.deepseek.com/v1',
+            }:
+                options['thinking'] = {'type': 'disabled'}
+            try:
+                response = await self.provider.complete(messages, options)
+            except RuntimeError as exc:
+                if not frozen:
+                    raise
+                return self._fail(run['id'], attempts, observations, str(exc), governed)
             if not response.get("ok"):
                 return self._fail(
                     run["id"], attempts, observations,
@@ -183,7 +246,7 @@ class AgenticCodingLoopService:
                 "response_digest": hashlib.sha256(content.encode()).hexdigest(),
             })
             try:
-                action = self._parse_action(content)
+                action = self._parse_action(content, frozen_tests=frozen is not None)
             except ValueError as exc:
                 self.trace.step(
                     run["id"], "failure", status="recoverable",
@@ -217,8 +280,8 @@ class AgenticCodingLoopService:
                 observations=observations,
                 context_digest=manifest["context_digest"],
             ))
-            if action_name in {"search", "read", "symbols"}:
-                if evidence_gate.retrieval_complete():
+            if action_name in {"search", "read", "symbols", "semantic"}:
+                if repository_paths is None and evidence_gate.retrieval_complete():
                     observation = {
                         "type": "retrieval_stopped", "tool": action_name,
                         "reason": "relevant evidence is sufficient; propose a hypothesis and patch instead of reading more files",
@@ -235,7 +298,15 @@ class AgenticCodingLoopService:
                     "task_id": task_id, "tool": action_name, "turn": turn,
                 })
                 try:
-                    observation = self._observe(repo, manifest, action, semantic_workspace=semantic_workspace)
+                    observation = self._observe(repo, manifest, action, semantic_workspace=semantic_workspace,
+                                                repository_paths=repository_paths)
+                    path = observation.get('path')
+                    if (repository_paths is not None and observation['type'] == 'read' and path in source_candidates
+                            and path not in manifest['scope']['write_paths'] and len(manifest['scope']['write_paths']) < 24):
+                        manifest = self.context.build_execution(repo, objective,
+                            write_paths=[*manifest['scope']['write_paths'], path], failure_context=diagnostics,
+                            test_evidence_paths=source_evidence, **context_options)
+                        observation['writable_paths'] = manifest['scope']['write_paths']
                 except (OSError, ValueError) as exc:
                     observation = {
                         "type": "tool_error", "tool": action_name,
@@ -255,7 +326,8 @@ class AgenticCodingLoopService:
                 )
                 observations.append(observation)
                 evidence = evidence_gate.register(action, observation)
-                observation["evidence_gate"] = evidence
+                if repository_paths is None:
+                    observation["evidence_gate"] = evidence
                 messages.extend([
                     {"role": "assistant", "content": content},
                     {"role": "user", "content": json.dumps(
@@ -283,26 +355,8 @@ class AgenticCodingLoopService:
                         })},
                     ])
                     continue
-                self.trace.step(
-                    run["id"], "review", status="human_required",
-                    output_value=action,
-                )
-                self.trace.finish(run["id"], "passed")
-                return {
-                    "schema": "clawos.agentic-coding-run.v1",
-                    "status": "passed",
-                    "trajectory_id": run["id"],
-                    "turns": turn,
-                    "attempts": attempts,
-                    "observations": observations,
-                    "summary": str(action.get("summary") or ""),
-                    "human_review_required": True,
-                    "commit_created": False,
-                    "online_rl_claimed": False,
-                    "learning_decision_count": learning_decision_count,
-                    "hypothesis_history": hypothesis_history,
-                    "acceptance": final_acceptance,
-                }
+                summary = str(action.get('summary') or '')
+                break
             if not evidence_gate.patch_ready():
                 target = evidence_gate.automatic_target()
                 observation = {
@@ -318,14 +372,14 @@ class AgenticCodingLoopService:
                 continue
             proposal = {
                 "changes": action.get("changes") or [],
-                "test_commands": action.get("test_commands") or [],
+                "test_commands": frozen if frozen is not None else action.get("test_commands") or [],
                 "explanation": str(action.get("explanation") or ""),
-                "hypothesis": action.get("hypothesis") or {
+                "hypothesis": action.get("hypothesis") if isinstance(action.get("hypothesis"), dict) else {
                     "claim": str(action.get("explanation") or "proposed change addresses the objective"),
                     "evidence_paths": sorted(evidence_gate.observed_paths or evidence_gate.initial_paths),
                     "predicted_outcome": "configured tests and acceptance criteria pass",
                 },
-                "acceptance_criteria": action.get("acceptance_criteria") or [],
+                "acceptance_criteria": [] if frozen else action.get("acceptance_criteria") or [],
             }
             try:
                 CodingExecutionContext.verify(repo, manifest)
@@ -382,6 +436,7 @@ class AgenticCodingLoopService:
                     confirmed=True, max_rounds=1,
                     timeout_seconds=timeout_seconds, actor=actor_id,
                     acceptance_criteria=proposal["acceptance_criteria"],
+                    **({'require_strict': True} if frozen else {}),
                 )
             except (OSError, PermissionError, RuntimeError, ValueError) as exc:
                 observation = {
@@ -450,23 +505,46 @@ class AgenticCodingLoopService:
                 "acceptance": result.get("acceptance") or {},
             }
             observations.append(observation)
+            if result.get('test_boundary_failure'):
+                return self._fail(run['id'], attempts, observations, result['test_boundary_failure'], governed)
+            if frozen and result['status'] == 'passed' and assessment['status'] == 'confirmed':
+                final_acceptance = result['acceptance']
+                summary = proposal['explanation'] or assessment['claim']
+                break
             failed_tests = [test for round_item in result.get('rounds', []) for test in round_item.get('tests', [])]
             manifest = self.context.build_execution(repo, objective, write_paths=manifest['scope']['write_paths'],
-                failure_context=CodingExecutionContext.failure_context(repo, failed_tests))
+                failure_context=CodingExecutionContext.failure_context(repo, failed_tests), test_evidence_paths=source_evidence,
+                **context_options)
             semantic_workspace = {}  # Initial LSP evidence is stale after an edit attempt.
             observation['execution_context'] = manifest
             self.trace.step(run['id'], 'context', status='refreshed', output_value=manifest['context_digest'],
                 metadata={'turn':turn, 'source_fingerprint':manifest['source_fingerprint']})
+            feedback = observation if not frozen else {
+                'type': observation['type'], 'status': result['status'],
+                'failure': str(result.get('failure') or '')[:1000],
+                'tests': [{k: test.get(k) for k in ('command', 'exit_code', 'timed_out')} |
+                          {k: str(test.get(k) or '')[-1500:] for k in ('stdout', 'stderr')}
+                          for test in failed_tests],
+                'failure_category': observation['failure_category'],
+                'next_decision': assessment['next_decision'],
+            }
             messages.extend([
                 {"role": "assistant", "content": content},
                 {"role": "user", "content": json.dumps(
-                    {"observation": observation}, ensure_ascii=False
-                )[:16_000]},
+                    {"observation": feedback}, ensure_ascii=False
+                )},
             ])
-        return self._fail(
-            run["id"], attempts, observations, "agentic turn budget exhausted",
-            governed,
-        )
+        else:
+            return self._fail(run['id'], attempts, observations, 'agentic turn budget exhausted', governed)
+        self.trace.step(run['id'], 'review', status='human_required', output_value={'summary': summary})
+        self.trace.finish(run['id'], 'passed')
+        return {
+            'schema': 'clawos.agentic-coding-run.v1', 'status': 'passed', 'trajectory_id': run['id'],
+            'turns': turn, 'attempts': attempts, 'observations': observations, 'summary': summary,
+            'human_review_required': True, 'commit_created': False, 'online_rl_claimed': False,
+            'learning_decision_count': learning_decision_count, 'hypothesis_history': hypothesis_history,
+            'acceptance': final_acceptance,
+        } | ({'workspace': baseline['workspace']} if baseline else {})
 
     @staticmethod
     def _assess_hypothesis(
@@ -536,19 +614,24 @@ class AgenticCodingLoopService:
             return False
 
     def _observe(
-        self, repo: Path, manifest: dict[str, Any], action: dict[str, Any], *, semantic_workspace=None
+        self, repo: Path, manifest: dict[str, Any], action: dict[str, Any], *, semantic_workspace=None,
+        repository_paths=None,
     ) -> dict[str, Any]:
         name = action["action"]
         CodingExecutionContext.verify(repo, manifest)
         if name == "search":
             query = str(action.get("query") or "").lower()
             glob = str(action.get("glob") or "*")
+            if repository_paths is not None and not 1 <= len(query.strip()) <= 200:
+                raise ValueError('repository search needs a bounded literal query')
+            match_limit = 24 if repository_paths is not None else 100
             matches = []
-            for rel in manifest['scope']['read_paths']:
+            paths = repository_paths if repository_paths is not None else manifest['scope']['read_paths']
+            for rel in paths:
                 if not fnmatch.fnmatch(rel, glob):continue
-                data = CodingExecutionContext.read(repo, rel)
-                if data is None:continue
                 try:
+                    data = CodingExecutionContext.read(repo, rel)
+                    if data is None:continue
                     for number, line in enumerate(
                         data.decode('utf-8-sig').splitlines(),
                         1,
@@ -557,11 +640,11 @@ class AgenticCodingLoopService:
                             matches.append({
                                 "path": rel, "line": number, "text": line[:400],
                             })
-                            if len(matches) >= 100:
+                            if len(matches) >= match_limit:
                                 break
-                except OSError:
+                except (OSError, ValueError):
                     continue
-                if len(matches) >= 100:
+                if len(matches) >= match_limit:
                     break
             return {"type": "search", "query": query, "matches": matches}
         if name == "semantic":
@@ -588,7 +671,7 @@ class AgenticCodingLoopService:
                 "available": bool((workspace.get("graphs") or [])),
             }
         rel = str(action.get("path") or "").replace("\\", "/").strip("/")
-        if rel not in manifest['scope']['read_paths']:
+        if rel not in manifest['scope']['read_paths'] and rel not in (repository_paths or ()):
             raise ValueError('observation path outside execution context')
         path = (repo / rel).resolve()
         try:
@@ -600,10 +683,14 @@ class AgenticCodingLoopService:
                 raise ValueError("read path does not exist")
             lines = CodingExecutionContext.read(repo, rel).decode('utf-8-sig').splitlines()
             start = max(1, int(action.get("start_line") or 1))
-            end = min(len(lines), start + 239, max(start, int(action.get("end_line") or start + 199)))
+            end = min(len(lines), start + (119 if repository_paths is not None else 239),
+                      max(start, int(action.get("end_line") or start + 199)))
+            selected = lines[start - 1:end]
+            limit = 4500 if repository_paths is not None else 12000
+            content = "\n".join(selected)[:limit]
             return {
                 "type": "read", "path": rel, "start_line": start,
-                "end_line": end, "content": "\n".join(lines[start - 1:end])[:12000],
+                "end_line": min(end, start + len(content.splitlines()) - 1), "content": content,
             }
         symbols = []
         for item in manifest.get('code_evidence') or []:
@@ -613,7 +700,7 @@ class AgenticCodingLoopService:
         return {"type": "symbols", "path": rel, "symbols": symbols}
 
     @classmethod
-    def _parse_action(cls, content: str) -> dict[str, Any]:
+    def _parse_action(cls, content: str, *, frozen_tests=False) -> dict[str, Any]:
         try:
             value = json.loads(content)
         except json.JSONDecodeError as exc:
@@ -627,8 +714,8 @@ class AgenticCodingLoopService:
             raise ValueError(f"unsupported agentic coding action: {action}")
         if action == "propose_patch" and (
             not isinstance(value.get("changes"), list)
-            or not isinstance(value.get("test_commands"), list)
-            or not value.get("changes") or not value.get("test_commands")
+            or not value.get("changes")
+            or (not frozen_tests and (not isinstance(value.get("test_commands"), list) or not value.get("test_commands")))
         ):
             raise ValueError("propose_patch requires changes and test_commands")
         return value

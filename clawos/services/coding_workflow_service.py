@@ -15,6 +15,7 @@ from typing import Any
 
 from .coding_context_service import CodingContextService
 from .coding_diagnostics_service import CodingDiagnosticsService
+from .coding_execution_context import CodingExecutionContext
 from .egress_proxy import AuditedEgressProxy, EgressProxyPolicy
 from .os_sandbox import WindowsJobSandbox, WindowsRestrictedTokenSandbox
 from .windows_appcontainer_boundary import WindowsAppContainerBoundary
@@ -153,6 +154,7 @@ class CodingWorkflowService:
         timeout_seconds: int = 180,
         actor: str = "coding-agent",
         acceptance_criteria: list[dict[str, Any]] | None = None,
+        require_strict: bool = False,
     ) -> dict[str, Any]:
         if confirmed is not True:
             raise PermissionError("confirmed=true is required for coding writes and test execution")
@@ -170,6 +172,7 @@ class CodingWorkflowService:
         started = time.perf_counter()
         status = "failed"
         restored = False
+        test_boundary_failure = ""
         failure = ""
         repair_payloads = list(repair_rounds or [])
         scoped_paths = {item["path"] for item in normalized}
@@ -191,13 +194,22 @@ class CodingWorkflowService:
                     f"{objective} (round {round_no})",
                 )
                 self._apply_changes(repo, round_changes)
-                tests = [self._run_command(repo, command, timeout_seconds) for command in commands]
+                if require_strict:
+                    tests, test_boundary_failure = self._run_frozen_tests(repo, commands, timeout_seconds, scoped_paths)
+                else:
+                    tests = [self._run_command(repo, command, timeout_seconds) for command in commands]
                 diagnostics = self.diagnostics_service.analyze(repo, tests)
-                review = self._review(
-                    repo, [item["path"] for item in manifest["files"]], tests,
-                    acceptance_criteria=acceptance_criteria,
-                    diagnostics=diagnostics,
-                )
+                if test_boundary_failure:
+                    review = {
+                        "gate": "revision_required", "failures": [test_boundary_failure],
+                        "acceptance": {"passed": False, "criteria": [], "failures": [test_boundary_failure]},
+                    }
+                else:
+                    review = self._review(
+                        repo, [item["path"] for item in manifest["files"]], tests,
+                        acceptance_criteria=acceptance_criteria,
+                        diagnostics=diagnostics,
+                    )
                 rounds.append({
                     "round": round_no,
                     "changes": [item["path"] for item in round_changes],
@@ -206,6 +218,9 @@ class CodingWorkflowService:
                     "diagnostics": diagnostics,
                     "review": review,
                 })
+                if test_boundary_failure:
+                    failure = test_boundary_failure
+                    break
                 if review["gate"] == "pass":
                     status = "passed"
                     break
@@ -232,6 +247,7 @@ class CodingWorkflowService:
             "rounds": rounds,
             "restored_on_failure": restored,
             "failure": failure,
+            **({"test_boundary_failure": test_boundary_failure} if test_boundary_failure else {}),
             "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             "diff_path": str(diff_path) if diff else "",
             "commit_created": False,
@@ -242,6 +258,38 @@ class CodingWorkflowService:
         }
         self._save_run(payload, actor)
         return payload
+
+    def _run_frozen_tests(self, repo, commands, timeout_seconds, scoped_paths):
+        before = self._frozen_test_state(repo, scoped_paths)
+        results = []
+        for command in commands:
+            result = self._run_command(repo, command, timeout_seconds, require_strict=True)
+            results.append(result)
+            if self._frozen_test_state(repo, scoped_paths) != before:
+                return results, "frozen test changed the task workspace"
+            if (result.get("timed_out") or
+                    result.get("sandbox", {}).get("strict_boundary_verified") is not True):
+                return results, "frozen test did not complete in the strict sandbox"
+        return results, ""
+
+    @staticmethod
+    def _frozen_test_state(repo, scoped_paths):
+        git = CodingExecutionContext.git
+        head = git(repo, "rev-parse", "HEAD")
+        status = git(repo, "status", "--porcelain=v1", "-z")
+        diff = subprocess.run(
+            ["git", "diff", "--no-ext-diff", "--no-textconv", "--binary", "HEAD"],
+            cwd=repo, capture_output=True, timeout=30, check=True,
+        )
+        scoped = []
+        for path in sorted(scoped_paths):
+            try:
+                data = CodingExecutionContext.read(repo, path)
+            except (OSError, ValueError):
+                scoped.append((path, "unreadable"))
+            else:
+                scoped.append((path, hashlib.sha256(data).hexdigest() if data is not None else "missing"))
+        return head, status, hashlib.sha256(diff.stdout).hexdigest(), tuple(scoped)
 
     def rollback(self, repo_path: str | Path, checkpoint: str | Path, *, confirmed: bool = False, actor: str = "user") -> dict[str, Any]:
         if confirmed is not True:

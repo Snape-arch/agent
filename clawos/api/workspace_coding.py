@@ -154,6 +154,7 @@ class WorkspaceCodingAPI:
                 data.get("objective", ""),
                 confirmed=data.get("confirmed") is True,
                 focus_paths=data.get("focus_paths") or [],
+                test_commands=data.get("test_commands"),
                 diagnostics=data.get("diagnostics") or [],
                 enable_lsp=bool(data.get("enable_lsp", False)),
                 max_turns=data.get("max_turns", 8),

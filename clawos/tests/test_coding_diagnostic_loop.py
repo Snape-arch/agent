@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from providers.base import model_result
 from services.agentic_coding_loop_service import AgenticCodingLoopService
@@ -113,6 +114,129 @@ class CodingDiagnosticLoopTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertFalse(result["acceptance"]["passed"])
         self.assertIn("return a - b", text)
+
+    def test_frozen_baseline_discovers_unranked_source_and_keeps_caller_test(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = make_repo(root)
+            for index in range(15):
+                (source / f'a{index:02}.py').write_text('value = 0\n', encoding='utf-8')
+            target = source / 'zz_runtime.py'
+            target.write_text('def calculate():\n    return -42\n', encoding='utf-8')
+            (source / 'test_calc.py').write_text("assert __import__('zz_runtime').calculate() == 42\n", encoding='utf-8')
+            subprocess.run(['git', 'add', '.'], cwd=source, check=True, capture_output=True)
+            subprocess.run(['git', 'commit', '-m', 'repository discovery fixture'], cwd=source, check=True, capture_output=True)
+            provider = ReassessingProvider()
+            provider.actions = [
+                {'action': 'search', 'query': 'return -42', 'glob': '*.py'},
+                {'action': 'read', 'path': 'zz_runtime.py'},
+                {'action': 'propose_patch', 'changes': [dict(path='zz_runtime.py', operation='replace',
+                    old_text='return -42', new_text='return 42')], 'test_commands': [['python', '-c', 'pass']],
+                    'acceptance_criteria': ['the tests pass']},
+            ]
+            runs = []
+
+            def run(repo, command, timeout, *, require_strict):
+                self.assertTrue(require_strict)
+                process = subprocess.run(command, cwd=repo, timeout=timeout, capture_output=True, text=True)
+                runs.append((repo, command, process.returncode))
+                return dict(command=command, exit_code=process.returncode, stdout=process.stdout, stderr=process.stderr,
+                            timed_out=False, sandbox={'strict_boundary_verified': True})
+
+            command = [sys.executable, '-B', 'test_calc.py']
+            with patch.object(CodingWorkflowService, '_run_command', staticmethod(run)):
+                result = asyncio.run(AgenticCodingLoopService(provider,
+                    workflow=CodingWorkflowService(artifact_root=root/'runs'),
+                    trace=CodingTraceService(root/'trace.json')).run(source, 'Repair the observed regression',
+                        confirmed=True, task_id='discover', session_id='test', test_commands=[command]))
+            self.assertEqual(result['status'], 'passed', result.get('error'))
+            self.assertEqual(provider.index, 3)
+            self.assertEqual([row['type'] for row in result['acceptance']['criteria']],
+                             ['tests_pass', 'scoped_diff', 'syntax_pass', 'diff_check'])
+            self.assertNotIn('zz_runtime.py', result['observations'][0]['execution_context']['scope']['write_paths'])
+            self.assertEqual([row[1:] for row in runs], [(command, 1), (command, 0)])
+            self.assertTrue(all(row[0] != source for row in runs))
+            self.assertIn('return -42', target.read_text(encoding='utf-8'))
+
+    def test_frozen_baseline_workspace_mutation_stops_before_model(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = make_repo(root)
+            provider = ReassessingProvider()
+
+            def mutate(repo, command, timeout, *, require_strict):
+                self.assertTrue(require_strict)
+                (repo / 'calc.py').write_text('modified by test', encoding='utf-8')
+                return dict(exit_code=0, timed_out=False, sandbox={'strict_boundary_verified': True})
+
+            with patch.object(CodingWorkflowService, '_run_command', staticmethod(mutate)):
+                result = asyncio.run(AgenticCodingLoopService(provider,
+                    workflow=CodingWorkflowService(artifact_root=root/'runs'),
+                    trace=CodingTraceService(root/'trace.json')).run(source, 'fix add', confirmed=True,
+                        task_id='mutating-test', session_id='test', test_commands=[[sys.executable, 'test_calc.py']]))
+            self.assertEqual(result['status'], 'failed')
+            self.assertFalse(result['observations'][0]['available'])
+            self.assertEqual(provider.index, 0)
+            self.assertIn('return a - b', (source/'calc.py').read_text(encoding='utf-8'))
+
+    def test_caller_probe_imports_prioritize_source_without_target_paths(self):
+        from services.coding_context_service import CodingContextService
+        from services.coding_execution_context import CodingExecutionContext
+
+        with tempfile.TemporaryDirectory() as td:
+            source = make_repo(Path(td))
+            for index in range(15):
+                (source / f'a{index:02}.py').write_text('value = 0\n', encoding='utf-8')
+            anchor = 'def calculate():\n    return -42'
+            (source / 'zz_runtime.py').write_text(anchor + '\n', encoding='utf-8')
+            (source / 'test_calc.py').write_text('from zz_runtime import calculate\nassert calculate() == 42\n', encoding='utf-8')
+            subprocess.run(['git', 'add', '.'], cwd=source, check=True, capture_output=True)
+            command = ['python', r'.\test_calc.py']
+            objective = 'Repair the observed regression'
+            self.assertNotIn('zz_runtime.py', CodingExecutionContext.targets(source, objective, None))
+            evidence = CodingExecutionContext.test_evidence_paths(source, [command], [])
+            self.assertEqual(evidence, ['zz_runtime.py'])
+            manifest = CodingContextService().build_execution(source, objective, test_evidence_paths=evidence)
+            self.assertEqual(manifest['code_evidence'][0]['path'], 'zz_runtime.py')
+            self.assertIn(anchor, manifest['code_evidence'][0]['content'])
+            self.assertNotIn('test_calc.py', manifest['scope']['write_paths'])
+            reproduction = CodingExecutionContext.reproduction_evidence(source, [command], manifest, evidence, objective)
+            self.assertEqual(reproduction['source_anchors'], [
+                {'path': 'zz_runtime.py', 'start_line': 1, 'end_line': 2, 'content': anchor},
+            ])
+            self.assertEqual(reproduction['public_tests'][0]['path'], 'test_calc.py')
+            restricted = CodingContextService().build_execution(source, objective, focus_paths=['calc.py'])
+            restricted_evidence = CodingExecutionContext.reproduction_evidence(
+                source, [command], restricted, evidence, objective)
+            self.assertEqual(restricted_evidence['source_anchors'], [])
+
+    def test_frozen_candidate_rejects_workspace_changes_or_missing_attestation(self):
+        for mutation in (True, False):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                repo = make_repo(root)
+                workflow = CodingWorkflowService(artifact_root=root/'runs')
+                calls = []
+
+                def run(candidate, command, timeout, *, require_strict):
+                    calls.append(command)
+                    self.assertTrue(require_strict)
+                    if mutation:
+                        (candidate/'test_calc.py').write_text('# modified by test\n', encoding='utf-8')
+                    return dict(command=command, exit_code=0, timed_out=False,
+                                sandbox={'strict_boundary_verified': mutation})
+
+                command = ['python', '-B', 'test_calc.py']
+                with patch.object(CodingWorkflowService, '_run_command', staticmethod(run)):
+                    result = workflow.execute(repo, 'fix addition',
+                        [dict(path='calc.py', operation='replace', old_text='return a - b', new_text='return a + b')],
+                        [command, command], confirmed=True, require_strict=True)
+                self.assertEqual(result['status'], 'failed')
+                self.assertFalse(result['acceptance']['passed'])
+                self.assertEqual(calls, [command])
+                self.assertEqual(result['rounds'][0]['tests'][0]['exit_code'], 0)
+                self.assertIn('changed the task workspace' if mutation else 'strict sandbox', result['test_boundary_failure'])
+                self.assertIn('return a - b', (repo/'calc.py').read_text(encoding='utf-8'))
 
 
 if __name__ == "__main__":

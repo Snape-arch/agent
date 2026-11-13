@@ -92,6 +92,119 @@ class CodingExecutionContext:
         return result
 
     @classmethod
+    def source_candidates(cls, inventory):
+        return [p for p in inventory if Path(p).suffix.lower() not in {'.json','.yaml','.yml','.toml','.ini','.md','.txt'}
+                and not re.search(r'(^|/)(tests?|__tests__|benchmarks)(/|_)|(^|/)test_|\.(test|spec)\.|holdout', p, re.I)]
+
+    @classmethod
+    def python_probes(cls, repo, commands, inventory, candidates):
+        names = (PurePosixPath(arg.split('::', 1)[0].replace('\\', '/')).as_posix()
+                 for command in commands for arg in command[1:])
+        paths = dict.fromkeys(name for name in names
+                              if name in inventory and name not in candidates and name.endswith('.py'))
+        for path in list(paths)[:5]:
+            try:
+                data = cls.read(repo, path)
+                if data:
+                    yield path, data.decode('utf-8-sig')
+            except (OSError, ValueError):
+                continue
+
+    @classmethod
+    def test_evidence_paths(cls, repo, commands, frames):
+        """Locate eligible source from caller-selected Python tests and actual failures."""
+        inventory = set(cls.inventory(repo))
+        candidates = set(cls.source_candidates(inventory))
+        paths = [frame.get('path') for frame in frames if frame.get('path') in candidates]
+        for probe, text in cls.python_probes(repo, commands, inventory, candidates):
+            paths.extend(cls.local_imports(probe, text, candidates))
+        return list(dict.fromkeys(paths))[:8]
+
+    @classmethod
+    def reproduction_evidence(cls, repo, commands, manifest, source_paths, objective):
+        """Preserve exact anchors for symbols exercised by the caller's reproduction."""
+        if not source_paths:
+            return {}
+        inventory = set(cls.inventory(repo))
+        candidates = set(cls.source_candidates(inventory))
+        objective_terms = set(re.findall(r'[a-z_][a-z_0-9]*', objective.lower()))
+        symbols = set()
+        tests = []
+        operations = {
+            ast.Del: '__delitem__', ast.Load: '__getitem__', ast.Store: '__setitem__',
+            ast.Lt: '__lt__', ast.LtE: '__le__', ast.Gt: '__gt__', ast.GtE: '__ge__', ast.Eq: '__eq__',
+        }
+        for path, text in cls.python_probes(repo, commands, inventory, candidates):
+            tests.append(dict(path=path, content=text[:1600]))
+            try:
+                nodes = ast.walk(ast.parse(text))
+            except SyntaxError:
+                continue
+            for node in nodes:
+                if isinstance(node, ast.Attribute):
+                    symbols.add(node.attr)
+                elif isinstance(node, ast.ImportFrom):
+                    symbols.update(alias.name for alias in node.names)
+                elif isinstance(node, ast.Subscript):
+                    symbols.add(operations[type(node.ctx)])
+                elif isinstance(node, ast.Compare):
+                    symbols.update(operations[type(op)] for op in node.ops if type(op) in operations)
+
+        ranked = []
+        defined = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        writable = set(manifest['scope']['write_paths'])
+        for path in source_paths:
+            if path not in writable or not path.endswith('.py'):
+                continue
+            data = cls.read(repo, path)
+            if not data:
+                continue
+            text = data.decode('utf-8-sig')
+            try:
+                definitions = [node for node in ast.walk(ast.parse(text)) if isinstance(node, defined)]
+            except SyntaxError:
+                continue
+            constructors = {method for node in definitions if isinstance(node, ast.ClassDef) and node.name in symbols
+                            for method in node.body if isinstance(method, defined)
+                            and method.name in {'__init__', '__new__'}}
+            lines = text.splitlines()
+            failure_lines = [row['line'] for row in manifest['failure_frames'] if row['path'] == path]
+            seeds = [node for node in definitions if node.name in symbols or node in constructors or
+                     any(node.lineno <= line <= node.end_lineno for line in failure_lines)]
+            called = {sub.func.attr for node in seeds if not isinstance(node, ast.ClassDef)
+                      for sub in ast.walk(node) if isinstance(sub, ast.Call)
+                      and isinstance(sub.func, ast.Attribute)
+                      and isinstance(sub.func.value, ast.Name) and sub.func.value.id in {'self', 'cls'}}
+            for node in definitions:
+                start = min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)])
+                end = node.end_lineno
+                weight = (5 * (node.name in symbols or node in constructors) + 4 * (node.name in called)
+                          + 3 * (node.name.strip('_').lower() in objective_terms)
+                          + 8 * any(start <= line <= end for line in failure_lines))
+                if not weight:
+                    continue
+                content = '\n'.join(lines[start - 1:end])
+                if len(content) > 4600:
+                    if isinstance(node, ast.ClassDef):
+                        continue
+                    relevant = next((line for line in failure_lines if start <= line <= end), start)
+                    start = max(start, relevant - 12)
+                    content = '\n'.join(lines[start - 1:end])[:4600].rsplit('\n', 1)[0]
+                    end = start + len(content.splitlines()) - 1
+                if content:
+                    ranked.append((weight, path, start, end, content))
+        snippets, remaining = [], 8500
+        for _, path, start, end, content in sorted(ranked, key=lambda row: (-row[0], row[1], row[2])):
+            if len(content) > remaining or any(s['path'] == path and s['start_line'] <= end
+                                               and s['end_line'] >= start for s in snippets):
+                continue
+            snippets.append(dict(path=path, start_line=start, end_line=end, content=content))
+            remaining -= len(content)
+            if len(snippets) == 10:
+                break
+        return dict(public_tests=tests, source_anchors=snippets)
+
+    @classmethod
     def targets(cls, repo, objective, focus_paths):
         """Bounded default selection; explicit missing files remain creatable."""
         inventory = cls.inventory(repo)
@@ -111,8 +224,7 @@ class CodingExecutionContext:
             return sorted(selected)
         tokens = list(dict.fromkeys(re.findall(r'[a-z][a-z0-9_]{2,59}', objective.lower())))
         terms = [t for t in tokens if t not in {'the', 'and', 'for', 'from', 'this', 'with', 'fix', 'should', 'when'}][:12]
-        candidates = [p for p in inventory if Path(p).suffix.lower() not in {'.json','.yaml','.yml','.toml','.ini','.md','.txt'}
-                      and not re.search(r'(^|/)(tests?|__tests__|benchmarks)(/|_)|(^|/)test_|\.(test|spec)\.|holdout', p, re.I)]
+        candidates = cls.source_candidates(inventory)
         scores = {p: 3 * len(set(terms) & set(re.findall(r'[a-z][a-z0-9_]*', p.lower()))) for p in candidates}
         if terms:
             patterns = [argument for term in terms for argument in ('-e', term)]
@@ -176,14 +288,17 @@ class CodingExecutionContext:
     @classmethod
     def build(cls, service, repo, objective, *, write_paths=None, focus_paths=None,
               read_only_paths=None, failure_context=None, max_chars=6000, semantic_graph=None,
-              prefer_complete_writes=False):
+              prefer_complete_writes=False, test_evidence_paths=None):
         repo = service._repo(repo)
         if cls.policy() != LOADED_POLICY:
             raise RuntimeError('loaded context builder source changed')
         if type(max_chars) is not int or max_chars <= 0:
             raise ValueError('max_chars must be a positive integer')
         limit = max(4000, min(max_chars, 32_000))
-        writes = sorted(set(write_paths if write_paths is not None else cls.targets(repo, objective, focus_paths)))
+        ranked = write_paths if write_paths is not None else cls.targets(repo, objective, focus_paths)
+        if write_paths is None and not focus_paths and test_evidence_paths:
+            ranked = list(dict.fromkeys([*test_evidence_paths, *ranked]))[:12]
+        writes = sorted(set(ranked))
         if not writes or len(writes) > 24:
             raise ValueError('execution context needs 1..24 writable source paths')
         for p in writes:
@@ -212,7 +327,8 @@ class CodingExecutionContext:
         # Large scopes keep the normal excerpts without widening read access.
         full_writes = {}
         write_budget = min(12_000, limit * 2 // 3) if prefer_complete_writes else -1
-        queue = [(p, 0, True) for p in writes + reads]
+        priority = [path for path in test_evidence_paths or [] if path in writes]
+        queue = [(p, 0, True) for p in dict.fromkeys([*priority, *writes, *reads])]
         seen = set()
         while queue and len(rows) < 40:
             rel, depth, explicit = queue.pop(0)
