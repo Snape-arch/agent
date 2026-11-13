@@ -14,6 +14,7 @@ from services.agentic_coding_loop_service import AgenticCodingLoopService
 from services.coding_diagnostics_service import CodingDiagnosticsService, CodingEvidenceGate
 from services.coding_trace_service import CodingTraceService
 from services.coding_workflow_service import CodingWorkflowService
+from services.coding_working_memory import CodingWorkingMemory
 from services.execution_governance import GovernedExecutionContext
 
 
@@ -136,6 +137,10 @@ class CodingDiagnosticLoopTests(unittest.TestCase):
                     {'action': 'read', 'path': 'zz_runtime.py', 'start_line': 5, 'end_line': 6},
                     {'action': 'read', 'path': 'zz_runtime.py', 'symbol': 'Other.calculate'},
                 ]},
+                {'action': 'inspect', 'actions': [
+                    {'action': 'read', 'path': 'zz_runtime.py', 'symbol': 'Other.calculate'},
+                    {'action': 'read', 'path': 'zz_runtime.py', 'symbol': 'Other.calculate', 'refresh': True},
+                ]},
                 {'action': 'propose_patch', 'changes': [dict(path='zz_runtime.py', operation='replace',
                     old_text='return -42', new_text='return 42')], 'test_commands': [['python', '-c', 'pass']],
                     'acceptance_criteria': ['the tests pass']},
@@ -161,12 +166,13 @@ class CodingDiagnosticLoopTests(unittest.TestCase):
                 result = asyncio.run(AgenticCodingLoopService(provider,
                     workflow=CodingWorkflowService(artifact_root=root/'runs'),
                     trace=CodingTraceService(root/'trace.json')).run(source, 'Repair the observed regression',
-                        confirmed=True, task_id='discover', session_id='test', test_commands=[command], max_turns=2,
+                        confirmed=True, task_id='discover', session_id='test', test_commands=[command], max_turns=3,
                         governance=governance))
             self.assertEqual(result['status'], 'passed', result.get('error'))
-            self.assertEqual(provider.index, 2)
-            self.assertEqual(tool_gates, ['baseline_tests', 'inspect', 'search', 'read', 'read', 'read'])
-            self.assertEqual(governance.budget.tool_calls, 7)
+            self.assertEqual(provider.index, 3)
+            self.assertEqual(tool_gates, ['baseline_tests', 'inspect', 'search', 'read', 'read', 'read',
+                                          'inspect', 'read', 'read'])
+            self.assertEqual(governance.budget.tool_calls, 9)
             lookup = next(row for row in result['observations'] if row['type'] == 'inspect')
             search, ambiguous, top, qualified = lookup['results']
             self.assertEqual(search['matches'][0]['path'], 'zz_runtime.py')
@@ -174,6 +180,9 @@ class CodingDiagnosticLoopTests(unittest.TestCase):
             self.assertEqual(top['content'], 'def calculate():\n    return -42')
             self.assertEqual(qualified['content'], '    def calculate(self):\n        return 0')
             self.assertIn('zz_runtime.py', lookup['writable_paths'])
+            repeated = [row for row in result['observations'] if row['type'] == 'inspect'][1]['results']
+            self.assertEqual(repeated[0]['type'], 'repeated_retrieval')
+            self.assertEqual(repeated[1]['content'], qualified['content'])
             self.assertEqual([row['type'] for row in result['acceptance']['criteria']],
                              ['tests_pass', 'scoped_diff', 'syntax_pass', 'diff_check'])
             self.assertNotIn('zz_runtime.py', result['observations'][0]['execution_context']['scope']['write_paths'])
@@ -190,6 +199,29 @@ class CodingDiagnosticLoopTests(unittest.TestCase):
         for actions in ([], [read] * 5, [{'action': 'inspect'}], [{'action': 'propose_patch'}]):
             with self.subTest(actions=actions), self.assertRaises(ValueError):
                 AgenticCodingLoopService._parse_action(batch(actions), batch_allowed=True)
+
+    def test_working_memory_preserves_failure_and_recent_source_within_budget(self):
+        memory = CodingWorkingMemory()
+        messages = [{'role': 'system', 'content': 'system'}, {'role': 'user', 'content': 'frozen objective'}]
+        observations = []
+        for turn in range(1, 7):
+            item = dict(type='read', path='calc.py', start_line=turn, end_line=turn,
+                        content=' source evidence ' * 300, truncated=False)
+            observations.append(dict(type='inspect', results=[item]))
+            messages.extend([{'role': 'assistant', 'content': '{"action":"inspect"}'},
+                             {'role': 'user', 'content': json.dumps({'observation': observations[-1]})}])
+        observations.insert(0, dict(type='patch_result', turn=1, failure='assertion evidence'))
+        prompt = memory.prompt(messages, observations, remaining=1, writable=['calc.py'])
+        self.assertEqual(prompt[:2], messages[:2])
+        self.assertEqual(len(prompt), 4)
+        latest, guidance, recall = [json.loads(row) for row in prompt[-1]['content'].splitlines()]
+        self.assertEqual(latest['observation']['results'][0]['start_line'], 6)
+        self.assertTrue(latest['observation']['results'][0]['truncated'])
+        self.assertEqual(recall['earlier_failures'][0]['failure'], 'assertion evidence')
+        self.assertIn(5, [row['start_line'] for row in recall['earlier_source_reads']])
+        self.assertEqual(guidance['turns_remaining_after_this_action'], 1)
+        self.assertLess(memory.sent[-1], CodingWorkingMemory.size(messages) // 2)
+        self.assertEqual(len(observations[-1]['results'][0]['content']), 5100)
 
     def test_agent_retries_an_inexact_anchor_before_running_candidate_tests(self):
         with tempfile.TemporaryDirectory() as td:

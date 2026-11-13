@@ -285,6 +285,7 @@ def main():
         APP/'services/coding_comparison_service.py', APP/'services/coding_execution_context.py',
         APP/'services/coding_structured_output.py', APP/'services/coding_context_service.py',
         APP/'services/coding_diagnostics_service.py', APP/'services/coding_workspace_service.py',
+        APP/'services/coding_working_memory.py',
         APP/'providers/deepseek.py', APP/'providers/openai_compatible.py',
     )}
     plan = dict(model=args.model, limits=LIMITS, witness=witness, cases=[dict(id=c['id'], project=c['project'], fix=c['fix'],

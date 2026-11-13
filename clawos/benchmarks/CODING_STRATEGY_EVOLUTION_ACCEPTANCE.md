@@ -122,6 +122,25 @@ Aider 原题评分保存多行断言的首个差异和已验证通过用例的�
 
 评测目录 `output/rp-3c73e47f`。报告 SHA-256 为 `62002a7964ff6f9eb966291a026df8b1ebf4af061e63c07d57248ede91c4bd4b`，对照为 `9937be7c1014c5a98ec841f90e273471a8a2c1a5bd775f114be14ec2af1554bd`，计划为 `c4e3dcf2f01d2b60358f41df76eecf935102ff620f0d96ada35f5f108ad31a19`。旧轮的 1/10 和 0/10 含服务拒绝、截断与装配失败，不能把分差归因于单项代码改动。本轮成绩对应十道历史 Python 题与当前运行条件。
 
+#### 编码工具历史与工作记忆
+
+参考 Codex 公开的上下文压缩和分层仓库指引，以及 Claude Code 的取证、执行、验证循环和项目记忆。ClawOS 复用现有仓库指引和运行轨迹，在确认执行固定测试且未限定文件的任务中，按任务构造模型视图。目标、固定测试、基线失败和仓库指引持续可见。工具回合保留最近结果和有限的旧源码片段、搜索位置与失败原因，原始观察仍保留在运行结果中。压缩在本地确定性完成，无需额外模型调用。 [Codex Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide) [How Claude Code works](https://code.claude.com/docs/en/how-claude-code-works) [Claude Code 项目记忆](https://code.claude.com/docs/en/memory)
+
+重复检索返回已获取证据的位置，可用 `refresh: true` 强制重新读取。重复请求继续经过工具策略检查和预算计数。工作区发生未回滚的编辑后，清除先前检索缓存并停止回忆旧源码。该记忆仅用于当前编码任务，跨会话自动学习和恢复待独立实现与验收。
+
+在 `299e800` 基础上，用原十题、DeepSeek V4 Pro 和原预算复测。40 次严格沙箱正负对照符合预期。20 个变体全部完成，60 次服务回执均为 `stop` 且带实际用量，复核 14 个源码指纹及请求、答复和候选补丁摘要。诊断循环和代理兼容回归合计 41/41，项目结构检查通过。
+
+| 链路 | 上轮公开及留出通过 | 本轮公开及留出通过 | 上轮实际 token | 本轮实际 token |
+| --- | ---: | ---: | ---: | ---: |
+| 补丁提议 | 6/10 | 7/10 | 156,555 | 117,205 |
+| 工具循环 | 2/10 | 7/10 | 421,738 | 168,351 |
+
+工具循环的模型调用由 49 次降至 45 次，请求预留中位值由 30,861 降至 16,128，最大值由 44,147 降至 20,652。八道预算准入退出降至零，工具结果中记录了四次重复检索复用。两条链路本轮通过的是同七题。补丁提议端未调整策略，其 6/10 到 7/10 表明同配置模型复测也有波动。本次为同题组单次复测。
+
+剩余三题中，`barrel-delete` 的候选未通过公开复现，`empty-bits` 的候选通过公开测试但遗漏留出行为，`empty-names` 在工具循环中连续八次锚点拒绝，提议端则只修复了公开复现覆盖的工厂。下一步应优先减少重复提交同类无效补丁，并把需求中的多个行为分支映射到验证。
+
+评测目录 `output/rp-149185ce`。报告 SHA-256 为 `c5e510bc85f1070edbba48ceaea724718c18e6b648d1b5b36b7fede8a495cb2a`，对照为 `5b3b6541e795bd3e289c076e7fe98d8618201c28cc5da39f27d544fd534b3ce1`，计划为 `68c369f845b57618f167d830cfe08db31fa58968de2c236eb985444bd48d0fcb`。
+
 ```powershell
 git clone --no-tags https://github.com/mahmoud/boltons.git clawos/output/repo-agent-boltons
 git clone --no-tags https://github.com/pytoolz/toolz.git clawos/output/repo-agent-toolz
