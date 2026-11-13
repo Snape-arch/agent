@@ -16,3 +16,4 @@
 - Windows 复测补上源码与依赖定位、推理截断恢复、结构化失败断言和沙箱阻塞归因。两次动态协作恢复通过，含一次真实同行冲突。13 道旧失败题重测 2 道通过、9 道失败、2 道阻塞，定向回归 55/55。 [Windows 复测](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#windows-代理链路复测)
 - 修复反馈保留多行断言首差异，原题评分记录旧通过用例退化。五道同模型同预算配对中，起始代码重做 1/5，沿候选修补 0/5，默认仍用起始代码。 [配对结果](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#修复基线配对实验)
 - 编码自主入口已接入固定测试基线、复现源码锚点和严格沙箱交付门禁。编码及 Aider 回归共 150/150，十题整仓预检 40/40。旧版真实模型第二轮补丁提议 1/10、工具循环 0/10。DeepSeek 持续返回 HTTP 402，交付版实时成绩待复测。 [整仓验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#真实仓库缺陷主入口比较)
+- 工具循环支持批量取证与按限定函数名读取。两道曾耗尽八轮的历史题各用两次脚本动作完成离线复放，公开与留出检查 4/4，代理定向回归 39/39。 [取证验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#真实仓库缺陷主入口比较)

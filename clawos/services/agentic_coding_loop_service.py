@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ast
 import hashlib
 import fnmatch
 import json
@@ -22,7 +23,8 @@ from .execution_governance import GovernedExecutionContext
 class AgenticCodingLoopService:
     """A bounded tool-using loop; the model proposes one action per turn."""
 
-    ACTIONS = {"search", "read", "symbols", "semantic", "propose_patch", "finish"}
+    RETRIEVAL_ACTIONS = {"search", "read", "symbols", "semantic"}
+    ACTIONS = RETRIEVAL_ACTIONS | {"inspect", "propose_patch", "finish"}
 
     def __init__(
         self,
@@ -169,7 +171,7 @@ class AgenticCodingLoopService:
                 "content": (
                     "You are an iterative coding agent. Return exactly one JSON "
                     "object and no prose. The action field must be exactly one "
-                    "of search, read, symbols, semantic, propose_patch, finish. Put every "
+                    f"of search, read, symbols, semantic, propose_patch, finish{', inspect' if repository_paths is not None else ''}. Put every "
                     "parameter in a separate field; never put parameters inside "
                     "the action string. Read example: "
                     '{"action":"read","path":"maths.py","start_line":1,'
@@ -186,8 +188,8 @@ class AgenticCodingLoopService:
                     "Each changed path may appear only once in a proposal. "
                     "Observe before editing. Never claim tests passed unless "
                     "tool evidence says so. Every propose_patch must include a "
-                    "hypothesis object with claim, evidence_paths and predicted_outcome, "
-                    "plus acceptance_criteria. After every failed patch, reassess the "
+                    "hypothesis object with claim, evidence_paths and predicted_outcome. "
+                    "After every failed patch, reassess the "
                     "hypothesis from structured diagnostics before deciding whether to "
                     "retrieve more evidence or propose a different patch. Do not finish "
                     "until the acceptance gate explicitly passes."
@@ -196,7 +198,13 @@ class AgenticCodingLoopService:
                      'acceptance automatically. Omit test_commands and acceptance_criteria. '
                      'Use the exact source anchors already supplied with the reproduction. '
                      'Search narrowly for missing symbols. Prefer small uniquely anchored hunks.'
-                     if frozen else '') + (' Search can discover files across the repository. Explicitly read a '
+                     if frozen else ' Include acceptance_criteria in each patch proposal.')
+                + (' Use inspect to run up to four search, read, or symbols operations in one turn, for example '
+                   '{"action":"inspect","actions":[{"action":"read","path":"maths.py","symbol":"add"}]}. '
+                   'For Python, read accepts a symbol such as OrderedMultiDict.addlist in place of line numbers. '
+                   'Prefer a few exact symbol reads over paging through entire files.'
+                   if repository_paths is not None else '')
+                + (' Search can discover files across the repository. Explicitly read a '
                      'source file outside the initial scope before editing it.' if repository_paths is not None else ''),
             },
             {
@@ -213,7 +221,8 @@ class AgenticCodingLoopService:
         ]
         attempts: list[dict[str, Any]] = []
         learning_decision_count = 0
-        for turn in range(1, max(2, min(int(max_turns), 20)) + 1):
+        turn_limit = max(2, min(int(max_turns), 20))
+        for turn in range(1, turn_limit + 1):
             governed.budget.consume(model_calls=1)
             governed.gate("before_model", {"task_id": task_id, "turn": turn})
             try:
@@ -226,7 +235,19 @@ class AgenticCodingLoopService:
             }:
                 options['thinking'] = {'type': 'disabled'}
             try:
-                response = await self.provider.complete(messages, options)
+                prompt = messages
+                if repository_paths is not None:
+                    remaining = turn_limit - turn
+                    turn_guidance = json.dumps({
+                        "turns_remaining_after_this_action": remaining,
+                        "instruction": (
+                            "This is the final action. Submit a supported patch if the evidence is sufficient."
+                            if not remaining else
+                            "Use a single inspect for several missing definitions. Leave a turn to submit the patch."
+                        ),
+                    })
+                    prompt = [*messages[:-1], {**messages[-1], 'content': messages[-1]['content'] + '\n' + turn_guidance}]
+                response = await self.provider.complete(prompt, options)
             except RuntimeError as exc:
                 if not frozen:
                     raise
@@ -246,7 +267,8 @@ class AgenticCodingLoopService:
                 "response_digest": hashlib.sha256(content.encode()).hexdigest(),
             })
             try:
-                action = self._parse_action(content, frozen_tests=frozen is not None)
+                action = self._parse_action(content, frozen_tests=frozen is not None,
+                                            batch_allowed=repository_paths is not None)
             except ValueError as exc:
                 self.trace.step(
                     run["id"], "failure", status="recoverable",
@@ -279,8 +301,9 @@ class AgenticCodingLoopService:
                 action=action,
                 observations=observations,
                 context_digest=manifest["context_digest"],
+                batch_allowed=repository_paths is not None,
             ))
-            if action_name in {"search", "read", "symbols", "semantic"}:
+            if action_name in self.RETRIEVAL_ACTIONS or action_name == 'inspect':
                 if repository_paths is None and evidence_gate.retrieval_complete():
                     observation = {
                         "type": "retrieval_stopped", "tool": action_name,
@@ -293,41 +316,59 @@ class AgenticCodingLoopService:
                         {"role": "user", "content": json.dumps({"observation": observation}, ensure_ascii=False)},
                     ])
                     continue
-                governed.budget.consume(tool_calls=1)
+                retrievals = action['actions'] if action_name == 'inspect' else [action]
+                governed.budget.consume(tool_calls=len(retrievals))
                 governed.gate("before_tool", {
                     "task_id": task_id, "tool": action_name, "turn": turn,
                 })
-                try:
-                    observation = self._observe(repo, manifest, action, semantic_workspace=semantic_workspace,
-                                                repository_paths=repository_paths)
-                    path = observation.get('path')
-                    if (repository_paths is not None and observation['type'] == 'read' and path in source_candidates
-                            and path not in manifest['scope']['write_paths'] and len(manifest['scope']['write_paths']) < 24):
-                        manifest = self.context.build_execution(repo, objective,
-                            write_paths=[*manifest['scope']['write_paths'], path], failure_context=diagnostics,
-                            test_evidence_paths=source_evidence, **context_options)
-                        observation['writable_paths'] = manifest['scope']['write_paths']
-                except (OSError, ValueError) as exc:
-                    observation = {
-                        "type": "tool_error", "tool": action_name,
-                        "error": str(exc),
-                    }
+                results = []
+                for retrieval in retrievals:
+                    if action_name == 'inspect':
+                        governed.gate('before_tool', {
+                            'task_id': task_id, 'tool': retrieval['action'], 'turn': turn,
+                        })
+                    try:
+                        item = self._observe(repo, manifest, retrieval, semantic_workspace=semantic_workspace,
+                                             repository_paths=repository_paths, compact=action_name == 'inspect')
+                    except (OSError, TypeError, ValueError) as exc:
+                        item = {"type": "tool_error", "tool": retrieval["action"], "error": str(exc)}
+                    evidence = evidence_gate.register(retrieval, item)
+                    if repository_paths is None:
+                        item['evidence_gate'] = evidence
+                    if action_name == 'inspect':
+                        governed.gate('after_tool', {
+                            'task_id': task_id, 'tool': retrieval['action'], 'turn': turn,
+                            'ok': item['type'] != 'tool_error',
+                        })
+                    results.append(item)
+                observation = {'type': 'inspect', 'results': results} if action_name == 'inspect' else results[0]
+                if repository_paths is not None:
+                    writable = manifest['scope']['write_paths']
+                    discovered = list(dict.fromkeys(item['path'] for item in results if item['type'] == 'read'
+                                                    and item['content'] and item['path'] in source_candidates
+                                                    and item['path'] not in writable))
+                    if discovered and len(writable) < 24:
+                        try:
+                            expanded = [*writable, *discovered[:24 - len(writable)]]
+                            manifest = self.context.build_execution(repo, objective, write_paths=expanded,
+                                failure_context=diagnostics, test_evidence_paths=source_evidence, **context_options)
+                            observation['writable_paths'] = manifest['scope']['write_paths']
+                        except (OSError, ValueError) as exc:
+                            observation['scope_error'] = str(exc)
+                retrieved = any(item['type'] != 'tool_error' for item in results)
                 governed.gate("after_tool", {
                     "task_id": task_id, "tool": action_name,
-                    "turn": turn, "ok": observation["type"] != "tool_error",
+                    "turn": turn, "ok": retrieved,
                 })
                 self.trace.step(
                     run["id"], "tool",
                     status=(
-                        "failed" if observation["type"] == "tool_error" else "passed"
+                        "passed" if retrieved else "failed"
                     ),
                     input_value=action, output_value=observation,
                     metadata={"turn": turn, "tool": action_name},
                 )
                 observations.append(observation)
-                evidence = evidence_gate.register(action, observation)
-                if repository_paths is None:
-                    observation["evidence_gate"] = evidence
                 messages.extend([
                     {"role": "assistant", "content": content},
                     {"role": "user", "content": json.dumps(
@@ -578,7 +619,7 @@ class AgenticCodingLoopService:
 
     def _record_learning_decision(
         self, task_id: str, *, turn: int, action: dict[str, Any],
-        observations: list[dict[str, Any]], context_digest: str,
+        observations: list[dict[str, Any]], context_digest: str, batch_allowed: bool = False,
     ) -> bool:
         if self.learning_store is None:
             return False
@@ -603,7 +644,7 @@ class AgenticCodingLoopService:
                     if key not in {"changes"}
                 },
                 behavior_propensity=0.0,
-                candidate_set=sorted(self.ACTIONS),
+                candidate_set=sorted(self.ACTIONS if batch_allowed else self.ACTIONS - {'inspect'}),
                 candidate_scores={},
                 policy_version="agentic-coding-loop-v1",
                 exploration_source="model_action_without_logged_distribution",
@@ -615,7 +656,7 @@ class AgenticCodingLoopService:
 
     def _observe(
         self, repo: Path, manifest: dict[str, Any], action: dict[str, Any], *, semantic_workspace=None,
-        repository_paths=None,
+        repository_paths=None, compact=False,
     ) -> dict[str, Any]:
         name = action["action"]
         CodingExecutionContext.verify(repo, manifest)
@@ -624,7 +665,7 @@ class AgenticCodingLoopService:
             glob = str(action.get("glob") or "*")
             if repository_paths is not None and not 1 <= len(query.strip()) <= 200:
                 raise ValueError('repository search needs a bounded literal query')
-            match_limit = 24 if repository_paths is not None else 100
+            match_limit = 8 if compact else 24 if repository_paths is not None else 100
             matches = []
             paths = repository_paths if repository_paths is not None else manifest['scope']['read_paths']
             for rel in paths:
@@ -638,7 +679,7 @@ class AgenticCodingLoopService:
                     ):
                         if query in line.lower():
                             matches.append({
-                                "path": rel, "line": number, "text": line[:400],
+                                "path": rel, "line": number, "text": line[:200 if compact else 400],
                             })
                             if len(matches) >= match_limit:
                                 break
@@ -682,25 +723,61 @@ class AgenticCodingLoopService:
             if not path.is_file():
                 raise ValueError("read path does not exist")
             lines = CodingExecutionContext.read(repo, rel).decode('utf-8-sig').splitlines()
-            start = max(1, int(action.get("start_line") or 1))
-            end = min(len(lines), start + (119 if repository_paths is not None else 239),
-                      max(start, int(action.get("end_line") or start + 199)))
+            symbol = action.get('symbol')
+            limit = 2400 if compact else 4500 if repository_paths is not None else 12000
+            if symbol is not None and repository_paths is not None:
+                if not isinstance(symbol, str) or not 1 <= len(symbol) <= 200 or not rel.endswith('.py'):
+                    raise ValueError('symbol reads require a Python path and a bounded symbol name')
+                matches = self._python_definitions('\n'.join(lines), symbol)
+                if len(matches) != 1:
+                    return {'type': 'symbol_matches', 'path': rel, 'symbol': symbol, 'matches': matches,
+                            'instruction': 'Use a qualified symbol or request the matching line range.'}
+                start, end = matches[0]['start_line'], matches[0]['end_line']
+            else:
+                start = max(1, int(action.get("start_line") or 1))
+                end = min(len(lines), start + (119 if repository_paths is not None else 239),
+                          max(start, int(action.get("end_line") or start + 199)))
             selected = lines[start - 1:end]
-            limit = 4500 if repository_paths is not None else 12000
-            content = "\n".join(selected)[:limit]
+            source = '\n'.join(selected)
+            content = source[:limit]
             return {
                 "type": "read", "path": rel, "start_line": start,
                 "end_line": min(end, start + len(content.splitlines()) - 1), "content": content,
+                "truncated": len(content) < len(source),
             }
         symbols = []
         for item in manifest.get('code_evidence') or []:
             if item.get("path") == rel:
                 symbols = item.get("symbols") or []
                 break
-        return {"type": "symbols", "path": rel, "symbols": symbols}
+        if repository_paths is not None:
+            data = CodingExecutionContext.read(repo, rel)
+            if data is not None:
+                symbols, _ = self.context._analyze(Path(rel), data.decode('utf-8-sig'))
+        return {"type": "symbols", "path": rel, "symbols": symbols[:20] if compact else symbols}
+
+    @staticmethod
+    def _python_definitions(source, symbol):
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return []
+        definitions = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        matches = []
+        pending = [(tree, '')]
+        while pending and len(matches) < 12:
+            node, scope = pending.pop()
+            if isinstance(node, definitions):
+                scope = f'{scope}.{node.name}' if scope else node.name
+                if symbol in (node.name, scope):
+                    matches.append({'name': scope, 'start_line': min(
+                        [node.lineno, *(decorator.lineno for decorator in node.decorator_list)]),
+                        'end_line': node.end_lineno})
+            pending.extend((child, scope) for child in reversed(list(ast.iter_child_nodes(node))))
+        return matches
 
     @classmethod
-    def _parse_action(cls, content: str, *, frozen_tests=False) -> dict[str, Any]:
+    def _parse_action(cls, content: str, *, frozen_tests=False, batch_allowed=False) -> dict[str, Any]:
         try:
             value = json.loads(content)
         except json.JSONDecodeError as exc:
@@ -712,6 +789,12 @@ class AgenticCodingLoopService:
         action = str(value.get("action") or "")
         if action not in cls.ACTIONS:
             raise ValueError(f"unsupported agentic coding action: {action}")
+        if action == 'inspect':
+            actions = value.get('actions')
+            if (not batch_allowed or not isinstance(actions, list) or not 1 <= len(actions) <= 4 or
+                    any(not isinstance(item, dict) or item.get('action') not in ('read', 'search', 'symbols')
+                        for item in actions)):
+                raise ValueError('inspect requires one to four read, search or symbols actions in repository discovery mode')
         if action == "propose_patch" and (
             not isinstance(value.get("changes"), list)
             or not value.get("changes")

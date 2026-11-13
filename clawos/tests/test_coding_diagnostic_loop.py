@@ -14,6 +14,7 @@ from services.agentic_coding_loop_service import AgenticCodingLoopService
 from services.coding_diagnostics_service import CodingDiagnosticsService, CodingEvidenceGate
 from services.coding_trace_service import CodingTraceService
 from services.coding_workflow_service import CodingWorkflowService
+from services.execution_governance import GovernedExecutionContext
 
 
 def make_repo(root: Path) -> Path:
@@ -115,21 +116,26 @@ class CodingDiagnosticLoopTests(unittest.TestCase):
         self.assertFalse(result["acceptance"]["passed"])
         self.assertIn("return a - b", text)
 
-    def test_frozen_baseline_discovers_unranked_source_and_keeps_caller_test(self):
+    def test_frozen_baseline_batches_retrieval_and_keeps_caller_test(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             source = make_repo(root)
             for index in range(15):
                 (source / f'a{index:02}.py').write_text('value = 0\n', encoding='utf-8')
             target = source / 'zz_runtime.py'
-            target.write_text('def calculate():\n    return -42\n', encoding='utf-8')
+            target.write_text('class Other:\n    def calculate(self):\n        return 0\n\n'
+                              'def calculate():\n    return -42\n', encoding='utf-8')
             (source / 'test_calc.py').write_text("assert __import__('zz_runtime').calculate() == 42\n", encoding='utf-8')
             subprocess.run(['git', 'add', '.'], cwd=source, check=True, capture_output=True)
             subprocess.run(['git', 'commit', '-m', 'repository discovery fixture'], cwd=source, check=True, capture_output=True)
             provider = ReassessingProvider()
             provider.actions = [
-                {'action': 'search', 'query': 'return -42', 'glob': '*.py'},
-                {'action': 'read', 'path': 'zz_runtime.py'},
+                {'action': 'inspect', 'actions': [
+                    {'action': 'search', 'query': 'return -42', 'glob': '*.py'},
+                    {'action': 'read', 'path': 'zz_runtime.py', 'symbol': 'calculate'},
+                    {'action': 'read', 'path': 'zz_runtime.py', 'start_line': 5, 'end_line': 6},
+                    {'action': 'read', 'path': 'zz_runtime.py', 'symbol': 'Other.calculate'},
+                ]},
                 {'action': 'propose_patch', 'changes': [dict(path='zz_runtime.py', operation='replace',
                     old_text='return -42', new_text='return 42')], 'test_commands': [['python', '-c', 'pass']],
                     'acceptance_criteria': ['the tests pass']},
@@ -144,19 +150,46 @@ class CodingDiagnosticLoopTests(unittest.TestCase):
                             timed_out=False, sandbox={'strict_boundary_verified': True})
 
             command = [sys.executable, '-B', 'test_calc.py']
+            governance = GovernedExecutionContext.local()
+            tool_gates = []
+
+            def observe_tool(payload):
+                tool_gates.append(payload['tool'])
+
+            governance.hooks.register('before_tool', 'record-retrieval', observe_tool)
             with patch.object(CodingWorkflowService, '_run_command', staticmethod(run)):
                 result = asyncio.run(AgenticCodingLoopService(provider,
                     workflow=CodingWorkflowService(artifact_root=root/'runs'),
                     trace=CodingTraceService(root/'trace.json')).run(source, 'Repair the observed regression',
-                        confirmed=True, task_id='discover', session_id='test', test_commands=[command]))
+                        confirmed=True, task_id='discover', session_id='test', test_commands=[command], max_turns=2,
+                        governance=governance))
             self.assertEqual(result['status'], 'passed', result.get('error'))
-            self.assertEqual(provider.index, 3)
+            self.assertEqual(provider.index, 2)
+            self.assertEqual(tool_gates, ['baseline_tests', 'inspect', 'search', 'read', 'read', 'read'])
+            self.assertEqual(governance.budget.tool_calls, 7)
+            lookup = next(row for row in result['observations'] if row['type'] == 'inspect')
+            search, ambiguous, top, qualified = lookup['results']
+            self.assertEqual(search['matches'][0]['path'], 'zz_runtime.py')
+            self.assertEqual([row['name'] for row in ambiguous['matches']], ['Other.calculate', 'calculate'])
+            self.assertEqual(top['content'], 'def calculate():\n    return -42')
+            self.assertEqual(qualified['content'], '    def calculate(self):\n        return 0')
+            self.assertIn('zz_runtime.py', lookup['writable_paths'])
             self.assertEqual([row['type'] for row in result['acceptance']['criteria']],
                              ['tests_pass', 'scoped_diff', 'syntax_pass', 'diff_check'])
             self.assertNotIn('zz_runtime.py', result['observations'][0]['execution_context']['scope']['write_paths'])
             self.assertEqual([row[1:] for row in runs], [(command, 1), (command, 0)])
             self.assertTrue(all(row[0] != source for row in runs))
             self.assertIn('return -42', target.read_text(encoding='utf-8'))
+
+    def test_inspect_rejects_excess_nested_and_write_actions(self):
+        read = {'action': 'read', 'path': 'calc.py'}
+        batch = lambda actions: json.dumps({'action': 'inspect', 'actions': actions})
+        self.assertEqual(AgenticCodingLoopService._parse_action(batch([read]), batch_allowed=True)['actions'], [read])
+        with self.assertRaises(ValueError):
+            AgenticCodingLoopService._parse_action(batch([read]))
+        for actions in ([], [read] * 5, [{'action': 'inspect'}], [{'action': 'propose_patch'}]):
+            with self.subTest(actions=actions), self.assertRaises(ValueError):
+                AgenticCodingLoopService._parse_action(batch(actions), batch_allowed=True)
 
     def test_frozen_baseline_workspace_mutation_stops_before_model(self):
         with tempfile.TemporaryDirectory() as td:

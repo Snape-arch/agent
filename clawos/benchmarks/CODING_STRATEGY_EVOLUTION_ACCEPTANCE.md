@@ -97,6 +97,10 @@ Aider 原题评分保存多行断言的首个差异和已验证通过用例的�
 
 交付版离线审计在十题上逐行核对 48 段源码锚点。将归档的 DeepSeek `complement-order` 补丁与 Toolz 上游 `interpose-empty` 补丁分别送入两条链路，四次都通过独立严格沙箱重放，共 8/8 项公开与留出检查。回放的输入是已知补丁，验证的是执行、门禁和评分链路。模拟 402 时，串行配置只启动第一个变体，其余 19 个标记为服务阻塞。审计位于 `output/anchor-audit-b1db4585/summary.json`，SHA-256 为 `13e443d090fd614c20fe41c6691428ba5f32d4a778df26592251249753273561`。
 
+固定测试、未预设写入路径的工具循环现可在一轮内发起至多四项只读取证。Python 可按限定函数名读取源码，重名时返回候选及行号。每项子操作独立计入工具预算并经过策略检查。写入范围仍需由成功的源码读取及重新冻结扩大。模型可看到剩余轮次。
+
+归档实测中，`iterator-values` 和 `indexed-negative` 各耗尽八次模型调用，均未执行补丁。用已知修复做离线链路复放，两题各用一次批量取证和一次补丁动作通过，独立严格沙箱的公开与留出检查共 4/4。脚本使用已知目标与修复，结果验证两轮内可以完成执行与评分。审计位于 `output/batch-audit-d23edf6b/summary.json`，SHA-256 为 `1dec40244381604cdd1119804f39a1cb3ddc3af330b52ab579ea025cb81643be`。本次主入口与代理兼容回归共 39/39，项目结构检查通过。2026-11-13 再次向 DeepSeek 发送最小请求，仍返回 HTTP 402，待原服务恢复后复测。
+
 ```powershell
 git clone --no-tags https://github.com/mahmoud/boltons.git clawos/output/repo-agent-boltons
 git clone --no-tags https://github.com/pytoolz/toolz.git clawos/output/repo-agent-toolz
