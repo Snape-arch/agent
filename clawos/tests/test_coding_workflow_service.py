@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from services.coding_workflow_service import CodingWorkflowService
+from services.coding_workflow_service import CodingWorkflowService, PatchAnchorError
 
 
 class CodingWorkflowServiceTests(unittest.TestCase):
@@ -43,6 +43,32 @@ class CodingWorkflowServiceTests(unittest.TestCase):
             rolled = service.rollback(repo, result["checkpoint"], confirmed=True)
             self.assertTrue(rolled["rolled_back"])
             self.assertIn("return a - b", (repo / "calc.py").read_text(encoding="utf-8"))
+
+    def test_anchor_feedback_locates_duplicates_and_tracks_sequential_hunk_view(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo = self._repo(root)
+            target = repo / "calc.py"
+            source = "def add(a, b):\n    return a - b\n\ndef other(a, b):\n    return a - b\n"
+            target.write_bytes(source.encode())
+            service = CodingWorkflowService(artifact_root=root / "artifacts")
+            with self.assertRaises(PatchAnchorError) as rejected:
+                service.plan(repo, "Fix addition",
+                             [dict(path="calc.py", old_text="return a - b", new_text="return a + b")])
+            evidence = rejected.exception.evidence
+            self.assertEqual(evidence["match_count"], 2)
+            self.assertEqual([row["match_line"] for row in evidence["excerpts"]], [2, 5])
+            self.assertEqual([row["enclosing_symbol"] for row in evidence["excerpts"]], ["add", "other"])
+            with self.assertRaises(PatchAnchorError) as rejected:
+                service.plan(repo, "Fix addition", [dict(path="calc.py", operation="hunks", hunks=[
+                    dict(old_text="def add(a, b):\n    return a - b", new_text="def add(a, b):\n    return a + b"),
+                    dict(old_text="def add(a, b):\n    return a * b", new_text="def add(a, b):\n    return 0"),
+                ])])
+            evidence = rejected.exception.evidence
+            self.assertEqual((evidence["edit_index"], evidence["hunk_index"]), (1, 2))
+            self.assertEqual(evidence["source_view"], "after_earlier_edits")
+            self.assertIn("return a + b", evidence["excerpts"][0]["content"])
+            self.assertEqual(target.read_bytes(), source.encode())
 
     def test_failed_tests_restore_exact_prechange_content(self):
         with tempfile.TemporaryDirectory() as td:

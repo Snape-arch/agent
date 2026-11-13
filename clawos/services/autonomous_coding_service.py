@@ -12,7 +12,7 @@ from .coding_context_service import CodingContextService
 from .coding_execution_context import CodingExecutionContext
 from .coding_contracts import CodingContracts
 from . import coding_structured_output as structured
-from .coding_workflow_service import CodingWorkflowService
+from .coding_workflow_service import CodingWorkflowService, PatchAnchorError
 from .execution_governance import ExecutionBudget, PolicyHookRegistry
 from .coding_trace_service import CodingTraceService
 
@@ -211,11 +211,13 @@ class AutonomousCodingService:
                 self.hooks.run('on_failure', {'stage':'format', 'error':str(exc), 'attempt':format_attempt + 1})
                 if format_attempt:
                     raise ValueError('model response is not strict JSON or a valid proposal after bounded format repair') from exc
+                anchor_feedback = ('\nAnchor diagnostics from the current source: '
+                                   + json.dumps(exc.evidence, ensure_ascii=False)) if isinstance(exc, PatchAnchorError) else ''
                 messages = messages + [{'role':'assistant','content':content[:16000]},
                     {'role':'user','content':'Correct the specific validation failure below. For a syntax error, fix the exact file and line in the proposed edit. '
                      'Preserve the complete original objective, exact source anchors and authorized paths. '
                      'Escape newlines in strings and close each object/array. Return one complete JSON object. '
-                     'Previous proposal validation error: ' + str(exc)[:500]}]
+                     'Previous proposal validation error: ' + str(exc)[:500] + anchor_feedback}]
         CodingExecutionContext.verify(repo_path, manifest)
         CodingExecutionContext.assert_changes(manifest, proposal['changes'])
         after_model = self.hooks.run("after_model", {

@@ -191,6 +191,43 @@ class CodingDiagnosticLoopTests(unittest.TestCase):
             with self.subTest(actions=actions), self.assertRaises(ValueError):
                 AgenticCodingLoopService._parse_action(batch(actions), batch_allowed=True)
 
+    def test_agent_retries_an_inexact_anchor_before_running_candidate_tests(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo = make_repo(root)
+            command = [sys.executable, '-B', '-m', 'unittest', 'test_calc.py']
+            tests = []
+
+            def run(workspace, argv, timeout, *, require_strict):
+                self.assertTrue(require_strict)
+                result = subprocess.run(argv, cwd=workspace, timeout=timeout, capture_output=True, text=True)
+                tests.append(result.returncode)
+                return dict(command=argv, exit_code=result.returncode, stdout=result.stdout, stderr=result.stderr,
+                            timed_out=False, sandbox={'strict_boundary_verified': True})
+
+            class RepairProvider:
+                async def complete(_, messages, options):
+                    old = 'return a-b'
+                    if len(messages) > 2:
+                        feedback = json.loads(messages[-1]['content'].split('\n', 1)[0])['observation']
+                        self.assertEqual(feedback['anchor_diagnostics']['match_count'], 0)
+                        old = feedback['anchor_diagnostics']['excerpts'][0]['content'].splitlines()[1].strip()
+                        self.assertEqual(old, 'return a - b')
+                        self.assertEqual(tests, [1])
+                    return model_result(ok=True, provider='scripted', model='test', content=json.dumps({
+                        'action': 'propose_patch', 'changes': [dict(path='calc.py', operation='replace',
+                            old_text=old, new_text='return a + b')],
+                    }), usage={'total_tokens': 10})
+
+            with patch.object(CodingWorkflowService, '_run_command', staticmethod(run)):
+                result = asyncio.run(AgenticCodingLoopService(RepairProvider(),
+                    workflow=CodingWorkflowService(artifact_root=root/'runs'),
+                    trace=CodingTraceService(root/'trace.json')).run(repo, 'Fix addition', confirmed=True,
+                        task_id='anchor-retry', session_id='test', test_commands=[command], max_turns=2))
+            self.assertEqual(result['status'], 'passed', result.get('error'))
+            self.assertEqual(tests, [1, 0])
+            self.assertIn('return a - b', (repo/'calc.py').read_text(encoding='utf-8'))
+
     def test_frozen_baseline_workspace_mutation_stops_before_model(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

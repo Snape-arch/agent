@@ -221,6 +221,9 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
                 execute.assert_not_called()
             self.assertEqual(budget.model_calls,2); self.assertEqual(budget.tokens,146)
             self.assertIn('old_text must match exactly once',calls[1][-1]['content'])
+            diagnostics=json.loads(calls[1][-1]['content'].split('Anchor diagnostics from the current source: ',1)[1])
+            self.assertEqual(diagnostics['match_count'],0)
+            self.assertIn('    return a - b', diagnostics['excerpts'][0]['content'])
             self.assertEqual({path:(self.repo/path).read_bytes() for path in before},before)
 
     def test_context_presentation_roundtrip_byte_integrity_and_grounded_diagnosis(self):

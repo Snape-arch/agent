@@ -15,7 +15,7 @@ from .coding_execution_context import CodingExecutionContext
 from .coding_diagnostics_service import CodingEvidenceGate
 from .coding_trace_service import CodingTraceService
 from .lsp_semantic_graph_service import LSPSemanticGraphService
-from .coding_workflow_service import CodingWorkflowService
+from .coding_workflow_service import CodingWorkflowService, PatchAnchorError
 from .coding_workspace_service import CodingWorkspaceService
 from .execution_governance import GovernedExecutionContext
 
@@ -438,6 +438,8 @@ class AgenticCodingLoopService:
                         "propose_patch action."
                     ),
                 }
+                if isinstance(exc, PatchAnchorError):
+                    observation["anchor_diagnostics"] = exc.evidence
                 observations.append(observation)
                 self.trace.step(
                     run["id"], "failure", status="recoverable",

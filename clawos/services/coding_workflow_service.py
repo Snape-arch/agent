@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -30,6 +31,95 @@ ALLOWED_SOURCE_SUFFIXES = {
 }
 ALLOWED_TEST_COMMANDS = {"python", "python3", "py", "pytest", "npm", "pnpm", "node", "cargo", "go", "dotnet", "mvn", "gradle"}
 BLOCKED_COMMAND = re.compile(r"(?:[;&|><`] |[;&|><`]|\r|\n|\$\(|\b(?:rm|del|erase|format|shutdown|reboot)\b)", re.I)
+
+
+class PatchAnchorError(ValueError):
+    """An exact replacement was rejected before any file was written."""
+
+    def __init__(self, path, source, old_text, count, *, edit_index, hunk_index=None, prior_edits=False):
+        prefix = "each hunk " if hunk_index is not None else ""
+        super().__init__(f"{prefix}old_text must match exactly once: {path}")
+        self.evidence = {
+            "path": path, "edit_index": edit_index, "hunk_index": hunk_index,
+            "match_count": count, "source_view": "after_earlier_edits" if prior_edits else "current_file",
+            "excerpts": self._excerpts(path, source, old_text, count),
+            "instruction": (
+                "Choose the intended occurrence and extend the anchor with exact surrounding text."
+                if count > 1 else
+                "Inspect the current source and replace the incorrect old_text with a short exact anchor."
+            ),
+        }
+
+    @staticmethod
+    def _excerpts(path, source, old_text, count):
+        if not old_text.strip() or len(source) > 128_000:
+            return []
+        lines = source.split("\n")
+        centers = []
+        if count:
+            offset = 0
+            for _ in range(min(count, 3)):
+                offset = source.find(old_text, offset)
+                centers.append(source.count("\n", 0, offset))
+                offset += len(old_text)
+        else:
+            # Approximate positions are evidence for retry only. The exact
+            # replacement check never uses them.
+            requested = old_text[:4000].split("\n")[:24]
+            whitespace = re.compile(r"\s+")
+            declaration = re.compile(r"^(?:(?:async )?def|class)\s+([A-Za-z_]\w*)\b")
+            names = {match[1] for line in requested if (match := declaration.match(line.lstrip()))}
+            positions = {}
+            for index, line in enumerate(lines):
+                key = whitespace.sub("", line)
+                if len(key) >= 5:
+                    positions.setdefault(key, []).append(index)
+            ranked = {}
+            for offset, line in enumerate(requested):
+                hits = positions.get(whitespace.sub("", line), [])
+                if 1 <= len(hits) <= 12:
+                    for index in hits:
+                        start = max(0, index - offset)
+                        ranked[start] = ranked.get(start, 0) + 13 - len(hits)
+            for index, line in enumerate(lines):
+                match = declaration.match(line.lstrip())
+                if match and match[1] in names:
+                    ranked[index] = ranked.get(index, 0) + 24
+            for index in sorted(ranked, key=lambda n: (-ranked[n], n)):
+                if all(abs(index - center) > 4 for center in centers):
+                    centers.append(index)
+                if len(centers) == 3:
+                    break
+        definitions = []
+        if centers and Path(path).suffix.lower() == ".py":
+            try:
+                definitions = [node for node in ast.walk(ast.parse(source))
+                               if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))]
+            except (SyntaxError, ValueError, RecursionError):
+                pass
+        excerpts = []
+        for center in centers:
+            start = max(0, center - 2)
+            end = min(len(lines), center + 7)
+            excerpt = "\n".join(lines[start:end])[:1400]
+            row = {"start_line": start + 1, "match_line": center + 1, "content": excerpt}
+            scopes = sorted((node for node in definitions if node.lineno <= center + 1 <= node.end_lineno),
+                            key=lambda node: (node.lineno, -node.end_lineno))
+            if scopes:
+                row["enclosing_symbol"] = ".".join(node.name for node in scopes)[:200]
+                row["definition_line"] = scopes[-1].lineno
+            if count > 1:
+                # Supply a unique prefix where nearby lines distinguish the
+                # occurrences. It is still validated on the next proposal.
+                for first in range(center, max(-1, center - 31), -1):
+                    prefix = "\n".join(lines[first:center + 1])
+                    if len(prefix) > 1500:
+                        break
+                    if prefix.strip() and source.count(prefix) == 1:
+                        row["unique_prefix_through_match_line"] = prefix
+                        break
+            excerpts.append(row)
+        return excerpts
 
 
 class CodingWorkflowService:
@@ -321,7 +411,7 @@ class CodingWorkflowService:
     def _normalize_changes(self, repo: Path, changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
         rows = {}
         real_paths = {}
-        for raw in changes or []:
+        for edit_index, raw in enumerate(changes or [], 1):
             rel = str(raw.get("path") or "").replace("\\", "/").strip(" /")
             if not rel:
                 raise ValueError("each change requires a relative path")
@@ -347,8 +437,9 @@ class CodingWorkflowService:
             if operation == "replace":
                 old = str(raw.get("old_text") or "")
                 new = str(raw.get("new_text") or "")
-                if not old or before.count(old) != 1:
-                    raise ValueError(f"old_text must match exactly once: {rel}")
+                count = before.count(old) if old else 0
+                if count != 1:
+                    raise PatchAnchorError(rel, before, old, count, edit_index=edit_index, prior_edits=prior is not None)
                 after = before.replace(old, new, 1)
             elif operation == "create":
                 if path.exists():
@@ -364,13 +455,13 @@ class CodingWorkflowService:
                 hunks = list(raw.get("hunks") or [])
                 if not hunks:
                     raise ValueError(f"hunks operation requires hunks: {rel}")
-                for hunk in hunks:
+                for hunk_index, hunk in enumerate(hunks, 1):
                     old = str(hunk.get("old_text") or "")
                     new = str(hunk.get("new_text") or "")
-                    if not old or after.count(old) != 1:
-                        raise ValueError(
-                            f"each hunk old_text must match exactly once: {rel}"
-                        )
+                    count = after.count(old) if old else 0
+                    if count != 1:
+                        raise PatchAnchorError(rel, after, old, count, edit_index=edit_index, hunk_index=hunk_index,
+                                               prior_edits=prior is not None or hunk_index > 1)
                     after = after.replace(old, new, 1)
             else:
                 raise ValueError(f"unsupported change operation: {operation}")

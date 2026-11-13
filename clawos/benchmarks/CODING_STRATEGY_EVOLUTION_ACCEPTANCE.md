@@ -101,6 +101,12 @@ Aider 原题评分保存多行断言的首个差异和已验证通过用例的�
 
 归档实测中，`iterator-values` 和 `indexed-negative` 各耗尽八次模型调用，均未执行补丁。用已知修复做离线链路复放，两题各用一次批量取证和一次补丁动作通过，独立严格沙箱的公开与留出检查共 4/4。脚本使用已知目标与修复，结果验证两轮内可以完成执行与评分。审计位于 `output/batch-audit-d23edf6b/summary.json`，SHA-256 为 `1dec40244381604cdd1119804f39a1cb3ddc3af330b52ab579ea025cb81643be`。本次主入口与代理兼容回归共 39/39，项目结构检查通过。2026-11-13 再次向 DeepSeek 发送最小请求，仍返回 HTTP 402，待原服务恢复后复测。
 
+对第二轮的七份首答锚点失败做只读复查，六份找不到精确文本，一份在两个函数中重复。补丁提议和工具循环现在把失败编辑编号、精确匹配次数和有界源码片段反馈给下一轮。Python 片段带所属函数，重复位置附近可区分时附上唯一前缀。顺序补丁失败时标明诊断来自前序补丁的内存视图。复查中六份有源码片段，`singular-double-s` 的旧文本找不到可定位片段。诊断只提供重试证据，写入仍要求重新提交并唯一匹配。
+
+用归档 DeepSeek 的 `empty-names` 首答复现重复锚点拒绝。两条链路的重试收到第 162、321 行的证据，脚本用各自唯一前缀提交两个修改。两次补丁均通过独立严格沙箱评分，公开与留出检查共 4/4。第二答由脚本构造，验证反馈和交付路径。审计位于 `output/anchor-retry-2eda17fe/summary.json`，SHA-256 为 `2cf0337b1018cf279fec224bb5c96491a4720df2c4a7f3c9b753eaced5e18d10`。
+
+首轮比较回归运行期间修改了受指纹监控的工作流源码，六项被一致性检查拦截。冻结最终源码后重跑，比较回归 17/17、工作流 7/7、诊断循环 11/11，项目结构检查通过。真实模型重试仍待 DeepSeek 服务恢复。
+
 ```powershell
 git clone --no-tags https://github.com/mahmoud/boltons.git clawos/output/repo-agent-boltons
 git clone --no-tags https://github.com/pytoolz/toolz.git clawos/output/repo-agent-toolz
