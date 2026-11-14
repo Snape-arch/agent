@@ -141,17 +141,24 @@ class WorkspaceCodingAPI:
         if not isinstance(data, dict):
             raise HTTPException(400, "JSON object is required")
         action = data.get('action', 'run')
-        if action not in ('run', 'start', 'resume', 'history', 'memory_list', 'memory_save', 'memory_delete'):
+        if action not in ('run', 'start', 'resume', 'resume_preview', 'history', 'memory_list', 'memory_save', 'memory_delete'):
             raise HTTPException(400, "unknown coding session action")
         sessions = CodingSessionStore(self.output_root_provider() / 'coding' / 'continuity')
         repo_path = data.get('repo_path')
-        if action in ('history', 'memory_list', 'memory_save', 'memory_delete'):
+        if action in ('history', 'resume_preview', 'memory_list', 'memory_save', 'memory_delete'):
             if not isinstance(repo_path, str) or not repo_path.strip():
                 raise HTTPException(400, "repo_path is required")
             project = sessions.project(repo_path, 'local-user')
             try:
                 if action == 'history':
                     return JSONResponse({'checkpoints': await asyncio.to_thread(sessions.history, project)})
+                if action == 'resume_preview':
+                    checkpoint_id = data.get('checkpoint_id')
+                    if not isinstance(checkpoint_id, str) or not checkpoint_id:
+                        raise ValueError('checkpoint_id is required')
+                    state = await asyncio.to_thread(sessions.load, project, checkpoint_id)
+                    task_root = self.get_coding_workflow_service().artifact_root / 'tasks'
+                    return JSONResponse(await asyncio.to_thread(sessions.recovery_status, repo_path, task_root, state))
                 if action == 'memory_list':
                     query, offset = data.get('query', ''), data.get('offset', 0)
                     if not isinstance(query, str) or len(query) > 200 or type(offset) is not int or offset < 0:
@@ -162,13 +169,13 @@ class WorkspaceCodingAPI:
                     raise HTTPException(409, "confirmed=true is required to change project memory")
                 if action == 'memory_save':
                     row = await asyncio.to_thread(sessions.save_note, project, data.get('topic'), data.get('note'),
-                                                  data.get('scope', ''), data.get('note_id'))
+                                                  data.get('scope', ''), data.get('note_id'), decision=data.get('decision'))
                     return JSONResponse({'note': row})
                 note_id = data.get('note_id')
                 if not isinstance(note_id, str):
                     raise ValueError('note_id is required')
                 return JSONResponse({'deleted': await asyncio.to_thread(sessions.delete_note, project, note_id)})
-            except ValueError as exc:
+            except (ValueError, OSError, RuntimeError) as exc:
                 raise HTTPException(400, str(exc)) from exc
         if not self.upstream_provider_provider():
             raise HTTPException(503, "model provider is not initialized")
@@ -203,8 +210,12 @@ class WorkspaceCodingAPI:
                 checkpoint_id = data.get('checkpoint_id') if action == 'resume' else None
                 if action == 'resume' and (not isinstance(checkpoint_id, str) or not checkpoint_id):
                     raise ValueError('checkpoint_id is required')
+                strategy = data.get('resume_strategy', 'continue')
+                if strategy not in ('continue', 'rebuild') or (action == 'start' and strategy != 'continue'):
+                    raise ValueError('unknown coding resume strategy')
                 result = await service.run_resumable(repo_path, checkpoint_id=checkpoint_id,
-                                                     pause_after=data.get('pause_after'), **options)
+                                                     pause_after=data.get('pause_after'),
+                                                     rebuild=strategy == 'rebuild', **options)
         except (ValueError, OSError, RuntimeError) as exc:
             raise HTTPException(
                 409 if isinstance(exc, (PermissionError, TimeoutError)) else 400, str(exc)

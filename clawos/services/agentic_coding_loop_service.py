@@ -49,7 +49,7 @@ class AgenticCodingLoopService:
         self.session_store = session_store
 
     async def run_resumable(self, repo_path, *, session_id, actor_id='local-user',
-                            checkpoint_id=None, pause_after=None, **options):
+                            checkpoint_id=None, pause_after=None, rebuild=False, **options):
         """Start or continue an owned fixed-test task across client sessions."""
         if self.session_store is None:
             raise ValueError('coding checkpoint storage unavailable')
@@ -72,13 +72,17 @@ class AgenticCodingLoopService:
                 if options.get('task_id') and options['task_id'] != state['task_id']:
                     raise ValueError('task_id does not match the coding checkpoint')
                 options = {**state['options'], 'task_id': state['task_id'], 'confirmed': True}
+                if rebuild:
+                    report = self.session_store.recovery_status(repo, self.workflow.artifact_root / 'tasks', state)
+                    if not report['can_rebuild']:
+                        raise ValueError('coding checkpoint cannot rebuild its baseline')
             objective = options.get('objective')
             if not isinstance(objective, str) or not objective.strip() or len(objective) > 8000:
                 raise ValueError('resumable coding requires a nonempty objective of at most 8000 characters')
             if not options.get('test_commands') or options.get('focus_paths') or options.get('enable_lsp'):
                 raise ValueError('resumable coding requires fixed tests and repository discovery')
             result = await self.run(repo, session_id=session_id, actor_id=actor_id, **options,
-                                    _checkpoint=(project, run_id, state, pause_after))
+                                    _checkpoint=(project, run_id, state, pause_after, rebuild))
             # Baseline failures may occur before the first checkpoint.
             return result | ({'checkpoint_id': run_id}
                              if self.session_store.exists(project, run_id) else {})
@@ -119,20 +123,14 @@ class AgenticCodingLoopService:
         memory_project = (self.session_store.project(repo, governed.identity.actor_id)
                           if self.session_store is not None and frozen and confirmed else None)
         resume = _checkpoint[2] if _checkpoint else None
+        rebuilding = bool(resume and _checkpoint[4])
+        previous_baseline = resume['baseline'] if rebuilding else None
         if resume:
-            owned = resume['baseline']['workspace']
-            root = self.workflow.artifact_root / 'tasks'
-            target = Path(owned['workspace']).resolve()
-            if (target.parent.parent != root.resolve() or target.name != 'repo' or
-                    Path(owned['source_repo']).resolve() != repo):
-                raise ValueError('checkpoint workspace is outside its owned repository')
-            metadata = json.loads((target.parent / 'workspace.json').read_text(encoding='utf-8'))
-            if any(metadata.get(k) != owned.get(k) for k in ('workspace', 'source_repo', 'baseline_commit', 'task_id')):
-                raise ValueError('checkpoint workspace metadata changed')
-            if (CodingExecutionContext.git(target, 'rev-parse', 'HEAD').strip() != owned['baseline_commit']
-                    or CodingExecutionContext.git(target, 'status', '--porcelain').strip()):
-                raise ValueError('checkpoint workspace changed since its saved turn')
-            CodingExecutionContext.verify(target, resume['manifest'])
+            if not rebuilding:
+                report = self.session_store.recovery_status(repo, self.workflow.artifact_root / 'tasks', resume)
+                if not report['can_resume']:
+                    raise ValueError(f"checkpoint cannot resume: {report['workspace_issue'] or 'budget exhausted'}")
+                target = Path(report['workspace'])
             for key, value in resume['budget'].items():
                 if key == 'active_seconds':
                     governed.budget.started_at -= value
@@ -146,7 +144,7 @@ class AgenticCodingLoopService:
             "task_id": task_id, "session_id": session_id, "repo": str(repo),
         })
         baseline = None
-        if resume:
+        if resume and not rebuilding:
             repo, baseline = target, resume['baseline']
             CodingWorkspaceService().touch_task(target.parent / 'workspace.json', retention_days=30)
         elif frozen and confirmed:
@@ -176,7 +174,20 @@ class AgenticCodingLoopService:
                             output_value=baseline, metadata={'phase': 'baseline'})
             governed.gate('after_tool', {'task_id': task_id, 'tool': 'baseline_tests', 'ok': available})
             if not available:
-                return self._fail(run['id'], [], [baseline], 'strict baseline execution unavailable or changed workspace', governed)
+                result = self._fail(run['id'], [], [baseline], 'strict baseline execution unavailable or changed workspace', governed)
+                if rebuilding:
+                    # The previous checkpoint remains the source of truth.
+                    result['previous_workspace'] = previous_baseline['workspace']['workspace']
+                    budget = governed.budget
+                    prior_events = list(resume.get('events', []))
+                    prior_events.append(self.session_store.event(prior_events, 'baseline_rebuild_failed',
+                        resume['next_turn'], session_id, {'workspace': str(repo), 'exits': [test['exit_code'] for test in results]}))
+                    self.session_store.save(*_checkpoint[:2], resume | {
+                        'events': prior_events, 'session_id': session_id,
+                        'budget': {'model_calls': budget.model_calls, 'tool_calls': budget.tool_calls,
+                                   'tokens': budget.tokens, 'active_seconds': time.monotonic() - budget.started_at},
+                    })
+                return result
             diagnostics = [*(diagnostics or []), *CodingExecutionContext.failure_context(repo, results)]
             if _checkpoint:
                 CodingWorkspaceService().touch_task(repo.parent / 'workspace.json', retention_days=30)
@@ -194,7 +205,7 @@ class AgenticCodingLoopService:
         source_evidence = (CodingExecutionContext.test_evidence_paths(repo, frozen, diagnostics)
                            if baseline and not focus_paths else [])
         context_options = {'max_chars': 12000} if baseline else {}
-        manifest = resume['manifest'] if resume else self.context.build_execution(repo, objective, focus_paths=focus_paths,
+        manifest = resume['manifest'] if resume and not rebuilding else self.context.build_execution(repo, objective, focus_paths=focus_paths,
             failure_context=diagnostics, semantic_graph=semantic_workspace, test_evidence_paths=source_evidence,
             **context_options)
         reproduction = CodingExecutionContext.reproduction_evidence(repo, frozen, manifest, source_evidence, objective)
@@ -310,8 +321,10 @@ class AgenticCodingLoopService:
         learning_decision_count = 0
         turn_limit = max(2, min(int(max_turns), 20))
         first_turn = 1
+        events = list(resume.get('events', [])) if resume else []
         if resume:
             first_turn = resume['next_turn']
+        if resume and not rebuilding:
             # Rebuild the initial context so deleted or edited project notes
             # do not come back with the earlier tool messages.
             messages.extend(resume['turn_messages'])
@@ -323,29 +336,44 @@ class AgenticCodingLoopService:
             self.trace.step(run['id'], 'context', status='resumed', output_value=manifest['context_digest'],
                             metadata={'checkpoint_id': _checkpoint[1], 'turn': first_turn})
 
-        def checkpoint(next_turn, status='resumable'):
+        def checkpoint(next_turn, status='resumable', *, phase=None, **details):
             if _checkpoint is None:
                 return
             budget = governed.budget
+            if phase:
+                events.append(self.session_store.event(events, phase, next_turn, session_id, details))
             self.session_store.save(*_checkpoint[:2], {
                 'task_id': task_id, 'session_id': session_id, 'objective': objective, 'status': status,
                 'next_turn': next_turn, 'baseline': baseline, 'manifest': manifest, 'turn_messages': messages[2:],
                 'observations': observations, 'attempts': attempts, 'hypothesis_history': hypothesis_history,
                 'retrievals': working_memory.retrievals, 'earliest_observation': working_memory.earliest_observation,
+                'events': events,
                 'options': {'objective': objective, 'test_commands': frozen, 'diagnostics': diagnostics,
                             'max_turns': turn_limit, 'timeout_seconds': timeout_seconds},
                 'budget': {'model_calls': budget.model_calls, 'tool_calls': budget.tool_calls, 'tokens': budget.tokens,
                            'active_seconds': time.monotonic() - budget.started_at},
             })
 
+        if _checkpoint:
+            if rebuilding:
+                checkpoint(first_turn, phase='baseline_rebuilt',
+                           previous_workspace=resume['baseline']['workspace']['workspace'],
+                           exits=[test['exit_code'] for test in baseline['tests']])
+            elif resume:
+                checkpoint(first_turn, phase='resumed')
+            else:
+                checkpoint(first_turn, phase='baseline_recorded', exits=[test['exit_code'] for test in baseline['tests']])
+
         for turn in range(first_turn, turn_limit + 1):
-            checkpoint(turn)
+            if turn != first_turn:
+                checkpoint(turn, phase='turn_saved', completed_turn=turn - 1)
             if _checkpoint and _checkpoint[3] is not None and turn - first_turn >= _checkpoint[3]:
+                checkpoint(turn, phase='paused')
                 self.trace.finish(run['id'], 'paused')
                 return {'schema': 'clawos.agentic-coding-run.v1', 'status': 'paused', 'trajectory_id': run['id'], 'next_turn': turn,
                         'workspace': baseline['workspace'], 'observations': observations}
             if _checkpoint and governed.budget.model_calls >= turn_limit:
-                checkpoint(turn, 'exhausted')
+                checkpoint(turn, 'exhausted', phase='budget_exhausted')
                 return self._fail(run['id'], attempts, observations, 'agentic model call budget exhausted', governed)
             governed.budget.consume(model_calls=1)
             governed.gate("before_model", {"task_id": task_id, "turn": turn})
@@ -363,7 +391,7 @@ class AgenticCodingLoopService:
                 if working_memory is not None:
                     prompt = working_memory.prompt(messages, observations, remaining=turn_limit-turn,
                                                   writable=manifest['scope']['write_paths'])
-                checkpoint(turn)
+                checkpoint(turn, phase='model_requested', model_calls=governed.budget.model_calls)
                 response = await self.provider.complete(prompt, options)
             except RuntimeError as exc:
                 if not frozen:
@@ -380,7 +408,7 @@ class AgenticCodingLoopService:
             governed.budget.consume(
                 tokens=int((response.get("usage") or {}).get("total_tokens") or 0)
             )
-            checkpoint(turn)
+            checkpoint(turn, phase='model_answered', tokens=governed.budget.tokens)
             governed.gate("after_model", {
                 "task_id": task_id, "turn": turn,
                 "response_digest": hashlib.sha256(content.encode()).hexdigest(),
@@ -438,7 +466,7 @@ class AgenticCodingLoopService:
                     continue
                 retrievals = action['actions'] if action_name == 'inspect' else [action]
                 governed.budget.consume(tool_calls=len(retrievals))
-                checkpoint(turn)
+                checkpoint(turn, phase='retrieval_requested', action=action_name)
                 governed.gate("before_tool", {
                     "task_id": task_id, "tool": action_name, "turn": turn,
                 })
@@ -606,7 +634,7 @@ class AgenticCodingLoopService:
             governed.budget.consume(
                 tool_calls=1 + len(proposal["test_commands"])
             )
-            checkpoint(turn)
+            checkpoint(turn, phase='patch_requested', paths=[change['path'] for change in proposal['changes']])
             try:
                 result = self.workflow.execute(
                     repo, objective, proposal["changes"],
@@ -684,7 +712,7 @@ class AgenticCodingLoopService:
             }
             observations.append(observation)
             if result.get('test_boundary_failure'):
-                checkpoint(turn + 1, 'test_boundary_failed')
+                checkpoint(turn + 1, 'test_boundary_failed', phase='test_boundary_failed')
                 return self._fail(run['id'], attempts, observations, result['test_boundary_failure'], governed)
             if frozen and result['status'] == 'passed' and assessment['status'] == 'confirmed':
                 final_acceptance = result['acceptance']
@@ -724,9 +752,9 @@ class AgenticCodingLoopService:
                 )},
             ])
         else:
-            checkpoint(turn_limit + 1, 'exhausted')
+            checkpoint(turn_limit + 1, 'exhausted', phase='budget_exhausted')
             return self._fail(run['id'], attempts, observations, 'agentic turn budget exhausted', governed)
-        checkpoint(turn + 1, 'completed')
+        checkpoint(turn + 1, 'completed', phase='completed', completed_turn=turn)
         if memory_project and working_memory is not None:
             try:
                 self.session_store.remember(memory_project, repo, run['id'], attempts[-1]['workflow'])

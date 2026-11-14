@@ -58,7 +58,10 @@ class CodingWorkingMemory:
         if project_notes:
             packet['project_notes'] = []
             for row in project_notes:
-                cls._fit(packet, 'project_notes', {**row, 'note': row['note'][:500]}, cls.INITIAL_BYTES + 2500)
+                note = {**row, 'note': row['note'][:500]}
+                if 'decision' in row:
+                    note['decision'] = {**row['decision'], 'rationale': row['decision']['rationale'][:300]}
+                cls._fit(packet, 'project_notes', note, cls.INITIAL_BYTES + 2500)
         return cls.encode(packet)
 
     @classmethod
