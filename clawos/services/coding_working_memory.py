@@ -23,7 +23,7 @@ class CodingWorkingMemory:
         return len(cls.encode(value).encode('utf-8'))
 
     @classmethod
-    def initial(cls, objective, manifest, reproduction, commands, tests):
+    def initial(cls, objective, manifest, reproduction, commands, tests, *, project_evidence=(), project_notes=()):
         """Pin the task contract and spend the rest on exact repository evidence."""
         packet = {
             'objective': objective,
@@ -50,6 +50,15 @@ class CodingWorkingMemory:
             if not any(anchor['path'] == row['path'] for anchor in packet['source_anchors']):
                 item.update(start_line=row['start_line'], excerpt=row['content'][:500])
             cls._fit(packet, 'source_map', item, cls.INITIAL_BYTES)
+        if project_evidence:
+            packet['project_evidence'] = []
+            packet['project_evidence_note'] = 'Past verified file revisions are navigation hints. Run the current task tests.'
+            for row in project_evidence:
+                cls._fit(packet, 'project_evidence', row, cls.INITIAL_BYTES + 1500)
+        if project_notes:
+            packet['project_notes'] = []
+            for row in project_notes:
+                cls._fit(packet, 'project_notes', {**row, 'note': row['note'][:500]}, cls.INITIAL_BYTES + 2500)
         return cls.encode(packet)
 
     @classmethod

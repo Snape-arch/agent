@@ -20,3 +20,4 @@
 - 补丁提议与工具循环已接入精确锚点重试诊断。七份历史失败首答复查，六份定位到源码片段。重复锚点题的两条链路离线重试均通过，公开与留出检查 4/4。 [锚点验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#真实仓库缺陷主入口比较)
 - DeepSeek 恢复后，原十题真实同预算复测完成。补丁提议 6/10，工具循环 2/10，68 次调用均有完整回执。工具循环八题停在下一请求预算准入，两份公开通过的提议补丁未通过留出。 [真实复测](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#2026-11-13-deepseek-恢复后复测)
 - 编码工作记忆压缩工具历史并复用重复查找。原十题同预算复测，两条链路均 7/10，工具循环实际用量下降约 60%，预算准入退出从八题降至零。定向回归 41/41。 [工作记忆验收](clawos/benchmarks/CODING_STRATEGY_EVOLUTION_ACCEPTANCE.md#编码工具历史与工作记忆)
+- 固定测试编码任务可跨会话续接。项目笔记支持维护与召回，严格测试证据按源码版本复用。主动暂停和进程中断两种跨进程验收通过，独立沙箱检查 4/4。 [使用说明](docs/CODING_CONTINUITY.md)

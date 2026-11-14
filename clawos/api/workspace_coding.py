@@ -133,25 +133,58 @@ class WorkspaceCodingAPI:
 
 
     async def api_autonomous_coding(self, request: Request):
-        if not self.upstream_provider_provider():
-            raise HTTPException(503, "model provider is not initialized")
         from services.agentic_coding_loop_service import AgenticCodingLoopService
+        from services.coding_session_store import CodingSessionStore
         from services.coding_trace_service import CodingTraceService
 
         data = await request.json()
-        if not data.get("task_id") or not data.get("session_id"):
-            raise HTTPException(400, "task_id and session_id are required")
+        if not isinstance(data, dict):
+            raise HTTPException(400, "JSON object is required")
+        action = data.get('action', 'run')
+        if action not in ('run', 'start', 'resume', 'history', 'memory_list', 'memory_save', 'memory_delete'):
+            raise HTTPException(400, "unknown coding session action")
+        sessions = CodingSessionStore(self.output_root_provider() / 'coding' / 'continuity')
+        repo_path = data.get('repo_path')
+        if action in ('history', 'memory_list', 'memory_save', 'memory_delete'):
+            if not isinstance(repo_path, str) or not repo_path.strip():
+                raise HTTPException(400, "repo_path is required")
+            project = sessions.project(repo_path, 'local-user')
+            try:
+                if action == 'history':
+                    return JSONResponse({'checkpoints': await asyncio.to_thread(sessions.history, project)})
+                if action == 'memory_list':
+                    query, offset = data.get('query', ''), data.get('offset', 0)
+                    if not isinstance(query, str) or len(query) > 200 or type(offset) is not int or offset < 0:
+                        raise ValueError('invalid project memory search')
+                    rows = await asyncio.to_thread(sessions.notes, project, query=query, offset=offset)
+                    return JSONResponse({'notes': rows, 'next_offset': offset + 50 if len(rows) == 50 else None})
+                if data.get('confirmed') is not True:
+                    raise HTTPException(409, "confirmed=true is required to change project memory")
+                if action == 'memory_save':
+                    row = await asyncio.to_thread(sessions.save_note, project, data.get('topic'), data.get('note'),
+                                                  data.get('scope', ''), data.get('note_id'))
+                    return JSONResponse({'note': row})
+                note_id = data.get('note_id')
+                if not isinstance(note_id, str):
+                    raise ValueError('note_id is required')
+                return JSONResponse({'deleted': await asyncio.to_thread(sessions.delete_note, project, note_id)})
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+        if not self.upstream_provider_provider():
+            raise HTTPException(503, "model provider is not initialized")
+        if not data.get("session_id") or (action != 'resume' and not data.get("task_id")):
+            raise HTTPException(400, "task_id and session_id are required for a new run")
         service = AgenticCodingLoopService(
             self.upstream_provider_provider(),
             workflow=self.get_coding_workflow_service(),
             context=getattr(self.context_builder_provider(), "_coding_context", None),
             trace=CodingTraceService(self.output_root_provider() / "traces" / "coding.json"),
             learning_store=self.memory_store_provider(),
+            session_store=sessions,
         )
         try:
-            result = await service.run(
-                data.get("repo_path", ""),
-                data.get("objective", ""),
+            options = dict(
+                objective=data.get("objective", ""),
                 confirmed=data.get("confirmed") is True,
                 focus_paths=data.get("focus_paths") or [],
                 test_commands=data.get("test_commands"),
@@ -161,11 +194,20 @@ class WorkspaceCodingAPI:
                 timeout_seconds=data.get("timeout_seconds", 180),
                 task_id=str(data.get("task_id") or ""),
                 session_id=str(data.get("session_id") or "default"),
-                actor_id=str(data.get("actor_id") or "local-user"),
             )
-        except (ValueError, PermissionError, RuntimeError) as exc:
+            if action == 'run':
+                result = await service.run(repo_path or '', actor_id=str(data.get("actor_id") or "local-user"), **options)
+            else:
+                if not isinstance(repo_path, str) or not repo_path.strip():
+                    raise ValueError('repo_path is required')
+                checkpoint_id = data.get('checkpoint_id') if action == 'resume' else None
+                if action == 'resume' and (not isinstance(checkpoint_id, str) or not checkpoint_id):
+                    raise ValueError('checkpoint_id is required')
+                result = await service.run_resumable(repo_path, checkpoint_id=checkpoint_id,
+                                                     pause_after=data.get('pause_after'), **options)
+        except (ValueError, OSError, RuntimeError) as exc:
             raise HTTPException(
-                409 if isinstance(exc, PermissionError) else 400, str(exc)
+                409 if isinstance(exc, (PermissionError, TimeoutError)) else 400, str(exc)
             )
         return JSONResponse(result)
 

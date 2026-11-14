@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .file_transactions import _file_lock
 
 class CodingTraceService:
     STEP_TYPES = {
@@ -49,7 +50,7 @@ class CodingTraceService:
     ) -> dict[str, Any]:
         if step_type not in self.STEP_TYPES:
             raise ValueError(f"unsupported coding trace step: {step_type}")
-        with self._lock:
+        with self._lock, _file_lock(self.path):
             value = self._read()
             run = next(
                 (item for item in value["records"] if item["id"] == run_id), None
@@ -76,7 +77,7 @@ class CodingTraceService:
             return item
 
     def finish(self, run_id: str, status: str) -> dict[str, Any]:
-        with self._lock:
+        with self._lock, _file_lock(self.path):
             value = self._read()
             run = next(
                 (item for item in value["records"] if item["id"] == run_id), None
@@ -100,7 +101,7 @@ class CodingTraceService:
         )
 
     def _append(self, run: dict[str, Any]) -> None:
-        with self._lock:
+        with self._lock, _file_lock(self.path):
             value = self._read()
             value["records"].append(run)
             self._write(value)
