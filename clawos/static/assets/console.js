@@ -13,6 +13,7 @@ import * as security from './console/security.js';
 import * as feishu from './console/feishu.js';
 import * as skills from './console/skills.js';
 import * as office from './console/office.js';
+import { bindCodingCases } from './console/coding-cases.js';
 import { $, consoleState, initialView } from './console/core.js';
 import { loadSessions, newChat, switchSession } from './console/chat.js';
 import { applyProviderPreset, closeCommandDrawer, closeModelSettings, setAutonomyMode, setView, toggleChatProgress } from './console/shell.js';
@@ -385,6 +386,7 @@ document.addEventListener("keydown", (event) => {
   else if ($("officeEditorModal")?.classList.contains("on")) closeEmbeddedOfficeEditor();
 });
 applyReportPreset();
+bindCodingCases();
 renderKnowledgeWorkspaceShell();
 setAutonomyMode(localStorage.getItem("clawos-autonomy-mode") || "approve");
 loadSessions().then(() => { if (!initialView || initialView === 'chat') switchSession(consoleState.chat.currentSession); });

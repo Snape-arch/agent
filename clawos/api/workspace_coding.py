@@ -136,6 +136,7 @@ class WorkspaceCodingAPI:
         from services.agentic_coding_loop_service import AgenticCodingLoopService
         from services.coding_session_store import CodingSessionStore
         from services.coding_trace_service import CodingTraceService
+        from services.coding_workspace_service import CodingWorkspaceService
 
         data = await request.json()
         if not isinstance(data, dict):
@@ -148,9 +149,11 @@ class WorkspaceCodingAPI:
         if action in ('history', 'resume_preview', 'memory_list', 'memory_save', 'memory_delete'):
             if not isinstance(repo_path, str) or not repo_path.strip():
                 raise HTTPException(400, "repo_path is required")
-            project = sessions.project(repo_path, 'local-user')
             try:
+                repo = Path(repo_path).expanduser().resolve()
+                project = sessions.project(repo, 'local-user')
                 if action == 'history':
+                    await asyncio.to_thread(CodingWorkspaceService._repo, repo)
                     return JSONResponse({'checkpoints': await asyncio.to_thread(sessions.history, project)})
                 if action == 'resume_preview':
                     checkpoint_id = data.get('checkpoint_id')
@@ -158,7 +161,7 @@ class WorkspaceCodingAPI:
                         raise ValueError('checkpoint_id is required')
                     state = await asyncio.to_thread(sessions.load, project, checkpoint_id)
                     task_root = self.get_coding_workflow_service().artifact_root / 'tasks'
-                    return JSONResponse(await asyncio.to_thread(sessions.recovery_status, repo_path, task_root, state))
+                    return JSONResponse(await asyncio.to_thread(sessions.recovery_status, repo, task_root, state))
                 if action == 'memory_list':
                     query, offset = data.get('query', ''), data.get('offset', 0)
                     if not isinstance(query, str) or len(query) > 200 or type(offset) is not int or offset < 0:

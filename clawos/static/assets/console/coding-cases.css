@@ -1,0 +1,27 @@
+.coding-cases { display: grid; gap: 16px; margin-block-end: 18px; }
+.coding-cases [hidden] { display: none !important; }
+.coding-cases h2, .coding-cases h3, .coding-cases h4 { margin: 0 0 8px; }
+.coding-cases p { margin: 0; }
+.coding-cases #codingStatus:empty { display: none; }
+.coding-cases .coding-repo { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.coding-repo label { grid-column: 1 / -1; }
+.coding-cases .coding-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 20px; }
+.coding-cases .coding-columns section { min-width: 0; border: 1px solid var(--line, #ddd7cb); padding: 16px; border-radius: 12px; }
+.coding-cases form:not(.coding-repo):not(.coding-actions) { display: grid; gap: 8px; margin-block: 10px; }
+.coding-cases input, .coding-cases textarea, .coding-cases select { min-width: 0; width: 100%; font: inherit; }
+.coding-cases input[type=number] { width: 7ch; }
+.coding-cases textarea { resize: vertical; }
+.coding-cases .coding-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.coding-cases .coding-actions input { width: auto; flex: 1 1 10rem; }
+.coding-cases summary { font-weight: 650; cursor: pointer; }
+.coding-cases .coding-list { display: grid; gap: 8px; margin: 12px 0; padding-inline-start: 22px; }
+.coding-cases ul.coding-list { list-style: none; padding: 0; }
+.coding-cases li, .coding-cases code, .coding-cases dd { overflow-wrap: anywhere; }
+.coding-cases li p { white-space: pre-wrap; }
+.coding-cases .coding-list button { margin-block-start: 4px; text-align: start; }
+.coding-cases dt { font-weight: 650; }
+.coding-cases dd { margin: 0 0 8px; }
+.coding-cases dialog { max-width: min(480px, calc(100% - 32px)); border: 1px solid var(--line, #ddd7cb); border-radius: 12px; padding: 20px; }
+.coding-cases dialog form { margin-top: 14px; }
+@media (max-width: 900px) { .coding-cases .coding-columns { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .coding-cases .coding-repo { grid-template-columns: 1fr; } }
